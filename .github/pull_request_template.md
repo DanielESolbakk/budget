@@ -11,6 +11,11 @@ Describe what changed and why.
 - [ ] Refactor
 - [ ] Chore or docs
 
+## Linked Planning Issue
+
+- Primary planning issue: #123
+- Additional planning issues: #456, #789
+
 ## Acceptance Criteria to Test Mapping
 
 |Acceptance criterion|Test level|Test file or suite|Status|

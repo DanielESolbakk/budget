@@ -34,6 +34,7 @@ Build a Windows-first, local-first household budgeting desktop app using Electro
 - docs/ways-of-work/plan/budget-planner/technical-breakdown.md — domain model, import pipeline, and module boundaries.
 - docs/ways-of-work/plan/budget-planner/implementation-plan.md — execution order, dependencies, and validation steps.
 - docs/ways-of-work/plan/budget-planner/project-plan.md — issue-ready hierarchy and release slices.
+- docs/ways-of-work/plan/budget-planner/issue-catalog.json — machine-readable planning reference and seeded issue keys.
 - docs/ways-of-work/plan/budget-planner/issues-checklist.md — GitHub issue creation checklist.
 
 ## Verification

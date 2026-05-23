@@ -6,9 +6,12 @@
 - [ ] Technical breakdown exists and is current
 - [ ] Implementation plan exists and is current
 - [ ] Project plan exists and is current
+- [ ] Issue catalog exists and is current
 - [ ] Acceptance criteria and test strategy are mapped
 - [ ] ADR and glossary work is identified or completed
 - [ ] Use GitHub Issue Forms in `.github/ISSUE_TEMPLATE/` for Epic, Feature, Story, Enabler, and Test issues
+- [ ] Derive initial issue hierarchy from `docs/ways-of-work/plan/budget-planner/issue-catalog.json` instead of inventing parent links manually
+- [ ] Keep created planning issues aligned with the issue catalog as issue numbers are assigned
 
 ## Epic Creation Checklist
 
@@ -72,6 +75,8 @@
 
 ## Test Issue Checklist
 
+- [ ] Each test issue declares whether it is story/enabler, feature, or epic-wide/cross-cutting scope
+- [ ] Cross-cutting test issues anchor to a parent epic and explain related planning items
 - [ ] Parser fixture issue covers sanitized digital text PDFs
 - [ ] CSV fixture issue covers encoding, delimiter, and field mapping cases
 - [ ] Categorization fixture issue covers common Norwegian merchants

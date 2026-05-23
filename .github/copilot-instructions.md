@@ -68,6 +68,10 @@ Before broad implementation starts, create and maintain:
 
 When planning work for GitHub issues, follow the existing Epic > Feature > Story or Enabler > Test structure defined by the repository planning skill.
 
+Use docs/ways-of-work/plan/budget-planner/issue-catalog.json as the machine-readable planning reference for seeded Epic, Feature, Enabler, and Test hierarchy.
+- Prefer catalog keys and catalog parent relationships over hand-authored issue-number chains when creating or updating planning issues.
+- Treat the catalog as the planning seed artifact and GitHub issue numbers as runtime references that must be kept aligned with it.
+
 ## Domain Language
 
 Use these terms consistently in code, tests, and documentation:
@@ -144,3 +148,10 @@ Out of scope for the first milestone unless the user explicitly changes scope:
 - Preserve a clear path for future local OCR or local ML, but do not let speculative extensibility complicate the first implementation.
 - If a change alters architecture, schema boundaries, or privacy posture, update the planning documents in the same work.
 - If a feature request conflicts with these instructions, surface the conflict explicitly and resolve it through a documented decision rather than silently drifting the architecture.
+
+## Planning Signal Discipline
+
+- Before implementing from a GitHub issue, review the issue body, labels, and latest bot comments for planning validation results.
+- If a planning issue has the planning-invalid label or an issue-traceability-lint failure comment, stop and repair the issue graph before writing implementation code.
+- When opening or updating planning issues, derive initial hierarchy from docs/ways-of-work/plan/budget-planner/issue-catalog.json instead of inventing parent links from memory, then keep the issue graph aligned with the catalog.
+- If a PR links to a planning issue marked planning-invalid, treat the work as blocked until the planning issue passes validation.

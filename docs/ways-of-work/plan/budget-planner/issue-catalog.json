@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "updatedFrom": "docs/ways-of-work/plan/budget-planner/project-plan.md",
+  "storyKeyPattern": "S<epic>.<feature>.<sequence>",
+  "notes": [
+    "Use this catalog as the machine-readable planning reference for seeded Epic, Feature, Enabler, and Test planning keys.",
+    "When Story issues are created, assign keys under the owning feature using the storyKeyPattern instead of inventing parent issue numbers first.",
+    "GitHub issue numbers are implementation-time references; keep created issues aligned with this catalog instead of treating either side as automatically authoritative."
+  ],
+  "items": [
+    {
+      "key": "E1",
+      "type": "epic",
+      "title": "Foundations and LLM delivery scaffolding"
+    },
+    {
+      "key": "F1.1",
+      "type": "feature",
+      "title": "Planning and governance artifacts",
+      "parentKeys": ["E1"]
+    },
+    {
+      "key": "F1.2",
+      "type": "feature",
+      "title": "ADR and glossary",
+      "parentKeys": ["E1"]
+    },
+    {
+      "key": "EN1.1",
+      "type": "enabler",
+      "title": "CI, PR template, and ruleset maintenance",
+      "parentKeys": ["E1"]
+    },
+    {
+      "key": "T1.1",
+      "type": "test",
+      "title": "Governance validation and documentation checks",
+      "parentKeys": ["E1"]
+    },
+    {
+      "key": "E2",
+      "type": "epic",
+      "title": "Transaction ingestion and normalization"
+    },
+    {
+      "key": "F2.1",
+      "type": "feature",
+      "title": "Digital text PDF import",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "F2.2",
+      "type": "feature",
+      "title": "CSV import and field mapping",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "F2.3",
+      "type": "feature",
+      "title": "Manual entry and duplicate detection",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "EN2.1",
+      "type": "enabler",
+      "title": "Import job schema and parser adapter framework",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "T2.1",
+      "type": "test",
+      "title": "Sanitized fixture coverage for PDF and CSV import",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "E3",
+      "type": "epic",
+      "title": "Categorization and correction workflow"
+    },
+    {
+      "key": "F3.1",
+      "type": "feature",
+      "title": "Merchant normalization",
+      "parentKeys": ["E3"]
+    },
+    {
+      "key": "F3.2",
+      "type": "feature",
+      "title": "Rule evaluation and confidence scoring",
+      "parentKeys": ["E3"]
+    },
+    {
+      "key": "F3.3",
+      "type": "feature",
+      "title": "Review queue and correction workflow",
+      "parentKeys": ["E3"]
+    },
+    {
+      "key": "EN3.1",
+      "type": "enabler",
+      "title": "Categorization rule persistence and provenance",
+      "parentKeys": ["E3"]
+    },
+    {
+      "key": "T3.1",
+      "type": "test",
+      "title": "Merchant fixture and regression coverage",
+      "parentKeys": ["E3"]
+    },
+    {
+      "key": "E4",
+      "type": "epic",
+      "title": "Dashboard, budgeting, and forecasting"
+    },
+    {
+      "key": "F4.1",
+      "type": "feature",
+      "title": "Monthly dashboard",
+      "parentKeys": ["E4"]
+    },
+    {
+      "key": "F4.2",
+      "type": "feature",
+      "title": "Monthly category targets",
+      "parentKeys": ["E4"]
+    },
+    {
+      "key": "F4.3",
+      "type": "feature",
+      "title": "Simple forward forecast",
+      "parentKeys": ["E4"]
+    },
+    {
+      "key": "EN4.1",
+      "type": "enabler",
+      "title": "Aggregation and forecast query layer",
+      "parentKeys": ["E4"]
+    },
+    {
+      "key": "T4.1",
+      "type": "test",
+      "title": "Dashboard and forecast end-to-end coverage",
+      "parentKeys": ["E4"]
+    },
+    {
+      "key": "E5",
+      "type": "epic",
+      "title": "Privacy, backup, export, and release quality"
+    },
+    {
+      "key": "F5.1",
+      "type": "feature",
+      "title": "Backup and restore",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "F5.2",
+      "type": "feature",
+      "title": "CSV export",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "F5.3",
+      "type": "feature",
+      "title": "No-network verification",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "EN5.1",
+      "type": "enabler",
+      "title": "Performance harness and packaging validation",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "T5.1",
+      "type": "test",
+      "title": "Backup/export, no-network, and performance coverage",
+      "parentKeys": ["E5"]
+    }
+  ]
+}
