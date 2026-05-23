@@ -1,5 +1,5 @@
 name: Test
-description: Create a quality and verification issue linked to stories or enablers.
+description: Create a quality and verification issue linked to a story, enabler, feature, or epic-wide scope.
 title: "Test: "
 labels:
   - test
@@ -13,21 +13,43 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: scope_type
+    attributes:
+      label: Test Scope Type
+      description: Select the planning level this test issue validates.
+      options:
+        - Story or Enabler
+        - Feature
+        - Epic-wide or Cross-cutting
+    validations:
+      required: true
+
   - type: input
     id: parent_feature
     attributes:
       label: Parent Feature Issue
-      description: Link the parent feature for hierarchy traceability.
+      description: Required when Test Scope Type is Story or Enabler or Feature.
       placeholder: "#456"
-    validations:
-      required: true
 
   - type: input
     id: parent_item
     attributes:
       label: Parent Story Or Enabler Issue
-      description: Link the concrete story or enabler this test validates.
+      description: Required when Test Scope Type is Story or Enabler.
       placeholder: "#789"
+    validations:
+      required: false
+
+  - type: textarea
+    id: related_planning_issues
+    attributes:
+      label: Related Planning Issues
+      description: Link any additional related planning issues, or explain why the epic is the only planning anchor.
+      placeholder: |
+        - #201 Story: ...
+        - #301 Enabler: ...
+        - None. This test is epic-wide and the parent epic is the only required anchor.
     validations:
       required: true
 

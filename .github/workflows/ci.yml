@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
   pull-requests: read
 
 concurrency:
@@ -126,6 +127,14 @@ jobs:
               return match ? match[2].trim() : "";
             }
 
+            function parseIssueRefs(value) {
+              return [...new Set(
+                [...String(value || "").matchAll(/(?:#|\/issues\/)(\d+)/gi)]
+                  .map((match) => Number(match[1]))
+                  .filter((number) => Number.isInteger(number) && number > 0)
+              )];
+            }
+
             const pr = context.payload.pull_request;
             const labels = (pr.labels || []).map((label) => String(label.name || "").toLowerCase());
             const title = String(pr.title || "");
@@ -163,6 +172,59 @@ jobs:
             if (changeTypeSelections !== 1) {
               core.setFailed("Select exactly one change type in the PR template.");
               return;
+            }
+
+            const linkedPlanningSection = extractSection(bodyRaw, "Linked Planning Issue");
+            if (!linkedPlanningSection) {
+              core.setFailed("Pull request description must include the 'Linked Planning Issue' section.");
+              return;
+            }
+
+            const primaryPlanningMatch = linkedPlanningSection.match(/Primary planning issue:\s*(.+)$/im);
+            const primaryPlanningRefs = parseIssueRefs(primaryPlanningMatch ? primaryPlanningMatch[1] : "");
+            if (primaryPlanningRefs.length !== 1) {
+              core.setFailed("Primary planning issue must include exactly one issue reference like #123.");
+              return;
+            }
+
+            const additionalPlanningMatch = linkedPlanningSection.match(/Additional planning issues:\s*(.+)$/im);
+            const additionalPlanningRefs = parseIssueRefs(additionalPlanningMatch ? additionalPlanningMatch[1] : "");
+            const planningIssueRefs = [...new Set([primaryPlanningRefs[0], ...additionalPlanningRefs])];
+
+            for (const issueRef of planningIssueRefs) {
+              let response;
+              try {
+                response = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueRef,
+                });
+              } catch (error) {
+                core.setFailed(`Linked planning issue #${issueRef} could not be loaded. Check that the issue exists and is accessible in this repository.`);
+                return;
+              }
+
+              if (response.data.pull_request) {
+                core.setFailed(`Linked planning reference #${issueRef} points to a pull request, not an issue.`);
+                return;
+              }
+
+              const planningLabels = (response.data.labels || []).map((label) =>
+                String(typeof label === "string" ? label : label.name || "").toLowerCase()
+              );
+
+              const isPlanningIssue = ["epic", "feature", "user-story", "enabler", "test"].some((label) =>
+                planningLabels.includes(label)
+              );
+              if (!isPlanningIssue) {
+                core.setFailed(`Linked planning issue #${issueRef} is missing a planning label such as epic, feature, user-story, enabler, or test.`);
+                return;
+              }
+
+              if (planningLabels.includes("planning-invalid")) {
+                core.setFailed(`Linked planning issue #${issueRef} is marked planning-invalid. Fix the issue hierarchy before merging this PR.`);
+                return;
+              }
             }
 
             const mappingSection = extractSection(bodyRaw, "Acceptance Criteria to Test Mapping");

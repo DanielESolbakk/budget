@@ -24,6 +24,7 @@ jobs:
         with:
           script: |
             const marker = "<!-- issue-traceability-lint -->";
+            const invalidLabel = "planning-invalid";
             const issue = context.payload.issue;
             const body = issue.body || "";
             const labels = (issue.labels || []).map((label) =>
@@ -31,11 +32,9 @@ jobs:
             );
             const title = issue.title || "";
 
-            const isStory = labels.includes("user-story") || /^Story\s*:/i.test(title);
-            const isFeature = labels.includes("feature") || /^Feature\s*:/i.test(title);
-
             const { owner, repo } = context.repo;
             const issueNumber = issue.number;
+            const issueCache = new Map();
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
@@ -50,6 +49,27 @@ jobs:
                 typeof comment.body === "string" &&
                 comment.body.includes(marker)
             );
+
+            function getIssueType(labelNames, issueTitle) {
+              if (labelNames.includes("epic") || /^Epic\s*:/i.test(issueTitle)) {
+                return "epic";
+              }
+              if (labelNames.includes("feature") || /^Feature\s*:/i.test(issueTitle)) {
+                return "feature";
+              }
+              if (labelNames.includes("user-story") || /^Story\s*:/i.test(issueTitle)) {
+                return "story";
+              }
+              if (labelNames.includes("enabler") || /^Enabler\s*:/i.test(issueTitle)) {
+                return "enabler";
+              }
+              if (labelNames.includes("test") || /^Test\s*:/i.test(issueTitle)) {
+                return "test";
+              }
+              return null;
+            }
+
+            const issueType = getIssueType(labels, title);
 
             function escapeRegex(value) {
               return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -69,11 +89,181 @@ jobs:
               return match[1].replace(/_No response_/gi, "").trim();
             }
 
-            function hasIssueReference(value) {
-              return /#\d+|\/issues\/\d+/i.test(value || "");
+            function normalizeValue(value) {
+              return String(value || "")
+                .replace(/_No response_/gi, "")
+                .trim();
             }
 
-            if (!isStory && !isFeature) {
+            function hasMeaningfulText(value) {
+              const normalized = normalizeValue(value);
+              return Boolean(normalized) && !/^(none|n\/a|not applicable)$/i.test(normalized);
+            }
+
+            function parseIssueReferences(value) {
+              const matches = [...String(value || "").matchAll(/(?:#|\/issues\/)(\d+)/gi)];
+              return [...new Set(matches.map((match) => Number(match[1])))]
+                .filter((number) => Number.isInteger(number) && number > 0);
+            }
+
+            function getLabelNames(issueData) {
+              return (issueData.labels || []).map((label) =>
+                typeof label === "string" ? label : label.name
+              );
+            }
+
+            async function loadIssue(targetIssueNumber, heading) {
+              if (issueCache.has(targetIssueNumber)) {
+                return issueCache.get(targetIssueNumber);
+              }
+
+              try {
+                const response = await github.rest.issues.get({
+                  owner,
+                  repo,
+                  issue_number: targetIssueNumber,
+                });
+                issueCache.set(targetIssueNumber, response.data);
+                return response.data;
+              } catch (error) {
+                issueCache.set(targetIssueNumber, null);
+                problems.push(`${heading} references #${targetIssueNumber}, but that issue could not be loaded.`);
+                return null;
+              }
+            }
+
+            function describeLabels(issueData) {
+              const issueLabels = getLabelNames(issueData);
+              return issueLabels.length ? issueLabels.join(", ") : "no labels";
+            }
+
+            async function validateSingleReference(heading, allowedLabels, required = true) {
+              const rawValue = getSectionValue(body, heading);
+              const references = parseIssueReferences(rawValue);
+
+              if (references.length === 0) {
+                if (required) {
+                  problems.push(`${heading} must include an issue reference like #123.`);
+                }
+                return null;
+              }
+
+              if (references.length > 1) {
+                problems.push(`${heading} must reference exactly one issue.`);
+              }
+
+              const targetIssue = await loadIssue(references[0], heading);
+              if (!targetIssue) {
+                return null;
+              }
+
+              if (targetIssue.pull_request) {
+                problems.push(`${heading} must reference an issue, not a pull request.`);
+                return null;
+              }
+
+              if (allowedLabels.length > 0) {
+                const targetLabels = getLabelNames(targetIssue);
+                const isAllowed = allowedLabels.some((labelName) => targetLabels.includes(labelName));
+                if (!isAllowed) {
+                  problems.push(`${heading} must reference a ${allowedLabels.join(" or ")} issue, but #${targetIssue.number} has ${describeLabels(targetIssue)}.`);
+                }
+              }
+
+              return targetIssue;
+            }
+
+            async function validateMultiReference(heading, allowedLabels, required = true) {
+              const rawValue = getSectionValue(body, heading);
+              const references = parseIssueReferences(rawValue);
+
+              if (references.length === 0) {
+                if (required) {
+                  problems.push(`${heading} must include at least one issue reference.`);
+                }
+                return [];
+              }
+
+              const resolvedIssues = [];
+              for (const reference of references) {
+                const targetIssue = await loadIssue(reference, heading);
+                if (!targetIssue) {
+                  continue;
+                }
+
+                if (targetIssue.pull_request) {
+                  problems.push(`${heading} must reference issues, not pull requests.`);
+                  continue;
+                }
+
+                if (allowedLabels.length > 0) {
+                  const targetLabels = getLabelNames(targetIssue);
+                  const isAllowed = allowedLabels.some((labelName) => targetLabels.includes(labelName));
+                  if (!isAllowed) {
+                    problems.push(`${heading} includes #${targetIssue.number}, but it has ${describeLabels(targetIssue)} instead of ${allowedLabels.join(" or ")}.`);
+                    continue;
+                  }
+                }
+
+                resolvedIssues.push(targetIssue);
+              }
+
+              return resolvedIssues;
+            }
+
+            function extractParentReference(issueData, heading) {
+              const value = getSectionValue(issueData.body || "", heading);
+              const references = parseIssueReferences(value);
+              return references[0] || null;
+            }
+
+            function extractScopeType(issueData) {
+              return normalizeValue(getSectionValue(issueData.body || "", "Test Scope Type"));
+            }
+
+            function ensureMatchingParent(childIssue, expectedIssueNumber, heading, contextLabel) {
+              const actualReference = extractParentReference(childIssue, heading);
+              if (!actualReference) {
+                problems.push(`#${childIssue.number} is missing ${heading}, so ${contextLabel} cannot be confirmed.`);
+                return;
+              }
+
+              if (actualReference !== expectedIssueNumber) {
+                problems.push(`#${childIssue.number} points to ${heading} #${actualReference}, but this issue expects #${expectedIssueNumber}.`);
+              }
+            }
+
+            async function addInvalidLabel() {
+              if (!labels.includes(invalidLabel)) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  labels: [invalidLabel],
+                });
+              }
+            }
+
+            async function removeInvalidLabel() {
+              if (!labels.includes(invalidLabel)) {
+                return;
+              }
+
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  name: invalidLabel,
+                });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+              }
+            }
+
+            if (!issueType) {
               if (existingLintComment) {
                 await github.rest.issues.deleteComment({
                   owner,
@@ -81,41 +271,173 @@ jobs:
                   comment_id: existingLintComment.id,
                 });
               }
-              core.info("Skipping issue type: no Story or Feature label/title detected.");
+              await removeInvalidLabel();
+              core.info("Skipping issue type: no tracked planning label/title detected.");
               return;
             }
 
             const problems = [];
 
-            if (isStory) {
-              const parentEpic = getSectionValue(body, "Parent Epic Issue");
-              const parentFeature = getSectionValue(body, "Parent Feature Issue");
-              const linkedEnablers = getSectionValue(body, "Linked Enabler Issues");
-              const linkedTests = getSectionValue(body, "Linked Test Issues");
+            if (issueType === "feature") {
+              const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
+              const featureTests = await validateMultiReference("Test Issues In This Feature", ["test"]);
 
-              if (!hasIssueReference(parentEpic)) {
-                problems.push("Parent Epic Issue must include an issue reference like #123.");
-              }
-              if (!hasIssueReference(parentFeature)) {
-                problems.push("Parent Feature Issue must include an issue reference like #456.");
-              }
-              if (!hasIssueReference(linkedEnablers)) {
-                problems.push("Linked Enabler Issues must include at least one issue reference.");
-              }
-              if (!hasIssueReference(linkedTests)) {
-                problems.push("Linked Test Issues must include at least one issue reference.");
+              if (parentEpicIssue) {
+                for (const testIssue of featureTests) {
+                  const testScopeType = extractScopeType(testIssue);
+                  const testEpicReference = extractParentReference(testIssue, "Parent Epic Issue");
+                  if (testEpicReference && testEpicReference !== parentEpicIssue.number) {
+                    problems.push(`#${testIssue.number} points to Parent Epic Issue #${testEpicReference}, but this feature uses #${parentEpicIssue.number}.`);
+                  }
+
+                  if (/^Epic-wide or Cross-cutting$/i.test(testScopeType)) {
+                    problems.push(`#${testIssue.number} is marked Epic-wide or Cross-cutting and should not be linked in Test Issues In This Feature.`);
+                    continue;
+                  }
+
+                  const testFeatureReference = extractParentReference(testIssue, "Parent Feature Issue");
+                  if (!testFeatureReference) {
+                    problems.push(`#${testIssue.number} is missing Parent Feature Issue, so feature alignment cannot be confirmed.`);
+                    continue;
+                  }
+
+                  if (testFeatureReference !== issueNumber) {
+                    problems.push(`#${testIssue.number} points to Parent Feature Issue #${testFeatureReference}, but this feature is #${issueNumber}.`);
+                  }
+                }
               }
             }
 
-            if (isFeature) {
-              const parentEpic = getSectionValue(body, "Parent Epic Issue");
-              const tests = getSectionValue(body, "Test Issues In This Feature");
+            if (issueType === "story") {
+              const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
+              const parentFeatureIssue = await validateSingleReference("Parent Feature Issue", ["feature"]);
+              const linkedEnablers = await validateMultiReference("Linked Enabler Issues", ["enabler"]);
+              const linkedTests = await validateMultiReference("Linked Test Issues", ["test"]);
+              const linkedEnablerIds = new Set(linkedEnablers.map((linkedEnabler) => linkedEnabler.number));
 
-              if (!hasIssueReference(parentEpic)) {
-                problems.push("Parent Epic Issue must include an issue reference like #123.");
+              if (parentEpicIssue && parentFeatureIssue) {
+                ensureMatchingParent(parentFeatureIssue, parentEpicIssue.number, "Parent Epic Issue", "feature hierarchy");
               }
-              if (!hasIssueReference(tests)) {
-                problems.push("Test Issues In This Feature must include at least one issue reference.");
+
+              if (parentEpicIssue && parentFeatureIssue) {
+                for (const linkedTest of linkedTests) {
+                  const testScopeType = extractScopeType(linkedTest);
+                  const testEpicReference = extractParentReference(linkedTest, "Parent Epic Issue");
+                  if (testEpicReference && testEpicReference !== parentEpicIssue.number) {
+                    problems.push(`#${linkedTest.number} points to Parent Epic Issue #${testEpicReference}, but this story uses #${parentEpicIssue.number}.`);
+                  }
+
+                  if (!/^Story or Enabler$/i.test(testScopeType)) {
+                    problems.push(`#${linkedTest.number} must use Test Scope Type 'Story or Enabler' when linked from story #${issueNumber}.`);
+                    continue;
+                  }
+
+                  const testFeatureReference = extractParentReference(linkedTest, "Parent Feature Issue");
+                  if (!testFeatureReference) {
+                    problems.push(`#${linkedTest.number} is missing Parent Feature Issue, so story feature alignment cannot be confirmed.`);
+                    continue;
+                  }
+
+                  if (testFeatureReference !== parentFeatureIssue.number) {
+                    problems.push(`#${linkedTest.number} points to Parent Feature Issue #${testFeatureReference}, but this story uses #${parentFeatureIssue.number}.`);
+                  }
+
+                  const testParentItemReference = extractParentReference(linkedTest, "Parent Story Or Enabler Issue");
+                  if (!testParentItemReference) {
+                    problems.push(`#${linkedTest.number} is missing Parent Story Or Enabler Issue, so story-level alignment cannot be confirmed.`);
+                    continue;
+                  }
+
+                  const matchesStory = testParentItemReference === issueNumber;
+                  const matchesLinkedEnabler = linkedEnablerIds.has(testParentItemReference);
+                  if (!matchesStory && !matchesLinkedEnabler) {
+                    problems.push(`#${linkedTest.number} points to Parent Story Or Enabler Issue #${testParentItemReference}, but story #${issueNumber} only links enablers ${linkedEnablers.map((linkedEnabler) => `#${linkedEnabler.number}`).join(", ") || "none"}.`);
+                  }
+                }
+              }
+
+              if (parentFeatureIssue) {
+                for (const linkedEnabler of linkedEnablers) {
+                  const enablerFeatureReference = extractParentReference(linkedEnabler, "Parent Feature Issue");
+                  if (enablerFeatureReference && enablerFeatureReference !== parentFeatureIssue.number) {
+                    problems.push(`#${linkedEnabler.number} points to Parent Feature Issue #${enablerFeatureReference}, but this story uses #${parentFeatureIssue.number}.`);
+                  }
+                }
+              }
+            }
+
+            if (issueType === "enabler") {
+              const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
+              const parentFeatureIssue = await validateSingleReference("Parent Feature Issue", ["feature"]);
+              const enabledStories = await validateMultiReference("Stories Enabled", ["user-story"]);
+
+              if (parentEpicIssue && parentFeatureIssue) {
+                ensureMatchingParent(parentFeatureIssue, parentEpicIssue.number, "Parent Epic Issue", "feature hierarchy");
+              }
+
+              if (parentFeatureIssue) {
+                for (const storyIssue of enabledStories) {
+                  ensureMatchingParent(storyIssue, parentFeatureIssue.number, "Parent Feature Issue", "story hierarchy");
+                }
+              }
+            }
+
+            if (issueType === "test") {
+              const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
+              const scopeType = normalizeValue(getSectionValue(body, "Test Scope Type"));
+
+              if (!scopeType) {
+                problems.push("Test Scope Type must be selected.");
+              }
+
+              const relatedPlanningValue = getSectionValue(body, "Related Planning Issues");
+              const relatedPlanningRefs = parseIssueReferences(relatedPlanningValue);
+              if (!hasMeaningfulText(relatedPlanningValue)) {
+                problems.push("Related Planning Issues must explain the scope or link additional issues.");
+              }
+
+              let parentFeatureIssue = null;
+              let parentItemIssue = null;
+
+              if (/^Story or Enabler$/i.test(scopeType)) {
+                parentFeatureIssue = await validateSingleReference("Parent Feature Issue", ["feature"]);
+                parentItemIssue = await validateSingleReference("Parent Story Or Enabler Issue", ["user-story", "enabler"]);
+              } else if (/^Feature$/i.test(scopeType)) {
+                parentFeatureIssue = await validateSingleReference("Parent Feature Issue", ["feature"]);
+                const parentItemValue = getSectionValue(body, "Parent Story Or Enabler Issue");
+                if (parseIssueReferences(parentItemValue).length > 0) {
+                  problems.push("Parent Story Or Enabler Issue must be empty when Test Scope Type is Feature.");
+                }
+              } else if (/^Epic-wide or Cross-cutting$/i.test(scopeType)) {
+                parentFeatureIssue = await validateSingleReference("Parent Feature Issue", ["feature"], false);
+                parentItemIssue = await validateSingleReference("Parent Story Or Enabler Issue", ["user-story", "enabler"], false);
+              }
+
+              if (parentEpicIssue && parentFeatureIssue) {
+                ensureMatchingParent(parentFeatureIssue, parentEpicIssue.number, "Parent Epic Issue", "feature hierarchy");
+              }
+
+              if (parentFeatureIssue && parentItemIssue) {
+                ensureMatchingParent(parentItemIssue, parentFeatureIssue.number, "Parent Feature Issue", "test scope hierarchy");
+              }
+
+              if (parentEpicIssue && parentItemIssue) {
+                ensureMatchingParent(parentItemIssue, parentEpicIssue.number, "Parent Epic Issue", "test scope hierarchy");
+              }
+
+              if (/^Epic-wide or Cross-cutting$/i.test(scopeType)) {
+                for (const relatedRef of relatedPlanningRefs) {
+                  const relatedIssue = await loadIssue(relatedRef, "Related Planning Issues");
+                  if (!relatedIssue) {
+                    continue;
+                  }
+
+                  const relatedLabels = getLabelNames(relatedIssue);
+                  const allowed = ["feature", "user-story", "enabler", "test", "epic"].some((labelName) => relatedLabels.includes(labelName));
+                  if (!allowed) {
+                    problems.push(`Related Planning Issues includes #${relatedIssue.number}, but it is not labeled as a planning issue.`);
+                  }
+                }
               }
             }
 
@@ -127,12 +449,15 @@ jobs:
                   comment_id: existingLintComment.id,
                 });
               }
+              await removeInvalidLabel();
               core.info("Issue traceability lint passed.");
               return;
             }
 
+            await addInvalidLabel();
+
             const lines = problems.map((problem) => `- ${problem}`).join("\n");
-            const lintBody = `${marker}\nIssue traceability lint failed:\n${lines}\n\nPlease update the issue body to include explicit issue links.`;
+            const lintBody = `${marker}\nIssue traceability lint failed:\n${lines}\n\nThis issue was marked with the ${invalidLabel} label. Fix the planning hierarchy before implementation work continues.`;
 
             if (existingLintComment) {
               await github.rest.issues.updateComment({
