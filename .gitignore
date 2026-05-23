@@ -1,0 +1,24 @@
+# Public repo safety
+.env
+.env.*
+!.env.example
+
+# Local-only sensitive artifacts
+/local/
+/private/
+/data/local/
+/backups/local/
+/fixtures/private/
+
+# Local databases and backup files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+
+# Imported financial artifacts kept off the public repo
+*.ofx
+*.qfx

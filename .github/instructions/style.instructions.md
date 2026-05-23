@@ -18,6 +18,8 @@ description: "Use when creating or editing planning docs, TypeScript application
 - Use headings that reflect decisions, scope, acceptance criteria, dependencies, and risks.
 - Express acceptance criteria as checklists when the document is intended to drive implementation or issue creation.
 - Keep planning docs consistent with the Epic > Feature > Story or Enabler > Test model.
+- Use repository-relative paths in committed documentation. Do not include user-specific absolute paths from local machines.
+- Treat the repository as public when writing docs. Only reference sanitized or synthetic financial artifacts in committed materials.
 
 ## TypeScript And React
 
@@ -39,6 +41,7 @@ description: "Use when creating or editing planning docs, TypeScript application
 - Prefer additive schema evolution with explicit migrations.
 - Keep import provenance, rule provenance, and correction history understandable from stored data.
 - Normalize merchants deliberately; do not hide irreversible transformations.
+- Keep raw financial samples, backups, and other sensitive local artifacts out of version control; use gitignored local-only directories for those files.
 
 ## Testing
 
