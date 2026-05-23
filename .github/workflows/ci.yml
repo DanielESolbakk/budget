@@ -1,0 +1,227 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Lint Typecheck Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require package manifest for code changes
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const pr = context.payload.pull_request;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const hasCodeChanges = files.some((file) => {
+              const path = String(file.filename || "").toLowerCase();
+              if (path.startsWith(".github/")) return false;
+              if (/(^|\/)docs\//.test(path)) return false;
+              if (/\.(md|txt|png|jpg|jpeg|gif|svg|webp)$/i.test(path)) return false;
+              return true;
+            });
+
+            const hasPackageJson = fs.existsSync("package.json");
+            if (hasCodeChanges && !hasPackageJson) {
+              core.setFailed("Code changes require package.json so CI can enforce lint, typecheck, tests, and no-network verification.");
+            }
+
+      - name: Detect Node project
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "has_package=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_package=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.detect.outputs.has_package == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.detect.outputs.has_package == 'true'
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Validate required npm scripts
+        if: steps.detect.outputs.has_package == 'true'
+        run: |
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const required=['lint','typecheck','test:unit','test:integration','test:e2e','verify:no-network']; const missing=required.filter((name)=>typeof scripts[name] !== 'string' || !scripts[name].trim()); if (missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+
+      - name: Lint
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run lint
+
+      - name: Typecheck
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run typecheck
+
+      - name: Unit tests
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run test:unit
+
+      - name: Integration tests
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run test:integration
+
+      - name: End-to-end tests
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run test:e2e
+
+      - name: No-network verification
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run verify:no-network
+
+      - name: No package marker
+        if: steps.detect.outputs.has_package != 'true'
+        run: echo "No package.json found. Docs-only and governance changes may proceed until scaffolding is created."
+
+  pr-guardrails:
+    name: PR Guardrails
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enforce bug fix and testing policy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            function extractSection(markdown, heading) {
+              const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const pattern = new RegExp(`(^|\\n)##\\s+${escaped}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "i");
+              const match = markdown.match(pattern);
+              return match ? match[2].trim() : "";
+            }
+
+            const pr = context.payload.pull_request;
+            const labels = (pr.labels || []).map((label) => String(label.name || "").toLowerCase());
+            const title = String(pr.title || "");
+            const bodyRaw = String(pr.body || "");
+            const body = bodyRaw.toLowerCase();
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const hasBehavioralCodeChanges = files.some((file) => {
+              const path = String(file.filename || "").toLowerCase();
+              if (path.startsWith(".github/")) return false;
+              if (/(^|\/)docs\//.test(path)) return false;
+              return /(\.ts|\.tsx|\.js|\.jsx|\.sql|\.json)$/i.test(path) ||
+                /^(src|app|electron|main|renderer|db|migrations|scripts)\//i.test(path);
+            }
+            );
+
+            const hasTestChanges = files.some((file) =>
+              /(^|\/)(__tests__|test|tests)\//i.test(file.filename) ||
+              /(\.test\.|\.spec\.)/i.test(file.filename)
+            );
+
+            const changeTypeSelections = [
+              body.includes("- [x] feature"),
+              body.includes("- [x] bug fix"),
+              body.includes("- [x] refactor"),
+              body.includes("- [x] chore or docs"),
+            ].filter(Boolean).length;
+
+            if (changeTypeSelections !== 1) {
+              core.setFailed("Select exactly one change type in the PR template.");
+              return;
+            }
+
+            const mappingSection = extractSection(bodyRaw, "Acceptance Criteria to Test Mapping");
+            if (!mappingSection) {
+              core.setFailed("Pull request description must include the 'Acceptance Criteria to Test Mapping' section.");
+              return;
+            }
+
+            if (/\btbd\b/i.test(mappingSection)) {
+              core.setFailed("Acceptance Criteria to Test Mapping cannot contain placeholder values like 'TBD'.");
+              return;
+            }
+
+            const evidenceSection = extractSection(bodyRaw, "Test Evidence");
+            if (!evidenceSection) {
+              core.setFailed("Pull request description must include the 'Test Evidence' section.");
+              return;
+            }
+
+            if (!/- \[[xX]\] npm run /i.test(evidenceSection)) {
+              core.setFailed("Test Evidence must include at least one executed test or quality command checkbox marked with [x].");
+              return;
+            }
+
+            if (!/CI run link or artifact:\s*\S+/i.test(evidenceSection)) {
+              core.setFailed("Test Evidence must include a non-empty CI run link or artifact reference.");
+              return;
+            }
+
+            const isBugByLabel = labels.includes("bug");
+            const isBugByTemplate = body.includes("- [x] bug fix");
+            const isBugByTitle = /\b(fix|bug|regress|regression|hotfix|defect)\b/i.test(title);
+            const isBugByBody = /\b(bug\s*fix|regression|defect)\b/i.test(body);
+            const isBugFix = isBugByLabel || isBugByTemplate || isBugByTitle || isBugByBody;
+
+            const bugSection = extractSection(bodyRaw, "Bug Fix Regression Test (required for bug fixes)");
+
+            if (isBugFix && hasBehavioralCodeChanges && !hasTestChanges) {
+              core.setFailed("Bug fix pull requests with code changes must include regression test file changes.");
+              return;
+            }
+
+            if (isBugFix) {
+              if (!bugSection) {
+                core.setFailed("Bug fix pull requests must complete the 'Bug Fix Regression Test' section.");
+                return;
+              }
+
+              if (/Regression test file\(s\):\s*$/im.test(bugSection)) {
+                core.setFailed("Bug fix pull requests must provide regression test file paths.");
+                return;
+              }
+
+              if (/What failed before this fix:\s*$/im.test(bugSection)) {
+                core.setFailed("Bug fix pull requests must explain what failed before the fix.");
+                return;
+              }
+
+              if (/Why this test prevents recurrence:\s*$/im.test(bugSection)) {
+                core.setFailed("Bug fix pull requests must explain why the regression test prevents recurrence.");
+              }
+            }
