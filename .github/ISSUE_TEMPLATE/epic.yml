@@ -1,0 +1,94 @@
+name: Epic
+description: Create a milestone-level epic with clear value, scope, and quality gates.
+title: "Epic: "
+labels:
+  - epic
+body:
+  - type: textarea
+    id: epic_description
+    attributes:
+      label: Epic Description
+      description: Summarize the business capability and what this epic delivers.
+      placeholder: Describe the problem, the user impact, and what completion looks like.
+    validations:
+      required: true
+
+  - type: textarea
+    id: business_value
+    attributes:
+      label: Business Value
+      description: Explain value and success outcomes.
+      placeholder: |
+        Primary goal:
+        Success metrics:
+        User impact:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: value_tier
+    attributes:
+      label: Value Tier
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: epic_acceptance
+    attributes:
+      label: Epic Acceptance Criteria
+      description: Use checkbox format.
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+        - [ ] Criteria 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature_list
+    attributes:
+      label: Features In This Epic
+      description: Add feature issue links when available.
+      placeholder: |
+        - [ ] #123 Feature: Example
+        - [ ] #124 Feature: Example
+    validations:
+      required: true
+
+  - type: textarea
+    id: done_definition
+    attributes:
+      label: Definition Of Done
+      description: Include quality and test gates.
+      placeholder: |
+        - [ ] All feature stories completed
+        - [ ] End-to-end testing passed
+        - [ ] Performance benchmarks met
+        - [ ] Documentation updated
+    validations:
+      required: true
+
+  - type: input
+    id: estimate
+    attributes:
+      label: Estimate
+      description: Use T-shirt size for epics.
+      placeholder: XS, S, M, L, XL
+    validations:
+      required: true

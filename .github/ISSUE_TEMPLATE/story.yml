@@ -1,0 +1,105 @@
+name: Story
+description: Create a user story issue with explicit acceptance criteria and test mapping.
+title: "Story: "
+labels:
+  - user-story
+body:
+  - type: input
+    id: parent_epic
+    attributes:
+      label: Parent Epic Issue
+      description: Link the parent epic for traceability.
+      placeholder: "#123"
+    validations:
+      required: true
+
+  - type: input
+    id: parent_feature
+    attributes:
+      label: Parent Feature Issue
+      placeholder: "#456"
+    validations:
+      required: true
+
+  - type: textarea
+    id: story_statement
+    attributes:
+      label: Story Statement
+      description: Use As a / I want / so that format.
+      placeholder: "As a household user, I want ... so that ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+        - [ ] Criteria 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical_tasks
+    attributes:
+      label: Technical Tasks
+      placeholder: |
+        - [ ] Task 1
+        - [ ] Task 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: testing_requirements
+    attributes:
+      label: Testing Requirements
+      description: Include unit, integration, and end-to-end expectations as applicable.
+      placeholder: |
+        - [ ] Unit: ...
+        - [ ] Integration: ...
+        - [ ] E2E: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: linked_enablers
+    attributes:
+      label: Linked Enabler Issues
+      description: Link all required enablers for this story.
+      placeholder: |
+        - #301 Enabler: ...
+        - #302 Enabler: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: linked_tests
+    attributes:
+      label: Linked Test Issues
+      description: Link test issues that validate this story.
+      placeholder: |
+        - #401 Test: Unit coverage for ...
+        - #402 Test: Integration coverage for ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      placeholder: |
+        Blocked by:
+        Related to:
+    validations:
+      required: true
+
+  - type: input
+    id: estimate
+    attributes:
+      label: Estimate
+      description: Use story points.
+      placeholder: 1, 2, 3, 5, 8
+    validations:
+      required: true
