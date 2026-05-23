@@ -2,7 +2,8 @@
 
 Build a Windows-first, local-first household budgeting desktop app using Electron, React, TypeScript, and SQLite. Keep all financial transaction content on-device, start with digital PDF + CSV + manual entry, and use a deterministic merchant-normalization and rule-based categorization engine before adding optional local OCR or local ML. Pair the build with strong repo guidance, acceptance criteria, and test artifacts so a future LLM can implement it predictably.
 
-**Steps**
+## Steps
+
 1. Phase 1: Product and architecture foundation. Create a feature PRD for the desktop budget planner, an ADR selecting Electron + React + TypeScript + SQLite, and a domain glossary covering household, account, transaction, category, merchant, rule, budget, forecast, import job, and backup. This blocks all later implementation because it fixes the vocabulary and boundaries.
 2. Phase 1: Repo guidance and LLM handoff scaffolding. Populate repo instructions, coding conventions, review prompts, and the docs structure under /docs/ways-of-work/plan so future implementation work has explicit acceptance criteria, file ownership expectations, and test strategy. This can run in parallel with the PRD once the architecture decision is stable.
 3. Phase 1: Model the core data domain. Define SQLite schema and repository contracts for households, accounts, transactions, categories, merchant aliases, category rules, monthly budgets, forecast assumptions, import jobs, and backup/export metadata. Include an audit trail for import provenance and category corrections. This depends on step 1.
@@ -14,7 +15,8 @@ Build a Windows-first, local-first household budgeting desktop app using Electro
 9. Phase 4: Quality system and release readiness. Add unit tests for parsers and rules, integration tests for import-to-ledger flows, Playwright desktop end-to-end tests for the critical workflows, representative PDF and CSV fixtures, and non-functional checks for performance with at least 10,000 transactions. This depends on steps 4 through 8.
 10. Phase 4: GitHub planning automation. Use the breakdown-plan skill to turn the PRD and technical breakdown into Epic > Feature > Story/Enabler > Test issues, with dependencies and acceptance criteria. This should happen after steps 1 and 2 produce the source planning documents, and before broad implementation begins.
 
-**Issue hierarchy**
+## Issue Hierarchy
+
 1. Epic: Foundations and LLM delivery scaffolding.
 2. Epic: Transaction ingestion and normalization.
 3. Epic: Categorization and correction workflow.
@@ -22,25 +24,28 @@ Build a Windows-first, local-first household budgeting desktop app using Electro
 5. Epic: Privacy, backup, export, and release quality.
 6. Under each epic, create Features first, then Stories for user-facing behavior, Enablers for schema/parser/test infrastructure, and explicit Test issues for fixture coverage, parser accuracy, and end-to-end flows.
 
-**Relevant files**
-- c:\Users\danie\Documents\GitHub\budget\README.md — replace the placeholder with project vision, local-first privacy statement, and development entry points.
-- c:\Users\danie\Documents\GitHub\budget\.github\skills\breakdown-plan\SKILL.md — use this as the issue hierarchy and checklist template source.
-- c:\Users\danie\Documents\GitHub\budget\.github\copilot-instructions.md — add implementation constraints, architecture rules, and artifact requirements for future LLM execution.
-- c:\Users\danie\Documents\GitHub\budget\.github\instructions\style.instructions.md — define coding, testing, and documentation conventions.
-- c:\Users\danie\Documents\GitHub\budget\docs\ways-of-work\plan\budget-planner\budget-planner.md — feature PRD.
-- c:\Users\danie\Documents\GitHub\budget\docs\ways-of-work\plan\budget-planner\technical-breakdown.md — domain model, import pipeline, and module boundaries.
-- c:\Users\danie\Documents\GitHub\budget\docs\ways-of-work\plan\budget-planner\implementation-plan.md — execution order, dependencies, and validation steps.
-- c:\Users\danie\Documents\GitHub\budget\docs\ways-of-work\plan\budget-planner\project-plan.md — issue-ready hierarchy and release slices.
-- c:\Users\danie\Documents\GitHub\budget\docs\ways-of-work\plan\budget-planner\issues-checklist.md — GitHub issue creation checklist.
+## Relevant Files
 
-**Verification**
+- README.md — replace the placeholder with project vision, local-first privacy statement, and development entry points.
+- .github/skills/breakdown-plan/SKILL.md — use this as the issue hierarchy and checklist template source.
+- .github/copilot-instructions.md — add implementation constraints, architecture rules, and artifact requirements for future LLM execution.
+- .github/instructions/style.instructions.md — define coding, testing, and documentation conventions.
+- docs/ways-of-work/plan/budget-planner/budget-planner.md — feature PRD.
+- docs/ways-of-work/plan/budget-planner/technical-breakdown.md — domain model, import pipeline, and module boundaries.
+- docs/ways-of-work/plan/budget-planner/implementation-plan.md — execution order, dependencies, and validation steps.
+- docs/ways-of-work/plan/budget-planner/project-plan.md — issue-ready hierarchy and release slices.
+- docs/ways-of-work/plan/budget-planner/issues-checklist.md — GitHub issue creation checklist.
+
+## Verification
+
 1. Validate sample bank PDF and CSV fixtures against the parser spike before committing to the final importer design; success means the digital PDF parser extracts transactions reliably enough that OCR can stay deferred.
 2. Confirm categorization quality with a labeled merchant fixture set covering common Norwegian merchants such as grocery, transport, utilities, salary, transfers, and subscriptions; success means deterministic rules plus corrections produce stable results.
 3. Run end-to-end tests for import, review, correction, dashboard refresh, budget target updates, forecast refresh, export, and backup restore.
 4. Run a no-network verification pass in development and packaged builds to ensure the default application path does not send transaction data externally.
 5. Run performance checks for at least 10,000 transactions and multiple accounts to confirm the desktop UI remains responsive.
 
-**Decisions**
+## Decisions
+
 - Included scope: Windows-first desktop app, one local user managing a household across multiple accounts, digital PDF + CSV + manual entry, local-only storage, backup/export, dashboard, budgeting, forecasting, search, and manual correction.
 - Deliberately excluded from the first milestone: bank APIs, live bank sync, multi-device collaboration, cloud-hosted processing of transaction content, scanned-image OCR unless sample artifacts force it, and advanced envelope or goal planning as day-one requirements.
 - Recommended stack: Electron + React + TypeScript + better-sqlite3 or equivalent SQLite binding, shared schema validation, and Playwright/Vitest for testability. This is favored over Tauri or PySide because the repo is empty, the future developer is likely an LLM, and the Electron/TypeScript ecosystem gives the most predictable implementation path for a modern GUI app.
@@ -48,8 +53,10 @@ Build a Windows-first, local-first household budgeting desktop app using Electro
 
 - Classification strategy: rules-first with merchant normalization and confidence scoring, plus a clean extension point for future local ML. This reduces early complexity while preserving a path to smarter categorization.
 - Privacy boundary: transaction content stays local by default. External services are only acceptable later for non-sensitive metadata, and should be off by default.
+- Public repository handling: this repository is public. Do not commit secrets, credentials, raw bank statements, unsanitized financial exports, local databases, backups, or user-specific absolute file system paths. Keep sensitive local-only artifacts in gitignored paths such as local/, private/, data/local/, or fixtures/private/.
 
-**Further Considerations**
+## Further Considerations
+
 1. If the sample PDFs contain layout variance across multiple Norwegian banks, add a bank-specific parser registry early rather than relying on one generic parser.
 2. If you want envelope budgeting and savings-goal planning equal to monthly targets in the first serious release, split budgeting into a separate feature epic instead of treating it as one dashboard extension.
 3. If future optional intelligence is desired, define a plugin boundary now so local OCR or local ML can be added without changing the storage model or UI contracts.

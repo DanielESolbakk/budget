@@ -27,6 +27,15 @@ The application must:
 - Prefer explicit user-initiated file import and export flows.
 - Design backup and export so the user can recover or move their data without vendor lock-in.
 
+## Public Repository Handling
+
+- This GitHub repository is public. Assume anything committed to the repository is visible to anyone.
+- Never commit secrets, tokens, credentials, private keys, raw bank statements, unsanitized financial exports, backups, local databases, or personally identifying financial artifacts.
+- Do not commit user-specific absolute file system paths in code, docs, issues, or planning artifacts. Use repository-relative paths or neutral placeholders instead.
+- Keep local-only sensitive artifacts in gitignored paths such as local/, private/, data/local/, backups/local/, or fixtures/private/.
+- Only commit sanitized or synthetic fixtures that are safe for public distribution.
+- If real financial samples are needed for local testing, store them only in ignored paths and document the expected sanitized fixture shape in the repository.
+
 ## Delivery Priorities
 
 Build in this order unless a planning document states otherwise:
