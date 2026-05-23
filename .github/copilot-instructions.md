@@ -1,0 +1,137 @@
+# Budget Planner Repository Instructions
+
+## Product Intent
+
+This repository builds a Windows-first desktop budget planner for a household user managing multiple accounts locally.
+
+The application must:
+- run locally as a desktop GUI application
+- keep transaction content on-device by default
+- support digital PDF bank statements, CSV imports, and manual transaction entry
+- categorize transactions through merchant normalization and deterministic rules before any smarter local automation is introduced
+- provide budgeting, forecasting, search, review, backup, and export workflows
+
+## Locked Architecture Decisions
+
+- Use Electron, React, TypeScript, and SQLite unless an explicit architecture decision record replaces that stack.
+- Keep the renderer process focused on presentation and user interaction.
+- Keep import, persistence, categorization, export, backup, and forecasting logic outside the UI layer.
+- Treat the Electron main process plus service layer as the source of truth for business logic.
+- Keep shared domain types and validation contracts in a dedicated shared layer.
+
+## Privacy And Data Handling
+
+- Financial transaction data must remain local by default.
+- Do not add bank APIs, cloud sync, telemetry, analytics, or background network calls unless the user explicitly approves a scope change.
+- External services are not allowed to process transaction content in the baseline product.
+- Prefer explicit user-initiated file import and export flows.
+- Design backup and export so the user can recover or move their data without vendor lock-in.
+
+## Delivery Priorities
+
+Build in this order unless a planning document states otherwise:
+1. Planning documents and acceptance criteria
+2. Core domain model and schema
+3. Import pipeline
+4. Categorization and correction workflow
+5. Desktop application shell and user workflows
+6. Budgeting and forecasting
+7. Backup, export, privacy verification, and release hardening
+
+Do not jump to polished UI work before the import, categorization, and persistence paths are stable.
+
+## Required Planning Artifacts
+
+Before broad implementation of a feature, maintain the relevant documents under docs/ways-of-work/plan.
+
+At minimum, major features should have:
+- a feature PRD
+- a technical breakdown
+- an implementation plan
+- a project plan
+- an issues checklist
+- acceptance criteria that can map to tests and GitHub issues
+- a test strategy section that maps acceptance criteria to unit, integration, and end-to-end coverage
+
+Before broad implementation starts, create and maintain:
+- an architecture decision record for stack and runtime boundaries
+- a domain glossary covering core product terms
+
+When planning work for GitHub issues, follow the existing Epic > Feature > Story or Enabler > Test structure defined by the repository planning skill.
+
+## Domain Language
+
+Use these terms consistently in code, tests, and documentation:
+- household
+- account
+- transaction
+- category
+- merchant alias
+- categorization rule
+- import job
+- budget target
+- forecast assumption
+- backup snapshot
+
+Avoid inventing near-duplicates for the same concept.
+
+## Feature Scope Guidance
+
+In scope for the first milestone:
+- one local household user managing multiple accounts
+- digital text PDFs
+- CSV imports
+- manual transaction entry
+- default editable categories
+- rule-based categorization with confidence scoring
+- review and correction flows
+- monthly dashboards
+- monthly category targets
+- simple forward-looking forecasting
+- backup and export
+
+Out of scope for the first milestone unless the user explicitly changes scope:
+- live bank synchronization
+- bank APIs
+- multi-device collaboration
+- cloud processing of transaction data
+- scanned-image OCR unless real sample artifacts force it
+- advanced envelope budgeting as a release blocker
+- advanced goal-based planning as a release blocker
+
+## Implementation Rules
+
+- Model the domain first. UI naming and storage naming should match.
+- Prefer deterministic business rules over opaque automation for categorization.
+- Low-confidence categorization must surface in the product for review.
+- User corrections should refine future categorization behavior through local rules or clearly auditable logic.
+- Parser logic must be source-aware. If bank statement formats diverge, introduce parser adapters instead of piling heuristics into one parser.
+- Keep import flows idempotent where possible through duplicate detection and import provenance.
+- Record enough metadata to explain where a transaction came from and why it received a category.
+
+## Quality Bar
+
+- Every meaningful feature should ship with tests that match its risk.
+- Parser, normalization, and categorization logic require unit tests.
+- Import-to-ledger flows require integration coverage.
+- Critical user workflows require end-to-end desktop coverage.
+- Use realistic fixtures, including representative Norwegian merchants and sanitized bank statement samples when available.
+- Validate performance against at least 10000 transactions before treating the desktop UX as stable.
+- Add a no-network verification check in development and packaged builds for default workflows handling transaction content.
+
+## Test Enforcement For LLM Contributors
+
+- Treat missing or weak automated tests for behavior changes as an incomplete implementation.
+- For bug fixes, add or update a regression test that fails before the fix and passes after the fix.
+- For feature work, map acceptance criteria to concrete automated tests before implementation starts.
+- For cross-layer changes (parser, schema, categorization, IPC, and UI), add coverage at the unit and integration layers, plus end-to-end coverage for affected critical user journeys.
+- Do not remove, weaken, or skip tests just to make a change pass review or CI.
+- If a required automated test cannot be added immediately, document why in the implementation plan and issue, and create a linked follow-up test issue before closing the work.
+- Keep fixtures deterministic and representative of Norwegian formats so results are reproducible across LLM iterations.
+- Consider any change complete only when relevant test suites pass and acceptance criteria are demonstrably covered.
+
+## Change Management
+
+- Preserve a clear path for future local OCR or local ML, but do not let speculative extensibility complicate the first implementation.
+- If a change alters architecture, schema boundaries, or privacy posture, update the planning documents in the same work.
+- If a feature request conflicts with these instructions, surface the conflict explicitly and resolve it through a documented decision rather than silently drifting the architecture.
