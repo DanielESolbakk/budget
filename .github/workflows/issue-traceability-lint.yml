@@ -43,12 +43,13 @@ jobs:
               per_page: 100,
             });
 
-            const existingLintComment = comments.find(
+            const lintComments = comments.filter(
               (comment) =>
                 comment.user?.type === "Bot" &&
                 typeof comment.body === "string" &&
                 comment.body.includes(marker)
             );
+            const primaryLintComment = lintComments[0] || null;
 
             function getIssueType(labelNames, issueTitle) {
               if (labelNames.includes("epic") || /^Epic\s*:/i.test(issueTitle)) {
@@ -263,14 +264,22 @@ jobs:
               }
             }
 
-            if (!issueType) {
-              if (existingLintComment) {
+            async function deleteLintComments(skipCommentId = null) {
+              for (const lintComment of lintComments) {
+                if (skipCommentId && lintComment.id === skipCommentId) {
+                  continue;
+                }
+
                 await github.rest.issues.deleteComment({
                   owner,
                   repo,
-                  comment_id: existingLintComment.id,
+                  comment_id: lintComment.id,
                 });
               }
+            }
+
+            if (!issueType) {
+              await deleteLintComments();
               await removeInvalidLabel();
               core.info("Skipping issue type: no tracked planning label/title detected.");
               return;
@@ -442,13 +451,7 @@ jobs:
             }
 
             if (problems.length === 0) {
-              if (existingLintComment) {
-                await github.rest.issues.deleteComment({
-                  owner,
-                  repo,
-                  comment_id: existingLintComment.id,
-                });
-              }
+              await deleteLintComments();
               await removeInvalidLabel();
               core.info("Issue traceability lint passed.");
               return;
@@ -459,13 +462,14 @@ jobs:
             const lines = problems.map((problem) => `- ${problem}`).join("\n");
             const lintBody = `${marker}\nIssue traceability lint failed:\n${lines}\n\nThis issue was marked with the ${invalidLabel} label. Fix the planning hierarchy before implementation work continues.`;
 
-            if (existingLintComment) {
+            if (primaryLintComment) {
               await github.rest.issues.updateComment({
                 owner,
                 repo,
-                comment_id: existingLintComment.id,
+                comment_id: primaryLintComment.id,
                 body: lintBody,
               });
+              await deleteLintComments(primaryLintComment.id);
             } else {
               await github.rest.issues.createComment({
                 owner,
