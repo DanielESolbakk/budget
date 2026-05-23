@@ -1,0 +1,95 @@
+name: Feature
+description: Create a user-facing feature issue linked to an epic.
+title: "Feature: "
+labels:
+  - feature
+body:
+  - type: input
+    id: parent_epic
+    attributes:
+      label: Parent Epic Issue
+      description: Link the parent epic issue.
+      placeholder: "#123"
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature_description
+    attributes:
+      label: Feature Description
+      placeholder: Summarize the feature and user-facing value.
+    validations:
+      required: true
+
+  - type: textarea
+    id: stories
+    attributes:
+      label: User Stories In This Feature
+      placeholder: |
+        - [ ] #201 Story: ...
+        - [ ] #202 Story: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: enablers
+    attributes:
+      label: Technical Enablers
+      placeholder: |
+        - [ ] #301 Enabler: ...
+        - [ ] #302 Enabler: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Test Issues In This Feature
+      description: Link explicit test issues for this feature.
+      placeholder: |
+        - [ ] #401 Test: Unit coverage for ...
+        - [ ] #402 Test: Integration coverage for ...
+        - [ ] #403 Test: End-to-end coverage for ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      placeholder: |
+        Blocks:
+        Blocked by:
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+        - [ ] Criteria 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_mapping
+    attributes:
+      label: Acceptance Criteria To Test Mapping
+      description: Map each criterion to unit, integration, or end-to-end coverage.
+      placeholder: |
+        - AC1 -> Unit: ..., Integration: ..., E2E: ...
+        - AC2 -> Unit: ..., Integration: ..., E2E: ...
+    validations:
+      required: true
+
+  - type: input
+    id: estimate
+    attributes:
+      label: Estimate
+      description: Use T-shirt size or story points.
+      placeholder: M or 8 points
+    validations:
+      required: true

@@ -1,0 +1,153 @@
+name: Issue Traceability Lint
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - reopened
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  traceability-lint:
+    name: Issue Traceability Lint
+    runs-on: ubuntu-latest
+    if: github.event.issue.pull_request == null
+    steps:
+      - name: Validate issue link fields
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = "<!-- issue-traceability-lint -->";
+            const issue = context.payload.issue;
+            const body = issue.body || "";
+            const labels = (issue.labels || []).map((label) =>
+              typeof label === "string" ? label : label.name
+            );
+            const title = issue.title || "";
+
+            const isStory = labels.includes("user-story") || /^Story\s*:/i.test(title);
+            const isFeature = labels.includes("feature") || /^Feature\s*:/i.test(title);
+
+            const { owner, repo } = context.repo;
+            const issueNumber = issue.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            const existingLintComment = comments.find(
+              (comment) =>
+                comment.user?.type === "Bot" &&
+                typeof comment.body === "string" &&
+                comment.body.includes(marker)
+            );
+
+            function escapeRegex(value) {
+              return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            }
+
+            function getSectionValue(markdown, heading) {
+              const escapedHeading = escapeRegex(heading);
+              const regex = new RegExp(
+                `###\\s+${escapedHeading}\\s*\\n([\\s\\S]*?)(?=\\n###\\s+|$)`,
+                "i"
+              );
+              const match = markdown.match(regex);
+              if (!match) {
+                return "";
+              }
+
+              return match[1].replace(/_No response_/gi, "").trim();
+            }
+
+            function hasIssueReference(value) {
+              return /#\d+|\/issues\/\d+/i.test(value || "");
+            }
+
+            if (!isStory && !isFeature) {
+              if (existingLintComment) {
+                await github.rest.issues.deleteComment({
+                  owner,
+                  repo,
+                  comment_id: existingLintComment.id,
+                });
+              }
+              core.info("Skipping issue type: no Story or Feature label/title detected.");
+              return;
+            }
+
+            const problems = [];
+
+            if (isStory) {
+              const parentEpic = getSectionValue(body, "Parent Epic Issue");
+              const parentFeature = getSectionValue(body, "Parent Feature Issue");
+              const linkedEnablers = getSectionValue(body, "Linked Enabler Issues");
+              const linkedTests = getSectionValue(body, "Linked Test Issues");
+
+              if (!hasIssueReference(parentEpic)) {
+                problems.push("Parent Epic Issue must include an issue reference like #123.");
+              }
+              if (!hasIssueReference(parentFeature)) {
+                problems.push("Parent Feature Issue must include an issue reference like #456.");
+              }
+              if (!hasIssueReference(linkedEnablers)) {
+                problems.push("Linked Enabler Issues must include at least one issue reference.");
+              }
+              if (!hasIssueReference(linkedTests)) {
+                problems.push("Linked Test Issues must include at least one issue reference.");
+              }
+            }
+
+            if (isFeature) {
+              const parentEpic = getSectionValue(body, "Parent Epic Issue");
+              const tests = getSectionValue(body, "Test Issues In This Feature");
+
+              if (!hasIssueReference(parentEpic)) {
+                problems.push("Parent Epic Issue must include an issue reference like #123.");
+              }
+              if (!hasIssueReference(tests)) {
+                problems.push("Test Issues In This Feature must include at least one issue reference.");
+              }
+            }
+
+            if (problems.length === 0) {
+              if (existingLintComment) {
+                await github.rest.issues.deleteComment({
+                  owner,
+                  repo,
+                  comment_id: existingLintComment.id,
+                });
+              }
+              core.info("Issue traceability lint passed.");
+              return;
+            }
+
+            const lines = problems.map((problem) => `- ${problem}`).join("\n");
+            const lintBody = `${marker}\nIssue traceability lint failed:\n${lines}\n\nPlease update the issue body to include explicit issue links.`;
+
+            if (existingLintComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingLintComment.id,
+                body: lintBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body: lintBody,
+              });
+            }
+
+            core.setFailed("Issue traceability lint failed. See bot comment for required fixes.");

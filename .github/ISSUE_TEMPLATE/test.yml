@@ -1,0 +1,92 @@
+name: Test
+description: Create a quality and verification issue linked to stories or enablers.
+title: "Test: "
+labels:
+  - test
+body:
+  - type: input
+    id: parent_epic
+    attributes:
+      label: Parent Epic Issue
+      description: Link the parent epic for hierarchy traceability.
+      placeholder: "#123"
+    validations:
+      required: true
+
+  - type: input
+    id: parent_feature
+    attributes:
+      label: Parent Feature Issue
+      description: Link the parent feature for hierarchy traceability.
+      placeholder: "#456"
+    validations:
+      required: true
+
+  - type: input
+    id: parent_item
+    attributes:
+      label: Parent Story Or Enabler Issue
+      description: Link the concrete story or enabler this test validates.
+      placeholder: "#789"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: test_level
+    attributes:
+      label: Test Level
+      options:
+        - Unit
+        - Integration
+        - End-to-end
+        - Performance
+        - Privacy and No-network
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Test Objective
+      placeholder: Describe what behavior this test work validates.
+    validations:
+      required: true
+
+  - type: textarea
+    id: fixtures
+    attributes:
+      label: Fixture Requirements
+      description: Use sanitized or synthetic fixtures only.
+      placeholder: |
+        - Fixture type:
+        - Source and sanitization note:
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenarios
+    attributes:
+      label: Test Scenarios
+      placeholder: |
+        - [ ] Scenario 1
+        - [ ] Scenario 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: pass_criteria
+    attributes:
+      label: Pass Criteria
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: regression_guard
+    attributes:
+      label: Regression Guard
+      options:
+        - label: This issue includes or references regression coverage for previously observed failures where applicable.
+          required: true

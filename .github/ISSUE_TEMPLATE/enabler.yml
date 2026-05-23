@@ -1,0 +1,89 @@
+name: Enabler
+description: Create a technical enabler issue supporting one or more stories.
+title: "Enabler: "
+labels:
+  - enabler
+body:
+  - type: input
+    id: parent_epic
+    attributes:
+      label: Parent Epic Issue
+      description: Link the parent epic for traceability.
+      placeholder: "#123"
+    validations:
+      required: true
+
+  - type: input
+    id: parent_feature
+    attributes:
+      label: Parent Feature Issue
+      placeholder: "#456"
+    validations:
+      required: true
+
+  - type: textarea
+    id: enabler_description
+    attributes:
+      label: Enabler Description
+      placeholder: Describe the technical work and why stories depend on it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical_requirements
+    attributes:
+      label: Technical Requirements
+      placeholder: |
+        - [ ] Requirement 1
+        - [ ] Requirement 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: enabled_stories
+    attributes:
+      label: Stories Enabled
+      placeholder: |
+        - #201 Story: ...
+        - #202 Story: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      placeholder: |
+        Blocked by:
+        Related to:
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] Validation 1
+        - [ ] Validation 2
+        - [ ] Performance benchmark met
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Testing Requirements
+      placeholder: |
+        - [ ] Unit: ...
+        - [ ] Integration: ...
+    validations:
+      required: true
+
+  - type: input
+    id: estimate
+    attributes:
+      label: Estimate
+      placeholder: 3 or 5 points
+    validations:
+      required: true
