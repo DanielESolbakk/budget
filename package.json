@@ -1,0 +1,20 @@
+{
+  "name": "budget-planner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first budget planner scaffold",
+  "type": "module",
+  "scripts": {
+    "lint": "npm run typecheck",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "verify:no-network": "vitest run --config vitest.nonetwork.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

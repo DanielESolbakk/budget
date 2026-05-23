@@ -30,6 +30,8 @@ Build a Windows-first, local-first household budgeting desktop app using Electro
 - .github/skills/breakdown-plan/SKILL.md — use this as the issue hierarchy and checklist template source.
 - .github/copilot-instructions.md — add implementation constraints, architecture rules, and artifact requirements for future LLM execution.
 - .github/instructions/style.instructions.md — define coding, testing, and documentation conventions.
+- docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md — architecture decision record for locked stack and runtime boundaries.
+- docs/ways-of-work/plan/budget-planner/domain-glossary.md — canonical domain terms used across docs, code, tests, and issues.
 - docs/ways-of-work/plan/budget-planner/budget-planner.md — feature PRD.
 - docs/ways-of-work/plan/budget-planner/technical-breakdown.md — domain model, import pipeline, and module boundaries.
 - docs/ways-of-work/plan/budget-planner/implementation-plan.md — execution order, dependencies, and validation steps.
