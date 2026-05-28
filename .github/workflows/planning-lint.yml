@@ -1,0 +1,64 @@
+name: "Planning issue lint"
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run planning lint
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (!issue) return;
+            const body = issue.body || '';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const number = issue.number;
+            const missing = [];
+
+            function hasHeading(h) {
+              return body.includes(h);
+            }
+
+            if (!hasHeading('### Parent Epic Issue')) missing.push('Parent Epic Issue heading');
+            if (!hasHeading('### Parent Feature Issue')) missing.push('Parent Feature Issue heading');
+
+            function hasIssueRefAfterHeading(heading) {
+              const idx = body.indexOf(heading);
+              if (idx === -1) return false;
+              const after = body.slice(idx + heading.length).split('\n').map(s => s.trim()).filter(Boolean);
+              if (after.length === 0) return false;
+              if (/^#\d+/.test(after[0])) return true;
+              return /#\d+/.test(after.join('\n'));
+            }
+
+            if (!hasIssueRefAfterHeading('### Parent Epic Issue') && !/Parent Epic Issue:?\s*#\d+/.test(body)) missing.push('Parent Epic Issue must include a reference like #123');
+            if (!hasIssueRefAfterHeading('### Parent Feature Issue') && !/Parent Feature Issue:?\s*#\d+/.test(body)) missing.push('Parent Feature Issue must include a reference like #123');
+
+            const typeLine = body.split('\n').find(l => l.toLowerCase().startsWith('type:'));
+            const type = typeLine ? typeLine.split(':').slice(1).join(':').trim().toLowerCase() : '';
+
+            if (type === 'test') {
+              if (!hasHeading('### Test Scope Type')) missing.push('Test Scope Type heading missing');
+              if (!hasHeading('### Related Planning Issues')) missing.push('Related Planning Issues heading missing');
+              else {
+                const idx = body.indexOf('### Related Planning Issues');
+                const sub = body.slice(idx);
+                if (!/#\d+/.test(sub)) missing.push('At least one issue reference required under Related Planning Issues');
+              }
+            }
+
+            if (missing.length) {
+              const comment = `<!-- issue-traceability-lint -->\nIssue traceability lint failed:\n- ${missing.join('\n- ')}\n\nPlease update the issue using the planning template: .github/ISSUE_TEMPLATE/planning.md`;
+              try { await github.issues.addLabels({ owner, repo, issue_number: number, labels: ['planning-invalid'] }); } catch (e) {}
+              await github.issues.createComment({ owner, repo, issue_number: number, body: comment });
+            } else {
+              try { await github.issues.removeLabel({ owner, repo, issue_number: number, name: 'planning-invalid' }); } catch (e) {}
+            }
