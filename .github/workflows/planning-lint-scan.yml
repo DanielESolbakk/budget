@@ -1,0 +1,125 @@
+name: "Planning issue lint — manual repo scan"
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'If true, do not add/remove labels or post comments'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: planning-lint-scan
+  cancel-in-progress: true
+
+permissions:
+  issues: write
+
+jobs:
+  repo_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo-wide planning lint (manual)
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const inputs = (context.payload && context.payload.inputs) ? context.payload.inputs : {};
+            const dryRun = String(inputs.dry_run || 'false').toLowerCase() === 'true';
+
+            core.info(`Starting repo-wide planning lint scan... dryRun=${dryRun}`);
+
+            // Fetch all open issues (paginated)
+            const issues = await github.paginate(github.rest.issues.listForRepo, { owner, repo, state: 'open', per_page: 100 });
+            core.info(`Found ${issues.length} open issues`);
+
+            for (const issue of issues) {
+              // Skip PRs
+              if (issue.pull_request) continue;
+
+              const body = issue.body || '';
+              const missing = [];
+
+              function hasHeading(h) { return body.includes(h); }
+              function hasIssueRefAfterHeading(heading) {
+                const idx = body.indexOf(heading);
+                if (idx === -1) return false;
+                const after = body.slice(idx + heading.length).split('\n').map(s => s.trim()).filter(Boolean);
+                if (after.length === 0) return false;
+                if (/^#\d+/.test(after[0])) return true;
+                return /#\d+/.test(after.join('\n'));
+              }
+
+              if (!hasHeading('### Parent Epic Issue')) missing.push('Parent Epic Issue heading');
+              if (!hasHeading('### Parent Feature Issue')) missing.push('Parent Feature Issue heading');
+              if (!hasIssueRefAfterHeading('### Parent Epic Issue') && !/Parent Epic Issue:?\s*#\d+/.test(body)) missing.push('Parent Epic Issue must include a reference like #123');
+              if (!hasIssueRefAfterHeading('### Parent Feature Issue') && !/Parent Feature Issue:?\s*#\d+/.test(body)) missing.push('Parent Feature Issue must include a reference like #123');
+
+              const typeLine = body.split('\n').find(l => l.toLowerCase().startsWith('type:'));
+              const type = typeLine ? typeLine.split(':').slice(1).join(':').trim().toLowerCase() : '';
+
+              if (type === 'test') {
+                if (!hasHeading('### Test Scope Type')) missing.push('Test Scope Type heading missing');
+                if (!hasHeading('### Related Planning Issues')) missing.push('Related Planning Issues heading missing');
+                else {
+                  const idx = body.indexOf('### Related Planning Issues');
+                  const sub = body.slice(idx);
+                  if (!/#\d+/.test(sub)) missing.push('At least one issue reference required under Related Planning Issues');
+                }
+              }
+
+              // Normalize labels from the issue object
+              const labels = (issue.labels || []).map(l => typeof l === 'string' ? l : l.name);
+
+              if (missing.length) {
+                // Add planning-invalid label if not already present
+                if (!labels.includes('planning-invalid')) {
+                  if (!dryRun) {
+                    try { await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels: ['planning-invalid'] }); } catch (e) { core.warning(`Failed to add label to #${issue.number}: ${e}`); }
+                  } else {
+                    core.info(`DRY RUN: would add 'planning-invalid' to #${issue.number}`);
+                  }
+                }
+
+                // Dedupe comments: ensure only one traceability comment exists
+                try {
+                  const comments = await github.rest.issues.listComments({ owner, repo, issue_number: issue.number, per_page: 100 });
+                  const lintComments = comments.data.filter(c => c.body && c.body.startsWith('<!-- issue-traceability-lint -->'));
+                  if (!lintComments.length) {
+                    if (!dryRun) {
+                      const comment = `<!-- issue-traceability-lint -->\nIssue traceability lint failed:\n- ${missing.join('\n- ')}\n\nPlease update the issue using the planning template: .github/ISSUE_TEMPLATE/planning.md`;
+                      await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body: comment });
+                    } else {
+                      core.info(`DRY RUN: would comment on #${issue.number}`);
+                    }
+                  } else if (lintComments.length > 1) {
+                    // Keep only the newest comment, delete the rest
+                    const sorted = lintComments.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+                    const toDelete = sorted.slice(0, -1);
+                    if (!dryRun) {
+                      for (const d of toDelete) {
+                        try { await github.rest.issues.deleteComment({ owner, repo, comment_id: d.id }); } catch (e) { core.warning(`Failed to delete comment ${d.id} on #${issue.number}: ${e}`); }
+                      }
+                    } else {
+                      core.info(`DRY RUN: would delete ${toDelete.length} old lint comments on #${issue.number}`);
+                    }
+                  }
+                } catch (e) { core.warning(`Failed to manage comments on #${issue.number}: ${e}`); }
+              } else {
+                // Remove planning-invalid label if present
+                if (labels.includes('planning-invalid')) {
+                  if (!dryRun) {
+                    try { await github.rest.issues.removeLabel({ owner, repo, issue_number: issue.number, name: 'planning-invalid' }); } catch (e) { core.warning(`Failed to remove label from #${issue.number}: ${e}`); }
+                  } else {
+                    core.info(`DRY RUN: would remove 'planning-invalid' from #${issue.number}`);
+                  }
+                }
+              }
+
+              // Small delay to reduce rate-limit risk
+              await new Promise(r => setTimeout(r, 200));
+            }
+
+            core.info('Repo-wide planning lint scan completed.');
