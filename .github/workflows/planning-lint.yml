@@ -30,6 +30,10 @@ jobs:
             const number = issue.number;
             const missing = [];
 
+            // Determine the issue type early so we can allow 'None' on top-level Epics
+            const typeLine = body.split('\n').find(l => l.toLowerCase().startsWith('type:'));
+            const type = typeLine ? typeLine.split(':').slice(1).join(':').trim().toLowerCase() : '';
+
             function hasHeading(h) {
               return body.includes(h);
             }
@@ -43,14 +47,13 @@ jobs:
               const after = body.slice(idx + heading.length).split('\n').map(s => s.trim()).filter(Boolean);
               if (after.length === 0) return false;
               if (/^#\d+/.test(after[0])) return true;
+              // Allow explicit 'None' under the heading for top-level epics
+              if (type === 'epic' && /^_?None_?$/i.test(after[0])) return true;
               return /#\d+/.test(after.join('\n'));
             }
 
-            if (!hasIssueRefAfterHeading('### Parent Epic Issue') && !/Parent Epic Issue:?\s*#\d+/.test(body)) missing.push('Parent Epic Issue must include a reference like #123');
-            if (!hasIssueRefAfterHeading('### Parent Feature Issue') && !/Parent Feature Issue:?\s*#\d+/.test(body)) missing.push('Parent Feature Issue must include a reference like #123');
-
-            const typeLine = body.split('\n').find(l => l.toLowerCase().startsWith('type:'));
-            const type = typeLine ? typeLine.split(':').slice(1).join(':').trim().toLowerCase() : '';
+            if (!hasIssueRefAfterHeading('### Parent Epic Issue') && !/Parent Epic Issue:?\s*#\d+/.test(body) && !(type === 'epic' && /Parent Epic Issue:?\s*(?:_?None_?|none)/i.test(body))) missing.push('Parent Epic Issue must include a reference like #123');
+            if (!hasIssueRefAfterHeading('### Parent Feature Issue') && !/Parent Feature Issue:?\s*#\d+/.test(body) && !(type === 'epic' && /Parent Feature Issue:?\s*(?:_?None_?|none)/i.test(body))) missing.push('Parent Feature Issue must include a reference like #123');
 
             if (type === 'test') {
               if (!hasHeading('### Test Scope Type')) missing.push('Test Scope Type heading missing');
