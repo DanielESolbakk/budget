@@ -15,6 +15,9 @@ This file records the mapping from the planning catalog keys to the created GitH
 - EN2.1: Import job schema and parser adapter framework — https://github.com/DanielESolbakk/budget/issues/32
 - T2.1: Sanitized fixture coverage for PDF and CSV import — https://github.com/DanielESolbakk/budget/issues/33
 
+- T2.1.1: Sanitizer: deterministic CSV sanitization script — https://github.com/DanielESolbakk/budget/issues/63
+- T2.1.2: Verifier: fixture validator & CI check — https://github.com/DanielESolbakk/budget/issues/64
+
 - E3: Categorization and correction workflow — https://github.com/DanielESolbakk/budget/issues/18
 - F3.1: Merchant normalization — https://github.com/DanielESolbakk/budget/issues/19
 - F3.2: Rule evaluation and confidence scoring — https://github.com/DanielESolbakk/budget/issues/20
