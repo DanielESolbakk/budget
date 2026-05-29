@@ -22,3 +22,6 @@
 # Imported financial artifacts kept off the public repo
 *.ofx
 *.qfx
+
+# Sanitizer map (local only)
+local/sanitization-map.json

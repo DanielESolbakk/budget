@@ -37,3 +37,8 @@ Notes:
 - Any additional details, fixtures, or references.
 
 Please do not remove or rename the headings above — our automation requires them to be present and to include issue-number references where indicated.
+
+### Definition of Ready (DoR)
+
+Use the canonical checklist in `docs/ways-of-work/plan/budget-planner/definition-of-ready-and-done.md`.
+If you want the checklist visible in the issue body, paste the "Per-issue DoR checklist" from that document into the issue.

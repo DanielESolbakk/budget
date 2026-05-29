@@ -48,3 +48,4 @@ List the commands you ran and summarize outcomes.
 - [ ] If this is a bug fix, I added a regression test that failed before the fix and now passes.
 - [ ] I did not disable, remove, or weaken unrelated tests.
 - [ ] I updated planning artifacts if architecture, privacy, or schema changed.
+- [ ] If fixtures changed, I attached verification artifacts (e.g., `verification-report.json`) or linked the verification report in the PR

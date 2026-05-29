@@ -1,0 +1,102 @@
+name: 'Enforce DoR / DoD'
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+jobs:
+  check-dor-dod:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check issue or PR readiness via planning-lint and PR metadata
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const payload = context.payload;
+            const issue = payload.issue;
+            const pr = payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Issues: rely on planning-lint label `planning-invalid`
+            if (issue) {
+              const issue_number = issue.number;
+              const { data: ghIssue } = await github.rest.issues.get({ owner, repo, issue_number });
+              const labels = (ghIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+
+              if (labels.includes('planning-invalid')) {
+                await github.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body: 'Automation: planning-lint has marked this issue `planning-invalid`. Please fix the planning issue (headings/traceability) so planning-lint passes before marking Ready.'
+                });
+
+                await github.issues.addLabels({ owner, repo, issue_number, labels: ['needs-grooming'] });
+              } else {
+                // If issue was previously flagged and label removed, try to remove needs-grooming
+                if (labels.includes('needs-grooming')) {
+                  try { await github.issues.removeLabel({ owner, repo, issue_number, name: 'needs-grooming' }); } catch (e) { /* ignore if missing */ }
+                }
+              }
+
+            // Pull requests: check linked planning issues and PR metadata (AC→tests, fixture verification)
+            } else if (pr) {
+              const pr_number = pr.number;
+              // Use the issue endpoint to get PR as issue (contains labels & body)
+              const { data: prIssue } = await github.rest.issues.get({ owner, repo, issue_number: pr_number });
+              const prBody = prIssue.body || '';
+              const prLabels = (prIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+
+              const messages = [];
+
+              // Find referenced issue numbers in the PR body (#123)
+              const refRe = /#(\d+)/g;
+              const referenced = new Set();
+              let m;
+              while ((m = refRe.exec(prBody)) !== null) referenced.add(Number(m[1]));
+
+              for (const num of referenced) {
+                try {
+                  const { data: refIssue } = await github.rest.issues.get({ owner, repo, issue_number: num });
+                  const refLabels = (refIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+                  if (refLabels.includes('planning-invalid')) {
+                    messages.push(`Linked planning issue #${num} is marked \'planning-invalid\'. Fix that issue before merging.`);
+                    break;
+                  }
+                } catch (e) { /* ignore fetch errors for referenced items */ }
+              }
+
+              // Check for Acceptance Criteria presence and suggest explicit AC→tests mapping
+              const acRegex = /Acceptance Criteria/i;
+              const mappingRegex = /Acceptance Criteria to Test Mapping|Acceptance-criteria-to-test|AC\s*[-→>]?\s*tests/i;
+              if (!acRegex.test(prBody)) {
+                messages.push('Please include an "Acceptance Criteria" section in the PR and map each criterion to tests (AC → tests).');
+              } else if (!mappingRegex.test(prBody)) {
+                messages.push('Consider adding an explicit "Acceptance Criteria to Test Mapping" table in the PR body to show which tests cover which ACs.');
+              }
+
+              // If fixtures changed, require verification-report.json or link to verification artifacts
+              const files = await github.rest.pulls.listFiles({ owner, repo, pull_number: pr_number, per_page: 300 });
+              const changed = (files.data || []).map(f => f.filename || '');
+              const fixtureChanged = changed.some(p => p.startsWith('tests/fixtures/') || p.includes('/fixtures/') || p.includes('fixtures/'));
+              if (fixtureChanged) {
+                const verificationPresent = /verification-report\.json|verification-report/i.test(prBody);
+                if (!verificationPresent) messages.push('This PR modifies fixtures. Please attach `verification-report.json` or link verification artifacts in the PR description.');
+              }
+
+              if (messages.length) {
+                await github.issues.createComment({ owner, repo, issue_number: pr_number, body: `Automation: DoD checks noticed issues:\n\n- ${messages.join('\n- ')}` });
+                await github.issues.addLabels({ owner, repo, issue_number: pr_number, labels: ['needs-grooming'] });
+              } else {
+                // remove needs-grooming if present
+                if (prLabels.includes('needs-grooming')) {
+                  try { await github.issues.removeLabel({ owner, repo, issue_number: pr_number, name: 'needs-grooming' }); } catch (e) { /* ignore */ }
+                }
+              }
+            }
