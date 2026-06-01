@@ -1,0 +1,20 @@
+{
+  "labels": {
+    "skip": "skip-dor-dod",
+    "enforce": "enforce-dor-dod",
+    "needsGrooming": "needs-grooming",
+    "typePrefix": "type:",
+    "acException": "ac-exception"
+  },
+  "types": {
+    "feature": { "requireAC": true, "requireFixtureVerification": true, "requireACIdMapping": true },
+    "test": { "requireAC": true, "requireFixtureVerification": true, "requireACIdMapping": true },
+    "mixed": { "requireAC": true, "requireFixtureVerification": true, "requireACIdMapping": true },
+    "release": { "requireAC": true, "requireFixtureVerification": true, "requireACIdMapping": true }
+  },
+  "exceptions": {
+    "requireJustificationSection": true,
+    "requireFollowUpIssueForACException": true
+  },
+  "strictTrigger": { "branchPrefix": "release/", "prTitleContains": "type:release" }
+}

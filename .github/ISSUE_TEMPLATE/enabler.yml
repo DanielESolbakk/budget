@@ -63,10 +63,11 @@ body:
     id: acceptance
     attributes:
       label: Acceptance Criteria
+      description: Use AC IDs so PR automation can validate AC-to-test mapping.
       placeholder: |
-        - [ ] Validation 1
-        - [ ] Validation 2
-        - [ ] Performance benchmark met
+        - [ ] AC-1: Validation ...
+        - [ ] AC-2: Validation ...
+        - [ ] AC-3: Performance benchmark met
     validations:
       required: true
 

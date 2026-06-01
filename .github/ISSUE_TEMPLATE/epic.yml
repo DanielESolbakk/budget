@@ -52,11 +52,11 @@ body:
     id: epic_acceptance
     attributes:
       label: Epic Acceptance Criteria
-      description: Use checkbox format.
+      description: Use checkbox format with AC IDs.
       placeholder: |
-        - [ ] Criteria 1
-        - [ ] Criteria 2
-        - [ ] Criteria 3
+        - [ ] AC-1: ...
+        - [ ] AC-2: ...
+        - [ ] AC-3: ...
     validations:
       required: true
 

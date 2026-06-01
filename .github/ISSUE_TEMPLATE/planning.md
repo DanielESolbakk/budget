@@ -13,7 +13,17 @@ Source: docs/ways-of-work/plan/budget-planner/issue-catalog.json
 Description:
 - One-sentence summary of intent and acceptance criteria.
 
+Acceptance Criteria (use AC IDs):
+- [ ] AC-1: ...
+- [ ] AC-2: ...
+
+Acceptance Criteria To Test Mapping:
+- AC-1 -> Unit/Integration/E2E: ...
+- AC-2 -> Unit/Integration/E2E: ...
+
 Parent keys: E
+
+## Planning Fields
 
 ### Parent Epic Issue
 # (e.g. #26)
@@ -38,7 +48,15 @@ Notes:
 
 Please do not remove or rename the headings above — our automation requires them to be present and to include issue-number references where indicated.
 
-### Definition of Ready (DoR)
+### Definition of Ready Checklist
 
-Use the canonical checklist in `docs/ways-of-work/plan/budget-planner/definition-of-ready-and-done.md`.
-If you want the checklist visible in the issue body, paste the "Per-issue DoR checklist" from that document into the issue.
+Paste or leave this checklist in the issue body if you want automation and reviewers to verify readiness:
+
+- [ ] Parent Epic Issue: # (e.g. #26)
+- [ ] Acceptance Criteria: present, testable, and labeled with AC IDs (for example `AC-1`)
+- [ ] Fixtures listed: tests/fixtures/... or _None_
+- [ ] Related Planning Issues: list issue numbers (e.g. `#123`)
+- [ ] Estimate: (e.g. `2 days` / `small`)
+- [ ] Assignee: @owner or _Unassigned_
+
+Note: This checklist is also maintained in `docs/ways-of-work/plan/budget-planner/definition-of-ready-and-done.md` as a canonical reference.

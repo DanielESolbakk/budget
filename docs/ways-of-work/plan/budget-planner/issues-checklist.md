@@ -68,7 +68,7 @@
 ## Story Creation Checklist
 
 - [ ] Each story uses the household and transaction domain language
-- [ ] Each story has explicit acceptance criteria
+- [ ] Each story has explicit acceptance criteria with AC IDs (for example `AC-1`, `AC-2`)
 - [ ] Each story links to required enablers and tests
 - [ ] Each story has a clear user outcome and independent value
 - [ ] Each story is small enough to validate in one focused PR when possible
@@ -86,11 +86,12 @@
 
 ## Pull Request Readiness Checklist
 
-- [ ] PR body contains acceptance-criteria-to-test mapping
+- [ ] PR body contains AC-ID-to-test mapping that covers every linked AC ID
 - [ ] PR body contains test evidence
 - [ ] Bug-fix PRs contain regression test details
 - [ ] Code changes include package manifest and required CI scripts once scaffolding begins
 - [ ] Public repository handling rules are respected
+- [ ] If `ac-exception` label is used, PR includes "AC Exception Justification" and a follow-up issue reference
 
 ## Follow-Up Tracking Checklist
 
