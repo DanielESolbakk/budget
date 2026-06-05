@@ -72,6 +72,27 @@ body:
       required: true
 
   - type: textarea
+    id: enabler_list
+    attributes:
+      label: Enablers In This Epic
+      description: Add enabler issue links when available.
+      placeholder: |
+        - [ ] #301 Enabler: Example
+    validations:
+      required: false
+
+  - type: textarea
+    id: test_list
+    attributes:
+      label: Test Issues In This Epic
+      description: Add test issue links that validate epic outcomes.
+      placeholder: |
+        - [ ] #401 Test: Integration coverage for ...
+        - [ ] #402 Test: End-to-end coverage for ...
+    validations:
+      required: true
+
+  - type: textarea
     id: done_definition
     attributes:
       label: Definition Of Done

@@ -287,6 +287,24 @@ jobs:
 
             const problems = [];
 
+            if (issueType === "epic") {
+              const epicFeatures = await validateMultiReference("Features In This Epic", ["feature"]);
+              const epicTests = await validateMultiReference("Test Issues In This Epic", ["test"]);
+              const epicEnablers = await validateMultiReference("Enablers In This Epic", ["enabler"], false);
+
+              for (const featureIssue of epicFeatures) {
+                ensureMatchingParent(featureIssue, issueNumber, "Parent Epic Issue", "epic feature allocation");
+              }
+
+              for (const testIssue of epicTests) {
+                ensureMatchingParent(testIssue, issueNumber, "Parent Epic Issue", "epic test allocation");
+              }
+
+              for (const enablerIssue of epicEnablers) {
+                ensureMatchingParent(enablerIssue, issueNumber, "Parent Epic Issue", "epic enabler allocation");
+              }
+            }
+
             if (issueType === "feature") {
               const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
               const featureTests = await validateMultiReference("Test Issues In This Feature", ["test"]);

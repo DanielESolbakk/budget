@@ -53,6 +53,7 @@ Please do not remove or rename the headings above — our automation requires th
 Paste or leave this checklist in the issue body if you want automation and reviewers to verify readiness:
 
 - [ ] Parent Epic Issue: # (e.g. #26)
+- [ ] Parent Epic Issue: # (e.g. #26) or _None_ for top-level Epics
 - [ ] Acceptance Criteria: present, testable, and labeled with AC IDs (for example `AC-1`)
 - [ ] Fixtures listed: tests/fixtures/... or _None_
 - [ ] Related Planning Issues: list issue numbers (e.g. `#123`)

@@ -30,16 +30,27 @@ jobs:
             const number = issue.number;
             const missing = [];
 
-            // Determine the issue type early so we can allow 'None' on top-level Epics
+            // Determine issue type from body, labels, or title.
+            const issueLabels = (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+            const issueTitle = issue.title || '';
             const typeLine = body.split('\n').find(l => l.toLowerCase().startsWith('type:'));
-            const type = typeLine ? typeLine.split(':').slice(1).join(':').trim().toLowerCase() : '';
+            const bodyType = typeLine ? typeLine.split(':').slice(1).join(':').trim().toLowerCase() : '';
+            const inferredType = bodyType ||
+              (issueLabels.includes('epic') || /^epic\s*:/i.test(issueTitle) ? 'epic' :
+              issueLabels.includes('feature') || /^feature\s*:/i.test(issueTitle) ? 'feature' :
+              issueLabels.includes('user-story') || /^story\s*:/i.test(issueTitle) ? 'story' :
+              issueLabels.includes('enabler') || /^enabler\s*:/i.test(issueTitle) ? 'enabler' :
+              issueLabels.includes('test') || /^test\s*:/i.test(issueTitle) ? 'test' : '');
+            const type = inferredType;
 
             function hasHeading(h) {
               return body.includes(h);
             }
 
-            if (!hasHeading('### Parent Epic Issue')) missing.push('Parent Epic Issue heading');
-            if (!hasHeading('### Parent Feature Issue')) missing.push('Parent Feature Issue heading');
+            if (type !== 'epic') {
+              if (!hasHeading('### Parent Epic Issue')) missing.push('Parent Epic Issue heading');
+              if (!hasHeading('### Parent Feature Issue')) missing.push('Parent Feature Issue heading');
+            }
 
             function hasIssueRefAfterHeading(heading) {
               const idx = body.indexOf(heading);
@@ -52,8 +63,10 @@ jobs:
               return /#\d+/.test(after.join('\n'));
             }
 
-            if (!hasIssueRefAfterHeading('### Parent Epic Issue') && !/Parent Epic Issue:?\s*#\d+/.test(body) && !(type === 'epic' && /Parent Epic Issue:?\s*(?:_?None_?|none)/i.test(body))) missing.push('Parent Epic Issue must include a reference like #123');
-            if (!hasIssueRefAfterHeading('### Parent Feature Issue') && !/Parent Feature Issue:?\s*#\d+/.test(body) && !(type === 'epic' && /Parent Feature Issue:?\s*(?:_?None_?|none)/i.test(body))) missing.push('Parent Feature Issue must include a reference like #123');
+            if (type !== 'epic') {
+              if (!hasIssueRefAfterHeading('### Parent Epic Issue') && !/Parent Epic Issue:?\s*#\d+/.test(body)) missing.push('Parent Epic Issue must include a reference like #123');
+              if (!hasIssueRefAfterHeading('### Parent Feature Issue') && !/Parent Feature Issue:?\s*#\d+/.test(body)) missing.push('Parent Feature Issue must include a reference like #123');
+            }
 
             if (type === 'test') {
               if (!hasHeading('### Test Scope Type')) missing.push('Test Scope Type heading missing');

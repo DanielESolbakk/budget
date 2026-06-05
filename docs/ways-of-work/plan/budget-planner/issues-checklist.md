@@ -23,6 +23,9 @@
 - [ ] Set priority and value tier in the epic issue form
 - [ ] Apply priority and value labels if repository label automation or conventions require them
 - [ ] Add each epic to the project board
+- [ ] Link feature issues in `Features In This Epic`
+- [ ] Link enabler issues in `Enablers In This Epic` when applicable
+- [ ] Link test issues in `Test Issues In This Epic`
 
 ## Feature And Enabler Checklist
 
