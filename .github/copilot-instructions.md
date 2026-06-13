@@ -1,18 +1,16 @@
 # Budget Planner Repository Instructions
 
-## CRITICAL: Git Push Policy
+## Git Access & PR Workflow
 
-**ABSOLUTE RULE: No git push to main under any circumstances.**
+**Git CLI Access:** Git CLI will fail due to missing authentication.
 
-- **NEVER** execute `git push origin main`
-- **NEVER** execute `git push --force` or any force push
-- **NEVER** run any `git push` command targeting the `main` branch
-- All code changes must go through pull requests only
-- Use GitHub MCP tools (e.g., `mcp_github_mcp_se_create_pull_request`) to create PRs for review
-- All commits must be made to feature branches (e.g., `feature/`, `bugfix/`, `fix/`)
-- The human owner reviews and merges all PRs into main
+**Pull Request Workflow:** All code changes must go through pull requests. Use the GitHub MCP server (available in this environment) to create, update, and manage PRs:
+- Create feature branches for all work
+- Use `mcp_github_mcp_se_create_pull_request` to submit changes for review
+- Wait for human approval before any merge
+- Branch protection rules on GitHub enforce this server-side
 
-Enforcement: Git credentials have been removed from the machine to prevent accidental pushes. Branch protection rules on GitHub enforce this server-side.
+**Why:** This prevents accidental or intentional direct pushes to main, even with elevated privileges.
 
 ## Product Intent
 

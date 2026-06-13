@@ -5,15 +5,6 @@ This file is a short execution-time guide for GitHub Copilot cloud agent.
 Repository-wide rules live in `.github/copilot-instructions.md`.
 Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 
-## CRITICAL: No Git Push to Main
-
-**NEVER run `git push origin main` or any git push to main.**
-
-- All changes must go through pull requests (create with GitHub MCP tools)
-- Create feature branches for all work
-- Wait for human review and approval
-- See `.github/copilot-instructions.md` for full git policy
-
 ## Start Here
 
 - Keep changes small and local to the assigned issue.
