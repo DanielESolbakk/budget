@@ -19,10 +19,9 @@ if (!inputPath) {
   process.exit(1);
 }
 
-const report = verifyFixture({
-  inputPath: resolve(inputPath),
-  reportPath: reportPath ? resolve(reportPath) : undefined
-});
+const report = reportPath
+  ? verifyFixture({ inputPath: resolve(inputPath), reportPath: resolve(reportPath) })
+  : verifyFixture({ inputPath: resolve(inputPath) });
 
 console.log(JSON.stringify(report, null, 2));
 

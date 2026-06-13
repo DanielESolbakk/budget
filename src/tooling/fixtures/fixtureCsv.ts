@@ -13,7 +13,7 @@ export function parseFixtureCsv(text: string): ParsedFixtureCsv {
     throw new Error("CSV file is empty.");
   }
 
-  const header = lines[0].split(";");
+  const header = lines[0]!.split(";");
   const rows = lines.slice(1).map((line, index) => {
     const cells = line.split(";");
     if (cells.length !== header.length) {
