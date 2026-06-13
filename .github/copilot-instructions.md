@@ -1,5 +1,19 @@
 # Budget Planner Repository Instructions
 
+## CRITICAL: Git Push Policy
+
+**ABSOLUTE RULE: No git push to main under any circumstances.**
+
+- **NEVER** execute `git push origin main`
+- **NEVER** execute `git push --force` or any force push
+- **NEVER** run any `git push` command targeting the `main` branch
+- All code changes must go through pull requests only
+- Use GitHub MCP tools (e.g., `mcp_github_mcp_se_create_pull_request`) to create PRs for review
+- All commits must be made to feature branches (e.g., `feature/`, `bugfix/`, `fix/`)
+- The human owner reviews and merges all PRs into main
+
+Enforcement: Git credentials have been removed from the machine to prevent accidental pushes. Branch protection rules on GitHub enforce this server-side.
+
 ## Product Intent
 
 This repository builds a Windows-first desktop budget planner for a household user managing multiple accounts locally.
