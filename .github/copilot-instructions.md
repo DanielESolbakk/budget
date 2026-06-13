@@ -1,16 +1,11 @@
 # Budget Planner Repository Instructions
 
-## Git Access & PR Workflow
+## PR Workflow
 
-**Git CLI Access:** Git CLI will fail due to missing authentication.
-
-**Pull Request Workflow:** All code changes must go through pull requests. Use the GitHub MCP server (available in this environment) to create, update, and manage PRs:
+All code changes require pull requests via GitHub MCP tools:
 - Create feature branches for all work
-- Use `mcp_github_mcp_se_create_pull_request` to submit changes for review
-- Wait for human approval before any merge
-- Branch protection rules on GitHub enforce this server-side
-
-**Why:** This prevents accidental or intentional direct pushes to main, even with elevated privileges.
+- Use `mcp_github_mcp_se_create_pull_request` to submit changes
+- Wait for human approval before merge (Git CLI unavailable; branch protection enforces server-side)
 
 ## Product Intent
 
@@ -25,64 +20,40 @@ The application must:
 
 ## Locked Architecture Decisions
 
-- Use Electron, React, TypeScript, and SQLite unless an explicit architecture decision record replaces that stack.
-- Keep the renderer process focused on presentation and user interaction.
-- Keep import, persistence, categorization, export, backup, and forecasting logic outside the UI layer.
-- Treat the Electron main process plus service layer as the source of truth for business logic.
-- Keep shared domain types and validation contracts in a dedicated shared layer.
+- Use Electron, React, TypeScript, and SQLite unless an ADR replaces this stack.
+- Keep renderer focused on presentation; move import, persistence, categorization, export, backup, forecasting logic to Electron main process plus service layer.
+- Keep shared domain types and validation contracts in dedicated shared layer.
 
 ## Privacy And Data Handling
 
-- Financial transaction data must remain local by default.
-- Do not add bank APIs, cloud sync, telemetry, analytics, or background network calls unless the user explicitly approves a scope change.
-- External services are not allowed to process transaction content in the baseline product.
-- Prefer explicit user-initiated file import and export flows.
-- Design backup and export so the user can recover or move their data without vendor lock-in.
+- Financial data remains local by default; no bank APIs, cloud sync, telemetry, analytics, or background network calls without explicit user approval.
+- External services cannot process transaction content; prefer explicit user-initiated import/export.
+- Design backup and export for user recovery and portability without vendor lock-in.
 
 ## Public Repository Handling
 
-- This GitHub repository is public. Assume anything committed to the repository is visible to anyone.
-- Never commit secrets, tokens, credentials, private keys, raw bank statements, unsanitized financial exports, backups, local databases, or personally identifying financial artifacts.
-- Do not commit user-specific absolute file system paths in code, docs, issues, or planning artifacts. Use repository-relative paths or neutral placeholders instead.
-- Keep local-only sensitive artifacts in gitignored paths such as local/, private/, data/local/, backups/local/, or fixtures/private/.
-- Only commit sanitized or synthetic fixtures that are safe for public distribution.
-- If real financial samples are needed for local testing, store them only in ignored paths and document the expected sanitized fixture shape in the repository.
+- Never commit secrets, credentials, raw bank statements, unsanitized exports, backups, databases, or PII.
+- Use repository-relative paths (not absolute) and sanitized/synthetic fixtures only.
+- Store real samples in gitignored paths (local/, private/, data/local/, backups/local/, fixtures/private/) with documented expected shape.
 
 ## Delivery Priorities
 
-Build in this order unless a planning document states otherwise:
 1. Planning documents and acceptance criteria
 2. Core domain model and schema
 3. Import pipeline
 4. Categorization and correction workflow
 5. Desktop application shell and user workflows
-6. Budgeting and forecasting
-7. Backup, export, privacy verification, and release hardening
+6. Budgeting, forecasting, backup, export, and release hardening
 
-Do not jump to polished UI work before the import, categorization, and persistence paths are stable.
+Do not polish UI before import, categorization, and persistence are stable.
 
 ## Required Planning Artifacts
 
-Before broad implementation of a feature, maintain the relevant documents under docs/ways-of-work/plan.
+Major features require: PRD, technical breakdown, implementation plan, project plan, issues checklist, acceptance criteria, test strategy.
 
-At minimum, major features should have:
-- a feature PRD
-- a technical breakdown
-- an implementation plan
-- a project plan
-- an issues checklist
-- acceptance criteria that can map to tests and GitHub issues
-- a test strategy section that maps acceptance criteria to unit, integration, and end-to-end coverage
+Before broad implementation: create ADR for stack/runtime boundaries and domain glossary.
 
-Before broad implementation starts, create and maintain:
-- an architecture decision record for stack and runtime boundaries
-- a domain glossary covering core product terms
-
-When planning work for GitHub issues, follow the existing Epic > Feature > Story or Enabler > Test structure defined by the repository planning skill.
-
-Use docs/ways-of-work/plan/budget-planner/issue-catalog.json as the machine-readable planning reference for seeded Epic, Feature, Enabler, and Test hierarchy.
-- Prefer catalog keys and catalog parent relationships over hand-authored issue-number chains when creating or updating planning issues.
-- Treat the catalog as the planning seed artifact and GitHub issue numbers as runtime references that must be kept aligned with it.
+Follow Epic > Feature > Story/Enabler > Test structure. Use `docs/ways-of-work/plan/budget-planner/issue-catalog.json` as machine-readable reference; derive hierarchy from catalog keys, not hand-authored issue chains. Keep GitHub issues aligned with catalog.
 
 ## Domain Language
 
@@ -100,29 +71,11 @@ Use these terms consistently in code, tests, and documentation:
 
 Avoid inventing near-duplicates for the same concept.
 
-## Feature Scope Guidance
+## Feature Scope
 
-In scope for the first milestone:
-- one local household user managing multiple accounts
-- digital text PDFs
-- CSV imports
-- manual transaction entry
-- default editable categories
-- rule-based categorization with confidence scoring
-- review and correction flows
-- monthly dashboards
-- monthly category targets
-- simple forward-looking forecasting
-- backup and export
+**In scope:** one local user, multiple accounts, text PDFs, CSV/manual entry, default categories, rule-based categorization, review flows, monthly dashboards/targets, simple forecasting, backup/export.
 
-Out of scope for the first milestone unless the user explicitly changes scope:
-- live bank synchronization
-- bank APIs
-- multi-device collaboration
-- cloud processing of transaction data
-- scanned-image OCR unless real sample artifacts force it
-- advanced envelope budgeting as a release blocker
-- advanced goal-based planning as a release blocker
+**Out of scope:** live sync, bank APIs, multi-device, cloud processing, scanned-image OCR, advanced budgeting/planning (unless user changes scope).
 
 ## Implementation Rules
 
@@ -136,35 +89,26 @@ Out of scope for the first milestone unless the user explicitly changes scope:
 
 ## Quality Bar
 
-- Every meaningful feature should ship with tests that match its risk.
-- Parser, normalization, and categorization logic require unit tests.
-- Import-to-ledger flows require integration coverage.
-- Critical user workflows require end-to-end desktop coverage.
-- Use realistic fixtures, including representative Norwegian merchants and sanitized bank statement samples when available.
-- Validate performance against at least 10000 transactions before treating the desktop UX as stable.
-- Add a no-network verification check in development and packaged builds for default workflows handling transaction content.
+- Every feature ships with tests matching its risk.
+- Parser, normalization, categorization logic: unit tests. Import-to-ledger: integration. Critical workflows: end-to-end.
+- Use realistic Norwegian merchant fixtures and sanitized bank statement samples; validate against 10K+ transactions.
+- Add no-network verification for default transaction workflows.
 
-## Test Enforcement For LLM Contributors
+## Test Enforcement
 
-- Treat missing or weak automated tests for behavior changes as an incomplete implementation.
-- For bug fixes, add or update a regression test that fails before the fix and passes after the fix.
-- For feature work, map acceptance criteria to concrete automated tests before implementation starts.
-- For cross-layer changes (parser, schema, categorization, IPC, and UI), add coverage at the unit and integration layers, plus end-to-end coverage for affected critical user journeys.
-- Do not remove, weaken, or skip tests just to make a change pass review or CI.
-- If a required automated test cannot be added immediately, document why in the implementation plan and issue, and create a linked follow-up test issue before closing the work.
-- Keep fixtures deterministic and representative of Norwegian formats so results are reproducible across LLM iterations.
-- Consider any change complete only when relevant test suites pass and acceptance criteria are demonstrably covered.
+- Missing/weak tests = incomplete work.
+- Bug fixes: add regression test (fails before fix, passes after). Features: map acceptance criteria to tests before implementation. Cross-layer changes: unit + integration + end-to-end coverage.
+- Do not remove/weaken tests to pass CI.
+- If test deferred, document why and link follow-up issue.
+- Keep fixtures deterministic and Norwegian-representative for reproducibility.
+- Work complete only when test suites pass and acceptance criteria demonstrably covered.
 
-## Test Automation Triangle Policy
+## Test Automation Triangle
 
-- Follow a test automation triangle with a broad unit base, a narrower integration layer, and a focused Playwright end-to-end layer.
-- Default test layering for implementation issues:
-	- Unit tests for pure logic, transformation, parsing, normalization, validation, and deterministic calculation behavior.
-	- Integration tests for cross-module workflows, persistence contracts, import-to-ledger behavior, IPC boundaries, and fixture-driven data contracts.
-	- Playwright end-to-end tests for critical user journeys only, including flows that span multiple layers and cannot be trusted through lower layers alone.
-- Do not use Playwright tests as a substitute for unit or integration coverage when lower-level tests can validate behavior more cheaply and deterministically.
-- Every Story and Feature planning issue must explicitly state how unit, integration, and Playwright coverage will be addressed.
-- If one layer is intentionally excluded for a scoped issue, the issue must state why and link a follow-up test issue where applicable.
+- Unit (broad base): pure logic, parsing, normalization, validation, deterministic calculations.
+- Integration (narrower): cross-module workflows, persistence, import-to-ledger, IPC, data contracts.
+- Playwright end-to-end (focused): critical user journeys only; cannot substitute for cheaper lower-layer tests.
+- Every Story/Feature must state coverage plan (unit/integration/Playwright); excluded layers must link follow-up issue.
 
 ## Change Management
 
@@ -183,9 +127,64 @@ Out of scope for the first milestone unless the user explicitly changes scope:
 - `AGENTS.md` exists as a short execution-time entrypoint for Copilot cloud agent with the fastest path to commands, architecture map, and issue handoff expectations.
 - Keep the two files aligned. Put durable policy, scope, and quality rules here. Put concise task-start guidance in `AGENTS.md` so the agent can consume both without duplicating the full policy document.
 
+## Planning Issue Body Format (Linter Enforced)
+
+**All issue references within `###` section headings must use bullet-point format (`- #NUMBER`):**
+
+```markdown
+### Parent Epic Issue
+- #22
+
+### Linked Test Issues
+- #73
+- #74
+```
+
+NOT: `#22` or `#73, #74` (inline or comma-separated).
+
+**Rules:**
+- Linter regex: `###\s+${escapedHeading}\s*\n([\s\S]*?)(?=\n###\s+|$)` extracts section content
+- All issues must appear as list items: `- #NUMBER` (hyphen + space + number)
+- Applies to: Parent Epic Issue, Parent Feature Issue, Linked Test Issues, Linked Enabler Issues, Parent Story Or Enabler Issue, etc.
+- Use templates (Epic, Feature, Story, Test, Enabler) to ensure correct format
+- If linter marks issue `planning-invalid`, correct formatting and re-edit to re-validate
+
 ## Planning Signal Discipline
 
-- Before implementing from a GitHub issue, review the issue body, labels, and latest bot comments for planning validation results.
-- If a planning issue has the planning-invalid label or an issue-traceability-lint failure comment, stop and repair the issue graph before writing implementation code.
-- When opening or updating planning issues, derive initial hierarchy from docs/ways-of-work/plan/budget-planner/issue-catalog.json instead of inventing parent links from memory, then keep the issue graph aligned with the catalog.
-- If a PR links to a planning issue marked planning-invalid, treat the work as blocked until the planning issue passes validation.
+- Before implementing, review issue body, labels, and linter comments for validation results
+- Stop and repair any issue marked `planning-invalid` before writing implementation code
+- Derive hierarchy from `docs/ways-of-work/plan/budget-planner/issue-catalog.json`; keep GitHub issues aligned with catalog
+- If PR links to invalid planning issue, treat work as blocked until resolved
+
+## Planning Bot Output Guardrails
+
+Use this checklist when generating or auto-updating planning issues so `issue-traceability-lint` passes on first run.
+
+1. Section formatting
+- Use `###` headings exactly as expected by templates.
+- Inside reference sections, use bullet issue refs only: `- #NUMBER`.
+- Do not use inline refs (`#22`) or comma-separated refs (`#22, #23`) inside section bodies.
+
+2. Required sections by issue type
+- Story must include: Parent Epic Issue, Parent Feature Issue, Linked Test Issues, Testing Requirements, Implementation Entry Points, Validation Commands, Fixture Or Example Inputs, Out Of Scope.
+- Feature must include: Parent Epic Issue, Test Issues In This Feature, Test Automation Triangle Coverage, Implementation Entry Points, Validation Commands, Fixture Or Example Inputs, Out Of Scope.
+- Test must include: Test Scope Type, Parent Epic Issue, Parent Feature Issue (when scope is Story/Enabler or Feature), Test Level, Implementation Entry Points.
+- Enabler must include: Parent Epic Issue, Parent Feature Issue, Stories Enabled.
+
+3. Triangle coverage consistency
+- If Feature `Test Automation Triangle Coverage` mentions unit/integration/playwright, linked test issues must include matching `Test Level` values.
+- If a layer is deferred, the same line must explicitly say deferred/follow-up and include an issue ref (for example `#123`).
+
+4. Enabler hierarchy rule (critical)
+- Enabler issues are validated as feature-scoped: `Parent Feature Issue` must resolve to one feature issue.
+- Every story in `Stories Enabled` must use that same `Parent Feature Issue`.
+- Do not model one enabler as cross-feature unless lint rules are changed first.
+
+5. Parent alignment checks
+- Feature parent epic must match all linked feature tests.
+- Story parent epic and parent feature must match linked test parent references.
+- Linked enablers on stories must not point to a different parent feature than the story.
+
+6. Label discipline
+- Apply planning labels before lint runs (`epic`, `feature`, `user-story`, `enabler`, `test`).
+- Treat `planning-invalid` as a blocking signal; fix body/links first, then re-run validation by editing the issue.

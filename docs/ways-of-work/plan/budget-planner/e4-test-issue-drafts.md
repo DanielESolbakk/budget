@@ -6,11 +6,11 @@ How to use:
 
 - Create one GitHub issue per draft using the Test issue form.
 - Copy each section into the form fields.
-- Replace all `#TBD-*` references with real issue numbers.
+- Parent and related issue references are already populated with real issue numbers.
 
 Important sequencing:
 
-- Create story issues first, then replace `Parent Story Or Enabler Issue: #TBD-S*`.
+- Create story issues first, then keep `Parent Story Or Enabler Issue` aligned with the actual story/enabler issue number.
 - Keep at least one feature-scoped test issue per feature (`#23`, `#24`, `#25`) to satisfy feature traceability.
 
 ## Test 1: [T4-S1] Monthly totals contract integration

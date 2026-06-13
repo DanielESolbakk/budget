@@ -10,6 +10,9 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Keep changes small and local to the assigned issue.
 - Prefer the issue body, linked planning issue, and linked test issue as the primary task context.
 - Run the narrowest validation command that matches the touched slice before widening scope.
+- For planning issues, use template headings exactly and bullet refs as `- #NUMBER` in reference sections.
+- Keep enablers feature-scoped under current lint rules: one `Parent Feature Issue` and matching `Stories Enabled` parents.
+- If feature/story triangle coverage defers a layer, include an explicit follow-up issue reference in the same line.
 - Do not add networked features, telemetry, cloud sync, or external data processing.
 - Do not commit raw bank data, local databases, backups, or unsanitized fixtures.
 

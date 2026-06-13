@@ -6,7 +6,7 @@ How to use:
 
 - Create one GitHub issue per story using `.github/ISSUE_TEMPLATE/story.yml`.
 - Copy the corresponding section below into the form fields.
-- Replace all `#TBD` test references with real issue numbers.
+- Real test issue references are already included in each story section.
 
 ## Story 1: [F4.1-S1] Monthly totals data contract
 
