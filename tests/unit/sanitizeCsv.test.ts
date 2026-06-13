@@ -9,7 +9,7 @@ describe("sanitizeFixtureCsv", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-sanitize-"));
     const outputPath = join(tempDir, "sanitized.csv");
     const mapPath = join(tempDir, "sanitization-map.json");
-    const inputPath = join(process.cwd(), "data", "local", "Transaksjonsliste-29-05-25-29-05-26.csv");
+    const inputPath = join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-05-synthetic.csv");
 
     const firstRun = sanitizeFixtureCsv({
       inputPath,
@@ -35,7 +35,7 @@ describe("sanitizeFixtureCsv", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-sanitize-"));
     const outputPath = join(tempDir, "sanitized.csv");
     const mapPath = join(tempDir, "sanitization-map.json");
-    const inputPath = join(process.cwd(), "data", "local", "Transaksjonsliste-29-05-25-29-05-26.csv");
+    const inputPath = join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-05-synthetic.csv");
 
     sanitizeFixtureCsv({
       inputPath,
