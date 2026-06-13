@@ -25,3 +25,4 @@
 
 # Sanitizer map (local only)
 local/sanitization-map.json
+/node_modules
