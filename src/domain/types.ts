@@ -31,3 +31,23 @@ export interface ImportJob {
   startedAtIso: string;
   finishedAtIso?: string;
 }
+
+export interface MonthlyTotal {
+  /** Calendar month in YYYY-MM format, e.g. "2026-05". */
+  yearMonth: string;
+  totalMinor: number;
+}
+
+export type ForecastMethod = "moving-average-3m" | "fallback-zero";
+
+export interface ForecastEntry {
+  /** Calendar month in YYYY-MM format, e.g. "2026-06". */
+  yearMonth: string;
+  projectedMinor: number;
+  method: ForecastMethod;
+}
+
+export interface ForecastResult {
+  entries: ForecastEntry[];
+  usedFallback: boolean;
+}
