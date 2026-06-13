@@ -143,11 +143,33 @@ Out of scope for the first milestone unless the user explicitly changes scope:
 - Keep fixtures deterministic and representative of Norwegian formats so results are reproducible across LLM iterations.
 - Consider any change complete only when relevant test suites pass and acceptance criteria are demonstrably covered.
 
+## Test Automation Triangle Policy
+
+- Follow a test automation triangle with a broad unit base, a narrower integration layer, and a focused Playwright end-to-end layer.
+- Default test layering for implementation issues:
+	- Unit tests for pure logic, transformation, parsing, normalization, validation, and deterministic calculation behavior.
+	- Integration tests for cross-module workflows, persistence contracts, import-to-ledger behavior, IPC boundaries, and fixture-driven data contracts.
+	- Playwright end-to-end tests for critical user journeys only, including flows that span multiple layers and cannot be trusted through lower layers alone.
+- Do not use Playwright tests as a substitute for unit or integration coverage when lower-level tests can validate behavior more cheaply and deterministically.
+- Every Story and Feature planning issue must explicitly state how unit, integration, and Playwright coverage will be addressed.
+- If one layer is intentionally excluded for a scoped issue, the issue must state why and link a follow-up test issue where applicable.
+
 ## Change Management
 
 - Preserve a clear path for future local OCR or local ML, but do not let speculative extensibility complicate the first implementation.
 - If a change alters architecture, schema boundaries, or privacy posture, update the planning documents in the same work.
 - If a feature request conflicts with these instructions, surface the conflict explicitly and resolve it through a documented decision rather than silently drifting the architecture.
+
+## Available Tooling
+
+- GitHub CLI (`gh`) is available in the terminal for all GitHub operations (issues, PRs, labels, releases, etc.).
+- Prefer the GitHub MCP tools for structured issue/PR creation and reading when available, but fall back to `gh` for any operations not covered by MCP tools.
+
+## Agent Instruction Entry Points
+
+- `.github/copilot-instructions.md` is the repository-wide policy and architecture source of truth.
+- `AGENTS.md` exists as a short execution-time entrypoint for Copilot cloud agent with the fastest path to commands, architecture map, and issue handoff expectations.
+- Keep the two files aligned. Put durable policy, scope, and quality rules here. Put concise task-start guidance in `AGENTS.md` so the agent can consume both without duplicating the full policy document.
 
 ## Planning Signal Discipline
 

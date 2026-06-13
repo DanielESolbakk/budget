@@ -101,6 +101,89 @@ jobs:
               return Boolean(normalized) && !/^(none|n\/a|not applicable)$/i.test(normalized);
             }
 
+            function requireMeaningfulSection(heading, customMessage = null) {
+              const sectionValue = getSectionValue(body, heading);
+              if (!hasMeaningfulText(sectionValue)) {
+                problems.push(customMessage || `${heading} must be present and contain meaningful implementation guidance.`);
+              }
+              return sectionValue;
+            }
+
+            function hasKeyword(value, pattern) {
+              return new RegExp(pattern, "i").test(String(value || ""));
+            }
+
+            function enforceTriangleCoverage(sectionValue, contextLabel) {
+              const hasUnit = hasKeyword(sectionValue, "\\bunit\\b");
+              const hasIntegration = hasKeyword(sectionValue, "\\bintegration\\b");
+              const hasPlaywright = hasKeyword(sectionValue, "\\bplaywright\\b|\\be2e\\b|end-to-end");
+
+              if (!hasUnit || !hasIntegration || !hasPlaywright) {
+                problems.push(`${contextLabel} must explicitly cover unit, integration, and Playwright/end-to-end expectations.`);
+              }
+            }
+
+            function extractTestLevel(issueData) {
+              return normalizeValue(getSectionValue(issueData.body || "", "Test Level"));
+            }
+
+            function layerDeferredWithFollowUp(sectionValue, layerPattern) {
+              const lines = String(sectionValue || "").split(/\r?\n/);
+              return lines.some((line) =>
+                hasKeyword(line, layerPattern) &&
+                hasKeyword(line, "defer|follow[- ]?up|later|tracked|optional|separate") &&
+                parseIssueReferences(line).length > 0
+              );
+            }
+
+            function linkedTestsContainLevel(linkedTests, levelPattern) {
+              return linkedTests.some((linkedTest) => hasKeyword(extractTestLevel(linkedTest), levelPattern));
+            }
+
+            function enforceTriangleLinkedTestCoverage(sectionValue, linkedTests, contextLabel) {
+              if (linkedTests.length === 0) {
+                return;
+              }
+
+              const layerChecks = [
+                {
+                  name: "unit",
+                  sectionPattern: "\\bunit\\b",
+                  levelPattern: "^unit$"
+                },
+                {
+                  name: "integration",
+                  sectionPattern: "\\bintegration\\b",
+                  levelPattern: "^integration$"
+                },
+                {
+                  name: "playwright/end-to-end",
+                  sectionPattern: "\\bplaywright\\b|\\be2e\\b|end-to-end",
+                  levelPattern: "^end-to-end$|^end to end$"
+                }
+              ];
+
+              for (const layerCheck of layerChecks) {
+                if (!hasKeyword(sectionValue, layerCheck.sectionPattern)) {
+                  continue;
+                }
+
+                const hasMatchingTest = linkedTestsContainLevel(linkedTests, layerCheck.levelPattern);
+                if (hasMatchingTest) {
+                  continue;
+                }
+
+                const deferredWithFollowUp = layerDeferredWithFollowUp(sectionValue, layerCheck.sectionPattern);
+                if (deferredWithFollowUp) {
+                  continue;
+                }
+
+                problems.push(
+                  `${contextLabel} declares ${layerCheck.name} coverage, but linked test issues do not include a matching Test Level. Add a matching linked test issue or defer this layer with a follow-up issue reference (for example #123).`
+                );
+              }
+            }
+
             function parseIssueReferences(value) {
               const matches = [...String(value || "").matchAll(/(?:#|\/issues\/)(\d+)/gi)];
               return [...new Set(matches.map((match) => Number(match[1])))]
@@ -287,6 +370,61 @@ jobs:
 
             const problems = [];
 
+            if (issueType === "story") {
+              requireMeaningfulSection(
+                "Implementation Entry Points",
+                "Implementation Entry Points must identify likely files or modules so the story is self-contained for implementation."
+              );
+              requireMeaningfulSection(
+                "Validation Commands",
+                "Validation Commands must list the narrowest commands to verify the story slice."
+              );
+              requireMeaningfulSection(
+                "Fixture Or Example Inputs",
+                "Fixture Or Example Inputs must name a sanitized or synthetic fixture, or explicitly explain why none is needed."
+              );
+              requireMeaningfulSection(
+                "Out Of Scope",
+                "Out Of Scope must call out adjacent work that should not be pulled into the story."
+              );
+              const testingRequirements = requireMeaningfulSection(
+                "Testing Requirements",
+                "Testing Requirements must be present and explicit for story implementation."
+              );
+              enforceTriangleCoverage(testingRequirements, "Testing Requirements");
+            }
+
+            if (issueType === "feature") {
+              requireMeaningfulSection(
+                "Implementation Entry Points",
+                "Implementation Entry Points must identify the likely first-slice files or modules for the feature."
+              );
+              requireMeaningfulSection(
+                "Validation Commands",
+                "Validation Commands must list the commands expected to validate the feature slice."
+              );
+              requireMeaningfulSection(
+                "Fixture Or Example Inputs",
+                "Fixture Or Example Inputs must point to the fixture set or explicitly explain why no fixture is needed."
+              );
+              requireMeaningfulSection(
+                "Out Of Scope",
+                "Out Of Scope must state what this feature intentionally does not cover in the current slice."
+              );
+              const triangleCoverage = requireMeaningfulSection(
+                "Test Automation Triangle Coverage",
+                "Test Automation Triangle Coverage must state the intended unit, integration, and Playwright coverage for this feature."
+              );
+              enforceTriangleCoverage(triangleCoverage, "Test Automation Triangle Coverage");
+            }
+
+            if (issueType === "test") {
+              requireMeaningfulSection(
+                "Implementation Entry Points",
+                "Implementation Entry Points must identify the expected test files, support modules, and validation path."
+              );
+            }
+
             if (issueType === "epic") {
               const epicFeatures = await validateMultiReference("Features In This Epic", ["feature"]);
               const epicTests = await validateMultiReference("Test Issues In This Epic", ["test"]);
@@ -308,6 +446,7 @@ jobs:
             if (issueType === "feature") {
               const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
               const featureTests = await validateMultiReference("Test Issues In This Feature", ["test"]);
+              const triangleCoverage = getSectionValue(body, "Test Automation Triangle Coverage");
 
               if (parentEpicIssue) {
                 for (const testIssue of featureTests) {
@@ -332,6 +471,12 @@ jobs:
                     problems.push(`#${testIssue.number} points to Parent Feature Issue #${testFeatureReference}, but this feature is #${issueNumber}.`);
                   }
                 }
+
+                enforceTriangleLinkedTestCoverage(
+                  triangleCoverage,
+                  featureTests,
+                  "Test Automation Triangle Coverage"
+                );
               }
             }
 
@@ -340,6 +485,7 @@ jobs:
               const parentFeatureIssue = await validateSingleReference("Parent Feature Issue", ["feature"]);
               const linkedEnablers = await validateMultiReference("Linked Enabler Issues", ["enabler"]);
               const linkedTests = await validateMultiReference("Linked Test Issues", ["test"]);
+              const testingRequirements = getSectionValue(body, "Testing Requirements");
               const linkedEnablerIds = new Set(linkedEnablers.map((linkedEnabler) => linkedEnabler.number));
 
               if (parentEpicIssue && parentFeatureIssue) {
@@ -391,6 +537,12 @@ jobs:
                   }
                 }
               }
+
+              enforceTriangleLinkedTestCoverage(
+                testingRequirements,
+                linkedTests,
+                "Testing Requirements"
+              );
             }
 
             if (issueType === "enabler") {

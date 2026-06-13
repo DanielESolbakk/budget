@@ -97,6 +97,21 @@ body:
       required: true
 
   - type: textarea
+    id: implementation_entry_points
+    attributes:
+      label: Implementation Entry Points
+      description: Identify the expected test files, supporting modules, and validation commands for this test work.
+      placeholder: |
+        Likely files to change:
+        - tests/integration/...
+        - src/tooling/fixtures/...
+
+        Validation commands:
+        - npm run test:integration
+    validations:
+      required: true
+
+  - type: textarea
     id: scenarios
     attributes:
       label: Test Scenarios

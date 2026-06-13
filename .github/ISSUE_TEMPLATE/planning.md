@@ -6,18 +6,21 @@ labels: ""
 assignees: ""
 ---
 
-Catalog key: 
+Catalog key:
 Type: (Epic | Feature | Enabler | Test | Story)
 Source: docs/ways-of-work/plan/budget-planner/issue-catalog.json
 
 Description:
+
 - One-sentence summary of intent and acceptance criteria.
 
 Acceptance Criteria (use AC IDs):
+
 - [ ] AC-1: ...
 - [ ] AC-2: ...
 
 Acceptance Criteria To Test Mapping:
+
 - AC-1 -> Unit/Integration/E2E: ...
 - AC-2 -> Unit/Integration/E2E: ...
 
@@ -26,24 +29,54 @@ Parent keys: E
 ## Planning Fields
 
 ### Parent Epic Issue
-# (e.g. #26)
+
+Example: `#26`
 
 ### Parent Feature Issue
-# (e.g. #27)
+
+Example: `#27`
 
 ### Parent Story Or Enabler Issue
-# (e.g. #40) or _None_
+
+Example: `#40` or `_None_`
 
 ### Related Planning Issues
-- #<number> — short scope note (link related features/enablers/tests)
+
+- #123 — short scope note (link related features/enablers/tests)
+
+### Implementation Entry Points
+
+- Likely files to change: ...
+- Files that should usually not change: ...
+
+### Validation Commands
+
+- npm run ...
+
+### Fixture Or Example Inputs
+
+- tests/fixtures/... or _None_
+
+### Test Automation Triangle Coverage
+
+- Unit: ...
+- Integration: ...
+- Playwright: ...
+
+### Out Of Scope
+
+- Name adjacent work that should not be pulled into this issue.
 
 ### Test Scope Type
+
 (Integration / End-to-end / Unit / Smoke / Other)
 
 ### Test Level
+
 (Integration / Unit / End-to-end / Smoke)
 
 Notes:
+
 - Any additional details, fixtures, or references.
 
 Please do not remove or rename the headings above — our automation requires them to be present and to include issue-number references where indicated.

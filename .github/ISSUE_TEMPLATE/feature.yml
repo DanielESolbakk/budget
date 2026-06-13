@@ -54,6 +54,45 @@ body:
       required: true
 
   - type: textarea
+    id: implementation_entry_points
+    attributes:
+      label: Implementation Entry Points
+      description: Identify the likely modules, files, and boundaries for the first implementation slice.
+      placeholder: |
+        Likely files to change:
+        - src/app/...
+        - src/domain/...
+        - tests/integration/...
+
+        Files that should usually not change:
+        - package.json
+        - domain glossary
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation_commands
+    attributes:
+      label: Validation Commands
+      description: Provide the narrowest commands that validate the feature slice.
+      placeholder: |
+        - npm run test:integration
+        - npm run test:e2e
+    validations:
+      required: true
+
+  - type: textarea
+    id: fixtures_and_examples
+    attributes:
+      label: Fixture Or Example Inputs
+      description: Point to the sanitized or synthetic fixtures expected for this feature.
+      placeholder: |
+        - tests/fixtures/synthetic/...
+        - None. UI shell only.
+    validations:
+      required: true
+
+  - type: textarea
     id: dependencies
     attributes:
       label: Dependencies
@@ -83,6 +122,29 @@ body:
       placeholder: |
         - AC-1 -> Unit: ..., Integration: ..., E2E: ...
         - AC-2 -> Unit: ..., Integration: ..., E2E: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: triangle_coverage
+    attributes:
+      label: Test Automation Triangle Coverage
+      description: Explain planned unit, integration, and Playwright coverage for this feature slice.
+      placeholder: |
+        - Unit: covered by linked story tests (#401, #402)
+        - Integration: covered by #450
+        - Playwright: deferred to #451 for dashboard flow
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out Of Scope
+      description: State what this feature intentionally does not cover in the current slice.
+      placeholder: |
+        - No live bank sync.
+        - No charting redesign.
     validations:
       required: true
 

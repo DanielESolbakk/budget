@@ -53,14 +53,52 @@ body:
       required: true
 
   - type: textarea
+    id: implementation_entry_points
+    attributes:
+      label: Implementation Entry Points
+      description: Identify the most likely files, modules, or folders to touch so the issue is self-contained for Copilot.
+      placeholder: |
+        Likely files to change:
+        - src/domain/import/...
+        - tests/integration/...
+
+        Files that should usually not change:
+        - src/domain/types.ts
+        - docs/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation_commands
+    attributes:
+      label: Validation Commands
+      description: List the narrowest commands that should be run before widening scope.
+      placeholder: |
+        - npm run test:unit
+        - npm run test:integration
+    validations:
+      required: true
+
+  - type: textarea
+    id: fixtures_and_examples
+    attributes:
+      label: Fixture Or Example Inputs
+      description: Point to the sanitized or synthetic fixture, or explain why no fixture is needed.
+      placeholder: |
+        - tests/fixtures/synthetic/...
+        - None. Pure logic change with in-memory inputs only.
+    validations:
+      required: true
+
+  - type: textarea
     id: testing_requirements
     attributes:
       label: Testing Requirements
-      description: Include unit, integration, and end-to-end expectations as applicable.
+      description: Include explicit unit, integration, and Playwright end-to-end expectations.
       placeholder: |
-        - [ ] Unit: ...
-        - [ ] Integration: ...
-        - [ ] E2E: ...
+        - [ ] Unit: covered by #401
+        - [ ] Integration: covered by #402
+        - [ ] Playwright: deferred to #403 for UI slice
     validations:
       required: true
 
@@ -93,6 +131,17 @@ body:
       placeholder: |
         Blocked by:
         Related to:
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out Of Scope
+      description: Name adjacent work that should not be pulled into this issue.
+      placeholder: |
+        - Do not redesign renderer architecture.
+        - Do not add new persistence schema unless explicitly required.
     validations:
       required: true
 
