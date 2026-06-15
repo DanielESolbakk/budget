@@ -12,6 +12,7 @@ on:
 
 permissions:
   issues: write
+  contents: read
 
 jobs:
   planning-validate-fast:
@@ -23,10 +24,13 @@ jobs:
 
     steps:
       - name: Skip bot-triggered runs
-        if: github.event.sender && github.event.sender.login == 'github-actions[bot]'
+        if: github.event.sender.type == 'Bot'
         run: |
           echo "Skipping bot-triggered run to avoid feedback loops."
           exit 0
+
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Determine issue type
         id: issue-type
@@ -34,14 +38,14 @@ jobs:
         with:
           script: |
             const getIssueType = require('./.github/scripts/getIssueType.js').getIssueType;
-            
+
             const issue = context.payload.issue;
             if (!issue) return;
-            
+
             const labels = (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
             const title = issue.title || '';
             const type = getIssueType(labels, title);
-            
+
             core.setOutput('type', type || 'unknown');
 
       - name: Fast structure checks (headings, basic refs)
@@ -49,24 +53,24 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const { checkBasicStructure, parseIssueReferences } = require('./.github/scripts/planningChecks.js');
+            const { checkBasicStructure } = require('./.github/scripts/planningChecks.js');
             const getIssueType = require('./.github/scripts/getIssueType.js').getIssueType;
-            
+
             const issue = context.payload.issue;
             if (!issue) return;
-            
+
             const body = issue.body || '';
             const labels = (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
             const title = issue.title || '';
             const type = getIssueType(labels, title);
-            
+
             if (!type) {
               core.setOutput('has_problems', 'false');
               return;
             }
-            
+
             const missing = checkBasicStructure(body, type);
-            
+
             if (missing.length) {
               core.setOutput('has_problems', 'true');
               core.notice(`Fast check found ${missing.length} issues: ${missing.join('; ')}`);
@@ -82,7 +86,7 @@ jobs:
 
     steps:
       - name: Skip bot-triggered runs
-        if: github.event.sender && github.event.sender.login == 'github-actions[bot]'
+        if: github.event.sender.type == 'Bot'
         run: |
           echo "Skipping bot-triggered run."
           exit 0
@@ -96,28 +100,28 @@ jobs:
           script: |
             const { checkBasicStructure, parseIssueReferences, getSectionValue, normalizeValue, hasMeaningfulText } = require('./.github/scripts/planningChecks.js');
             const getIssueType = require('./.github/scripts/getIssueType.js').getIssueType;
-            
+
             const marker = "<!-- planning-validation-marker -->";
             const invalidLabel = "planning-invalid";
             const issue = context.payload.issue;
             if (!issue) return;
-            
+
             const body = issue.body || '';
             const labels = (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
             const title = issue.title || '';
             const { owner, repo } = context.repo;
             const issueNumber = issue.number;
-            
+
             const issueType = getIssueType(labels, title);
             if (!issueType) return;
-            
+
             const problems = [];
             const issueCache = new Map();
-            
-            // Basic structure checks (reuse fast-check results, or re-run for completeness)
+
+            // Basic structure checks
             const basicProblems = checkBasicStructure(body, issueType);
             problems.push(...basicProblems);
-            
+
             // Helper: Load issue with cache
             async function loadIssue(targetIssueNumber, heading) {
               if (issueCache.has(targetIssueNumber)) {
@@ -135,36 +139,34 @@ jobs:
                 return null;
               }
             }
-            
-            // Helper: Get labels from issue data
+
             function getLabelNames(issueData) {
               return (issueData.labels || []).map(l => (typeof l === 'string' ? l : l.name));
             }
-            
-            // Validate single reference (epic, feature, etc.)
+
             async function validateSingleReference(heading, allowedLabels, required = true) {
               const rawValue = getSectionValue(body, heading);
               const references = parseIssueReferences(rawValue);
-              
+
               if (references.length === 0) {
                 if (required) {
                   problems.push(`${heading} must include an issue reference like #123.`);
                 }
                 return null;
               }
-              
+
               if (references.length > 1) {
                 problems.push(`${heading} must reference exactly one issue.`);
               }
-              
+
               const targetIssue = await loadIssue(references[0], heading);
               if (!targetIssue) return null;
-              
+
               if (targetIssue.pull_request) {
                 problems.push(`${heading} must reference an issue, not a pull request.`);
                 return null;
               }
-              
+
               if (allowedLabels.length > 0) {
                 const targetLabels = getLabelNames(targetIssue);
                 const isAllowed = allowedLabels.some(labelName => targetLabels.includes(labelName));
@@ -173,32 +175,31 @@ jobs:
                   problems.push(`${heading} must reference a ${allowedLabels.join(" or ")} issue, but #${targetIssue.number} has ${labelDesc}.`);
                 }
               }
-              
+
               return targetIssue;
             }
-            
-            // Validate multiple references (tests, enablers, etc.)
+
             async function validateMultiReference(heading, allowedLabels, required = true) {
               const rawValue = getSectionValue(body, heading);
               const references = parseIssueReferences(rawValue);
-              
+
               if (references.length === 0) {
                 if (required) {
                   problems.push(`${heading} must include at least one issue reference.`);
                 }
                 return [];
               }
-              
+
               const resolvedIssues = [];
               for (const reference of references) {
                 const targetIssue = await loadIssue(reference, heading);
                 if (!targetIssue) continue;
-                
+
                 if (targetIssue.pull_request) {
                   problems.push(`${heading} must reference issues, not pull requests.`);
                   continue;
                 }
-                
+
                 if (allowedLabels.length > 0) {
                   const targetLabels = getLabelNames(targetIssue);
                   const isAllowed = allowedLabels.some(labelName => targetLabels.includes(labelName));
@@ -208,49 +209,49 @@ jobs:
                     continue;
                   }
                 }
-                
+
                 resolvedIssues.push(targetIssue);
               }
-              
+
               return resolvedIssues;
             }
-            
+
             // Type-specific validation
             if (issueType === "epic") {
-              const epicFeatures = await validateMultiReference("Features In This Epic", ["feature"]);
-              const epicTests = await validateMultiReference("Test Issues In This Epic", ["test"]);
-              const epicEnablers = await validateMultiReference("Enablers In This Epic", ["enabler"], false);
+              await validateMultiReference("Features In This Epic", ["feature"]);
+              await validateMultiReference("Test Issues In This Epic", ["test"]);
+              await validateMultiReference("Enablers In This Epic", ["enabler"], false);
             }
-            
+
             if (issueType === "feature") {
-              const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
-              const featureTests = await validateMultiReference("Test Issues In This Feature", ["test"]);
+              await validateSingleReference("Parent Epic Issue", ["epic"]);
+              await validateMultiReference("Test Issues In This Feature", ["test"]);
             }
-            
+
             if (issueType === "story") {
-              const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
-              const parentFeatureIssue = await validateSingleReference("Parent Feature Issue", ["feature"]);
-              const linkedTests = await validateMultiReference("Linked Test Issues", ["test"]);
-              const linkedEnablers = await validateMultiReference("Linked Enabler Issues", ["enabler"]);
+              await validateSingleReference("Parent Epic Issue", ["epic"]);
+              await validateSingleReference("Parent Feature Issue", ["feature"]);
+              await validateMultiReference("Linked Test Issues", ["test"]);
+              await validateMultiReference("Linked Enabler Issues", ["enabler"]);
             }
-            
+
             if (issueType === "enabler") {
-              const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
-              const parentFeatureIssue = await validateSingleReference("Parent Feature Issue", ["feature"]);
-              const enabledStories = await validateMultiReference("Stories Enabled", ["user-story"]);
+              await validateSingleReference("Parent Epic Issue", ["epic"]);
+              await validateSingleReference("Parent Feature Issue", ["feature"]);
+              await validateMultiReference("Stories Enabled", ["user-story"]);
             }
-            
+
             if (issueType === "test") {
-              const parentEpicIssue = await validateSingleReference("Parent Epic Issue", ["epic"]);
+              await validateSingleReference("Parent Epic Issue", ["epic"]);
               const scopeType = normalizeValue(getSectionValue(body, "Test Scope Type"));
               if (!scopeType) {
                 problems.push("Test Scope Type must be selected.");
               }
             }
-            
+
             // Label and comment management
             const actualLabels = (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name));
-            
+
             if (problems.length) {
               if (!actualLabels.includes(invalidLabel)) {
                 try {
@@ -262,8 +263,7 @@ jobs:
                   core.warning(`Failed to add label to #${issueNumber}: ${e.message}`);
                 }
               }
-              
-              // Dedupe and post/update single marker comment
+
               try {
                 const comments = await github.rest.issues.listComments({
                   owner, repo, issue_number: issueNumber, per_page: 100,
@@ -271,23 +271,22 @@ jobs:
                 const markerComments = comments.data.filter(c =>
                   c.body && c.body.includes(marker)
                 );
-                
+
                 if (markerComments.length === 0) {
                   const comment = `${marker}\n**Planning Validation Failed**\n\n${problems.map(p => `- ${p}`).join('\n')}\n\nPlease update the issue to match the planning template: .github/ISSUE_TEMPLATE/`;
                   await github.rest.issues.createComment({
                     owner, repo, issue_number: issueNumber, body: comment,
                   });
                 } else {
-                  // Update first comment, delete others
                   const sorted = markerComments.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
                   const primaryComment = sorted[0];
                   const toDelete = sorted.slice(1);
-                  
+
                   const newBody = `${marker}\n**Planning Validation Failed**\n\n${problems.map(p => `- ${p}`).join('\n')}\n\nPlease update the issue to match the planning template: .github/ISSUE_TEMPLATE/`;
                   await github.rest.issues.updateComment({
                     owner, repo, comment_id: primaryComment.id, body: newBody,
                   });
-                  
+
                   for (const oldComment of toDelete) {
                     try {
                       await github.rest.issues.deleteComment({
@@ -302,7 +301,6 @@ jobs:
                 core.warning(`Failed to manage comments for #${issueNumber}: ${e.message}`);
               }
             } else {
-              // No problems: remove label and comments
               if (actualLabels.includes(invalidLabel)) {
                 try {
                   await github.rest.issues.removeLabel({
@@ -314,8 +312,7 @@ jobs:
                   }
                 }
               }
-              
-              // Delete all marker comments
+
               try {
                 const comments = await github.rest.issues.listComments({
                   owner, repo, issue_number: issueNumber, per_page: 100,
@@ -323,7 +320,7 @@ jobs:
                 const markerComments = comments.data.filter(c =>
                   c.body && c.body.includes(marker)
                 );
-                
+
                 for (const markerComment of markerComments) {
                   try {
                     await github.rest.issues.deleteComment({
