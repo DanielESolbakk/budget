@@ -33,7 +33,10 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "Lint Typecheck Tests"
+            "context": "CI Fast"
+          },
+          {
+            "context": "CI Full"
           },
           {
             "context": "PR Guardrails"

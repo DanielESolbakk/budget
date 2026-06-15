@@ -5,6 +5,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+  merge_group:
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,12 +14,55 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: Lint Typecheck Tests
+  detect-changes:
+    name: Determine Full CI Scope
+    runs-on: ubuntu-latest
+    outputs:
+      run_full: ${{ steps.scope.outputs.run_full }}
+
+    steps:
+      - name: Determine if full CI should run
+        id: scope
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName !== "pull_request") {
+              core.setOutput("run_full", "true");
+              core.info("Full CI enabled for non-PR event.");
+              return;
+            }
+
+            const pr = context.payload.pull_request;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const shouldRunFull = files.some((file) => {
+              const path = String(file.filename || "");
+              return (
+                path.startsWith("src/") ||
+                path.startsWith("tests/") ||
+                path.startsWith("scripts/") ||
+                path === "package.json" ||
+                path === "package-lock.json" ||
+                path === "tsconfig.json" ||
+                /^vitest.*\.config\.ts$/i.test(path) ||
+                path === ".github/workflows/ci.yml"
+              );
+            });
+
+            core.setOutput("run_full", shouldRunFull ? "true" : "false");
+            core.info(`Full CI ${shouldRunFull ? "enabled" : "skipped"} based on changed files.`);
+
+  ci-fast:
+    name: CI Fast
     runs-on: ubuntu-latest
 
     steps:
@@ -66,6 +111,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
         if: steps.detect.outputs.has_package == 'true'
@@ -79,7 +125,7 @@ jobs:
       - name: Validate required npm scripts
         if: steps.detect.outputs.has_package == 'true'
         run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const required=['lint','typecheck','test:unit','test:integration','test:e2e','verify:no-network']; const missing=required.filter((name)=>typeof scripts[name] !== 'string' || !scripts[name].trim()); if (missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const required=['lint','typecheck','test:unit']; const missing=required.filter((name)=>typeof scripts[name] !== 'string' || !scripts[name].trim()); if (missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
 
       - name: Lint
         if: steps.detect.outputs.has_package == 'true'
@@ -92,6 +138,50 @@ jobs:
       - name: Unit tests
         if: steps.detect.outputs.has_package == 'true'
         run: npm run test:unit
+
+      - name: No package marker
+        if: steps.detect.outputs.has_package != 'true'
+        run: echo "No package.json found. Docs-only and governance changes may proceed until scaffolding is created."
+
+  ci-full:
+    name: CI Full
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.run_full == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect Node project
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "has_package=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_package=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.detect.outputs.has_package == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.detect.outputs.has_package == 'true'
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Validate required npm scripts
+        if: steps.detect.outputs.has_package == 'true'
+        run: |
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const required=['test:integration','test:e2e','verify:no-network']; const missing=required.filter((name)=>typeof scripts[name] !== 'string' || !scripts[name].trim()); if (missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
 
       - name: Integration tests
         if: steps.detect.outputs.has_package == 'true'
@@ -107,7 +197,7 @@ jobs:
 
       - name: No package marker
         if: steps.detect.outputs.has_package != 'true'
-        run: echo "No package.json found. Docs-only and governance changes may proceed until scaffolding is created."
+        run: echo "No package.json found. Full CI checks are skipped."
 
   pr-guardrails:
     name: PR Guardrails

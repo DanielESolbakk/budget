@@ -12,7 +12,11 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
+      contents: read
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Check issue or PR readiness via planning-lint and PR metadata
         uses: actions/github-script@v6
         with:
@@ -63,6 +67,19 @@ jobs:
               const match = String(value || '').toUpperCase().match(/AC[-_\s]?(\d+)/i);
               if (!match) return null;
               return `AC-${match[1]}`;
+            };
+
+            const parseIssueReferences = (value) => {
+              const refs = new Set();
+              const text = String(value || '');
+              const regex = /(?:^|[\s,(])(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#(\d+)\b/g;
+
+              let match;
+              while ((match = regex.exec(text)) !== null) {
+                refs.add(Number(match[1]));
+              }
+
+              return [...refs];
             };
 
             const extractPrSection = (markdown, heading) => {
@@ -154,10 +171,8 @@ jobs:
                 const checkboxMatches = (regex) => checkedItems.some(t => regex.test(t));
 
                 // Find referenced issue numbers in the PR body (#123)
-                const refRe = /#(\d+)/g;
-                const referenced = new Set();
-                let m;
-                while ((m = refRe.exec(prBody)) !== null) referenced.add(Number(m[1]));
+                const referencedNumbers = parseIssueReferences(prBody);
+                const referenced = new Set(referencedNumbers);
                 const referencedIssueData = [];
 
                 const linkedPlanningSection = extractPrSection(prBody, 'Linked Planning Issue');
