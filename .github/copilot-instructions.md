@@ -133,6 +133,12 @@ Avoid inventing near-duplicates for the same concept.
 - `AGENTS.md` exists as a short execution-time entrypoint for Copilot cloud agent with the fastest path to commands, architecture map, and issue handoff expectations.
 - Keep the two files aligned. Put durable policy, scope, and quality rules here. Put concise task-start guidance in `AGENTS.md` so the agent can consume both without duplicating the full policy document.
 
+## Assigned Copilot Operational Guidance
+
+- For PR AC mapping, default to the primary planning issue as the AC source unless the PR explicitly requests aggregate scope across additional planning issues.
+- Permission mismatch can happen: an agent may be able to comment while being unable to edit issue/PR body fields. When this occurs, post one concise owner action checklist and stop repeating retries.
+- Avoid looped remediation comments. Repeat only when validation output changed, permissions changed, or new evidence was collected.
+
 ## Planning Issue Body Format (Linter Enforced)
 
 **All issue references within `###` section headings must use bullet-point format (`- #NUMBER`):**

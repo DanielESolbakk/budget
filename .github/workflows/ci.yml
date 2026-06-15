@@ -216,6 +216,31 @@ jobs:
               return match ? match[2].trim() : "";
             }
 
+            function extractSections(markdown, heading) {
+              const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const pattern = new RegExp(`(^|\\n)##\\s+${escaped}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "ig");
+              const sections = [];
+              let match;
+              while ((match = pattern.exec(String(markdown || ""))) !== null) {
+                sections.push(String(match[2] || "").trim());
+              }
+              return sections;
+            }
+
+            function parseChangeTypes(sectionBody) {
+              const normalized = String(sectionBody || "").toLowerCase();
+              const definitions = [
+                { key: "feature", pattern: /(^|\n)\s*[-*]\s*\[[xX]\]\s*feature\s*($|\n)/i },
+                { key: "bug fix", pattern: /(^|\n)\s*[-*]\s*\[[xX]\]\s*bug\s*fix\s*($|\n)/i },
+                { key: "refactor", pattern: /(^|\n)\s*[-*]\s*\[[xX]\]\s*refactor\s*($|\n)/i },
+                { key: "chore or docs", pattern: /(^|\n)\s*[-*]\s*\[[xX]\]\s*chore\s*or\s*docs\s*($|\n)/i },
+              ];
+              const selected = definitions
+                .filter((entry) => entry.pattern.test(normalized))
+                .map((entry) => entry.key);
+              return selected;
+            }
+
             function parseIssueRefs(value) {
               return [...new Set(
                 [...String(value || "").matchAll(/(?:#|\/issues\/)(\d+)/gi)]
@@ -251,15 +276,17 @@ jobs:
               /(\.test\.|\.spec\.)/i.test(file.filename)
             );
 
-            const changeTypeSelections = [
-              body.includes("- [x] feature"),
-              body.includes("- [x] bug fix"),
-              body.includes("- [x] refactor"),
-              body.includes("- [x] chore or docs"),
-            ].filter(Boolean).length;
+            const changeTypeSections = extractSections(bodyRaw, "Change Type");
+            const selectedChangeTypes = changeTypeSections.length > 0
+              ? parseChangeTypes(changeTypeSections[changeTypeSections.length - 1])
+              : parseChangeTypes(bodyRaw);
 
-            if (changeTypeSelections !== 1) {
-              core.setFailed("Select exactly one change type in the PR template.");
+            if (selectedChangeTypes.length !== 1) {
+              const diagnosticSection = (changeTypeSections[changeTypeSections.length - 1] || "").split(/\r?\n/).slice(0, 12).join(" | ");
+              core.setFailed(
+                `Select exactly one change type in the PR template. Detected selections: ${selectedChangeTypes.length ? selectedChangeTypes.join(", ") : "none"}. ` +
+                `Using the last 'Change Type' section for evaluation to avoid run-time body-state drift. Parsed section preview: ${diagnosticSection || "<missing section>"}`
+              );
               return;
             }
 
@@ -344,7 +371,7 @@ jobs:
             }
 
             const isBugByLabel = labels.includes("bug");
-            const isBugByTemplate = body.includes("- [x] bug fix");
+            const isBugByTemplate = selectedChangeTypes.includes("bug fix");
             const isBugByTitle = /\b(fix|bug|regress|regression|hotfix|defect)\b/i.test(title);
             const isBugByBody = /\b(bug\s*fix|regression|defect)\b/i.test(body);
             const isBugFix = isBugByLabel || isBugByTemplate || isBugByTitle || isBugByBody;

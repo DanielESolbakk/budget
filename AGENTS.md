@@ -11,10 +11,13 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Prefer the issue body, linked planning issue, and linked test issue as the primary task context.
 - Before writing any code, check the issue for open `Blocked by` dependencies. If any are still open, post a comment listing the blockers and stop — do not implement a partial subset silently.
 - Before writing any code, verify that every path listed under `Implementation Entry Points` exists in the workspace. If a required path is missing (e.g., `src/renderer/` does not exist), post a comment explaining what infrastructure is absent and stop. Do not silently implement only the feasible subset.
+- For AC mapping in PR bodies, treat the primary planning issue as the default source of AC IDs; only aggregate additional planning issues when explicitly requested.
 - Run the narrowest validation command that matches the touched slice before widening scope.
 - For planning issues, use template headings exactly and bullet refs as `- #NUMBER` in reference sections.
 - Keep enablers feature-scoped under current lint rules: one `Parent Feature Issue` and matching `Stories Enabled` parents.
 - If feature/story triangle coverage defers a layer, include an explicit follow-up issue reference in the same line.
+- If the agent can comment but cannot edit issue/PR body fields, post a single concise owner action checklist and stop retrying the same operation.
+- Avoid remediation loops: do not repeat near-identical comments unless new evidence, permissions, or validation output changed.
 - Do not add networked features, telemetry, cloud sync, or external data processing.
 - Do not commit raw bank data, local databases, backups, or unsanitized fixtures.
 
