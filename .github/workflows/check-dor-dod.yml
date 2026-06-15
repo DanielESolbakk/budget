@@ -21,8 +21,6 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const { parseIssueReferences } = require('./.github/scripts/planningChecks.js');
-            
             const payload = context.payload;
             const issue = payload.issue;
             const pr = payload.pull_request;
@@ -69,6 +67,19 @@ jobs:
               const match = String(value || '').toUpperCase().match(/AC[-_\s]?(\d+)/i);
               if (!match) return null;
               return `AC-${match[1]}`;
+            };
+
+            const parseIssueReferences = (value) => {
+              const refs = new Set();
+              const text = String(value || '');
+              const regex = /(?:^|[\s,(])(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#(\d+)\b/g;
+
+              let match;
+              while ((match = regex.exec(text)) !== null) {
+                refs.add(Number(match[1]));
+              }
+
+              return [...refs];
             };
 
             // Issues: rely on planning-lint label `planning-invalid`
