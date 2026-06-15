@@ -41,11 +41,14 @@ const expectedHeaders = [
 ];
 
 function isValidNorwegianDate(value: string): boolean {
-  if (!/^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
+  const dateMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value);
+  if (!dateMatch) {
     return false;
   }
 
-  const [day, month, year] = value.split(".").map((part) => Number(part));
+  const day = Number(dateMatch[1] ?? "0");
+  const month = Number(dateMatch[2] ?? "0");
+  const year = Number(dateMatch[3] ?? "0");
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
     date.getUTCFullYear() === year &&
@@ -110,10 +113,10 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
       nonNokRowCount += 1;
     }
 
-    const status = record["Status"].toUpperCase();
-    const undertype = record["Undertype"].toUpperCase();
-    const transactionType = record["Type"].toUpperCase();
-    const reference = record["Melding/KID/Fakt.nr"].toUpperCase();
+    const status = (record["Status"] ?? "").toUpperCase();
+    const undertype = (record["Undertype"] ?? "").toUpperCase();
+    const transactionType = (record["Type"] ?? "").toUpperCase();
+    const reference = (record["Melding/KID/Fakt.nr"] ?? "").toUpperCase();
 
     if (status === "RESERVENT" || status === "RESERVERT" || status === "RESERVERT" || undertype.includes("HOLDT")) {
       reservedRowCount += 1;
@@ -139,7 +142,7 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
       kidReferenceCount += 1;
     }
 
-    const merchantName = record["Beskrivelse"];
+    const merchantName = record["Beskrivelse"] ?? "";
     const merchantKey = normalizeMerchantKey(merchantName);
     const variants = merchantVariants.get(merchantKey) ?? new Set<string>();
     variants.add(merchantName);
