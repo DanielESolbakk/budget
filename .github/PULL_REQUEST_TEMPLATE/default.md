@@ -1,6 +1,24 @@
-# Definition of Done Checklist
+## Change Type
 
-When closing a planning issue, include this checklist in the PR description so reviewers and CI can verify delivery:
+Select exactly one:
+
+- [ ] feature
+- [ ] bug fix
+- [ ] refactor
+- [ ] chore or docs
+
+## Linked Planning Issue
+
+Primary planning issue: #
+Additional planning issues: (list or leave blank)
+
+## Summary
+
+<!--
+Describe the changes and why they are needed.
+-->
+
+## Definition of Done Checklist
 
 - [ ] Unit tests: added and passing
 - [ ] Integration tests: added and passing (or documented exception)
@@ -12,9 +30,7 @@ When closing a planning issue, include this checklist in the PR description so r
 - [ ] Every linked AC ID is mapped to automated test evidence in the PR body
 - [ ] If fixtures changed, attach verification artifacts (e.g., `verification-report.json`) or link the verification report in the PR
 
-Tip: link the planning issue using `Closes #<issue-number>` or `Refs #<issue-number>` in the PR body so traceability is recorded automatically.
-
-## Acceptance Criteria To Test Mapping (Required)
+## Acceptance Criteria to Test Mapping
 
 | AC ID | Criterion Summary | Automated Test Evidence |
 | --- | --- | --- |
@@ -26,3 +42,23 @@ Tip: link the planning issue using `Closes #<issue-number>` or `Refs #<issue-num
 Reason:
 
 Follow-up issue: #
+
+## Test Evidence
+
+Commands run and passing:
+
+- [ ] npm run lint
+- [ ] npm run typecheck
+- [ ] npm run test:unit
+- [ ] npm run test:integration
+- [ ] npm run test:e2e
+
+CI run link or artifact: (paste link here)
+
+## Bug Fix Regression Test (required for bug fixes)
+
+Regression test file(s): (leave blank if not a bug fix)
+
+What failed before this fix: (leave blank if not a bug fix)
+
+Why this test prevents recurrence: (leave blank if not a bug fix)
