@@ -65,6 +65,13 @@ jobs:
               return `AC-${match[1]}`;
             };
 
+            const extractPrSection = (markdown, heading) => {
+              const escaped = String(heading || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regex = new RegExp(`(^|\\n)##\\s+${escaped}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, 'i');
+              const match = String(markdown || '').match(regex);
+              return match ? String(match[2] || '').trim() : '';
+            };
+
             // Issues: rely on planning-lint label `planning-invalid`
             if (issue) {
               const issue_number = issue.number;
@@ -153,6 +160,38 @@ jobs:
                 while ((m = refRe.exec(prBody)) !== null) referenced.add(Number(m[1]));
                 const referencedIssueData = [];
 
+                const linkedPlanningSection = extractPrSection(prBody, 'Linked Planning Issue');
+                const primaryPlanningMatch = linkedPlanningSection.match(/Primary planning issue:\s*(.+)$/im);
+                const primaryPlanningRefs = parseIssueReferences(primaryPlanningMatch ? primaryPlanningMatch[1] : '');
+                const additionalPlanningMatch = linkedPlanningSection.match(/Additional planning issues:\s*(.+)$/im);
+                const additionalPlanningRefs = parseIssueReferences(additionalPlanningMatch ? additionalPlanningMatch[1] : '');
+                const aggregateAcScope = /(^|\n)\s*AC mapping scope\s*:\s*aggregate\b/i.test(linkedPlanningSection);
+
+                if (!linkedPlanningSection) {
+                  messages.push("Include a 'Linked Planning Issue' section in the PR body to enable deterministic AC mapping.");
+                }
+
+                if (linkedPlanningSection && primaryPlanningRefs.length !== 1) {
+                  messages.push('Primary planning issue must include exactly one issue reference like #123 for AC traceability.');
+                }
+
+                const acSourceIssueRefs = primaryPlanningRefs.length === 1
+                  ? (aggregateAcScope
+                    ? [...new Set([primaryPlanningRefs[0], ...additionalPlanningRefs])]
+                    : [primaryPlanningRefs[0]])
+                  : [];
+                const acSourceIssueData = [];
+
+                for (const sourceIssueRef of acSourceIssueRefs) {
+                  try {
+                    const { data: sourceIssue } = await github.rest.issues.get({ owner, repo, issue_number: sourceIssueRef });
+                    const sourceLabels = (sourceIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+                    acSourceIssueData.push({ number: sourceIssueRef, body: sourceIssue.body || '', labels: sourceLabels });
+                  } catch (e) {
+                    messages.push(`Linked planning issue #${sourceIssueRef} could not be loaded for AC mapping.`);
+                  }
+                }
+
                 for (const num of referenced) {
                   try {
                     const { data: refIssue } = await github.rest.issues.get({ owner, repo, issue_number: num });
@@ -183,7 +222,7 @@ jobs:
 
                     const acIds = new Set();
                     const acIdRe = /\bAC[-_\s]?\d+\b/gi;
-                    for (const linked of referencedIssueData) {
+                    for (const linked of acSourceIssueData) {
                       let acMatch;
                       while ((acMatch = acIdRe.exec(linked.body)) !== null) {
                         const normalized = normalizeAcId(acMatch[0]);
@@ -191,8 +230,8 @@ jobs:
                       }
                     }
 
-                    if (referencedIssueData.length > 0 && acIds.size === 0) {
-                      messages.push('Linked planning issue has no AC IDs. Add IDs like AC-1, AC-2 in the issue acceptance criteria to enable traceability.');
+                    if (acSourceIssueData.length > 0 && acIds.size === 0) {
+                      messages.push('Primary planning issue has no AC IDs. Add IDs like AC-1, AC-2 in the issue acceptance criteria to enable traceability.');
                     }
 
                     if (acIds.size > 0) {
@@ -209,7 +248,10 @@ jobs:
                       if (missingAcMappings.length > 0) {
                         const preview = missingAcMappings.slice(0, 8).join(', ');
                         const suffix = missingAcMappings.length > 8 ? ', ...' : '';
-                        messages.push(`Map each linked AC ID to test evidence in the PR body. Missing mappings: ${preview}${suffix}.`);
+                        const sourceScopeMessage = aggregateAcScope
+                          ? 'AC mapping scope=aggregate (primary + additional planning issues).'
+                          : 'AC mapping scope=primary (multi-issue reference inflation prevented by default).';
+                        messages.push(`Map each in-scope AC ID to test evidence in the PR body. Missing mappings: ${preview}${suffix}. ${sourceScopeMessage}`);
                       }
                     }
                   }
