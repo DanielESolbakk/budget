@@ -12,7 +12,11 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
+      contents: read
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Check issue or PR readiness via planning-lint and PR metadata
         uses: actions/github-script@v6
         with:
