@@ -1,10 +1,10 @@
-name: "Planning issue lint — manual repo scan"
+name: "Planning issue lint — manual repo scan (use Planning Issue Validation)"
 
 on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'If true, do not add/remove labels or post comments'
+        description: 'DEPRECATED: Use Planning Issue Validation workflow_dispatch instead'
         required: false
         default: 'false'
 

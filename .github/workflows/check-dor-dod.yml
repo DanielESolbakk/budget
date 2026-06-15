@@ -17,6 +17,8 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
+            const { parseIssueReferences } = require('./.github/scripts/planningChecks.js');
+            
             const payload = context.payload;
             const issue = payload.issue;
             const pr = payload.pull_request;
@@ -147,10 +149,8 @@ jobs:
                 const checkboxMatches = (regex) => checkedItems.some(t => regex.test(t));
 
                 // Find referenced issue numbers in the PR body (#123)
-                const refRe = /#(\d+)/g;
-                const referenced = new Set();
-                let m;
-                while ((m = refRe.exec(prBody)) !== null) referenced.add(Number(m[1]));
+                const referencedNumbers = parseIssueReferences(prBody);
+                const referenced = new Set(referencedNumbers);
                 const referencedIssueData = [];
 
                 for (const num of referenced) {
