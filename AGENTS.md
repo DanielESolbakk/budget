@@ -9,6 +9,8 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 
 - Keep changes small and local to the assigned issue.
 - Prefer the issue body, linked planning issue, and linked test issue as the primary task context.
+- Before writing any code, check the issue for open `Blocked by` dependencies. If any are still open, post a comment listing the blockers and stop — do not implement a partial subset silently.
+- Before writing any code, verify that every path listed under `Implementation Entry Points` exists in the workspace. If a required path is missing (e.g., `src/renderer/` does not exist), post a comment explaining what infrastructure is absent and stop. Do not silently implement only the feasible subset.
 - Run the narrowest validation command that matches the touched slice before widening scope.
 - For planning issues, use template headings exactly and bullet refs as `- #NUMBER` in reference sections.
 - Keep enablers feature-scoped under current lint rules: one `Parent Feature Issue` and matching `Stories Enabled` parents.

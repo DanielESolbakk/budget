@@ -116,6 +116,12 @@ Avoid inventing near-duplicates for the same concept.
 - If a change alters architecture, schema boundaries, or privacy posture, update the planning documents in the same work.
 - If a feature request conflicts with these instructions, surface the conflict explicitly and resolve it through a documented decision rather than silently drifting the architecture.
 
+## Agent Blocked-Work Policy
+
+- If an assigned issue has open `Blocked by` issues, the agent must post a comment on the issue listing the unresolved blockers and stop. Do not implement any subset of the work.
+- If an assigned issue lists `Implementation Entry Points` paths that do not exist in the workspace, the agent must post a comment identifying the missing infrastructure and stop. Do not silently implement only the feasible subset.
+- Deferred technical tasks must be tracked as explicit open issues — not silently omitted from the PR. If a task cannot be done in the current PR, create or reference a follow-up issue in the PR body before closing.
+
 ## Available Tooling
 
 - GitHub CLI (`gh`) is available in the terminal for all GitHub operations (issues, PRs, labels, releases, etc.).

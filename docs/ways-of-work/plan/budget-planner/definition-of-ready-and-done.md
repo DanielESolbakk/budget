@@ -14,6 +14,8 @@ An issue is ready when all of the following are present:
 - [ ] Related planning issues listed (e.g., `#123`)
 - [ ] Estimate provided (e.g., `2 days`, `small`)
 - [ ] Fixtures cover required edge cases (non‑NOK currency row, FX rows, KID/invoice rows, transfer/hold/reserved rows)
+- [ ] All `Blocked by` dependencies are closed (or explicitly waived with a comment)
+- [ ] Every `Implementation Entry Points` path either exists in the workspace or is explicitly marked "to be created in this story"
 
 ## Definition of Done (DoD)
 
