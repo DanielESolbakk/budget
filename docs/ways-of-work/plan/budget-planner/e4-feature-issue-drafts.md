@@ -6,6 +6,7 @@ Notes:
 
 - `issue-traceability-lint` requires feature issues to include at least one test issue reference (for example `#123`) in `Test Issues In This Feature`.
 - Real issue references are now included in these drafts.
+- AC mapping examples use strict evidence rows: `AC-ID | test-level | test-id | test-file-path`.
 
 ## F4.1 / Issue #23: Monthly dashboard
 
