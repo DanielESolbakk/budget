@@ -19,6 +19,7 @@ This project is building a desktop application that:
 - Import model: digital text PDFs, CSVs, and manual entry first
 - Categorization strategy: rules-first with confidence scoring and review flows
 - Privacy model: no bank APIs, no cloud processing of transaction content, no telemetry by default
+- Workflow validation note: planning issue checks now run only when explicitly requested.
 
 ## Public Repository Handling
 
