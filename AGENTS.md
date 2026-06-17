@@ -12,6 +12,8 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Before writing any code, check the issue for open `Blocked by` dependencies. If any are still open, post a comment listing the blockers and stop — do not implement a partial subset silently.
 - Before writing any code, verify that every path listed under `Implementation Entry Points` exists in the workspace. If a required path is missing (e.g., `src/renderer/` does not exist), post a comment explaining what infrastructure is absent and stop. Do not silently implement only the feasible subset.
 - For AC mapping in PR bodies, treat the primary planning issue as the default source of AC IDs; only aggregate additional planning issues when explicitly requested.
+- Planning validation does not trigger on issue edits. To validate an issue, add the `validate-planning` label; it is removed automatically after processing. Use `workflow_dispatch` on Planning Issue Validation to validate a batch.
+- PRs must satisfy `check-dor-dod` (required gate): map each AC ID from the linked planning issue to a test file in the PR body. Missing mappings block merge.
 - Run the narrowest validation command that matches the touched slice before widening scope.
 - For planning issues, use template headings exactly and bullet refs as `- #NUMBER` in reference sections.
 - Keep enablers feature-scoped under current lint rules: one `Parent Feature Issue` and matching `Stories Enabled` parents.
