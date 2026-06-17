@@ -135,7 +135,7 @@ Avoid inventing near-duplicates for the same concept.
 
 ## Assigned Copilot Operational Guidance
 
-- For PR AC mapping, default to the primary planning issue as the AC source unless the PR explicitly requests aggregate scope across additional planning issues.
+- For PR AC mapping, default to the primary planning issue as the AC source unless the PR explicitly requests aggregate scope across additional planning issues. AC evidence must reference executable tests by `test-id` and repository-relative test file path; workflow names are not valid AC evidence.
 - Permission mismatch can happen: an agent may be able to comment while being unable to edit issue/PR body fields. When this occurs, post one concise owner action checklist and stop repeating retries.
 - Avoid looped remediation comments. Repeat only when validation output changed, permissions changed, or new evidence was collected.
 

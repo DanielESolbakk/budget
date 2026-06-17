@@ -125,7 +125,7 @@ jobs:
       - name: Validate required npm scripts
         if: steps.detect.outputs.has_package == 'true'
         run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const required=['lint','typecheck','test:unit']; const missing=required.filter((name)=>typeof scripts[name] !== 'string' || !scripts[name].trim()); if (missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const required=['lint','typecheck','test:unit','verify:ac-traceability']; const missing=required.filter((name)=>typeof scripts[name] !== 'string' || !scripts[name].trim()); if (missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
 
       - name: Lint
         if: steps.detect.outputs.has_package == 'true'
@@ -139,6 +139,11 @@ jobs:
         if: steps.detect.outputs.has_package == 'true'
         run: npm run test:unit
 
+      - name: Verify AC traceability
+        if: steps.detect.outputs.has_package == 'true' && github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run verify:ac-traceability
       - name: No package marker
         if: steps.detect.outputs.has_package != 'true'
         run: echo "No package.json found. Docs-only and governance changes may proceed until scaffolding is created."
