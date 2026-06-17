@@ -39,4 +39,3 @@ Replace OWNER and REPO with your repository owner and name.
 
 - Run one successful CI workflow first so required check contexts exist in GitHub.
 - Keep check names synchronized with [.github/workflows/ci.yml](.github/workflows/ci.yml) if job names change.
-- If GitHub shows an expected check named `Lint Typecheck Tests`, the live ruleset is stale and still references a legacy context. Remove that context from the repository ruleset and keep only the contexts listed above.
