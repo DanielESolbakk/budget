@@ -11,6 +11,7 @@ This repository includes a baseline ruleset at [.github/branch-protection/main-r
   - CI Fast
   - CI Full
   - PR Guardrails
+- Enforce DoR / DoD
 
 ## Apply In GitHub UI
 
