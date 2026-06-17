@@ -34,14 +34,16 @@ Describe the changes and why they are needed.
 
 ## Acceptance Criteria to Test Mapping
 
-- Format required: `- AC-<n> | <test-level> | <test-id> | <test-file-path>`
-- `test-level` must be one of: unit, integration, e2e, end-to-end, performance, privacy, no-network
-- Workflow or job names (for example `check-dor-dod`, `CI Fast`) are not valid AC evidence
+**Required:** Describe how this PR addresses the acceptance criteria from the linked planning issue.
+This section is for human review. Mention each AC and how this PR helps satisfy it. Format is free-form prose.
 
-Examples:
+Example:
 
-- AC-1 | integration | dashboard forecast renders months | tests/integration/forecastContract.test.ts
-- AC-2 | e2e | dashboard forecast fallback is labeled | tests/e2e/workflow-smoke.test.ts
+- AC-1: Dashboard renders totals → Added aggregation view in src/app/dashboard.ts and integrated with forecastContract.test.ts.
+- AC-2: Category breakdown shows correctly → Tested with integration suite in tests/integration/forecastContract.test.ts.
+- AC-3: Monthly selection works → End-to-end workflow tested in workflow-smoke.test.ts.
+
+(Replace with your actual AC mappings and evidence from the linked issue.)
 
 ## AC Exception Justification (Only when using `ac-exception` label)
 

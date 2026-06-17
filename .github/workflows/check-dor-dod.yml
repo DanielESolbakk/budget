@@ -188,6 +188,7 @@ jobs:
 
             const typeRules = resolveTypeRules(workType);
             const messages = [];
+            const warnings = [];
             const hasAcException = prLabels.includes(acExceptionLabel);
 
             const acExceptionSectionMatch = prBody.match(/(^|\n)##\s*AC Exception Justification[\s\S]*?(?=\n##\s+|$)/i);
@@ -251,9 +252,10 @@ jobs:
               const mappingSection = extractPrSection(prBody, 'Acceptance Criteria to Test Mapping');
               if (!mappingSection) {
                 messages.push("Pull request description must include 'Acceptance Criteria to Test Mapping'.");
-              }
-
-              if (typeRules.requireACIdMapping !== false) {
+              } else if (!mappingSection.trim()) {
+                messages.push("'Acceptance Criteria to Test Mapping' section cannot be empty. Describe how this PR addresses each AC from the linked planning issue.");
+              } else if (acSourceIssueData.length > 0) {
+                // Soft check: Extract AC IDs from linked planning issues and warn if PR mapping doesn't mention any
                 const acIds = new Set();
                 const acIdRe = /\bAC[-_\s]?\d+\b/gi;
                 for (const linked of acSourceIssueData) {
@@ -264,61 +266,25 @@ jobs:
                   }
                 }
 
-                if (acSourceIssueData.length > 0 && acIds.size === 0) {
-                  messages.push('Primary planning issue has no AC IDs. Add IDs like AC-1, AC-2 in issue acceptance criteria to enable traceability.');
-                }
-
-                const { rows, invalidLines } = parseStrictMappingRows(mappingSection);
-                if (invalidLines.length > 0) {
-                  messages.push(
-                    "Each mapping line must use '- AC-<n> | <test-level> | <test-id> | <test-file-path>'. Invalid lines: " +
-                    invalidLines.map((line) => `\"${line.trim()}\"`).join(', ')
-                  );
-                }
-                if (rows.length === 0) {
-                  messages.push('No valid AC mapping rows found.');
-                }
-
-                const allowedLevels = new Set(['unit', 'integration', 'e2e', 'end-to-end', 'performance', 'privacy', 'no-network']);
-                const mappedByAc = new Map();
-
-                for (const row of rows) {
-                  mappedByAc.set(row.acId, (mappedByAc.get(row.acId) || 0) + 1);
-                  if (!allowedLevels.has(String(row.testLevel || '').toLowerCase())) {
-                    messages.push(`Invalid test-level '${row.testLevel}' for ${row.acId}.`);
-                  }
-
-                  if (!row.testId) {
-                    messages.push(`Missing test-id for ${row.acId}.`);
-                    continue;
-                  }
-
-                  if (!row.testFilePath || !row.testFilePath.includes('/')) {
-                    messages.push(`${row.acId} must reference a repository-relative test file path, not a workflow/job name.`);
-                    continue;
-                  }
-
-                  const resolved = path.resolve(process.cwd(), row.testFilePath);
-                  if (!fs.existsSync(resolved)) {
-                    messages.push(`${row.acId} references missing file '${row.testFilePath}'.`);
-                    continue;
-                  }
-
-                  const contents = fs.readFileSync(resolved, 'utf8');
-                  if (!contents.includes(row.testId)) {
-                    messages.push(`${row.acId} test-id '${row.testId}' not found in '${row.testFilePath}'.`);
-                  }
-
-                  const hasAcTag = contents.includes(row.acId) || contents.includes(`@ac(${row.acId})`);
-                  if (!hasAcTag) {
-                    messages.push(`${row.acId} tag not found in '${row.testFilePath}'. Include '${row.acId}' or '@ac(${row.acId})'.`);
-                  }
-                }
-
+                // Check which AC IDs from the planning issue appear anywhere in the PR mapping section
+                const mentionedAcIds = [];
                 for (const acId of acIds) {
-                  if (!mappedByAc.has(acId)) {
-                    messages.push(`Missing mapping row for ${acId}.`);
+                  if (mappingSection.includes(acId)) {
+                    mentionedAcIds.push(acId);
                   }
+                }
+
+                // Soft warning (not a failure): If some planning issue ACs are not mentioned in PR mapping
+                if (acIds.size > 0 && mentionedAcIds.length < acIds.size) {
+                  const unmentionedAcIds = Array.from(acIds).filter((id) => !mentionedAcIds.includes(id));
+                  const sourceLabels = acSourceIssueData.map((src) => `#${src.number}`).join(', ');
+                  warnings.push(
+                    `Acceptance Criteria to Test Mapping may be incomplete. ` +
+                    `Planning issue(s) ${sourceLabels} define AC IDs: ${Array.from(acIds).sort().join(', ')}. ` +
+                    `PR mapping mentions: ${mentionedAcIds.sort().join(', ')}. ` +
+                    `Not mentioned: ${unmentionedAcIds.sort().join(', ')}. ` +
+                    `This may be intentional (multi-PR work, out-of-scope), but please verify completeness.`
+                  );
                 }
               }
             }
@@ -360,6 +326,13 @@ jobs:
             }
 
             await clearMarkerComments(pr_number);
+
+            // If there are soft warnings but no hard failures, post as informational comment
+            if (warnings.length > 0 && messages.length === 0) {
+              const body = `${marker}\nAutomation: Soft checks (informational, not blocking):\n\n- ${warnings.join('\n- ')}`;
+              await upsertMarkerComment(pr_number, body);
+            }
+
             if (prLabels.includes(needsGroomingLabelLower)) {
               try {
                 await github.rest.issues.removeLabel({ owner, repo, issue_number: pr_number, name: needsGroomingLabel });

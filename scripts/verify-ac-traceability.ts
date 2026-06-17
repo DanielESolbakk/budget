@@ -1,3 +1,10 @@
+/**
+ * DEPRECATED: This script is no longer used.
+ * AC traceability validation has been moved to .github/workflows/check-dor-dod.yml
+ * with a lighter-weight approach: free-form PR AC mapping + soft mention warnings.
+ * This file is kept for historical reference only.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 
