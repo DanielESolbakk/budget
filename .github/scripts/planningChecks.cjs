@@ -1,6 +1,6 @@
 /**
  * Shared planning issue validation checks.
- * Centralizes heading, reference, and basic structure validation.
+ * Kept as CommonJS so github-script can load it inside a type=module repo.
  */
 
 module.exports.escapeRegex = function(value) {
@@ -40,8 +40,8 @@ module.exports.parseIssueReferences = function(value) {
 module.exports.checkBasicStructure = function(body, issueType) {
   const missing = [];
 
-  function hasHeading(h) {
-    return body.includes(h);
+  function hasHeading(heading) {
+    return body.includes(heading);
   }
 
   function hasIssueRefAfterHeading(heading) {
@@ -50,7 +50,7 @@ module.exports.checkBasicStructure = function(body, issueType) {
     const after = body
       .slice(idx + heading.length)
       .split("\n")
-      .map((s) => s.trim())
+      .map((value) => value.trim())
       .filter(Boolean);
     if (after.length === 0) return false;
     if (/^#\d+/.test(after[0])) return true;
@@ -59,34 +59,40 @@ module.exports.checkBasicStructure = function(body, issueType) {
   }
 
   if (issueType !== "epic") {
-    if (!hasHeading("### Parent Epic Issue"))
+    if (!hasHeading("### Parent Epic Issue")) {
       missing.push("Parent Epic Issue heading");
-    if (!hasHeading("### Parent Feature Issue"))
+    }
+    if (!hasHeading("### Parent Feature Issue")) {
       missing.push("Parent Feature Issue heading");
+    }
     if (
       !hasIssueRefAfterHeading("### Parent Epic Issue") &&
       !/Parent Epic Issue:?\s*#\d+/.test(body)
-    )
+    ) {
       missing.push("Parent Epic Issue must include a reference like #123");
+    }
     if (
       !hasIssueRefAfterHeading("### Parent Feature Issue") &&
       !/Parent Feature Issue:?\s*#\d+/.test(body)
-    )
+    ) {
       missing.push("Parent Feature Issue must include a reference like #123");
+    }
   }
 
   if (issueType === "test") {
-    if (!hasHeading("### Test Scope Type"))
+    if (!hasHeading("### Test Scope Type")) {
       missing.push("Test Scope Type heading missing");
-    if (!hasHeading("### Related Planning Issues"))
+    }
+    if (!hasHeading("### Related Planning Issues")) {
       missing.push("Related Planning Issues heading missing");
-    else {
+    } else {
       const idx = body.indexOf("### Related Planning Issues");
       const sub = body.slice(idx);
-      if (!/#\d+/.test(sub))
+      if (!/#\d+/.test(sub)) {
         missing.push(
           "At least one issue reference required under Related Planning Issues"
         );
+      }
     }
   }
 

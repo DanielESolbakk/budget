@@ -1,6 +1,6 @@
 /**
- * Infer GitHub issue type from labels, title, or body.
- * Used by planning validation workflows to centralize type detection.
+ * Infer GitHub issue type from labels or title.
+ * Kept as CommonJS so github-script can load it inside a type=module repo.
  */
 
 module.exports.getIssueType = function(labelNames, issueTitle) {

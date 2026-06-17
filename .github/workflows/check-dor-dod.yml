@@ -1,8 +1,6 @@
 name: 'Enforce DoR / DoD'
 
 on:
-  issues:
-    types: [opened, edited, reopened]
   pull_request:
     types: [opened, edited, reopened, synchronize]
 
@@ -17,18 +15,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check issue or PR readiness via planning-lint and PR metadata
+      - name: Check PR readiness via planning metadata
         uses: actions/github-script@v6
         with:
           script: |
             const payload = context.payload;
-            const issue = payload.issue;
             const pr = payload.pull_request;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // Load configuration from the repository default branch when available
-            // This prevents a PR from modifying the policy in its own head ref.
+            if (!pr) {
+              core.info('No pull request payload found. Skipping.');
+              return;
+            }
+
             let cfg;
             try {
               const { data: repoInfo } = await github.rest.repos.get({ owner, repo });
@@ -89,234 +89,199 @@ jobs:
               return match ? String(match[2] || '').trim() : '';
             };
 
-            // Issues: rely on planning-lint label `planning-invalid`
-            if (issue) {
-              const issue_number = issue.number;
-              const { data: ghIssue } = await github.rest.issues.get({ owner, repo, issue_number });
-              const labels = (ghIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+            const pr_number = pr.number;
+            const { data: prIssue } = await github.rest.issues.get({ owner, repo, issue_number: pr_number });
+            const prBody = prIssue.body || '';
+            const prLabels = (prIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
 
-              if (labels.includes('planning-invalid')) {
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number,
-                  body: 'Automation: planning-lint has marked this issue `planning-invalid`. Please fix the planning issue (headings/traceability) so planning-lint passes before marking Ready.'
-                });
+            if (prLabels.includes(skipLabel)) {
+              console.log('Skipping DoR/DoD checks due to', skipLabel, 'label');
+              return;
+            }
 
-                await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [needsGroomingLabel] });
-              } else {
-                // If issue was previously flagged and label removed, try to remove needs-grooming
-                if (labels.includes(needsGroomingLabelLower)) {
-                  try { await github.rest.issues.removeLabel({ owner, repo, issue_number, name: needsGroomingLabel }); } catch (e) { /* ignore if missing */ }
+            const files = await github.rest.pulls.listFiles({ owner, repo, pull_number: pr_number, per_page: 300 });
+            const changed = (files.data || []).map(f => f.filename || '');
+            const typeLabel = prLabels.find(l => l.startsWith(typePrefix));
+            let workType = 'unknown';
+            if (typeLabel) {
+              workType = typeLabel.split(':')[1];
+            } else {
+              const hasTests = changed.some(p => p.startsWith('tests/') || p.includes('/tests/'));
+              const hasNonTests = changed.some(p => !(p.startsWith('tests/') || p.includes('/tests/')));
+              if (hasTests && !hasNonTests) workType = 'test';
+              else if (hasTests && hasNonTests) workType = 'mixed';
+              else workType = 'feature';
+            }
+            console.log('DoR/DoD: determined workType =', workType);
+            const typeRules = resolveTypeRules(workType);
+            console.log('DoR/DoD type rules:', JSON.stringify(typeRules));
+            const messages = [];
+            const hasAcException = prLabels.includes(acExceptionLabel);
+
+            const acExceptionSectionMatch = prBody.match(/(^|\n)##\s*AC Exception Justification[\s\S]*?(?=\n##\s+|$)/i);
+            const acExceptionSection = acExceptionSectionMatch ? acExceptionSectionMatch[0] : '';
+            if (hasAcException && (!cfg.exceptions || cfg.exceptions.requireJustificationSection !== false)) {
+              const reasonText = acExceptionSection.replace(/(^|\n)##\s*AC Exception Justification\s*/i, '').trim();
+              if (!acExceptionSection || reasonText.length < 20) {
+                messages.push(`The ${acExceptionLabel} label requires an "AC Exception Justification" section in the PR body with a clear reason.`);
+              }
+            }
+            if (hasAcException && (!cfg.exceptions || cfg.exceptions.requireFollowUpIssueForACException !== false)) {
+              if (!/#\d+/.test(acExceptionSection)) {
+                messages.push(`The ${acExceptionLabel} label requires a follow-up issue reference (for example #123) inside the "AC Exception Justification" section.`);
+              }
+            }
+
+            const checklistRe = /- \[([ xX])\]\s*(.+)/g;
+            const checkedItems = [];
+            let cbMatch;
+            while ((cbMatch = checklistRe.exec(prBody)) !== null) {
+              if (cbMatch[1] && cbMatch[1].toLowerCase().includes('x')) {
+                checkedItems.push(cbMatch[2].trim().toLowerCase());
+              }
+            }
+            const checkboxMatches = (regex) => checkedItems.some(t => regex.test(t));
+
+            const referencedNumbers = parseIssueReferences(prBody);
+            const referenced = new Set(referencedNumbers);
+            const referencedIssueData = [];
+
+            const linkedPlanningSection = extractPrSection(prBody, 'Linked Planning Issue');
+            const primaryPlanningMatch = linkedPlanningSection.match(/Primary planning issue:\s*(.+)$/im);
+            const primaryPlanningRefs = parseIssueReferences(primaryPlanningMatch ? primaryPlanningMatch[1] : '');
+            const additionalPlanningMatch = linkedPlanningSection.match(/Additional planning issues:\s*(.+)$/im);
+            const additionalPlanningRefs = parseIssueReferences(additionalPlanningMatch ? additionalPlanningMatch[1] : '');
+            const aggregateAcScope = /(^|\n)\s*AC mapping scope\s*:\s*aggregate\b/i.test(linkedPlanningSection);
+
+            if (!linkedPlanningSection) {
+              messages.push("Include a 'Linked Planning Issue' section in the PR body to enable deterministic AC mapping.");
+            }
+
+            if (linkedPlanningSection && primaryPlanningRefs.length !== 1) {
+              messages.push('Primary planning issue must include exactly one issue reference like #123 for AC traceability.');
+            }
+
+            const acSourceIssueRefs = primaryPlanningRefs.length === 1
+              ? (aggregateAcScope
+                ? [...new Set([primaryPlanningRefs[0], ...additionalPlanningRefs])]
+                : [primaryPlanningRefs[0]])
+              : [];
+            const acSourceIssueData = [];
+
+            for (const sourceIssueRef of acSourceIssueRefs) {
+              try {
+                const { data: sourceIssue } = await github.rest.issues.get({ owner, repo, issue_number: sourceIssueRef });
+                const sourceLabels = (sourceIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+                acSourceIssueData.push({ number: sourceIssueRef, body: sourceIssue.body || '', labels: sourceLabels });
+              } catch (e) {
+                messages.push(`Linked planning issue #${sourceIssueRef} could not be loaded for AC mapping.`);
+              }
+            }
+
+            for (const num of referenced) {
+              try {
+                const { data: refIssue } = await github.rest.issues.get({ owner, repo, issue_number: num });
+                const refLabels = (refIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+                referencedIssueData.push({ number: num, body: refIssue.body || '', labels: refLabels });
+                if (refLabels.includes('planning-invalid')) {
+                  messages.push(`Linked planning issue #${num} is marked 'planning-invalid'. Fix that issue before merging.`);
+                  break;
                 }
+              } catch (e) { }
+            }
+
+            if (typeRules.requireAC !== false && !hasAcException) {
+              const acRegex = /Acceptance Criteria/i;
+              const mappingRegex = /Acceptance Criteria to Test Mapping|Acceptance-criteria-to-test|AC\s*[-?>]?\s*tests/i;
+              const acCheckbox = checkboxMatches(/acceptance criteria|ac\s*[-?>]*\s*tests|acceptance criteria are mapped/i);
+              if (!acRegex.test(prBody) && !acCheckbox) {
+                messages.push('Please include an "Acceptance Criteria" section in the PR and map each criterion to tests (AC ? tests).');
+              } else if (!mappingRegex.test(prBody) && !acCheckbox) {
+                messages.push('Consider adding an explicit "Acceptance Criteria to Test Mapping" table in the PR body to show which tests cover which ACs.');
               }
 
-            // Pull requests: check linked planning issues and PR metadata (AC→tests, fixture verification)
-            } else if (pr) {
-                const pr_number = pr.number;
-                // Use the issue endpoint to get PR as issue (contains labels & body)
-                const { data: prIssue } = await github.rest.issues.get({ owner, repo, issue_number: pr_number });
-                const prBody = prIssue.body || '';
-                const prLabels = (prIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
-
-                // Early opt-out for special cases
-                if (prLabels.includes(skipLabel)) {
-                  console.log('Skipping DoR/DoD checks due to', skipLabel, 'label');
-                  return;
+              if (typeRules.requireACIdMapping !== false) {
+                if (!referenced.size) {
+                  messages.push('Please link a planning issue in the PR body (for example #123) so AC traceability can be validated.');
                 }
 
-                // Fetch changed files once and infer work type if not provided by label
-                const files = await github.rest.pulls.listFiles({ owner, repo, pull_number: pr_number, per_page: 300 });
-                const changed = (files.data || []).map(f => f.filename || '');
-                const typeLabel = prLabels.find(l => l.startsWith(typePrefix));
-                let workType = 'unknown';
-                if (typeLabel) {
-                  workType = typeLabel.split(':')[1];
-                } else {
-                  const hasTests = changed.some(p => p.startsWith('tests/') || p.includes('/tests/'));
-                  const hasNonTests = changed.some(p => !(p.startsWith('tests/') || p.includes('/tests/')));
-                  if (hasTests && !hasNonTests) workType = 'test';
-                  else if (hasTests && hasNonTests) workType = 'mixed';
-                  else workType = 'feature';
-                }
-                console.log('DoR/DoD: determined workType =', workType);
-                const typeRules = resolveTypeRules(workType);
-                console.log('DoR/DoD type rules:', JSON.stringify(typeRules));
-                const messages = [];
-                const hasAcException = prLabels.includes(acExceptionLabel);
-
-                const acExceptionSectionMatch = prBody.match(/(^|\n)##\s*AC Exception Justification[\s\S]*?(?=\n##\s+|$)/i);
-                const acExceptionSection = acExceptionSectionMatch ? acExceptionSectionMatch[0] : '';
-                if (hasAcException && (!cfg.exceptions || cfg.exceptions.requireJustificationSection !== false)) {
-                  const reasonText = acExceptionSection.replace(/(^|\n)##\s*AC Exception Justification\s*/i, '').trim();
-                  if (!acExceptionSection || reasonText.length < 20) {
-                    messages.push(`The ${acExceptionLabel} label requires an "AC Exception Justification" section in the PR body with a clear reason.`);
-                  }
-                }
-                if (hasAcException && (!cfg.exceptions || cfg.exceptions.requireFollowUpIssueForACException !== false)) {
-                  if (!/#\d+/.test(acExceptionSection)) {
-                    messages.push(`The ${acExceptionLabel} label requires a follow-up issue reference (for example #123) inside the "AC Exception Justification" section.`);
+                const acIds = new Set();
+                const acIdRe = /\bAC[-_\s]?\d+\b/gi;
+                for (const linked of acSourceIssueData) {
+                  let acMatch;
+                  while ((acMatch = acIdRe.exec(linked.body)) !== null) {
+                    const normalized = normalizeAcId(acMatch[0]);
+                    if (normalized) acIds.add(normalized);
                   }
                 }
 
-                // Parse Markdown checklist boxes in the PR body and collect checked items
-                const checklistRe = /- \[([ xX])\]\s*(.+)/g;
-                const checkedItems = [];
-                let cbMatch;
-                while ((cbMatch = checklistRe.exec(prBody)) !== null) {
-                  if (cbMatch[1] && cbMatch[1].toLowerCase().includes('x')) {
-                    checkedItems.push(cbMatch[2].trim().toLowerCase());
-                  }
-                }
-                const checkboxMatches = (regex) => checkedItems.some(t => regex.test(t));
-
-                // Find referenced issue numbers in the PR body (#123)
-                const referencedNumbers = parseIssueReferences(prBody);
-                const referenced = new Set(referencedNumbers);
-                const referencedIssueData = [];
-
-                const linkedPlanningSection = extractPrSection(prBody, 'Linked Planning Issue');
-                const primaryPlanningMatch = linkedPlanningSection.match(/Primary planning issue:\s*(.+)$/im);
-                const primaryPlanningRefs = parseIssueReferences(primaryPlanningMatch ? primaryPlanningMatch[1] : '');
-                const additionalPlanningMatch = linkedPlanningSection.match(/Additional planning issues:\s*(.+)$/im);
-                const additionalPlanningRefs = parseIssueReferences(additionalPlanningMatch ? additionalPlanningMatch[1] : '');
-                const aggregateAcScope = /(^|\n)\s*AC mapping scope\s*:\s*aggregate\b/i.test(linkedPlanningSection);
-
-                if (!linkedPlanningSection) {
-                  messages.push("Include a 'Linked Planning Issue' section in the PR body to enable deterministic AC mapping.");
+                if (acSourceIssueData.length > 0 && acIds.size === 0) {
+                  messages.push('Primary planning issue has no AC IDs. Add IDs like AC-1, AC-2 in the issue acceptance criteria to enable traceability.');
                 }
 
-                if (linkedPlanningSection && primaryPlanningRefs.length !== 1) {
-                  messages.push('Primary planning issue must include exactly one issue reference like #123 for AC traceability.');
-                }
-
-                const acSourceIssueRefs = primaryPlanningRefs.length === 1
-                  ? (aggregateAcScope
-                    ? [...new Set([primaryPlanningRefs[0], ...additionalPlanningRefs])]
-                    : [primaryPlanningRefs[0]])
-                  : [];
-                const acSourceIssueData = [];
-
-                for (const sourceIssueRef of acSourceIssueRefs) {
-                  try {
-                    const { data: sourceIssue } = await github.rest.issues.get({ owner, repo, issue_number: sourceIssueRef });
-                    const sourceLabels = (sourceIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
-                    acSourceIssueData.push({ number: sourceIssueRef, body: sourceIssue.body || '', labels: sourceLabels });
-                  } catch (e) {
-                    messages.push(`Linked planning issue #${sourceIssueRef} could not be loaded for AC mapping.`);
-                  }
-                }
-
-                for (const num of referenced) {
-                  try {
-                    const { data: refIssue } = await github.rest.issues.get({ owner, repo, issue_number: num });
-                    const refLabels = (refIssue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
-                    referencedIssueData.push({ number: num, body: refIssue.body || '', labels: refLabels });
-                    if (refLabels.includes('planning-invalid')) {
-                      messages.push(`Linked planning issue #${num} is marked 'planning-invalid'. Fix that issue before merging.`);
-                      break;
-                    }
-                  } catch (e) { /* ignore fetch errors for referenced items */ }
-                }
-
-                // Check for Acceptance Criteria presence and explicit AC→tests mapping
-                if (typeRules.requireAC !== false && !hasAcException) {
-                  const acRegex = /Acceptance Criteria/i;
-                  const mappingRegex = /Acceptance Criteria to Test Mapping|Acceptance-criteria-to-test|AC\s*[-→>]?\s*tests/i;
-                  const acCheckbox = checkboxMatches(/acceptance criteria|ac\s*[-→>]*\s*tests|acceptance criteria are mapped/i);
-                  if (!acRegex.test(prBody) && !acCheckbox) {
-                    messages.push('Please include an "Acceptance Criteria" section in the PR and map each criterion to tests (AC → tests).');
-                  } else if (!mappingRegex.test(prBody) && !acCheckbox) {
-                    messages.push('Consider adding an explicit "Acceptance Criteria to Test Mapping" table in the PR body to show which tests cover which ACs.');
-                  }
-
-                  if (typeRules.requireACIdMapping !== false) {
-                    if (!referenced.size) {
-                      messages.push('Please link a planning issue in the PR body (for example #123) so AC traceability can be validated.');
-                    }
-
-                    const acIds = new Set();
-                    const acIdRe = /\bAC[-_\s]?\d+\b/gi;
-                    for (const linked of acSourceIssueData) {
-                      let acMatch;
-                      while ((acMatch = acIdRe.exec(linked.body)) !== null) {
-                        const normalized = normalizeAcId(acMatch[0]);
-                        if (normalized) acIds.add(normalized);
-                      }
-                    }
-
-                    if (acSourceIssueData.length > 0 && acIds.size === 0) {
-                      messages.push('Primary planning issue has no AC IDs. Add IDs like AC-1, AC-2 in the issue acceptance criteria to enable traceability.');
-                    }
-
-                    if (acIds.size > 0) {
-                      const missingAcMappings = [];
-                      for (const acId of acIds) {
-                        const acToken = acId.replace('-', '[-_\\s]?');
-                        const acBulletOrLineMap = new RegExp(`\\b${acToken}\\b[^\\n]*(test|spec|\\.test\\.|\\.spec\\.|vitest|jest|playwright|cypress|e2e|integration|unit)`, 'i');
-                        const acTableMap = new RegExp(`\\|[^\\n]*\\b${acToken}\\b[^\\n]*\\|[^\\n]*(test|spec|\\.test\\.|\\.spec\\.|vitest|jest|playwright|cypress|e2e|integration|unit)[^\\n]*\\|`, 'i');
-                        if (!acBulletOrLineMap.test(prBody) && !acTableMap.test(prBody)) {
-                          missingAcMappings.push(acId);
-                        }
-                      }
-
-                      if (missingAcMappings.length > 0) {
-                        const preview = missingAcMappings.slice(0, 8).join(', ');
-                        const suffix = missingAcMappings.length > 8 ? ', ...' : '';
-                        const sourceScopeMessage = aggregateAcScope
-                          ? 'AC mapping scope=aggregate (primary + additional planning issues).'
-                          : 'AC mapping scope=primary (multi-issue reference inflation prevented by default).';
-                        messages.push(`Map each in-scope AC ID to test evidence in the PR body. Missing mappings: ${preview}${suffix}. ${sourceScopeMessage}`);
-                      }
+                if (acIds.size > 0) {
+                  const missingAcMappings = [];
+                  for (const acId of acIds) {
+                    const acToken = acId.replace('-', '[-_\\s]?');
+                    const acBulletOrLineMap = new RegExp(`\\b${acToken}\\b[^\\n]*(test|spec|\\.test\\.|\\.spec\\.|vitest|jest|playwright|cypress|e2e|integration|unit)`, 'i');
+                    const acTableMap = new RegExp(`\\|[^\\n]*\\b${acToken}\\b[^\\n]*\\|[^\\n]*(test|spec|\\.test\\.|\\.spec\\.|vitest|jest|playwright|cypress|e2e|integration|unit)[^\\n]*\\|`, 'i');
+                    if (!acBulletOrLineMap.test(prBody) && !acTableMap.test(prBody)) {
+                      missingAcMappings.push(acId);
                     }
                   }
-                } else if (hasAcException) {
-                  console.log('Skipping AC checks due to exception label:', acExceptionLabel);
-                } else {
-                  console.log('Skipping AC checks for workType:', workType);
-                }
 
-                // If fixtures changed, require verification-report.json or link to verification artifacts
-                const fixtureChanged = changed.some(p => p.startsWith('tests/fixtures/') || p.includes('/fixtures/') || p.includes('fixtures/'));
-                if (fixtureChanged && typeRules.requireFixtureVerification !== false) {
-                  const verificationPresent = /verification-report\.json|verification-report/i.test(prBody);
-                  const fixtureCheckbox = checkboxMatches(/fixtures|verification-report|verification artifacts|verification report/i);
-                  if (!verificationPresent && !fixtureCheckbox) messages.push('This PR modifies fixtures. Please attach `verification-report.json` or link verification artifacts in the PR description.');
-                } else if (fixtureChanged) {
-                  console.log('Skipping fixture verification checks for workType:', workType);
-                }
-
-                // Determine whether to enforce strictly (release branches, PR title, or explicit enforce label)
-                const prHeadRef = (pr && pr.head && pr.head.ref) ? pr.head.ref : '';
-                const prTitle = (pr && pr.title) ? pr.title : (prIssue && prIssue.title ? prIssue.title : '');
-                let shouldEnforce = false;
-                if (prLabels.includes(enforceLabel)) shouldEnforce = true;
-                if (cfg && cfg.strictTrigger) {
-                  const bPrefix = cfg.strictTrigger.branchPrefix || '';
-                  const titleContains = cfg.strictTrigger.prTitleContains || '';
-                  if (bPrefix && prHeadRef.startsWith(bPrefix)) shouldEnforce = true;
-                  if (titleContains && prTitle.includes(titleContains)) shouldEnforce = true;
-                }
-                console.log('DoR/DoD enforcement:', shouldEnforce, 'head=', prHeadRef, 'title=', prTitle);
-
-                if (messages.length) {
-                  const body = `Automation: DoD checks noticed issues:\n\n- ${messages.join('\n- ')}`;
-                  if (shouldEnforce) {
-                    try {
-                      await github.rest.pulls.createReview({ owner, repo, pull_number: pr_number, event: 'REQUEST_CHANGES', body });
-                    } catch (e) {
-                      // Fallback to comment + label
-                      await github.rest.issues.createComment({ owner, repo, issue_number: pr_number, body });
-                      await github.rest.issues.addLabels({ owner, repo, issue_number: pr_number, labels: [needsGroomingLabel] });
-                    }
-                  } else {
-                    await github.rest.issues.createComment({ owner, repo, issue_number: pr_number, body });
-                    await github.rest.issues.addLabels({ owner, repo, issue_number: pr_number, labels: [needsGroomingLabel] });
-                  }
-                } else {
-                  // remove needs-grooming if present
-                  if (prLabels.includes(needsGroomingLabelLower)) {
-                    try { await github.rest.issues.removeLabel({ owner, repo, issue_number: pr_number, name: needsGroomingLabel }); } catch (e) { /* ignore */ }
+                  if (missingAcMappings.length > 0) {
+                    const preview = missingAcMappings.slice(0, 8).join(', ');
+                    const suffix = missingAcMappings.length > 8 ? ', ...' : '';
+                    const sourceScopeMessage = aggregateAcScope
+                      ? 'AC mapping scope=aggregate (primary + additional planning issues).'
+                      : 'AC mapping scope=primary (multi-issue reference inflation prevented by default).';
+                    messages.push(`Map each in-scope AC ID to test evidence in the PR body. Missing mappings: ${preview}${suffix}. ${sourceScopeMessage}`);
                   }
                 }
+              }
+            } else if (hasAcException) {
+              console.log('Skipping AC checks due to exception label:', acExceptionLabel);
+            } else {
+              console.log('Skipping AC checks for workType:', workType);
+            }
+
+            const fixtureChanged = changed.some(p => p.startsWith('tests/fixtures/') || p.includes('/fixtures/') || p.includes('fixtures/'));
+            if (fixtureChanged && typeRules.requireFixtureVerification !== false) {
+              const verificationPresent = /verification-report\.json|verification-report/i.test(prBody);
+              const fixtureCheckbox = checkboxMatches(/fixtures|verification-report|verification artifacts|verification report/i);
+              if (!verificationPresent && !fixtureCheckbox) messages.push('This PR modifies fixtures. Please attach `verification-report.json` or link verification artifacts in the PR description.');
+            } else if (fixtureChanged) {
+              console.log('Skipping fixture verification checks for workType:', workType);
+            }
+
+            const prHeadRef = (pr && pr.head && pr.head.ref) ? pr.head.ref : '';
+            const prTitle = (pr && pr.title) ? pr.title : (prIssue && prIssue.title ? prIssue.title : '');
+            let shouldEnforce = false;
+            if (prLabels.includes(enforceLabel)) shouldEnforce = true;
+            if (cfg && cfg.strictTrigger) {
+              const bPrefix = cfg.strictTrigger.branchPrefix || '';
+              const titleContains = cfg.strictTrigger.prTitleContains || '';
+              if (bPrefix && prHeadRef.startsWith(bPrefix)) shouldEnforce = true;
+              if (titleContains && prTitle.includes(titleContains)) shouldEnforce = true;
+            }
+            console.log('DoR/DoD enforcement:', shouldEnforce, 'head=', prHeadRef, 'title=', prTitle);
+
+            if (messages.length) {
+              const body = `Automation: DoD checks noticed issues:\n\n- ${messages.join('\n- ')}`;
+              if (shouldEnforce) {
+                try {
+                  await github.rest.pulls.createReview({ owner, repo, pull_number: pr_number, event: 'REQUEST_CHANGES', body });
+                } catch (e) {
+                  await github.rest.issues.createComment({ owner, repo, issue_number: pr_number, body });
+                  await github.rest.issues.addLabels({ owner, repo, issue_number: pr_number, labels: [needsGroomingLabel] });
+                }
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr_number, body });
+                await github.rest.issues.addLabels({ owner, repo, issue_number: pr_number, labels: [needsGroomingLabel] });
+              }
+            } else {
+              if (prLabels.includes(needsGroomingLabelLower)) {
+                try { await github.rest.issues.removeLabel({ owner, repo, issue_number: pr_number, name: needsGroomingLabel }); } catch (e) { }
+              }
             }
