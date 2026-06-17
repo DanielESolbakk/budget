@@ -278,11 +278,15 @@ jobs:
                 if (acIds.size > 0 && mentionedAcIds.length < acIds.size) {
                   const unmentionedAcIds = Array.from(acIds).filter((id) => !mentionedAcIds.includes(id));
                   const sourceLabels = acSourceIssueData.map((src) => `#${src.number}`).join(', ');
+                  const allAcsList = Array.from(acIds).sort().join(', ');
+                  const mentionedList = mentionedAcIds.length > 0 ? mentionedAcIds.sort().join(', ') : '(none)';
+                  const unmentionedList = unmentionedAcIds.sort().join(', ');
                   warnings.push(
-                    `Acceptance Criteria to Test Mapping may be incomplete. ` +
-                    `Planning issue(s) ${sourceLabels} define AC IDs: ${Array.from(acIds).sort().join(', ')}. ` +
-                    `PR mapping mentions: ${mentionedAcIds.sort().join(', ')}. ` +
-                    `Not mentioned: ${unmentionedAcIds.sort().join(', ')}. ` +
+                    `**Acceptance Criteria to Test Mapping may be incomplete**\n\n` +
+                    `Planning issue(s): ${sourceLabels}\n` +
+                    `- All ACs defined: ${allAcsList}\n` +
+                    `- PR mapping mentions: ${mentionedList}\n` +
+                    `- **Not mentioned:** ${unmentionedList}\n\n` +
                     `This may be intentional (multi-PR work, out-of-scope), but please verify completeness.`
                   );
                 }
