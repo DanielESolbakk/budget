@@ -135,7 +135,7 @@ Avoid inventing near-duplicates for the same concept.
 
 ## Assigned Copilot Operational Guidance
 
-- For PR AC mapping, default to the primary planning issue as the AC source unless the PR explicitly requests aggregate scope across additional planning issues.
+- For PR AC mapping, default to the primary planning issue as the AC source unless the PR explicitly requests aggregate scope across additional planning issues. Describe in the "Acceptance Criteria to Test Mapping" section how this PR helps satisfy each AC from the linked issue. Format is free-form prose (not structured rows). Focus on clarity and completeness; manual reviewer verification will determine if coverage is adequate. You do not need to follow strict syntax rules, but ensure each AC is mentioned clearly.
 - Permission mismatch can happen: an agent may be able to comment while being unable to edit issue/PR body fields. When this occurs, post one concise owner action checklist and stop repeating retries.
 - Avoid looped remediation comments. Repeat only when validation output changed, permissions changed, or new evidence was collected.
 

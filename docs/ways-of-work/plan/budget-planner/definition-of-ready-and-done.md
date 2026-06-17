@@ -27,14 +27,15 @@ An item is done when all of the following are completed and documented in the PR
 - [ ] Docs: usage and examples updated (or linked)
 - [ ] Local audit files (e.g., `local/sanitization-map.json`) are `.gitignored` and documented
 - [ ] PR links back to planning issue and includes verification artifacts when applicable
-- [ ] Every linked AC ID is mapped to automated test evidence in the PR (AC ID → tests)
+- [ ] PR includes non-empty "Acceptance Criteria to Test Mapping" section in the PR body describing how each AC from the linked planning issue is satisfied. Format is free-form prose (e.g., "AC-1: Dashboard renders totals → Added aggregation in src/dashboard.ts, tested in integration suite"). Reviewers will manually verify completeness by checking that all planning issue ACs are mentioned.
 - [ ] When fixtures change, attach verification artifacts (e.g., `verification-report.json`) or link the verification report in the PR
 
 ## AC ID Convention
 
 - Format: `AC-<number>` (for example `AC-1`, `AC-2`, `AC-3`)
 - Use AC IDs in planning issue acceptance criteria.
-- In each PR, add an AC-to-test mapping section that references the same AC IDs.
+- In each PR, add an AC-to-test mapping section that describes how the work satisfies each AC.
+- Use free-form prose for PR mapping (no strict row format required); focus on clarity and completeness.
 
 ## AC Exception Policy
 

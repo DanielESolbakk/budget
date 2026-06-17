@@ -1,4 +1,4 @@
-﻿# E4 Feature Issue Drafts
+# E4 Feature Issue Drafts
 
 Use these as issue body updates for E4 features. They are AC-ID-first and written for Copilot execution.
 
@@ -6,6 +6,7 @@ Notes:
 
 - `issue-traceability-lint` requires feature issues to include at least one test issue reference (for example `#123`) in `Test Issues In This Feature`.
 - Real issue references are now included in these drafts.
+- AC mapping examples use strict evidence rows: `AC-ID | test-level | test-id | test-file-path`.
 
 ## F4.1 / Issue #23: Monthly dashboard
 
@@ -57,10 +58,10 @@ Acceptance Criteria:
 
 Acceptance Criteria To Test Mapping:
 
-- AC-1 -> Integration: dashboard totals contract test
-- AC-2 -> Integration: category aggregate contract test
-- AC-3 -> E2E/Smoke: dashboard page render test
-- AC-4 -> Integration/E2E: month switch refresh test
+- AC-1 | integration | dashboard totals contract test | tests/integration/dashboardTotals.test.ts
+- AC-2 | integration | category aggregate contract test | tests/integration/dashboardCategoryTotals.test.ts
+- AC-3 | e2e | dashboard page render test | tests/e2e/workflow-smoke.test.ts
+- AC-4 | integration | month switch refresh test | tests/integration/dashboardMonthSwitch.test.ts
 
 Estimate:
 
@@ -121,10 +122,10 @@ Acceptance Criteria:
 
 Acceptance Criteria To Test Mapping:
 
-- AC-1 -> Integration: target API contract test
-- AC-2 -> Integration: persistence and reload test
-- AC-3 -> Integration: dashboard target-value contract test
-- AC-4 -> E2E/Smoke: update target and refresh flow test
+- AC-1 | integration | target API contract test | tests/integration/categoryTargetApi.test.ts
+- AC-2 | integration | persistence and reload test | tests/integration/categoryTargetPersistence.test.ts
+- AC-3 | integration | dashboard target-value contract test | tests/integration/dashboardTargetDelta.test.ts
+- AC-4 | e2e | update target and refresh flow test | tests/e2e/workflow-smoke.test.ts
 
 Estimate:
 
@@ -185,10 +186,10 @@ Acceptance Criteria:
 
 Acceptance Criteria To Test Mapping:
 
-- AC-1 -> Unit: simple forecast algorithm test suite
-- AC-2 -> Integration: API reproducibility test
-- AC-3 -> Unit: edge-case tests for sparse, zero, and missing-month inputs
-- AC-4 -> Integration/E2E: dashboard forecast contract smoke test
+- AC-1 | unit | simple forecast algorithm test suite | tests/unit/simpleForecast.test.ts
+- AC-2 | integration | API reproducibility test | tests/integration/forecastApiReproducibility.test.ts
+- AC-3 | unit | edge-case tests for sparse, zero, and missing-month inputs | tests/unit/simpleForecast.test.ts
+- AC-4 | e2e | dashboard forecast contract smoke test | tests/e2e/workflow-smoke.test.ts
 
 Estimate:
 

@@ -89,7 +89,8 @@
 
 ## Pull Request Readiness Checklist
 
-- [ ] PR body contains AC-ID-to-test mapping that covers every linked AC ID
+- [ ] PR body contains "Acceptance Criteria to Test Mapping" section describing how each linked AC is satisfied (free-form prose)
+- [ ] AC mapping mentions all AC IDs from the linked planning issue
 - [ ] PR body contains test evidence
 - [ ] Bug-fix PRs contain regression test details
 - [ ] Code changes include package manifest and required CI scripts once scaffolding begins
