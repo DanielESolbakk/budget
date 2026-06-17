@@ -159,7 +159,7 @@ NOT: `#22` or `#73, #74` (inline or comma-separated).
 - All issues must appear as list items: `- #NUMBER` (hyphen + space + number)
 - Applies to: Parent Epic Issue, Parent Feature Issue, Linked Test Issues, Linked Enabler Issues, Parent Story Or Enabler Issue, etc.
 - Use templates (Epic, Feature, Story, Test, Enabler) to ensure correct format
-- If linter marks issue `planning-invalid`, correct formatting and re-edit to re-validate
+- If planning validation marks issue `planning-invalid`, correct formatting, then add the `validate-planning` label to re-validate
 
 ## Planning Signal Discipline
 
@@ -170,7 +170,7 @@ NOT: `#22` or `#73, #74` (inline or comma-separated).
 
 ## Planning Bot Output Guardrails
 
-Use this checklist when generating or auto-updating planning issues so `issue-traceability-lint` passes on first run.
+Use this checklist when generating or auto-updating planning issues so `planning validation` passes on first run.
 
 1. Section formatting
 - Use `###` headings exactly as expected by templates.
@@ -199,4 +199,4 @@ Use this checklist when generating or auto-updating planning issues so `issue-tr
 
 6. Label discipline
 - Apply planning labels before lint runs (`epic`, `feature`, `user-story`, `enabler`, `test`).
-- Treat `planning-invalid` as a blocking signal; fix body/links first, then re-run validation by editing the issue.
+- Treat `planning-invalid` as a blocking signal; fix body/links first, then add the `validate-planning` label to re-validate.
