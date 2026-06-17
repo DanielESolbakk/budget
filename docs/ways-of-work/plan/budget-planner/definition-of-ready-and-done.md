@@ -27,7 +27,8 @@ An item is done when all of the following are completed and documented in the PR
 - [ ] Docs: usage and examples updated (or linked)
 - [ ] Local audit files (e.g., `local/sanitization-map.json`) are `.gitignored` and documented
 - [ ] PR links back to planning issue and includes verification artifacts when applicable
-- [ ] Every linked AC ID is mapped to automated test evidence in the PR (AC ID → tests)
+- [ ] Every linked AC ID is mapped with strict evidence rows in the PR: `AC-ID | test-level | test-id | test-file-path`
+- [ ] AC evidence references executable tests; workflow or job names are not valid AC fulfillment evidence
 - [ ] When fixtures change, attach verification artifacts (e.g., `verification-report.json`) or link the verification report in the PR
 
 ## AC ID Convention
@@ -35,6 +36,7 @@ An item is done when all of the following are completed and documented in the PR
 - Format: `AC-<number>` (for example `AC-1`, `AC-2`, `AC-3`)
 - Use AC IDs in planning issue acceptance criteria.
 - In each PR, add an AC-to-test mapping section that references the same AC IDs.
+- Use strict PR mapping rows: `- AC-<n> | <test-level> | <test-id> | <test-file-path>`.
 
 ## AC Exception Policy
 

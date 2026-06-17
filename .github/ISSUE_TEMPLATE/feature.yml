@@ -118,10 +118,10 @@ body:
     id: test_mapping
     attributes:
       label: Acceptance Criteria To Test Mapping
-      description: Map each criterion to unit, integration, or end-to-end coverage.
+      description: Map each AC ID to strict evidence rows using AC-ID | test-level | test-id | test-file-path.
       placeholder: |
-        - AC-1 -> Unit: ..., Integration: ..., E2E: ...
-        - AC-2 -> Unit: ..., Integration: ..., E2E: ...
+        - AC-1 | integration | import ledger totals remain stable | tests/integration/importLedger.test.ts
+        - AC-2 | e2e | low confidence review queue is visible | tests/e2e/workflow-smoke.test.ts
     validations:
       required: true
 

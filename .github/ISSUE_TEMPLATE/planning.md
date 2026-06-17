@@ -21,8 +21,10 @@ Acceptance Criteria (use AC IDs):
 
 Acceptance Criteria To Test Mapping:
 
-- AC-1 -> Unit/Integration/E2E: ...
-- AC-2 -> Unit/Integration/E2E: ...
+- Format: `- AC-<n> | <test-level> | <test-id> | <test-file-path>`
+- Allowed test levels: `unit`, `integration`, `e2e`, `end-to-end`, `performance`, `privacy`, `no-network`
+- AC-1 | integration | import ledger totals remain stable | tests/integration/importLedger.test.ts
+- AC-2 | e2e | low confidence review queue is visible | tests/e2e/workflow-smoke.test.ts
 
 Parent keys: E
 

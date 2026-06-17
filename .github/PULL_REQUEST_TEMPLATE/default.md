@@ -1,3 +1,5 @@
+# Pull Request
+
 ## Change Type
 
 Select exactly one:
@@ -32,10 +34,14 @@ Describe the changes and why they are needed.
 
 ## Acceptance Criteria to Test Mapping
 
-| AC ID | Criterion Summary | Automated Test Evidence |
-| --- | --- | --- |
-| AC-1 | ... | `tests/unit/...` / `tests/integration/...` / CI job |
-| AC-2 | ... | `tests/e2e/...` / CI job |
+- Format required: `- AC-<n> | <test-level> | <test-id> | <test-file-path>`
+- `test-level` must be one of: unit, integration, e2e, end-to-end, performance, privacy, no-network
+- Workflow or job names (for example `check-dor-dod`, `CI Fast`) are not valid AC evidence
+
+Examples:
+
+- AC-1 | integration | dashboard forecast renders months | tests/integration/forecastContract.test.ts
+- AC-2 | e2e | dashboard forecast fallback is labeled | tests/e2e/workflow-smoke.test.ts
 
 ## AC Exception Justification (Only when using `ac-exception` label)
 
