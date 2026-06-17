@@ -20,6 +20,7 @@ This project is building a desktop application that:
 - Categorization strategy: rules-first with confidence scoring and review flows
 - Privacy model: no bank APIs, no cloud processing of transaction content, no telemetry by default
 - Workflow validation note: planning issue checks now run only when explicitly requested.
+- Workflow validation heartbeat: 2026-06-17T15:46Z
 
 ## Public Repository Handling
 
