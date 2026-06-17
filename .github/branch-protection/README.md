@@ -8,8 +8,10 @@ This repository includes a baseline ruleset at [.github/branch-protection/main-r
 - requires pull requests with at least one approval
 - requires conversation resolution before merge
 - requires passing checks:
-  - Lint Typecheck Tests
+  - CI Fast
+  - CI Full
   - PR Guardrails
+- Enforce DoR / DoD
 
 ## Apply In GitHub UI
 
