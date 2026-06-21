@@ -12,7 +12,8 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "verify:no-network": "vitest run --config vitest.nonetwork.config.ts",
     "sanitizer": "tsx scripts/sanitize-csv.ts",
-    "verify-fixture": "tsx scripts/verify-fixture.ts"
+    "verify-fixture": "tsx scripts/verify-fixture.ts",
+    "eval:skill": "tsx scripts/run-skill-evals.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

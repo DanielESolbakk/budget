@@ -124,8 +124,7 @@ Avoid inventing near-duplicates for the same concept.
 
 ## Available Tooling
 
-- GitHub CLI (`gh`) is available in the terminal for all GitHub operations (issues, PRs, labels, releases, etc.).
-- Prefer the GitHub MCP tools for structured issue/PR creation and reading when available, but fall back to `gh` for any operations not covered by MCP tools.
+- Prefer the GitHub MCP tools. Git CLI is unavailable and branch protection rules enforce server-side operations.
 
 ## Agent Instruction Entry Points
 
