@@ -6,22 +6,48 @@ import {
 import type { Transaction } from "../../src/domain/types.js";
 
 function makeTx(
-  overrides: Partial<Transaction> & { amountMinor: number; bookedAtIso: string }
+  overrides: Partial<Transaction> & {
+    id: string;
+    amountMinor: number;
+    bookedAtIso: string;
+  }
 ): Transaction {
+  const { id, ...rest } = overrides;
+
   return {
-    id: crypto.randomUUID(),
+    id,
     householdId: "hh-1",
     accountId: "acc-1",
     merchantRaw: "Test Merchant",
-    ...overrides,
+    ...rest,
   };
 }
 
 const transactions: Transaction[] = [
-  makeTx({ id: "m1", bookedAtIso: "2026-05-01T10:00:00Z", amountMinor: 80000, categoryId: "salary" }),
-  makeTx({ id: "m2", bookedAtIso: "2026-05-05T11:00:00Z", amountMinor: -20000, categoryId: "groceries" }),
-  makeTx({ id: "j1", bookedAtIso: "2026-06-01T10:00:00Z", amountMinor: 30000, categoryId: "salary" }),
-  makeTx({ id: "j2", bookedAtIso: "2026-06-10T11:00:00Z", amountMinor: -5000, categoryId: "transport" }),
+  makeTx({
+    id: "may-salary",
+    bookedAtIso: "2026-05-01T10:00:00Z",
+    amountMinor: 80000,
+    categoryId: "salary",
+  }),
+  makeTx({
+    id: "may-groceries",
+    bookedAtIso: "2026-05-05T11:00:00Z",
+    amountMinor: -20000,
+    categoryId: "groceries",
+  }),
+  makeTx({
+    id: "june-salary",
+    bookedAtIso: "2026-06-01T10:00:00Z",
+    amountMinor: 30000,
+    categoryId: "salary",
+  }),
+  makeTx({
+    id: "june-transport",
+    bookedAtIso: "2026-06-10T11:00:00Z",
+    amountMinor: -5000,
+    categoryId: "transport",
+  }),
 ];
 
 describe("dashboard view contract", () => {

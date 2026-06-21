@@ -47,8 +47,8 @@ describe("dashboard month switch smoke", () => {
     }
     expect(may.snapshot.monthlyTotals.netMinor).toBe(40000);
 
-    const june = switchMonthlyDashboardMonth(transactions, "2026-06");
-    const juneAgain = switchMonthlyDashboardMonth(transactions, "2026-06");
+    const june = switchMonthlyDashboardMonth(may, transactions, "2026-06");
+    const juneAgain = switchMonthlyDashboardMonth(may, transactions, "2026-06");
 
     expect(june).toEqual(juneAgain);
     expect(june).not.toEqual(may);
@@ -57,5 +57,8 @@ describe("dashboard month switch smoke", () => {
       return;
     }
     expect(june.snapshot.monthlyTotals.netMinor).toBe(40000);
+
+    const juneNoChange = switchMonthlyDashboardMonth(june, transactions, "2026-06");
+    expect(juneNoChange).toBe(june);
   });
 });

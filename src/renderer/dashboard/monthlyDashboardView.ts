@@ -9,9 +9,22 @@ export function renderMonthlyDashboardView(input: DashboardViewContractInput): D
   return buildDashboardViewContract(input);
 }
 
+function readSelectedYearMonth(view: DashboardViewContract): string {
+  if (view.state === "loading") {
+    return view.selectedYearMonth;
+  }
+
+  return view.snapshot.selectedYearMonth;
+}
+
 export function switchMonthlyDashboardMonth(
+  currentView: DashboardViewContract,
   transactions: Transaction[],
-  selectedYearMonth: string
+  nextSelectedYearMonth: string
 ): DashboardViewContract {
-  return buildDashboardViewContract({ transactions, selectedYearMonth });
+  if (readSelectedYearMonth(currentView) === nextSelectedYearMonth) {
+    return currentView;
+  }
+
+  return buildDashboardViewContract({ transactions, selectedYearMonth: nextSelectedYearMonth });
 }
