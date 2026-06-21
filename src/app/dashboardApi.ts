@@ -24,6 +24,38 @@ export interface DashboardData {
   forecast: ForecastResult;
 }
 
+export interface MonthlyDashboardSnapshot {
+  selectedYearMonth: string;
+  monthlyTotals: MonthlyBreakdown;
+  categoryBreakdown: CategoryBreakdown;
+}
+
+export interface LoadingDashboardViewContract {
+  state: "loading";
+  selectedYearMonth: string;
+}
+
+export interface ReadyDashboardViewContract {
+  state: "ready";
+  snapshot: MonthlyDashboardSnapshot;
+}
+
+export interface EmptyDashboardViewContract {
+  state: "empty";
+  snapshot: MonthlyDashboardSnapshot;
+}
+
+export type DashboardViewContract =
+  | LoadingDashboardViewContract
+  | ReadyDashboardViewContract
+  | EmptyDashboardViewContract;
+
+export interface DashboardViewContractInput {
+  transactions: Transaction[];
+  selectedYearMonth: string;
+  isLoading?: boolean;
+}
+
 /**
  * Builds the dashboard data contract, composing historical monthly totals with
  * a deterministic forecast.  Existing totals are passed through unchanged so
@@ -55,4 +87,41 @@ export function queryCategoryBreakdown(
   yearMonth: string
 ): CategoryBreakdown {
   return computeCategoryBreakdown(transactions, yearMonth);
+}
+
+export function queryMonthlyDashboardSnapshot(
+  transactions: Transaction[],
+  selectedYearMonth: string
+): MonthlyDashboardSnapshot {
+  return {
+    selectedYearMonth,
+    monthlyTotals: queryMonthlyTotals(transactions, selectedYearMonth),
+    categoryBreakdown: queryCategoryBreakdown(transactions, selectedYearMonth),
+  };
+}
+
+export function buildDashboardViewContract(input: DashboardViewContractInput): DashboardViewContract {
+  const { transactions, selectedYearMonth, isLoading = false } = input;
+
+  if (isLoading) {
+    return { state: "loading", selectedYearMonth };
+  }
+
+  const snapshot = queryMonthlyDashboardSnapshot(transactions, selectedYearMonth);
+
+  if (snapshot.categoryBreakdown.entries.length === 0) {
+    return { state: "empty", snapshot };
+  }
+
+  return { state: "ready", snapshot };
+}
+
+export function refreshDashboardViewContractMonth(
+  transactions: Transaction[],
+  nextSelectedYearMonth: string
+): DashboardViewContract {
+  return buildDashboardViewContract({
+    transactions,
+    selectedYearMonth: nextSelectedYearMonth,
+  });
 }
