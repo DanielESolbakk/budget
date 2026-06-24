@@ -166,6 +166,9 @@ NOT: `#22` or `#73, #74` (inline or comma-separated).
 - Stop and repair any issue marked `planning-invalid` before writing implementation code
 - Derive hierarchy from `docs/ways-of-work/plan/budget-planner/issue-catalog.json`; keep GitHub issues aligned with catalog
 - If PR links to invalid planning issue, treat work as blocked until resolved
+- Treat tests as their own planning scope whenever an issue needs both behavior and verification: if a story or feature still needs product behavior changes, do not consider the issue complete just because tests were added.
+- When creating or updating planning issues, keep implementation work and test work separated into their own issues unless the issue is explicitly a test issue.
+- If an issue is meant to be test-only, say so explicitly in the issue body and keep it linked to the parent story or feature; do not let Copilot infer that a story is finished from test additions alone.
 
 ## Planning Bot Output Guardrails
 
