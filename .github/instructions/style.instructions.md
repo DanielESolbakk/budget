@@ -50,6 +50,8 @@ description: "Use when creating or editing planning docs, TypeScript application
 - Use fixtures that reflect Norwegian merchant names, localized number formats, and realistic statement structures whenever available.
 - For bug fixes, add a regression test that reproduces the failure before the fix.
 - For feature changes, include an acceptance-criteria-to-test mapping in planning docs and keep test names aligned with that language.
+- Keep implementation issues and test issues separate in planning material unless an issue is explicitly test-only; do not let a story or feature read as complete merely because test coverage was added.
+- When drafting a story or feature issue, if validation work is needed, create or link a dedicated Test issue instead of folding the test work into the story issue.
 - Avoid broad mocks for core finance logic when deterministic fixtures can validate behavior directly.
 - Do not disable or delete tests to speed up delivery; fix the implementation or isolate flaky tests with a tracked follow-up.
 
