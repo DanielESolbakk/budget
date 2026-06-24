@@ -120,6 +120,7 @@ Perform three checks:
 - For each AC, classify status as `satisfied`, `partially satisfied`, `unsatisfied`, or `unproven (validation blocked)`.
 - For every semantic mismatch finding, include a direct quote from the issue text before asserting intent.
 - Do not treat cross-issue intent as anchor AC failure unless anchor AC text explicitly requires it.
+- If the source issue is a story or feature and the PR only adds tests, test scaffolding, or checkbox updates while implementation tasks remain open, classify the affected ACs as `partially satisfied` or `unproven` rather than `satisfied`, and call out the missing implementation scope explicitly.
 
 2. Plan alignment:
 - Does PR behavior align with local-first, deterministic, no-network, and layering constraints?
@@ -128,6 +129,7 @@ Perform three checks:
 3. Related-issue boundary:
 - Detect overlap: work likely belonging to sibling/follow-up issues
 - Detect gaps: required adjacent work not addressed and not explicitly deferred
+- If the PR appears to complete only a linked Test issue while the source story or feature still has open technical tasks, report that as a cross-issue boundary gap instead of treating the story as complete.
 
 4. Delivery hygiene:
 - Compare PR body claims against execution evidence (commands run, outcomes, CI links, checklist state, draft/ready state).

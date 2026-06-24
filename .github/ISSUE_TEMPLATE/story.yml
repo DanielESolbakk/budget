@@ -1,5 +1,5 @@
 name: Story
-description: Create a user story issue with explicit acceptance criteria and test mapping.
+description: Create a user story issue with explicit acceptance criteria and test mapping. Keep implementation work separate from standalone test work.
 title: "Story: "
 labels:
   - user-story
@@ -46,6 +46,7 @@ body:
     id: technical_tasks
     attributes:
       label: Technical Tasks
+      description: Describe the implementation work for the story. Keep dedicated test work in a linked Test issue unless this issue is explicitly test-only.
       placeholder: |
         - [ ] Task 1
         - [ ] Task 2
@@ -94,7 +95,7 @@ body:
     id: testing_requirements
     attributes:
       label: Testing Requirements
-      description: Include explicit unit, integration, and Playwright end-to-end expectations.
+      description: Include explicit unit, integration, and Playwright end-to-end expectations. If validation work is substantial, link a dedicated Test issue rather than folding it into the story body.
       placeholder: |
         - [ ] Unit: covered by #401
         - [ ] Integration: covered by #402
