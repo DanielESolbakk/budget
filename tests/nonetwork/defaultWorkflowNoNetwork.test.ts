@@ -108,12 +108,9 @@ describe("queryCategoryBreakdown no-network verification", () => {
     expect(first).toEqual(second);
   });
 
-  it("orders categorized entries by totalMinor descending on repeated calls", () => {
-    const first = queryCategoryBreakdown(fixtureTransactions, "2026-05");
-    const second = queryCategoryBreakdown(fixtureTransactions, "2026-05");
-    const categorized = first.entries.filter(e => e.categoryId !== null);
-    const categorized2 = second.entries.filter(e => e.categoryId !== null);
-    expect(categorized.map(e => e.categoryId)).toEqual(categorized2.map(e => e.categoryId));
+  it("orders categorized entries by totalMinor descending", () => {
+    const result = queryCategoryBreakdown(fixtureTransactions, "2026-05");
+    const categorized = result.entries.filter(e => e.categoryId !== null);
     for (let i = 0; i < categorized.length - 1; i++) {
       expect(categorized[i]!.totalMinor).toBeGreaterThanOrEqual(categorized[i + 1]!.totalMinor);
     }
