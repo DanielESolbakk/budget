@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { queryMonthlyTotals } from "../../src/app/dashboardApi.js";
+import { UNCATEGORIZED_LABEL, queryCategoryBreakdown, queryMonthlyTotals } from "../../src/app/dashboardApi.js";
 import { runDefaultLocalWorkflow } from "../../src/app/runDefaultLocalWorkflow.js";
 import type { Transaction } from "../../src/domain/types.js";
 import { readFixtureCsv, rowsToObjects } from "../../src/tooling/fixtures/fixtureCsv.js";
 
-const MONTHLY_TOTALS_FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
+const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
 
 function toMinorUnits(value: string): number {
   const normalized = value.trim();
@@ -29,8 +29,10 @@ function toIsoDate(date: string): string {
   return `${year}-${month}-${day}T00:00:00Z`;
 }
 
-function parseFixtureTransactions(): Transaction[] {
-  const parsed = readFixtureCsv(MONTHLY_TOTALS_FIXTURE_PATH);
+function parseFixtureTransactions(
+  categoryAssignments: Record<number, string> = {}
+): Transaction[] {
+  const parsed = readFixtureCsv(FIXTURE_PATH);
   const rows = rowsToObjects(parsed);
 
   return rows.map((row, index) => {
@@ -40,7 +42,7 @@ function parseFixtureTransactions(): Transaction[] {
       throw new Error(`Row ${index + 2} has both Beløp inn and Beløp ut populated.`);
     }
 
-    return {
+    const tx: Transaction = {
       id: `fixture-${index + 1}`,
       householdId: "hh-fixture",
       accountId: "acc-fixture",
@@ -51,10 +53,24 @@ function parseFixtureTransactions(): Transaction[] {
           : amountOutMinor !== 0
             ? -Math.abs(amountOutMinor)
             : 0,
-      merchantRaw: row.Beskrivelse ?? "Unknown"
+      merchantRaw: row.Beskrivelse ?? "Unknown",
     };
+
+    const assignedCategory = categoryAssignments[index];
+    if (assignedCategory !== undefined) {
+      tx.categoryId = assignedCategory;
+    }
+
+    return tx;
   });
 }
+
+// Row 4 → salary, rows 3 and 8 → groceries; all others remain uncategorized.
+const CATEGORY_ASSIGNMENTS: Record<number, string> = {
+  4: "salary",
+  3: "groceries",
+  8: "groceries",
+};
 
 describe("default workflow no-network verification", () => {
   const originalFetch = (globalThis as unknown as { fetch?: unknown }).fetch;
@@ -94,5 +110,64 @@ describe("default workflow no-network verification", () => {
     });
     expect(second).toEqual(first);
     expect(fetchCalled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// queryCategoryBreakdown – no-network verification (issue #110)
+// ---------------------------------------------------------------------------
+
+describe("queryCategoryBreakdown no-network verification", () => {
+  const originalFetch = (globalThis as unknown as { fetch?: unknown }).fetch;
+
+  afterEach(() => {
+    (globalThis as unknown as { fetch?: unknown }).fetch = originalFetch;
+  });
+
+  it("does not invoke fetch during queryCategoryBreakdown execution", () => {
+    const fixtureTransactions = parseFixtureTransactions(CATEGORY_ASSIGNMENTS);
+    let fetchCalled = false;
+    (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
+      fetchCalled = true;
+      throw new Error("Network access is not allowed in this test.");
+    };
+
+    const result = queryCategoryBreakdown(fixtureTransactions, "2026-05");
+    expect(result.entries.length).toBeGreaterThan(0);
+    expect(fetchCalled).toBe(false);
+  });
+
+  it("produces identical results on repeated calls with the same fixture input (determinism)", () => {
+    const fixtureTransactions = parseFixtureTransactions(CATEGORY_ASSIGNMENTS);
+    const first = queryCategoryBreakdown(fixtureTransactions, "2026-05");
+    const second = queryCategoryBreakdown(fixtureTransactions, "2026-05");
+    expect(first).toEqual(second);
+  });
+
+  it("orders categorized entries by totalMinor descending", () => {
+    const fixtureTransactions = parseFixtureTransactions(CATEGORY_ASSIGNMENTS);
+    const result = queryCategoryBreakdown(fixtureTransactions, "2026-05");
+    const categorized = result.entries.filter(e => e.categoryId !== null);
+    for (let i = 0; i < categorized.length - 1; i++) {
+      expect(categorized[i]!.totalMinor).toBeGreaterThanOrEqual(categorized[i + 1]!.totalMinor);
+    }
+  });
+
+  it("places the uncategorized bucket last", () => {
+    const fixtureTransactions = parseFixtureTransactions(CATEGORY_ASSIGNMENTS);
+    const result = queryCategoryBreakdown(fixtureTransactions, "2026-05");
+    const last = result.entries.at(-1);
+    expect(last?.categoryId).toBeNull();
+    expect(last?.label).toBe(UNCATEGORIZED_LABEL);
+  });
+
+  it("uncategorized bucket shape is stable across repeated identical fixture calls", () => {
+    const fixtureTransactions = parseFixtureTransactions(CATEGORY_ASSIGNMENTS);
+    const first = queryCategoryBreakdown(fixtureTransactions, "2026-05");
+    const second = queryCategoryBreakdown(fixtureTransactions, "2026-05");
+    const uncategorized1 = first.entries.find(e => e.categoryId === null);
+    const uncategorized2 = second.entries.find(e => e.categoryId === null);
+    expect(uncategorized1).toEqual(uncategorized2);
+    expect(uncategorized1?.transactionCount).toBeGreaterThan(0);
   });
 });
