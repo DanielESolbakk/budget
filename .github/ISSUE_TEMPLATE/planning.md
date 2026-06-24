@@ -13,6 +13,7 @@ Source: docs/ways-of-work/plan/budget-planner/issue-catalog.json
 Description:
 
 - One-sentence summary of intent and acceptance criteria.
+- If validation work is needed, keep it in a linked Test issue unless this issue is explicitly test-only.
 
 Acceptance Criteria (use AC IDs):
 

@@ -45,7 +45,11 @@ Default behavior:
 - apply validate-planning label
 - wait for validation processing and poll resulting labels/comments
 - repair and re-run if needed
-8. Enforce bullet issue references in section bodies:
+8. Keep implementation scope and test scope separate in issue bodies and rewrites:
+- if the issue is a story or feature, do not fold test execution work into the story body unless the issue is explicitly a test issue
+- if validation work is needed, link or create a dedicated test issue instead of treating test additions as completion of the story or feature
+- when rewriting a story issue, preserve the distinction between product behavior, implementation tasks, and test coverage
+9. Enforce bullet issue references in section bodies:
 - use - #NUMBER
 - never inline comma-separated refs in structured sections
 

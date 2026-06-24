@@ -1,5 +1,5 @@
 name: Feature
-description: Create a user-facing feature issue linked to an epic.
+description: Create a user-facing feature issue linked to an epic. Keep feature scope separate from linked test issues.
 title: "Feature: "
 labels:
   - feature
@@ -45,7 +45,7 @@ body:
     id: tests
     attributes:
       label: Test Issues In This Feature
-      description: Link explicit test issues for this feature.
+      description: Link explicit test issues for this feature. Do not absorb test-only work into the feature issue when a dedicated Test issue is appropriate.
       placeholder: |
         - [ ] #401 Test: Unit coverage for ...
         - [ ] #402 Test: Integration coverage for ...

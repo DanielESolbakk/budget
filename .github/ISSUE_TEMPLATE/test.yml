@@ -1,5 +1,5 @@
 name: Test
-description: Create a quality and verification issue linked to a story, enabler, feature, or epic-wide scope.
+description: Create a quality and verification issue linked to a story, enabler, feature, or epic-wide scope. Use this for test-only work instead of folding it into a story or feature issue.
 title: "Test: "
 labels:
   - test
@@ -81,6 +81,7 @@ body:
     id: objective
     attributes:
       label: Test Objective
+      description: State the verification goal for this test issue. If the parent story or feature still needs implementation work, keep that work in the parent issue and reserve this issue for validation.
       placeholder: Describe what behavior this test work validates.
     validations:
       required: true
