@@ -50,6 +50,9 @@ Flag missing adjacency when PR omits required companion work implied by source i
 - PR checklist state is consistent with observed command outcomes.
 - PR body test claims are consistent with execution evidence.
 - Draft/ready state and CI artifact/link fields are reported.
+- Test framework labels match repository evidence (for example, Vitest e2e vs Playwright).
+- "Passed" wording is used only when command output or CI artifacts are present in review evidence.
+- "Fully implemented" or "ready for merge" wording is used only when all anchor ACs are satisfied and no undeferred anchor tasks remain.
 
 ## Validation Evidence Checks
 
@@ -58,6 +61,7 @@ Flag missing adjacency when PR omits required companion work implied by source i
 - Failures were classified as baseline vs PR-introduced.
 - When failures occurred, equivalent commands were rerun on main for baseline comparison.
 - Test evidence references changed behavior, not unrelated passing tests.
+- High-risk summary claims are labeled as observed, inferred, or unverified.
 
 ## Finding Classification And Confidence
 
@@ -83,20 +87,22 @@ Flag missing adjacency when PR omits required companion work implied by source i
 - Additional planning issue status is explicit: complete or ambiguous.
 - If any output-shape check fails, findings are revised before finalizing.
 
-## Checkbox Sync Readiness (Opt-In Only)
+## Checkbox Sync Readiness
 
-- User explicitly requested checkbox updates.
-- Target issues for update are explicit.
+- Target issues for update are explicit from the review workflow.
 - Only allowed sections are targeted: Technical Requirements, Technical Tasks, Stories Enabled, Acceptance Criteria.
 - Evidence map exists for each checkbox changed.
 - Check-only policy is used unless user explicitly requested uncheck behavior.
 - Non-checkbox text is preserved exactly.
+- No PR body edits are attempted.
+- No PR comments or issue comments are used for checkbox sync reporting.
 
 ## Checkbox Sync Verification
 
 - Issue body was re-read after update.
 - Only expected checkbox deltas changed.
 - Updated, unchanged, and ambiguous items were reported.
+- No PR mutation occurred during checkbox sync.
 
 ## Reproducibility Context
 

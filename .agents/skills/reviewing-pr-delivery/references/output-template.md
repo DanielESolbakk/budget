@@ -40,6 +40,8 @@ If no findings:
 - PR narrative vs observed command output: [consistent|inconsistent]
 - Checklist/DoD claims vs evidence: [consistent|inconsistent]
 - Additional planning issue mapping/deferral status: [complete|ambiguous]
+- Framework terminology vs repository toolchain evidence: [consistent|inconsistent]
+- Claim tiers used correctly for high-risk statements: [consistent|inconsistent]
 
 ## Residual Risks
 
@@ -53,12 +55,13 @@ If no findings:
 - Working tree: [clean|dirty + note]
 - Evidence source: [local|CI|both]
 
-## Issue Checkbox Sync (Optional)
+## Issue Checkbox Sync
 
-- Mode: [review-only|review-plus-checkbox-sync]
 - Target issues updated: [list]
 - Policy: [check-only|bidirectional]
 - Updated checkboxes: [issue# + section + item]
 - Left unchecked (insufficient/partial evidence): [issue# + section + item]
 - Ambiguous items requiring human decision: [issue# + section + item]
 - Post-update verification: [pass|fail] with one-line evidence
+- PR mutation check: [no PR body edits, no PR comments]
+- Issue comment check: [no issue comments posted for sync]

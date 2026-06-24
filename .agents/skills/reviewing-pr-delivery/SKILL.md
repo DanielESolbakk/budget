@@ -23,7 +23,7 @@ In scope:
 - Related-issue overlap and missing-scope detection
 - Test and validation evidence checks for changed behavior
 - Risk-focused review findings with severity and evidence
-- Optional checkbox sync for planning issues based on PR evidence
+- Mandatory issue-body checkbox sync for planning issues based on PR evidence
 
 Out of scope:
 - Broad issue-body rewrites, section restructuring, or label changes
@@ -35,8 +35,7 @@ Out of scope:
 Default mode: one PR at a time.
 
 Execution modes:
-- Review-only mode (default): produce findings and coverage only.
-- Review-plus-checkbox-sync mode (opt-in): after review, update issue checkboxes using evidence.
+- Review-and-checkbox-sync mode (default): review the PR, then sync planning-issue body checkboxes using evidence.
 
 If the user asks for multiple PRs, process sequentially and complete the full workflow per PR before moving on.
 
@@ -51,8 +50,16 @@ Optional but preferred:
 
 If source issue cannot be determined, stop and ask for exactly one issue number.
 
-For checkbox sync mode, also require:
-- explicit list of issues to update (or explicit permission to update source issue and linked related planning issues)
+Checkbox sync target set:
+- the primary source issue
+- additional planning issues listed in the PR body
+- related planning issues from the resolved related-issue set when they contain allowed checkbox sections and the PR evidence maps to those items
+
+Checkbox sync mutation limits:
+- update issue description body checkboxes only
+- do not edit the PR body
+- do not add PR comments as part of checkbox sync
+- do not add issue comments as part of checkbox sync
 
 ## Workflow
 
@@ -65,7 +72,8 @@ PR Review Progress
 - [ ] Step 3: Load plan artifacts
 - [ ] Step 4: Build coverage and overlap analysis
 - [ ] Step 5: Run validation commands (if runnable)
-- [ ] Step 6: Deliver findings-first review
+- [ ] Step 6: Sync issue-body checkboxes
+- [ ] Step 7: Deliver findings-first review
 ```
 
 ### Step 1: Gather PR Data And Diff
@@ -135,6 +143,35 @@ Perform three checks:
 - Compare PR body claims against execution evidence (commands run, outcomes, CI links, checklist state, draft/ready state).
 - Flag inconsistencies between claimed status and observed evidence.
 
+### Step 4.5: Claim Evidence Guardrails (Mandatory)
+
+Before writing any positive completion claim, enforce all rules below.
+
+1. Toolchain truthfulness:
+- Detect the active test framework from repository evidence before naming it (for example, package.json scripts, config files, lockfile deps).
+- Do not call a test "Playwright" unless Playwright tooling is present in repository evidence.
+- If tests are executed via Vitest e2e config, name them as Vitest e2e tests.
+
+2. Pass/fail claim requirements:
+- Use "passed" only when backed by direct command output from this review session or CI status evidence linked in artifacts.
+- If the only source is PR narrative text, label it "claimed in PR body, unverified in review".
+
+3. Completion claim requirements:
+- Do not state "fully implemented", "all ACs covered", or "ready for merge" unless anchor AC statuses are all `satisfied` and no open anchor technical task is left without explicit deferral.
+- If implementation and validation are split across dependent PRs, report as `partially satisfied` or `unproven` with dependency note.
+
+### Honesty Contract (Mandatory)
+
+Constrain only high-risk review claims. Keep the rest of the review flexible and evidence-driven.
+
+- Separate statements into `observed`, `inferred`, or `unverified` claim tiers.
+- Use strong completion wording only for `observed` claims backed by code, issue text, command output, or CI artifacts.
+- If a claim depends on interpretation, label it as `inferred` and cite the evidence source.
+- If a claim comes only from PR narrative or expectation, label it `unverified` rather than resolving it.
+- Do not infer framework, CI state, merge readiness, or cross-PR dependency from filenames, checklist intent, or repository habit alone.
+
+Use [references/honesty-contract.md](references/honesty-contract.md) for allowed phrasing and prohibited shortcuts.
+
 Use [references/checklists.md](references/checklists.md) for signals.
 
 ### Step 5: Run Validation Commands
@@ -151,7 +188,42 @@ If a command cannot run:
 
 Do not claim AC validation passed without execution evidence.
 
-### Step 6: Deliver Findings-First Review
+### Step 6: Sync Issue-Body Checkboxes (Mandatory)
+
+After review evidence is assembled, update issue body checkboxes for the target planning issues.
+
+Allowed mutations:
+- Checkbox state only (`- [ ]` to `- [x]`) in existing issue body lines
+- Only in these sections:
+  - `### Technical Requirements`
+  - `### Technical Tasks`
+  - `### Stories Enabled`
+  - `### Acceptance Criteria`
+
+Disallowed mutations:
+- Adding/removing/rewording headings or list items
+- Reordering sections
+- Editing labels, dependencies, estimates, or narrative text
+- Editing the PR body
+- Posting PR comments for sync status
+- Posting issue comments for sync status
+
+Decision rules:
+- Check a box only when there is direct evidence from PR diff and/or command output.
+- If evidence is partial or blocked, leave unchecked and report the ambiguity in the review output.
+- Default policy is check-only.
+- Only allow uncheck when the user explicitly requests bidirectional reconciliation.
+
+Update workflow:
+1. Read each target issue body and extract current checkbox lines in allowed sections.
+2. Build an evidence map item-by-item from review artifacts.
+3. Apply issue-body updates with checkbox-only edits.
+4. Re-read each updated issue and verify only expected checkbox deltas changed.
+5. Report updated items, unchanged items, and ambiguous items in the final review output.
+
+If any target issue body format is not safely parseable for checkbox-only edits, stop and escalate.
+
+### Step 7: Deliver Findings-First Review
 
 Output must:
 - list findings first, ordered by severity
@@ -161,10 +233,11 @@ Output must:
 - include coverage summary for ACs and related-issue overlap/gap conclusions
 - tag each finding with confidence (`high`, `medium`, `low`) based on evidence strength
 - include reproducibility context (branch, commit SHA, working tree state, local vs CI evidence)
+- use framework-accurate terminology in every test claim (for example, Vitest vs Playwright)
 
 Use [references/output-template.md](references/output-template.md).
 
-### Step 7: Pre-Final Validation Gate (Mandatory)
+### Step 8: Pre-Final Validation Gate (Mandatory)
 
 Before finalizing output, enforce all checks below.
 
@@ -188,38 +261,11 @@ Before finalizing output, enforce all checks below.
 5. Confidence rationale:
 - Each finding must include a one-line confidence basis tied to available evidence quality.
 
+6. Terminology validation:
+- Test framework names in findings and summaries must match detected repository toolchain evidence.
+- If framework cannot be determined confidently, use neutral wording: "end-to-end test".
+
 If any check fails, do not finalize. Revise findings first.
-
-### Step 8: Checkbox Sync (Optional, Opt-In Only)
-
-Run this step only when user explicitly requests updates.
-
-Allowed mutations:
-- Checkbox state only (`- [ ]` to `- [x]`) in existing issue body lines
-- Only in these sections:
-  - `### Technical Requirements`
-  - `### Technical Tasks`
-  - `### Stories Enabled`
-  - `### Acceptance Criteria`
-
-Disallowed mutations:
-- Adding/removing/rewording headings or list items
-- Reordering sections
-- Editing labels, dependencies, estimates, or narrative text
-
-Decision rules:
-- Check a box only when there is direct evidence from PR diff and/or command output.
-- If evidence is partial or blocked, leave unchecked and include a note in output.
-- Default policy is check-only (do not uncheck existing checked boxes).
-- Only allow uncheck when user explicitly requests bidirectional reconciliation.
-
-Update workflow:
-1. Read issue body and extract current checkbox lines in allowed sections.
-2. Build an evidence map item-by-item from review artifacts.
-3. Produce a dry-run patch summary in output first.
-4. Apply body update with checkbox-only edits.
-5. Re-read updated issue and verify only expected checkbox deltas changed.
-6. Report updated items, unchanged items, and ambiguous items.
 
 ## Severity Model
 
@@ -254,7 +300,7 @@ Stop and escalate when any apply:
 2. PR diff cannot be retrieved
 3. Required repository plan files are missing
 4. Access/permission errors prevent issue or PR reads
-5. Checkbox sync requested but issue body format is not safely parseable for checkbox-only edits
+5. Any target issue body format is not safely parseable for checkbox-only edits
 
 Escalation message format:
 - Blocked reason: [short reason]
@@ -271,6 +317,8 @@ Escalation message format:
 - Use forward slashes in all skill file paths.
 - For semantic-intent findings, include quote-level evidence from the cited issue.
 - For checkbox sync, preserve all non-checkbox text exactly.
+- Never mutate the PR body or post PR comments as part of checkbox sync.
+- Never post issue comments just to summarize checkbox sync results.
 
 ## References
 
