@@ -10,6 +10,7 @@ Run before editing any issue.
 - Confirm parent epic and parent feature alignment.
 - Confirm linked enablers/tests are same-slice unless explicitly justified by policy.
 - Confirm issue references are bullet format in structured sections.
+- Run Test Necessity Decision and capture one outcome: no test issue needed now, or test issue required.
 
 ## Assignment-Readiness Checklist
 
@@ -27,6 +28,10 @@ Issue is assignable when all are true.
 - Blockers: blocker issues are open and relevant.
 - Implementation Entry Points: if issue is immediately assignable, entry points point to existing paths.
 - Implementation Entry Points: if new files are needed, list file creation under Technical Tasks.
+- Technical Tasks wording: no uncertainty terms (for example "if needed", "as needed", "where applicable", "or equivalent").
+- Test Necessity decision: recorded with rationale and consistent with issue body.
+- If test issue required: linked open test issue exists and matches the correct pyramid layer for changed functionality.
+- If test issue not required: no placeholder test tasks or stray test references remain.
 - Validation: no planning-invalid label.
 - Validation: validate-planning has been applied after edits and output checked.
 

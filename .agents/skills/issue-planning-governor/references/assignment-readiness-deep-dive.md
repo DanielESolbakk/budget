@@ -38,6 +38,14 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 - [ ] Each AC maps to at least one validation command.
 - [ ] Commands will pass only when all ACs are satisfied.
 
+### Test Necessity Decision Is Explicit And Justified
+
+- [ ] The issue explicitly records whether a dedicated test issue is required now.
+- [ ] The decision is based on changed functionality, contract, or runtime behavior (not preference).
+- [ ] If test issue is required, linked test issue verifies created functionality at the correct pyramid layer.
+- [ ] If test issue is not required, issue body contains no placeholder/conditional test language.
+- [ ] Decision avoids "tests for tests sake" by tying verification to concrete risk.
+
 ---
 
 ## Enabler-Specific Checks
@@ -52,6 +60,7 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
   - ❌ "Implement aggregation logic" (too vague)
   - ❌ "Output must be deterministic" (this is a requirement, not a task)
 - [ ] Each task references a specific file or module.
+- [ ] No task contains uncertainty wording ("if needed", "where applicable", "as needed", "or equivalent").
 
 ### Stories Enabled Are Feature-Scoped
 
