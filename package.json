@@ -4,7 +4,7 @@
   "private": true,
   "description": "Local-first budget planner scaffold",
   "type": "module",
-  "main": "dist/main/index.cjs",
+  "main": "out/main/index.js",
   "scripts": {
     "start": "electron-vite dev",
     "build": "electron-vite build",
