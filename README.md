@@ -2,6 +2,54 @@
 
 Windows-first, local-first budget planning software for a household user managing multiple accounts on one machine.
 
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18 or later
+- npm (included with Node.js)
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+### Start the desktop application
+
+```bash
+npm start
+```
+
+This command builds the renderer and main process and opens the Electron desktop window. The app runs entirely locally — no network connection is required.
+
+### Build for production
+
+```bash
+npm run build
+```
+
+The production-ready output is placed in `dist/`.
+
+### Run checks
+
+```bash
+# Type checking
+npm run typecheck
+
+# Unit tests
+npm run test:unit
+
+# Integration tests
+npm run test:integration
+
+# End-to-end tests
+npm run test:e2e
+
+# No-network verification
+npm run verify:no-network
+```
+
 ## Mission
 
 This project is building a desktop application that:

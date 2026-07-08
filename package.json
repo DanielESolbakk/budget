@@ -4,7 +4,11 @@
   "private": true,
   "description": "Local-first budget planner scaffold",
   "type": "module",
+  "main": "out/main/index.js",
   "scripts": {
+    "start": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
     "lint": "npm run typecheck",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --config vitest.unit.config.ts",
@@ -13,12 +17,23 @@
     "verify:no-network": "vitest run --config vitest.nonetwork.config.ts",
     "sanitizer": "tsx scripts/sanitize-csv.ts",
     "verify-fixture": "tsx scripts/verify-fixture.ts",
-    "eval:skill": "tsx scripts/run-skill-evals.ts"
+    "eval:skill": "tsx scripts/run-skill-evals.ts",
+    "postinstall": "node scripts/postinstall-electron.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^43.1.0",
+    "electron-vite": "^5.0.0",
     "tsx": "^4.20.6",
     "typescript": "^5.7.2",
+    "vite": "^7.0.0",
     "vitest": "^4.1.8"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

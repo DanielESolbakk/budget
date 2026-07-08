@@ -9,6 +9,7 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx",
     "types": [
       "node",
       "vitest/globals"
@@ -16,8 +17,12 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "electron/**/*.ts",
     "scripts/**/*.ts",
     "tests/**/*.ts",
-    "vitest.*.config.ts"
+    "vitest.*.config.ts",
+    "electron.vite.config.ts"
   ]
 }
