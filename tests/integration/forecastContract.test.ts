@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDashboardData } from "../../src/app/dashboardApi.js";
-import type { MonthlyTotal } from "../../src/domain/types.js";
+import type { MonthlyTotal, MonthSeries } from "../../src/domain/types.js";
 
 const threeMonthHistory: MonthlyTotal[] = [
   { yearMonth: "2026-01", totalMinor: 50000 },
@@ -116,5 +116,55 @@ describe("buildDashboardData – forecast contract", () => {
     expect(data.forecast.entries[0]?.yearMonth).toBe("2026-04");
     expect(data.forecast.entries[1]?.yearMonth).toBe("2026-05");
     expect(data.forecast.entries[2]?.yearMonth).toBe("2026-06");
+  });
+});
+
+describe("MonthSeries – contract compatibility", () => {
+  it("buildDashboardData returns a value assignable to MonthSeries", () => {
+    const series: MonthSeries = buildDashboardData({ monthlyTotals: threeMonthHistory });
+
+    expect(Array.isArray(series.monthlyTotals)).toBe(true);
+    expect(series.forecast).toHaveProperty("entries");
+    expect(series.forecast).toHaveProperty("usedFallback");
+  });
+
+  it("MonthSeries monthlyTotals are in ascending yearMonth order", () => {
+    const series: MonthSeries = buildDashboardData({ monthlyTotals: threeMonthHistory });
+
+    for (let i = 1; i < series.monthlyTotals.length; i++) {
+      expect(series.monthlyTotals[i]!.yearMonth > series.monthlyTotals[i - 1]!.yearMonth).toBe(true);
+    }
+  });
+
+  it("MonthSeries forecast entries are strictly after the last actual month", () => {
+    const series: MonthSeries = buildDashboardData({ monthlyTotals: threeMonthHistory });
+    const lastActual = series.monthlyTotals[series.monthlyTotals.length - 1]!.yearMonth;
+
+    for (const entry of series.forecast.entries) {
+      expect(entry.yearMonth > lastActual).toBe(true);
+    }
+  });
+
+  it("MonthSeries insufficient-history: empty actuals sets usedFallback true with fallback-zero entries", () => {
+    const series: MonthSeries = buildDashboardData({
+      monthlyTotals: [],
+      fallbackStartYearMonth: "2026-04",
+    });
+
+    expect(series.monthlyTotals).toHaveLength(0);
+    expect(series.forecast.usedFallback).toBe(true);
+    for (const entry of series.forecast.entries) {
+      expect(entry.method).toBe("fallback-zero");
+      expect(entry.projectedMinor).toBe(0);
+    }
+  });
+
+  it("MonthSeries insufficient-history: sparse actuals still use moving-average-3m method", () => {
+    const series: MonthSeries = buildDashboardData({ monthlyTotals: oneMonthHistory });
+
+    expect(series.forecast.usedFallback).toBe(false);
+    for (const entry of series.forecast.entries) {
+      expect(entry.method).toBe("moving-average-3m");
+    }
   });
 });
