@@ -7,17 +7,15 @@
  *
  * This script runs after `npm install` on all platforms. On platforms where
  * the electron binary is already present it exits immediately. On Windows,
- * when the binary is missing, it re-extracts using Node's built-in
- * StreamZip (yauzl) approach via the `node:fs` + `node:zlib` pipeline — or
- * simply shells out to PowerShell's Expand-Archive which handles the zip
- * correctly on all Windows versions.
+ * when the binary is missing, it re-extracts using PowerShell's
+ * Expand-Archive which handles the zip correctly on all Windows versions.
  *
  * CI: set ELECTRON_SKIP_BINARY_DOWNLOAD=1 before `npm install` to skip the
  * electron binary download entirely. Vitest tests do not need the binary.
  */
 
-import { execSync, spawnSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
@@ -59,7 +57,6 @@ const cacheRoot =
 
 let zipPath = null;
 try {
-  const { readdirSync } = await import("node:fs");
   for (const hash of readdirSync(cacheRoot)) {
     const candidate = join(
       cacheRoot,
@@ -72,7 +69,7 @@ try {
     }
   }
 } catch {
-  // cache dir not found
+  // cache dir not found — non-fatal
 }
 
 if (!zipPath) {
@@ -84,10 +81,10 @@ if (!zipPath) {
   process.exit(0); // non-fatal — CI sets ELECTRON_SKIP_BINARY_DOWNLOAD
 }
 
-console.log(`[postinstall-electron] Extracting electron binary from ${zipPath}`);
+console.log(`[postinstall-electron] Re-extracting electron binary from cache`);
 
 if (platform() === "win32") {
-  // PowerShell's Expand-Archive handles Windows zip subdirectories correctly.
+  // PowerShell Expand-Archive handles Windows zip subdirectory entries correctly.
   mkdirSync(distDir, { recursive: true });
   const result = spawnSync(
     "powershell",
@@ -103,9 +100,11 @@ if (platform() === "win32") {
     process.exit(1);
   }
 } else {
-  // On macOS/Linux extract-zip works correctly; re-run the install script.
+  // On macOS/Linux extract-zip works correctly; re-run electron's own install.
+  const { execSync } = await import("node:child_process");
   execSync("node install.js", { cwd: electronDir, stdio: "inherit" });
+  process.exit(0); // install.js writes path.txt itself on non-Windows
 }
 
 await writeFile(pathTxt, exeName, "utf8");
-console.log(`[postinstall-electron] Electron binary ready at ${binaryPath}`);
+console.log(`[postinstall-electron] Electron binary ready.`);
