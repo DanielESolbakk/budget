@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDashboardData } from "../../src/app/dashboardApi.js";
-import type { MonthlyTotal, MonthSeries } from "../../src/domain/types.js";
+import { buildMonthBuckets } from "../../src/domain/forecast/aggregationAdapter.js";
+import type { MonthlyTotal, MonthSeries, Transaction } from "../../src/domain/types.js";
 
 const threeMonthHistory: MonthlyTotal[] = [
   { yearMonth: "2026-01", totalMinor: 50000 },
@@ -166,5 +167,54 @@ describe("MonthSeries – contract compatibility", () => {
     for (const entry of series.forecast.entries) {
       expect(entry.method).toBe("moving-average-3m");
     }
+  });
+});
+
+describe("buildMonthBuckets – MonthSeries adapter compatibility", () => {
+  const flatTransactions: Transaction[] = [
+    {
+      id: "tx-1",
+      householdId: "hh-1",
+      accountId: "acc-1",
+      bookedAtIso: "2026-03-20T00:00:00Z",
+      amountMinor: 2500,
+      merchantRaw: "Kiwi"
+    },
+    {
+      id: "tx-2",
+      householdId: "hh-1",
+      accountId: "acc-1",
+      bookedAtIso: "2026-01-05T00:00:00Z",
+      amountMinor: 1000,
+      merchantRaw: "Rema 1000"
+    },
+    {
+      id: "tx-3",
+      householdId: "hh-1",
+      accountId: "acc-1",
+      bookedAtIso: "2026-03-01T00:00:00Z",
+      amountMinor: -500,
+      merchantRaw: "Vy"
+    },
+  ];
+
+  it("AC-3: adapter output is assignable to MonthSeries monthlyTotals", () => {
+    const monthlyTotals: MonthSeries["monthlyTotals"] = buildMonthBuckets(flatTransactions);
+
+    expect(monthlyTotals).toEqual([
+      { yearMonth: "2026-01", totalMinor: 1000 },
+      { yearMonth: "2026-02", totalMinor: 0 },
+      { yearMonth: "2026-03", totalMinor: 2000 }
+    ]);
+  });
+
+  it("AC-3: adapter output composes into buildDashboardData MonthSeries contract", () => {
+    const monthlyTotals = buildMonthBuckets(flatTransactions);
+    const series: MonthSeries = buildDashboardData({ monthlyTotals });
+
+    expect(series.monthlyTotals).toEqual(monthlyTotals);
+    expect(series.forecast.entries[0]!.yearMonth).toBe("2026-04");
+    expect(series.forecast.entries[0]!.method).toBe("moving-average-3m");
+    expect(series.forecast.usedFallback).toBe(false);
   });
 });
