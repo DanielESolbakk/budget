@@ -52,6 +52,29 @@ Default behavior:
 9. Enforce bullet issue references in section bodies:
 - use - #NUMBER
 - never inline comma-separated refs in structured sections
+10. Enforce deterministic task language:
+- fail readiness if Technical Tasks contain uncertainty words such as "if needed", "as needed", "where applicable", "or equivalent", "as appropriate", or "if required"
+- tasks must be explicit, executable, and tied to clear file/module targets
+
+## Test Necessity Decision Gate (Mandatory)
+
+The skill must decide whether test planning is required for the issue. Do not ask the user to make this call by default.
+
+Decision workflow:
+1. Identify whether the issue changes behavior, contracts, data flow, boundaries, or runtime wiring (not just planning text).
+2. Determine verification risk and choose the lowest-cost sufficient test layer per pyramid:
+- unit for pure logic and deterministic calculations
+- integration for cross-module contracts, persistence, IPC/service boundaries
+- e2e/playwright for user-critical flow wiring and renderer/runtime interactions
+3. Decide one of two outcomes:
+- **No test issue needed now:** only when issue scope is planning-only or non-behavioral and existing verification already covers risk. In this case, do not add test tasks or test issue references.
+- **Test issue required:** when issue introduces or changes executable behavior/contract/runtime wiring. In this case, create or link a dedicated test issue and wire it into the parent issue sections.
+
+Mandatory behavior when test issue is required:
+- If no suitable open test issue exists, create one using the Test template.
+- Link it in the issue body under the appropriate section (for example, `### Linked Test Issues` or `### Test Issues In This Feature`).
+- Ensure the test objective verifies the specific functionality created by the issue; avoid tests for test's sake.
+- Map acceptance criteria to that test issue and include concrete validation commands.
 
 ## Preflight Checklist
 
@@ -116,6 +139,9 @@ Each step is a gate. Do not proceed to the next step until the current step is c
 - Verify required headings exist for type (see references/templates.md).
 - Verify hierarchy: parent epic/feature alignment, enabler feature-scope, story/test linkage.
 - Verify assignment readiness: size, ownership layer, no circular blockers, entry points policy.
+- Run Test Necessity Decision Gate and record evidence for one outcome:
+  - no test issue needed now, or
+  - test issue required and create/link action needed.
 - **GATE CHECK:** Are all preflight items confirmed? If no, stop and escalate. If yes, proceed to Step 2.
 
 ### Step 2: REWRITE/UPDATE (Cannot skip)
@@ -123,6 +149,9 @@ Each step is a gate. Do not proceed to the next step until the current step is c
 - Keep issue concise, specific, testable.
 - Include explicit blocker and enabler logic.
 - Include validation commands aligned to scope.
+- Apply Test Necessity outcome deterministically:
+  - if test issue required, create/link dedicated test issue and AC mapping
+  - if no test issue needed, keep issue free of placeholder or conditional test language
 - Record what will change and why (map to repository policy).
 - **GATE CHECK:** Does rewritten body match template headings? Are all structured refs in - #NUMBER format? If no, do not save. If yes, save issue and proceed to Step 3.
 
@@ -147,6 +176,9 @@ Each step is a gate. Do not proceed to the next step until the current step is c
 - [ ] Remaining blockers are explicit and linked.
 - [ ] Implementation Entry Points policy verified (existing paths only if assignable now).
 - [ ] Assignment-readiness checks passed per references/checklists.md.
+- [ ] Technical Tasks contain no uncertainty words ("if needed", "as needed", "where applicable", "or equivalent", etc.).
+- [ ] Test Necessity Decision Gate evidence captured and consistent with issue body.
+- [ ] If test issue is required, linked test issue exists and is scoped to verify created functionality at the correct pyramid layer.
 - [ ] **NEW:** Deep-dive assignment-readiness checklist passed (references/assignment-readiness-deep-dive.md):
   - [ ] All ACs are operationalized (testable, not vague).
   - [ ] Test file paths exist or are explicitly listed in Technical Tasks.
@@ -160,6 +192,7 @@ Each step is a gate. Do not proceed to the next step until the current step is c
 ### Step 5: FINALIZE (Cannot skip)
 - Summarize what changed and why.
 - Include validation evidence: exact label state and comment text from validation.
+- Include Test Necessity decision and evidence (why test issue was or was not required).
 - Include remaining blockers and next recommended issue.
 - Include residual risks and explicit follow-up issue links.
 - **GATE CHECK:** Is evidence complete and summary specific? If yes, this issue is DONE. If no, return to Step 4 for verification.
@@ -316,6 +349,9 @@ Next Action: [Step N+1 | STOP Escalate | Step 3a (repair, if requested)]
 - Issue body saved: yes/no
 - Template headings present: list first 3 exact heading names
 - Structured refs format (- #NUMBER): verified yes/no
+- Test Necessity decision applied: yes/no
+- If yes (test required): linked/created test issue number(s)
+- If no (test not required): explicit rationale
 
 **After Step 3 (VALIDATE):**
 - All labels on issue: [list]
@@ -328,6 +364,8 @@ Next Action: [Step N+1 | STOP Escalate | Step 3a (repair, if requested)]
 - Checklist: list all readiness + deep-dive items with [✓PASS] or [✗FAIL]
 - Failed items: explain each
 - Passed items: show one supporting fact per item
+- Uncertainty words check result: [✓PASS] or [✗FAIL] with quoted task lines
+- Test Necessity consistency check: [✓PASS] or [✗FAIL] with quoted evidence
 - **Quoted evidence required for each passed deep-dive item:**
   - Section heading where evidence was found (for example `### Technical Tasks`)
   - Exact snippet in quotes copied from issue body
@@ -346,8 +384,9 @@ For every run include:
 1. What changed (in each issue).
 2. Why it changed (map to policy).
 3. Validation evidence (exact labels and comment text from Steps 3–4).
-4. Remaining blockers and next recommended issue.
-5. Residual risks and explicit follow-up issue links for deferred work.
+4. Test Necessity decision, reasoning, and resulting test issue action (created/linked/none).
+5. Remaining blockers and next recommended issue.
+6. Residual risks and explicit follow-up issue links for deferred work.
 
 ## References
 
