@@ -83,10 +83,13 @@ Collect:
 - changed files and key hunks
 - test files changed
 - linked issues from PR body text (for example, `Closes #36`)
+- **Copilot completion signal**: if PR shows "Copilot finished work on behalf of...", record completion timestamp; do not escalate asking if agent is stalled
 
 Prefer local diff review for line-level evidence.
 
 If local fetch fails because a PR branch already exists or is checked out, continue with existing local branch state and record that fallback in evidence.
+
+**Zero-file composition enablers**: If `changed_files: 0` and PR summary references merged blocker PRs (for example, "All three blockers were resolved and merged to main before this branch"), do not immediately escalate. Instead, parse the blocker references and proceed to Step 2 to verify they were actually merged; zero new files may be intentional if the enabler's ACs are satisfied by composition of existing work.
 
 ### Step 2: Resolve Source Issue And Related Issues
 
@@ -142,6 +145,7 @@ Perform three checks:
 4. Delivery hygiene:
 - Compare PR body claims against execution evidence (commands run, outcomes, CI links, checklist state, draft/ready state).
 - Flag inconsistencies between claimed status and observed evidence.
+- **Composition-enabler hygiene**: If `changed_files: 0` and PR summary names merged blockers, verify each referenced blocker PR was actually merged to main. If all blockers are merged and the enabler ACs map to existing test evidence in those blockers, classify as `intentional zero-file composition` and report it as delivered (not incomplete). If any blocker is still open or the mapping is unclear, report as `ambiguous delivery scope`.
 
 ### Step 4.5: Claim Evidence Guardrails (Mandatory)
 
@@ -159,6 +163,7 @@ Before writing any positive completion claim, enforce all rules below.
 3. Completion claim requirements:
 - Do not state "fully implemented", "all ACs covered", or "ready for merge" unless anchor AC statuses are all `satisfied` and no open anchor technical task is left without explicit deferral.
 - If implementation and validation are split across dependent PRs, report as `partially satisfied` or `unproven` with dependency note.
+- **Composition enablers**: For PRs that document composition of already-merged prerequisites (zero new files, ACs satisfied via blocker evidence), this counts as `satisfied` provided: (a) all blocker PRs were merged, (b) ACs map cleanly to existing test evidence in blockers, and (c) the enabler's own composition work is accurately described and trivial/glue-only.
 
 ### Honesty Contract (Mandatory)
 
@@ -297,10 +302,11 @@ If neither exists, report a traceability ambiguity finding.
 
 Stop and escalate when any apply:
 1. Source issue cannot be resolved from PR context
-2. PR diff cannot be retrieved
+2. PR diff cannot be retrieved (excluding empty diff when changed_files is 0 for composition enablers)
 3. Required repository plan files are missing
 4. Access/permission errors prevent issue or PR reads
 5. Any target issue body format is not safely parseable for checkbox-only edits
+6. Blocker references in composition-enabler summary cannot be verified (for example, referenced PR does not exist or is not merged)
 
 Escalation message format:
 - Blocked reason: [short reason]

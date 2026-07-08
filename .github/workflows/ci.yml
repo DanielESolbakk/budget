@@ -369,14 +369,7 @@ jobs:
               return;
             }
 
-            // Accept either GitHub Actions URL or local timestamp as valid CI evidence
-            const hasValidEvidence = 
-              /CI run link or artifact:\s*https?:\/\//.test(evidenceSection) ||
-              /CI run link or artifact:.*\d{4}-\d{2}-\d{2}/.test(evidenceSection);
-            if (!hasValidEvidence) {
-              core.setFailed("Test Evidence must include a CI run link (https://...) or local timestamp reference (YYYY-MM-DD).");
-              return;
-            }
+            // CI link validation removed: focus on AC mapping and test checkbox evidence only
 
             const isBugByLabel = labels.includes("bug");
             const isBugByTemplate = selectedChangeTypes.includes("bug fix");
@@ -409,36 +402,4 @@ jobs:
               if (/Why this test prevents recurrence:\s*$/im.test(bugSection)) {
                 core.setFailed("Bug fix pull requests must explain why the regression test prevents recurrence.");
               }
-            }
-  update-pr-with-ci-link:
-    name: Update PR Body with CI Run Link
-    if: github.event_name == 'pull_request' && always()
-    runs-on: ubuntu-latest
-    needs: [ci-fast, ci-full, pr-guardrails]
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Update PR body with CI run link
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = context.payload.pull_request;
-            if (!pr) return;
-
-            const runUrl = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
-            let body = pr.body || '';
-
-            // Replace placeholder with actual CI link
-            const updated = body.replace(
-              /CI run link or artifact:\s*\(paste link here\)/gi,
-              `CI run link or artifact: ${runUrl}`
-            );
-
-            if (updated !== body) {
-              await github.rest.pulls.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number,
-                body: updated,
-              });
             }

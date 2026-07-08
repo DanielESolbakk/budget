@@ -74,7 +74,8 @@ Mandatory behavior when test issue is required:
 - If no suitable open test issue exists, create one using the Test template.
 - Link it in the issue body under the appropriate section (for example, `### Linked Test Issues` or `### Test Issues In This Feature`).
 - Ensure the test objective verifies the specific functionality created by the issue; avoid tests for test's sake.
-- Map acceptance criteria to that test issue and include concrete validation commands.
+- **Map acceptance criteria to that test issue with inline detail:** Use `### Acceptance Criteria Mapping` section in test issues assigned to cloud agents. Each AC must include: (1) AC definition, (2) which test scenario(s) verify it, (3) specific validation assertion. This eliminates round-trips to parent issues and ensures cloud agents have complete context without leaving the issue.
+- Include concrete validation commands.
 
 ## Preflight Checklist
 
@@ -150,10 +151,11 @@ Each step is a gate. Do not proceed to the next step until the current step is c
 - Include explicit blocker and enabler logic.
 - Include validation commands aligned to scope.
 - Apply Test Necessity outcome deterministically:
-  - if test issue required, create/link dedicated test issue and AC mapping
+  - if test issue required, create/link dedicated test issue and **inline AC mapping** (see guidance below)
   - if no test issue needed, keep issue free of placeholder or conditional test language
+- **For test issues assigned to cloud agents:** Include `### Acceptance Criteria Mapping` section where each AC includes: definition, test scenario(s), and validation assertion. This provides complete context without requiring the agent to reference parent issues.
 - Record what will change and why (map to repository policy).
-- **GATE CHECK:** Does rewritten body match template headings? Are all structured refs in - #NUMBER format? If no, do not save. If yes, save issue and proceed to Step 3.
+- **GATE CHECK:** Does rewritten body match template headings? Are all structured refs in - #NUMBER format? For test issues: Does AC mapping section exist with concrete assertions? If no, do not save. If yes, save issue and proceed to Step 3.
 
 ### Step 3: VALIDATE (MANDATORY - Cannot skip or defer)
 - Apply validate-planning label to the issue.
@@ -181,6 +183,7 @@ Each step is a gate. Do not proceed to the next step until the current step is c
 - [ ] If test issue is required, linked test issue exists and is scoped to verify created functionality at the correct pyramid layer.
 - [ ] **NEW:** Deep-dive assignment-readiness checklist passed (references/assignment-readiness-deep-dive.md):
   - [ ] All ACs are operationalized (testable, not vague).
+  - [ ] **For test issues:** AC mapping is inline and explicit (test scenario(s) + validation assertion for each AC, not just list of AC IDs).
   - [ ] Test file paths exist or are explicitly listed in Technical Tasks.
   - [ ] Integration boundary is clear (where does output go? what format is expected?).
   - [ ] Blockers are current and non-circular.
@@ -366,8 +369,9 @@ Next Action: [Step N+1 | STOP Escalate | Step 3a (repair, if requested)]
 - Passed items: show one supporting fact per item
 - Uncertainty words check result: [✓PASS] or [✗FAIL] with quoted task lines
 - Test Necessity consistency check: [✓PASS] or [✗FAIL] with quoted evidence
+- **For test issues:** AC mapping check [✓PASS] or [✗FAIL] — are all ACs defined inline with test scenarios + assertions (not just ID lists)?
 - **Quoted evidence required for each passed deep-dive item:**
-  - Section heading where evidence was found (for example `### Technical Tasks`)
+  - Section heading where evidence was found (for example `### Technical Tasks` or `### Acceptance Criteria Mapping`)
   - Exact snippet in quotes copied from issue body
   - Brief rationale for why snippet satisfies the item
 
