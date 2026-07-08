@@ -83,3 +83,25 @@ export interface ForecastResult {
   entries: ForecastEntry[];
   usedFallback: boolean;
 }
+
+/**
+ * Read-model contract for a deterministic month-series combining historical
+ * actuals with a near-term forecast.
+ *
+ * Ordering invariants:
+ *   - `monthlyTotals` elements are in ascending yearMonth order (earliest month first).
+ *   - `forecast.entries` are in ascending yearMonth order, each strictly after
+ *     the last element of `monthlyTotals` when actuals are present.
+ *
+ * Insufficient-history representation:
+ *   - When `monthlyTotals` is empty, `forecast.usedFallback` is true and every
+ *     entry uses method "fallback-zero" with projectedMinor of zero.
+ *   - When fewer than three actuals are available the forecast still runs using
+ *     whatever months exist (method: "moving-average-3m").
+ */
+export interface MonthSeries {
+  /** Historical monthly totals in ascending chronological order (earliest month first). */
+  monthlyTotals: MonthlyTotal[];
+  /** Near-term forecast derived from monthlyTotals. */
+  forecast: ForecastResult;
+}

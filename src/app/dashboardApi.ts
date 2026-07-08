@@ -3,13 +3,13 @@ import { computeMonthlyTotals } from "../domain/aggregation/computeMonthlyTotals
 import { simpleForecast } from "../domain/forecast/simpleForecast.js";
 import type {
   CategoryBreakdown,
-  ForecastResult,
   MonthlyBreakdown,
   MonthlyTotal,
+  MonthSeries,
   Transaction,
 } from "../domain/types.js";
 
-export type { CategoryBreakdown, MonthlyBreakdown };
+export type { CategoryBreakdown, MonthlyBreakdown, MonthSeries };
 export { UNCATEGORIZED_LABEL } from "../domain/aggregation/computeCategoryBreakdown.js";
 
 export interface DashboardInput {
@@ -19,10 +19,8 @@ export interface DashboardInput {
   fallbackStartYearMonth?: string;
 }
 
-export interface DashboardData {
-  monthlyTotals: MonthlyTotal[];
-  forecast: ForecastResult;
-}
+/** Alias for the canonical MonthSeries domain type; used as the output of buildDashboardData. */
+export type DashboardData = MonthSeries;
 
 export interface MonthlyDashboardSnapshot {
   selectedYearMonth: string;
