@@ -85,6 +85,29 @@ export interface ForecastResult {
 }
 
 /**
+ * Normalized input boundary consumed by the forecast engine.
+ *
+ * All fields are fully resolved – no optional values – so the forecast engine
+ * receives an unambiguous instruction set regardless of upstream sparsity.
+ *
+ * Insufficient-history representation:
+ *   - When `history` is empty, the adapter still resolves `fallbackStartYearMonth`
+ *     to a concrete YYYY-MM string, enabling the forecast engine to generate
+ *     explicit fallback-zero entries without any additional defaulting logic.
+ */
+export interface ForecastInput {
+  /** Historical monthly totals in ascending chronological order (earliest month first). */
+  history: MonthlyTotal[];
+  /** Number of future months to project. */
+  periods: number;
+  /**
+   * Concrete YYYY-MM month from which fallback entries begin when `history` is empty.
+   * Always resolved by the adapter layer; never left implicit.
+   */
+  fallbackStartYearMonth: string;
+}
+
+/**
  * Read-model contract for a deterministic month-series combining historical
  * actuals with a near-term forecast.
  *
