@@ -61,7 +61,7 @@ Commands run and passing:
 - [ ] npm run test:integration
 - [ ] npm run test:e2e
 
-CI run link or artifact: (paste link here)
+(Check at least one command above to confirm work was validated.)
 
 ## Bug Fix Regression Test (required for bug fixes)
 
