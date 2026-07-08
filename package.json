@@ -17,7 +17,8 @@
     "verify:no-network": "vitest run --config vitest.nonetwork.config.ts",
     "sanitizer": "tsx scripts/sanitize-csv.ts",
     "verify-fixture": "tsx scripts/verify-fixture.ts",
-    "eval:skill": "tsx scripts/run-skill-evals.ts"
+    "eval:skill": "tsx scripts/run-skill-evals.ts",
+    "postinstall": "node scripts/postinstall-electron.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
