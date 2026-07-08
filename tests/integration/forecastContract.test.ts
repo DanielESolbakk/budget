@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildDashboardData } from "../../src/app/dashboardApi.js";
 import { buildMonthBuckets } from "../../src/domain/forecast/aggregationAdapter.js";
-import type { MonthlyTotal, MonthSeries, Transaction } from "../../src/domain/types.js";
+import {
+  buildForecastInput,
+  buildForecastInputFromMonthSeries,
+} from "../../src/domain/forecast/forecastInputAdapter.js";
+import type { ForecastInput, MonthlyTotal, MonthSeries, Transaction } from "../../src/domain/types.js";
 
 const threeMonthHistory: MonthlyTotal[] = [
   { yearMonth: "2026-01", totalMinor: 50000 },
@@ -11,6 +15,33 @@ const threeMonthHistory: MonthlyTotal[] = [
 
 const oneMonthHistory: MonthlyTotal[] = [
   { yearMonth: "2026-01", totalMinor: 50000 }
+];
+
+const flatTransactions: Transaction[] = [
+  {
+    id: "tx-1",
+    householdId: "hh-1",
+    accountId: "acc-1",
+    bookedAtIso: "2026-03-20T00:00:00Z",
+    amountMinor: 2500,
+    merchantRaw: "Kiwi"
+  },
+  {
+    id: "tx-2",
+    householdId: "hh-1",
+    accountId: "acc-1",
+    bookedAtIso: "2026-01-05T00:00:00Z",
+    amountMinor: 1000,
+    merchantRaw: "Rema 1000"
+  },
+  {
+    id: "tx-3",
+    householdId: "hh-1",
+    accountId: "acc-1",
+    bookedAtIso: "2026-03-01T00:00:00Z",
+    amountMinor: -500,
+    merchantRaw: "Vy"
+  },
 ];
 
 describe("buildDashboardData – forecast contract", () => {
@@ -171,33 +202,6 @@ describe("MonthSeries – contract compatibility", () => {
 });
 
 describe("buildMonthBuckets – MonthSeries adapter compatibility", () => {
-  const flatTransactions: Transaction[] = [
-    {
-      id: "tx-1",
-      householdId: "hh-1",
-      accountId: "acc-1",
-      bookedAtIso: "2026-03-20T00:00:00Z",
-      amountMinor: 2500,
-      merchantRaw: "Kiwi"
-    },
-    {
-      id: "tx-2",
-      householdId: "hh-1",
-      accountId: "acc-1",
-      bookedAtIso: "2026-01-05T00:00:00Z",
-      amountMinor: 1000,
-      merchantRaw: "Rema 1000"
-    },
-    {
-      id: "tx-3",
-      householdId: "hh-1",
-      accountId: "acc-1",
-      bookedAtIso: "2026-03-01T00:00:00Z",
-      amountMinor: -500,
-      merchantRaw: "Vy"
-    },
-  ];
-
   it("AC-3: adapter output is assignable to MonthSeries monthlyTotals", () => {
     const monthlyTotals: MonthSeries["monthlyTotals"] = buildMonthBuckets(flatTransactions);
 
@@ -216,5 +220,78 @@ describe("buildMonthBuckets – MonthSeries adapter compatibility", () => {
     expect(series.forecast.entries[0]!.yearMonth).toBe("2026-04");
     expect(series.forecast.entries[0]!.method).toBe("moving-average-3m");
     expect(series.forecast.usedFallback).toBe(false);
+  });
+});
+
+describe("ForecastInput – contract shape assertions (AC-4)", () => {
+  const threeMonthTotals: MonthlyTotal[] = [
+    { yearMonth: "2026-01", totalMinor: 50000 },
+    { yearMonth: "2026-02", totalMinor: 60000 },
+    { yearMonth: "2026-03", totalMinor: 70000 },
+  ];
+
+  it("AC-4: ForecastInput has history, periods, and fallbackStartYearMonth fields", () => {
+    const input: ForecastInput = buildForecastInput(threeMonthTotals, {
+      fallbackStartYearMonth: "2026-04",
+    });
+
+    expect(input).toHaveProperty("history");
+    expect(input).toHaveProperty("periods");
+    expect(input).toHaveProperty("fallbackStartYearMonth");
+  });
+
+  it("AC-4: ForecastInput.history matches the provided MonthlyTotal array", () => {
+    const input: ForecastInput = buildForecastInput(threeMonthTotals, {
+      fallbackStartYearMonth: "2026-04",
+    });
+
+    expect(input.history).toEqual(threeMonthTotals);
+  });
+
+  it("AC-4: ForecastInput.periods is a concrete number (3 by default)", () => {
+    const input: ForecastInput = buildForecastInput(threeMonthTotals, {
+      fallbackStartYearMonth: "2026-04",
+    });
+
+    expect(typeof input.periods).toBe("number");
+    expect(input.periods).toBe(3);
+  });
+
+  it("AC-4: ForecastInput.fallbackStartYearMonth is a concrete YYYY-MM string", () => {
+    const input: ForecastInput = buildForecastInput([], { fallbackStartYearMonth: "2026-04" });
+
+    expect(typeof input.fallbackStartYearMonth).toBe("string");
+    expect(input.fallbackStartYearMonth).toMatch(/^\d{4}-\d{2}$/);
+    expect(input.fallbackStartYearMonth).toBe("2026-04");
+  });
+
+  it("AC-4: buildForecastInputFromMonthSeries produces same contract shape as buildForecastInput", () => {
+    const series: MonthSeries = buildDashboardData({ monthlyTotals: threeMonthTotals });
+    const fromSeries: ForecastInput = buildForecastInputFromMonthSeries(series, {
+      fallbackStartYearMonth: "2026-04",
+    });
+    const fromBuckets: ForecastInput = buildForecastInput(threeMonthTotals, {
+      fallbackStartYearMonth: "2026-04",
+    });
+
+    expect(fromSeries).toEqual(fromBuckets);
+  });
+
+  it("AC-4: empty-history ForecastInput reflects fallback representation explicitly", () => {
+    const input: ForecastInput = buildForecastInput([], { fallbackStartYearMonth: "2026-04" });
+
+    expect(input.history).toHaveLength(0);
+    expect(input.fallbackStartYearMonth).toBe("2026-04");
+    expect(input.periods).toBe(3);
+  });
+
+  it("AC-4: month-bucket output from buildMonthBuckets feeds into ForecastInput without type mismatch", () => {
+    const monthlyTotals = buildMonthBuckets(flatTransactions);
+    const input: ForecastInput = buildForecastInput(monthlyTotals, {
+      fallbackStartYearMonth: "2026-04",
+    });
+
+    expect(input.history).toEqual(monthlyTotals);
+    expect(input.periods).toBe(3);
   });
 });
