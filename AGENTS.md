@@ -46,8 +46,9 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - `scripts/`: command-line entrypoints only; keep reusable logic in `src/`.
 - `tests/unit/`: pure logic tests.
 - `tests/integration/`: fixture and cross-module contract tests.
-- `tests/e2e/`: critical workflow smoke coverage.
+- `tests/e2e/`: critical workflow smoke coverage (Vitest).
 - `tests/nonetwork/`: privacy and no-network enforcement.
+- `tests/playwright/`: Playwright Electron runtime smoke tests; `pom/` holds page-object abstractions.
 
 ## Issue Handoff Expectations
 
