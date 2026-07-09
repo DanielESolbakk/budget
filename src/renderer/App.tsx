@@ -41,7 +41,7 @@ export function App(): React.JSX.Element {
     <div>
       <h1>Budget Planner</h1>
       <p>Local-first budget planning for your household.</p>
-      {dashboardState.status === "loading" ? <p>Loading forecast…</p> : null}
+      {dashboardState.status === "loading" ? <p>Loading forecast...</p> : null}
       {dashboardState.status === "error" ? (
         <p role="alert">Unable to load forecast: {dashboardState.message}</p>
       ) : null}

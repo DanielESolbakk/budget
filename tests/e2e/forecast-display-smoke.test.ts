@@ -13,7 +13,7 @@ const monthlyTotals: MonthlyTotal[] = [
   { yearMonth: "2026-05", totalMinor: 54000 },
 ];
 
-function createStubBudgetApi(): BudgetApi {
+function createFakeBudgetApi(): BudgetApi {
   const dashboardData = buildDashboardData({ monthlyTotals });
 
   return {
@@ -28,7 +28,7 @@ function createStubBudgetApi(): BudgetApi {
 
 describe("forecast display smoke", () => {
   it("AC-1: renderer receives dashboard forecast data and displays projected months", async () => {
-    const dashboardData = await loadDashboardData(createStubBudgetApi());
+    const dashboardData = await loadDashboardData(createFakeBudgetApi());
     const markup = renderToStaticMarkup(
       React.createElement(ForecastSection, { dashboardData })
     );
@@ -40,7 +40,7 @@ describe("forecast display smoke", () => {
   });
 
   it("AC-2: renderer consumption leaves dashboard monthly totals unchanged", async () => {
-    const dashboardData = await loadDashboardData(createStubBudgetApi());
+    const dashboardData = await loadDashboardData(createFakeBudgetApi());
 
     expect(dashboardData.monthlyTotals).toEqual(monthlyTotals);
   });
