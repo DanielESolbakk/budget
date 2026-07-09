@@ -96,6 +96,33 @@ Exit criteria:
 - Run no-network verification in development and packaged builds
 - Run performance checks with at least 10,000 transactions and multiple accounts
 
+## Test Framework Ownership
+
+This repository uses two test frameworks with distinct, non-overlapping ownership.
+
+### Vitest (unit, integration, and Vitest e2e smoke)
+
+- **Scope**: pure logic, parsing, normalization, domain calculations, React component rendering (via `renderToStaticMarkup`), IPC contract behavior.
+- **Entry points**: `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/nonetwork/`.
+- **Runs in**: Node process, no Electron binary required.  Safe to run with `ELECTRON_SKIP_BINARY_DOWNLOAD=1`.
+- **Commands**: `npm run test:unit`, `npm run test:integration`, `npm run test:e2e:vitest`, `npm run verify:no-network`.
+
+### Playwright (Electron runtime smoke)
+
+- **Scope**: desktop runtime flow validation — window boot, root render, preload bridge availability, forecast section output, and CI failure artifact retention.
+- **Entry points**: `tests/playwright/` (specs and POM modules).
+- **Runs in**: launched Electron process via Playwright `_electron` API.  Requires a built app (`npm run build`) and the Electron binary.
+- **Command**: `npm run test:e2e:playwright`.
+- **POM convention**: use `tests/playwright/pom/` for reusable page-object abstractions; keep business assertions in specs.
+- **Locator strategy**: prefer `getByRole` role-first locators; use `getByText` for unique prose; avoid CSS selectors.
+- **Assertions**: use Playwright web-first assertions (`expect(locator).toBeVisible()`); never use fixed timeout sleeps.
+- **Isolation**: each spec file is self-contained with explicit `beforeAll`/`afterAll` lifecycle for the Electron application instance.
+- **CI artifacts**: traces (`test-results/`) and HTML report (`playwright-report/`) are retained on failure.
+
+### Decision rule
+
+If a test can be written as a Vitest unit or integration test, write it there.  Only escalate to Playwright when the test requires an actual Electron launch, DOM rendering in a live window, or IPC wiring through the preload bridge.
+
 ## Required Scripts And CI Expectations
 
 Once scaffolding exists, the repository must provide CI scripts for:
