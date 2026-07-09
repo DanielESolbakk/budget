@@ -16,7 +16,7 @@ export function App(): React.JSX.Element {
   React.useEffect(() => {
     let isActive = true;
 
-    void loadDashboardData()
+    loadDashboardData(window.budgetApi)
       .then((dashboardData) => {
         if (isActive) {
           setDashboardState({ status: "ready", dashboardData });
