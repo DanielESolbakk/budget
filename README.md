@@ -43,8 +43,11 @@ npm run test:unit
 # Integration tests
 npm run test:integration
 
-# End-to-end tests
-npm run test:e2e
+# Vitest end-to-end smoke tests
+npm run test:e2e:vitest
+
+# Playwright runtime tests (when configured for the issue)
+npm run test:e2e:playwright
 
 # No-network verification
 npm run verify:no-network

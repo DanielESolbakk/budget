@@ -13,7 +13,7 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Before writing any code, verify that every path listed under `Implementation Entry Points` exists in the workspace. If a required path is missing (e.g., `src/renderer/` does not exist), post a comment explaining what infrastructure is absent and stop. Do not silently implement only the feasible subset.
 - For AC mapping in PR bodies, treat the primary planning issue as the default source of AC IDs; only aggregate additional planning issues when explicitly requested.
 - Planning validation does not trigger on issue edits. To validate an issue, add the `validate-planning` label; it is removed automatically after processing. Use `workflow_dispatch` on Planning Issue Validation to validate a batch.
-- PRs must satisfy guardrails checks: PR body must include non-empty "Acceptance Criteria to Test Mapping" section describing how the PR satisfies each AC from the linked planning issue. Format is free-form prose; no strict row format required. Mark at least one test command checkbox (lint/typecheck/test:unit/test:integration/test:e2e) in "Test Evidence" to confirm validation. Soft warnings will flag if some planning issue ACs are not mentioned in the PR mapping, allowing manual reviewer to verify intent.
+- PRs must satisfy guardrails checks: PR body must include non-empty "Acceptance Criteria to Test Mapping" section describing how the PR satisfies each AC from the linked planning issue. Format is free-form prose; no strict row format required. Mark at least one test command checkbox (lint/typecheck/test:unit/test:integration/test:e2e:vitest/test:e2e:playwright) in "Test Evidence" to confirm validation. Soft warnings will flag if some planning issue ACs are not mentioned in the PR mapping, allowing manual reviewer to verify intent.
 - Run the narrowest validation command that matches the touched slice before widening scope.
 - For planning issues, use template headings exactly and bullet refs as `- #NUMBER` in reference sections.
 - Keep enablers feature-scoped under current lint rules: one `Parent Feature Issue` and matching `Stories Enabled` parents.
@@ -22,6 +22,9 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Avoid remediation loops: do not repeat near-identical comments unless new evidence, permissions, or validation output changed.
 - Do not add networked features, telemetry, cloud sync, or external data processing.
 - Do not commit raw bank data, local databases, backups, or unsanitized fixtures.
+- For Playwright issues, follow testdino-hq/playwright-skill guidance with required packs core, ci, and pom.
+- For Playwright issues, treat testdino-hq playwright-cli guidance as optional maintainer debugging support.
+- For Playwright test implementations, use testdino-hq Page Object Model patterns for reusable UI behavior and keep tests isolated and deterministic.
 
 ## Build And Test Commands
 
@@ -29,7 +32,8 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Typecheck: `npm run typecheck`
 - Unit tests: `npm run test:unit`
 - Integration tests: `npm run test:integration`
-- End-to-end tests: `npm run test:e2e`
+- Vitest end-to-end smoke tests: `npm run test:e2e:vitest`
+- Playwright runtime tests: `npm run test:e2e:playwright` (when present in issue scope)
 - No-network verification: `npm run verify:no-network`
 - Fixture verification: `npm run verify-fixture -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv`
 

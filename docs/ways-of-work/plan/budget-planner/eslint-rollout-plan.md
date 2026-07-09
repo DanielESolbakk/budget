@@ -51,7 +51,8 @@ Recommended initial rules:
 
 ### Phase 3: Task-Specific Expansions
 
-- Add Playwright-specific or React-specific instructions and rules once those surfaces exist
+- Add Playwright runtime e2e and React-specific instructions and rules once those surfaces exist
+- For Playwright runtime e2e surfaces, align lint and guidance expectations with testdino-hq core, ci, and pom policy
 - Expand only after concrete false-positive patterns are understood
 
 ## Acceptance Criteria

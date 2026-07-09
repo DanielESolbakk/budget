@@ -41,6 +41,7 @@ If no findings:
 - Checklist/DoD claims vs evidence: [consistent|inconsistent]
 - Additional planning issue mapping/deferral status: [complete|ambiguous]
 - Framework terminology vs repository toolchain evidence: [consistent|inconsistent]
+- Framework-specific evidence terms used: [vitest e2e smoke|playwright runtime e2e|both|neither]
 - Claim tiers used correctly for high-risk statements: [consistent|inconsistent]
 
 ## Residual Risks

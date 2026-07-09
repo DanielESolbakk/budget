@@ -104,7 +104,8 @@ Once scaffolding exists, the repository must provide CI scripts for:
 - `typecheck`
 - `test:unit`
 - `test:integration`
-- `test:e2e`
+- `test:e2e:vitest`
+- `test:e2e:playwright` (when Playwright coverage is in issue scope)
 - `verify:no-network`
 
 ## Risks And Mitigations
