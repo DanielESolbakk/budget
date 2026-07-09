@@ -22,9 +22,9 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Avoid remediation loops: do not repeat near-identical comments unless new evidence, permissions, or validation output changed.
 - Do not add networked features, telemetry, cloud sync, or external data processing.
 - Do not commit raw bank data, local databases, backups, or unsanitized fixtures.
-- For Playwright issues, follow testdino-hq/playwright-skill guidance with required packs core, ci, and pom.
-- For Playwright issues, treat testdino-hq playwright-cli guidance as optional maintainer debugging support.
-- For Playwright test implementations, use testdino-hq Page Object Model patterns for reusable UI behavior and keep tests isolated and deterministic.
+- For Playwright issues, read `.agents/skills/playwright-skill/SKILL.md` in this repository (fetch via GitHub MCP `get_file_contents`) before writing any test code. Required packs: core, ci, and pom.
+- For Playwright issues, the CLI pack (`playwright-cli/`) is optional and intended for maintainer debugging and trace triage only.
+- For Playwright test implementations: POM classes expose locators only — assertions belong in specs. Electron tests must use `NODE_ENV: 'test'` on launch, `waitForLoadState('domcontentloaded')` after `firstWindow()`, and scoped `beforeAll`/`afterAll` inside describe blocks.
 
 ## Build And Test Commands
 
@@ -33,7 +33,7 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Unit tests: `npm run test:unit`
 - Integration tests: `npm run test:integration`
 - Vitest end-to-end smoke tests: `npm run test:e2e:vitest`
-- Playwright runtime tests: `npm run test:e2e:playwright` (when present in issue scope)
+- Playwright runtime tests: `npm run test:e2e:playwright`
 - No-network verification: `npm run verify:no-network`
 - Fixture verification: `npm run verify-fixture -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv`
 
@@ -46,9 +46,8 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - `scripts/`: command-line entrypoints only; keep reusable logic in `src/`.
 - `tests/unit/`: pure logic tests.
 - `tests/integration/`: fixture and cross-module contract tests.
-- `tests/e2e/`: critical workflow smoke coverage (Vitest).
+- `tests/e2e/`: critical workflow smoke coverage.
 - `tests/nonetwork/`: privacy and no-network enforcement.
-- `tests/playwright/`: Playwright Electron runtime smoke tests; `pom/` holds page-object abstractions.
 
 ## Issue Handoff Expectations
 

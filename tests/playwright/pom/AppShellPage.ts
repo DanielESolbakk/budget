@@ -1,11 +1,10 @@
 import type { Page } from "@playwright/test";
-import { expect } from "@playwright/test";
 
 /**
  * Page Object Model for the Budget Planner application shell.
  *
- * Encapsulates locators and assertions for the top-level window after startup.
- * Use this abstraction for all tests that assert on window boot and root render.
+ * Encapsulates locators for the top-level window after startup.
+ * Assertions belong in specs — this object exposes locators only.
  */
 export class AppShellPage {
   private readonly page: Page;
@@ -22,13 +21,5 @@ export class AppShellPage {
   /** Introductory paragraph rendered below the main heading. */
   get introText() {
     return this.page.getByText("Local-first budget planning for your household.");
-  }
-
-  /**
-   * Waits for the application shell heading to be visible.
-   * Confirms the renderer reached a non-blank loaded state.
-   */
-  async waitForShell(): Promise<void> {
-    await expect(this.heading).toBeVisible();
   }
 }
