@@ -8,8 +8,8 @@
  *   - Forecast fallback or projected-month rendering path is active (AC-3)
  *
  * Framework boundary:
- *   Vitest   – unit, integration, and component-level smoke tests
- *   Playwright – Electron runtime flow validation (this file)
+ *   Vitest   -- unit, integration, and component-level smoke tests
+ *   Playwright -- Electron runtime flow validation (this file)
  *
  * Prerequisites: run `npm run build` before executing these tests.
  */
@@ -19,23 +19,30 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { join } from "node:path";
 import { AppShellPage } from "./pom/AppShellPage.js";
 import { ForecastPage } from "./pom/ForecastPage.js";
+import { PreloadBridgePage } from "./pom/PreloadBridgePage.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 /**
- * Shared Electron app fixture.  A single app instance is launched for all
- * scenarios in this file and closed after the last test completes.
+ * Shared Electron app instance for all scenarios in this file.
+ *
+ * One Electron process is launched in `beforeAll` and closed in `afterAll`.
+ * The playwright.config.ts `fullyParallel: false` setting prevents concurrent
+ * test file execution, so these module-level variables are safe to share
+ * across the sequential tests in this describe block.
  */
 let app: ElectronApplication;
 let window: Page;
 let shell: AppShellPage;
 let forecast: ForecastPage;
+let bridge: PreloadBridgePage;
 
 test.beforeAll(async () => {
   app = await electron.launch({ args: [MAIN_ENTRY] });
   window = await app.firstWindow();
   shell = new AppShellPage(window);
   forecast = new ForecastPage(window);
+  bridge = new PreloadBridgePage(window);
 });
 
 test.afterAll(async () => {
@@ -51,26 +58,14 @@ test.describe("Electron startup smoke", () => {
   });
 
   test("Scenario 2: preload bridge exposes window.budgetApi with dashboard contract methods", async () => {
-    // AC-2: confirm the preload bridge wires dashboard.getData and forecast.getEntries
-    // and that dashboard.getData resolves to an object with the expected contract fields.
-    const hasDashboardGetData = await window.evaluate(() => {
-      const api = (window as unknown as { budgetApi?: unknown }).budgetApi;
-      if (!api || typeof api !== "object") return false;
-      const dashboard = (api as Record<string, unknown>)["dashboard"];
-      return typeof (dashboard as Record<string, unknown>)?.["getData"] === "function";
-    });
-    expect(hasDashboardGetData).toBe(true);
+    // AC-2: confirm the preload bridge wires dashboard.getData and that the
+    // resolved value exposes the expected monthlyTotals and forecast fields.
+    const hasDashboard = await bridge.hasDashboardGetData();
+    expect(hasDashboard).toBe(true);
 
-    const contractFields = await window.evaluate(async () => {
-      const api = (window as unknown as { budgetApi: { dashboard: { getData: () => Promise<Record<string, unknown>> } } }).budgetApi;
-      const data = await api.dashboard.getData();
-      return {
-        hasMonthlyTotals: "monthlyTotals" in data,
-        hasForecast: "forecast" in data,
-      };
-    });
-    expect(contractFields.hasMonthlyTotals).toBe(true);
-    expect(contractFields.hasForecast).toBe(true);
+    const fields = await bridge.getDashboardContractFields();
+    expect(fields.hasMonthlyTotals).toBe(true);
+    expect(fields.hasForecast).toBe(true);
   });
 
   test("Scenario 3: forecast section is visible and shows projected or fallback output", async () => {

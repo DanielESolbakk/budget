@@ -14,6 +14,9 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "tests/playwright",
   outputDir: "test-results",
+  // Electron smoke tests share one app instance across all scenarios.
+  // fullyParallel: false prevents concurrent Electron launches and ensures
+  // the shared instance pattern in beforeAll/afterAll works reliably.
   fullyParallel: false,
   forbidOnly: !!process.env["CI"],
   retries: process.env["CI"] ? 1 : 0,
