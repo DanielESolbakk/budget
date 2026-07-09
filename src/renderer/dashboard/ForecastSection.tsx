@@ -1,12 +1,14 @@
 import React from "react";
 import type { DashboardData } from "../../app/dashboardApi.js";
 
+const MINOR_TO_MAJOR_DIVISOR = 100;
+
 export interface ForecastSectionProps {
   dashboardData: DashboardData;
 }
 
 function formatProjectedMinor(projectedMinor: number): string {
-  return `${(projectedMinor / 100).toFixed(2)} NOK`;
+  return `${(projectedMinor / MINOR_TO_MAJOR_DIVISOR).toFixed(2)} NOK`;
 }
 
 export function ForecastSection({ dashboardData }: ForecastSectionProps): React.JSX.Element {
