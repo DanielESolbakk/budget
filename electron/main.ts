@@ -1,5 +1,17 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
+import { buildDashboardData, type DashboardData } from "../src/app/dashboardApi.js";
+import type { MonthlyTotal } from "../src/domain/types.js";
+
+const sampleMonthlyTotals: MonthlyTotal[] = [
+  { yearMonth: "2026-03", totalMinor: 48000 },
+  { yearMonth: "2026-04", totalMinor: 51000 },
+  { yearMonth: "2026-05", totalMinor: 54000 },
+];
+
+function getDashboardData(): DashboardData {
+  return buildDashboardData({ monthlyTotals: sampleMonthlyTotals });
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -20,8 +32,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  ipcMain.handle("dashboard:getData", () => {
+    return getDashboardData();
+  });
+
   ipcMain.handle("forecast:getEntries", () => {
-    return [];
+    return getDashboardData().forecast.entries;
   });
 
   createWindow();

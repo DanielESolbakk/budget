@@ -110,6 +110,17 @@ Avoid inventing near-duplicates for the same concept.
 - Playwright end-to-end (focused): critical user journeys only; cannot substitute for cheaper lower-layer tests.
 - Every Story/Feature must state coverage plan (unit/integration/Playwright); excluded layers must link follow-up issue.
 
+## Playwright Implementation Policy
+
+- When an issue requires Playwright, follow testdino-hq/playwright-skill as a strict implementation contract.
+- Required packs for this repository are mandatory: core, ci, pom.
+- Migration pack is out of scope unless a dedicated migration issue explicitly requires it.
+- Playwright CLI pack is optional and intended for maintainer debugging and trace triage; it is not a mandatory implementation dependency.
+- All Playwright PRs must enforce Golden Rules: role-first locators, web-first assertions, no fixed timeout sleeps, isolated tests, and baseURL-driven navigation.
+- All Playwright CI runs must retain failure artifacts: traces, screenshots, and report output.
+- Playwright tests in this repository must use Page Object Model patterns for reusable UI behavior and keep one behavior per test case.
+- If an assigned issue asks for Playwright coverage and the implementation cannot satisfy these rules, the agent must stop and post a concise blocker comment instead of delivering partial Playwright coverage.
+
 ## Change Management
 
 - Preserve a clear path for future local OCR or local ML, but do not let speculative extensibility complicate the first implementation.

@@ -23,9 +23,9 @@ Acceptance Criteria (use AC IDs):
 Acceptance Criteria To Test Mapping:
 
 - Format: `- AC-<n> | <test-level> | <test-id> | <test-file-path>`
-- Allowed test levels: `unit`, `integration`, `e2e`, `end-to-end`, `performance`, `privacy`, `no-network`
+- Allowed test levels: `unit`, `integration`, `vitest-e2e-smoke`, `playwright-runtime-e2e`, `performance`, `privacy`, `no-network`
 - AC-1 | integration | import ledger totals remain stable | tests/integration/importLedger.test.ts
-- AC-2 | e2e | low confidence review queue is visible | tests/e2e/workflow-smoke.test.ts
+- AC-2 | vitest-e2e-smoke | low confidence review queue is visible | tests/e2e/workflow-smoke.test.ts
 
 Parent keys: E
 
@@ -64,7 +64,8 @@ Example: `#40` or `_None_`
 
 - Unit: ...
 - Integration: ...
-- Playwright: ...
+- Vitest E2E Smoke: ...
+- Playwright Runtime E2E: ...
 
 ### Out Of Scope
 
@@ -72,11 +73,11 @@ Example: `#40` or `_None_`
 
 ### Test Scope Type
 
-(Integration / End-to-end / Unit / Smoke / Other)
+(Integration / Vitest E2E Smoke / Playwright Runtime E2E / Unit / Other)
 
 ### Test Level
 
-(Integration / Unit / End-to-end / Smoke)
+(Integration / Unit / Vitest E2E Smoke / Playwright Runtime E2E)
 
 Notes:
 

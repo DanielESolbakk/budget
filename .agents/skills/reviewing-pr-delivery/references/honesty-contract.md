@@ -37,7 +37,7 @@ Do not:
 Use these patterns:
 
 - `Observed: PR adds a Vitest e2e test at tests/e2e/dashboard-month-switch-smoke.test.ts.`
-- `Observed: Local review run passed npm.cmd -s run test:e2e.`
+- `Observed: Local review run passed npm.cmd -s run test:e2e:vitest.`
 - `Inferred: This likely satisfies AC-2 because the month-switch contract is asserted in tests/integration/dashboard-view-contract.test.ts.`
 - `Unverified: The PR body claims CI passed, but no CI artifact or status link was reviewed.`
 - `Ambiguous: Additional planning issue #23 is listed, but the PR body does not map or defer its scope explicitly.`

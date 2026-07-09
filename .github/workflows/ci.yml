@@ -185,15 +185,17 @@ jobs:
       - name: Validate required npm scripts
         if: steps.detect.outputs.has_package == 'true'
         run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const required=['test:integration','test:e2e','verify:no-network']; const missing=required.filter((name)=>typeof scripts[name] !== 'string' || !scripts[name].trim()); if (missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const missing=['test:integration','verify:no-network'].filter((name)=>!has(name)); if(!(has('test:e2e:vitest')||has('test:e2e'))){ missing.push('test:e2e:vitest|test:e2e'); } if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
 
       - name: Integration tests
         if: steps.detect.outputs.has_package == 'true'
         run: npm run test:integration
 
-      - name: End-to-end tests
+      - name: Vitest end-to-end smoke tests
         if: steps.detect.outputs.has_package == 'true'
-        run: npm run test:e2e
+        run: |
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const cmd=has('test:e2e:vitest')?'test:e2e:vitest':(has('test:e2e')?'test:e2e':''); if(!cmd){ console.error('No e2e script found (expected test:e2e:vitest or test:e2e).'); process.exit(1);} console.log(cmd);" > .e2e_cmd
+          npm run "$(cat .e2e_cmd)"
 
       - name: No-network verification
         if: steps.detect.outputs.has_package == 'true'
@@ -253,7 +255,13 @@ jobs:
               )];
             }
 
-            const pr = context.payload.pull_request;
+            const payloadPr = context.payload.pull_request;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: payloadPr.number,
+            });
+
             const labels = (pr.labels || []).map((label) => String(label.name || "").toLowerCase());
             const title = String(pr.title || "");
             const bodyRaw = String(pr.body || "");

@@ -50,7 +50,7 @@ Flag missing adjacency when PR omits required companion work implied by source i
 - PR checklist state is consistent with observed command outcomes.
 - PR body test claims are consistent with execution evidence.
 - Draft/ready state and CI artifact/link fields are reported.
-- Test framework labels match repository evidence (for example, Vitest e2e vs Playwright).
+- Test framework labels match repository evidence (for example, Vitest e2e smoke vs Playwright runtime e2e).
 - "Passed" wording is used only when command output or CI artifacts are present in review evidence.
 - "Fully implemented" or "ready for merge" wording is used only when all anchor ACs are satisfied and no undeferred anchor tasks remain.
 

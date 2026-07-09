@@ -99,7 +99,8 @@ body:
       placeholder: |
         - [ ] Unit: covered by #401
         - [ ] Integration: covered by #402
-        - [ ] Playwright: deferred to #403 for UI slice
+        - [ ] Vitest E2E Smoke: covered by #403
+        - [ ] Playwright Runtime E2E: deferred to #404 for runtime slice
     validations:
       required: true
 

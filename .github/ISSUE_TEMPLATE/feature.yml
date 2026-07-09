@@ -77,7 +77,8 @@ body:
       description: Provide the narrowest commands that validate the feature slice.
       placeholder: |
         - npm run test:integration
-        - npm run test:e2e
+        - npm run test:e2e:vitest
+        - npm run test:e2e:playwright (when runtime coverage is required)
     validations:
       required: true
 
@@ -121,7 +122,8 @@ body:
       description: Map each AC ID to strict evidence rows using AC-ID | test-level | test-id | test-file-path.
       placeholder: |
         - AC-1 | integration | import ledger totals remain stable | tests/integration/importLedger.test.ts
-        - AC-2 | e2e | low confidence review queue is visible | tests/e2e/workflow-smoke.test.ts
+        - AC-2 | vitest-e2e-smoke | low confidence review queue is visible | tests/e2e/workflow-smoke.test.ts
+        - AC-3 | playwright-runtime-e2e | startup runtime guard remains stable | tests/playwright/startup-runtime-smoke.spec.ts
     validations:
       required: true
 
@@ -133,7 +135,8 @@ body:
       placeholder: |
         - Unit: covered by linked story tests (#401, #402)
         - Integration: covered by #450
-        - Playwright: deferred to #451 for dashboard flow
+        - Vitest E2E Smoke: covered by #452
+        - Playwright Runtime E2E: deferred to #451 for dashboard flow
     validations:
       required: true
 

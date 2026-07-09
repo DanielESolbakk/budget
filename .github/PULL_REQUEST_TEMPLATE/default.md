@@ -59,7 +59,8 @@ Commands run and passing:
 - [ ] npm run typecheck
 - [ ] npm run test:unit
 - [ ] npm run test:integration
-- [ ] npm run test:e2e
+- [ ] npm run test:e2e:vitest
+- [ ] npm run test:e2e:playwright
 
 (Check at least one command above to confirm work was validated.)
 

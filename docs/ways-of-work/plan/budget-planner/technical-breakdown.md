@@ -159,4 +159,4 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Final SQLite binding and packaging guidance
 - PDF extraction library or adapter strategy
 - Shared validation library choice
-- Desktop test harness structure for Electron and Playwright
+- Desktop test harness split for Vitest e2e smoke and Playwright runtime e2e
