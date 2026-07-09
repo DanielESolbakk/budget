@@ -8,6 +8,17 @@ type DashboardState =
   | { status: "ready"; dashboardData: DashboardData }
   | { status: "error"; message: string };
 
+function renderDashboardState(dashboardState: DashboardState): React.JSX.Element {
+  switch (dashboardState.status) {
+    case "loading":
+      return <p>Loading forecast...</p>;
+    case "error":
+      return <p role="alert">Unable to load forecast: {dashboardState.message}</p>;
+    case "ready":
+      return <ForecastSection dashboardData={dashboardState.dashboardData} />;
+  }
+}
+
 export function App(): React.JSX.Element {
   const [dashboardState, setDashboardState] = React.useState<DashboardState>({
     status: "loading",
@@ -41,13 +52,7 @@ export function App(): React.JSX.Element {
     <div>
       <h1>Budget Planner</h1>
       <p>Local-first budget planning for your household.</p>
-      {dashboardState.status === "loading" ? <p>Loading forecast...</p> : null}
-      {dashboardState.status === "error" ? (
-        <p role="alert">Unable to load forecast: {dashboardState.message}</p>
-      ) : null}
-      {dashboardState.status === "ready" ? (
-        <ForecastSection dashboardData={dashboardState.dashboardData} />
-      ) : null}
+      {renderDashboardState(dashboardState)}
     </div>
   );
 }
