@@ -21,7 +21,6 @@ This runbook demonstrates one complete issue rewrite cycle for a single planning
 - Keep acceptance criteria concise and testable.
 - Move non-existent file paths from Implementation Entry Points into Technical Tasks.
 - Confirm blockers are explicit and non-circular.
-- Keep required template headings intact; do not replace body with evaluation narration.
 
 ## Step 3: Validate
 
