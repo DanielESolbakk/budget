@@ -21,9 +21,9 @@ concurrency:
 jobs:
   detect-changes:
     name: Determine Full CI Scope
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
+      run_ci: ${{ steps.scope.outputs.run_ci }}
       run_full: ${{ steps.scope.outputs.run_full }}
 
     steps:
@@ -33,16 +33,32 @@ jobs:
         with:
           script: |
             if (context.eventName !== "pull_request") {
+              core.setOutput("run_ci", "true");
               core.setOutput("run_full", "true");
               core.info("Full CI enabled for non-PR event.");
               return;
             }
 
-            const pr = context.payload.pull_request;
+            const payloadPr = context.payload.pull_request;
+            const { data: livePr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: payloadPr.number,
+            });
+
+            const shouldRunCi = context.payload.action === "ready_for_review" || livePr.draft === false;
+            core.setOutput("run_ci", shouldRunCi ? "true" : "false");
+
+            if (!shouldRunCi) {
+              core.setOutput("run_full", "false");
+              core.info("Skipping CI while PR is still draft.");
+              return;
+            }
+
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: pr.number,
+              pull_number: payloadPr.number,
               per_page: 100,
             });
 
@@ -65,7 +81,8 @@ jobs:
 
   ci-fast:
     name: CI Fast
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -151,7 +168,7 @@ jobs:
   ci-full:
     name: CI Full
     needs: [detect-changes]
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.detect-changes.outputs.run_full == 'true'
+    if: needs.detect-changes.outputs.run_ci == 'true' && needs.detect-changes.outputs.run_full == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -210,7 +227,8 @@ jobs:
 
   pr-guardrails:
     name: PR Guardrails
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    needs: [detect-changes]
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -384,8 +402,7 @@ jobs:
 
             const isBugByLabel = labels.includes("bug");
             const isBugByTemplate = selectedChangeTypes.includes("bug fix");
-            const isBugByTitle = /\b(fix|bug|regress|regression|hotfix|defect)\b/i.test(title);
-            const isBugFix = isBugByLabel || isBugByTemplate || isBugByTitle;
+            const isBugFix = isBugByLabel || isBugByTemplate;
 
             const bugSection = extractSection(bodyRaw, "Bug Fix Regression Test (required for bug fixes)");
 
