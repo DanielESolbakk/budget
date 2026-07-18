@@ -43,7 +43,6 @@ export function CategoryTargetEntrySection({
         if (isActive) setTargets(loaded);
       })
       .catch((error: unknown) => {
-        console.error("[CategoryTargetEntrySection] Failed to load targets:", error);
         if (isActive) setLoadError("Unable to load saved targets.");
       });
     return () => {

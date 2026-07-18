@@ -45,11 +45,14 @@ async function launchCategoryTargetWindow(): Promise<{
 
 test.describe("Category target entry renderer smoke", () => {
   /**
-   * Tests in this describe block share one Electron instance (beforeAll/afterAll) because
-   * Scenario 1 and Scenario 3 are stateless from the perspective of each other:
-   * Scenario 1 clears the form inputs before finishing, and Scenario 3's validation error
-   * state does not affect Scenario 1's assertions (visibility of form elements only).
-   * Tests are defined in execution order so there is no execution-order ambiguity.
+   * Tests in this describe block share one Electron instance (beforeAll/afterAll).
+   * Scenario 1 and Scenario 3 are independent: both start with empty form fields
+   * (the component's default state on mount) and neither test leaves residual state
+   * that affects the other's assertions.  Scenario 1 explicitly clears the inputs
+   * before finishing; Scenario 3 checks for the presence of an alert which only
+   * appears after a submit action and does not interfere with Scenario 1's
+   * element-visibility assertions.  Tests are defined in execution order so
+   * there is no ordering ambiguity.
    */
   let app: ElectronApplication;
   let window: Page;
