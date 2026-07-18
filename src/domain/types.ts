@@ -70,6 +70,96 @@ export interface CategoryBreakdown {
   entries: CategoryBreakdownEntry[];
 }
 
+export interface MonthlyCategoryTargetInput {
+  /** Calendar month in YYYY-MM format, e.g. "2026-05". */
+  yearMonth: string;
+  /** Category identifier receiving the monthly target. */
+  categoryId: string;
+  /** Target amount for the category, in minor units. */
+  targetMinor: number;
+}
+
+export interface MonthlyCategoryTarget extends MonthlyCategoryTargetInput {}
+
+export interface MonthlyCategoryTargetQuery {
+  /** Calendar month in YYYY-MM format, e.g. "2026-05". */
+  yearMonth: string;
+  /** Category identifier to look up. */
+  categoryId: string;
+}
+
+export interface TargetVsActualCategoryRow {
+  /** Category identifier, or null for uncategorized actuals. */
+  categoryId: string | null;
+  /** Monthly target in minor units. Null when no explicit target exists. */
+  targetMinor: number | null;
+  /** Actual absolute spend/income total in minor units for the selected month. */
+  actualMinor: number;
+  /**
+   * actualMinor - targetMinor in minor units.
+   * Null when no explicit target exists for the row.
+   */
+  deltaMinor: number | null;
+}
+
+export interface TargetVsActualCategoryRows {
+  /** Calendar month in YYYY-MM format, e.g. "2026-05". */
+  yearMonth: string;
+  /** Deterministically ordered rows for target-vs-actual rendering/consumption. */
+  rows: TargetVsActualCategoryRow[];
+}
+
+const YEAR_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Returns true when the value matches the canonical YYYY-MM month format (e.g. "2026-05"). */
+export function isYearMonth(value: string): boolean {
+  return YEAR_MONTH_PATTERN.test(value);
+}
+
+/**
+ * Validates monthly category target input.
+ * Throws when yearMonth/categoryId/targetMinor are invalid; otherwise returns the input unchanged.
+ */
+export function validateMonthlyCategoryTargetInput(
+  input: MonthlyCategoryTargetInput
+): MonthlyCategoryTargetInput {
+  if (!isYearMonth(input.yearMonth)) {
+    throw new Error(`Invalid target yearMonth: ${input.yearMonth}`);
+  }
+
+  if (input.categoryId.trim().length === 0) {
+    throw new Error("Target categoryId must be a non-empty string.");
+  }
+
+  if (!Number.isInteger(input.targetMinor)) {
+    throw new Error(`Target targetMinor must be an integer: ${input.targetMinor}`);
+  }
+
+  if (input.targetMinor < 0) {
+    throw new Error(`Target targetMinor must be zero or positive: ${input.targetMinor}`);
+  }
+
+  return input;
+}
+
+/**
+ * Validates a month/category target lookup query.
+ * Throws when yearMonth or categoryId are invalid; otherwise returns the query unchanged.
+ */
+export function validateMonthlyCategoryTargetQuery(
+  query: MonthlyCategoryTargetQuery
+): MonthlyCategoryTargetQuery {
+  if (!isYearMonth(query.yearMonth)) {
+    throw new Error(`Invalid target query yearMonth: ${query.yearMonth}`);
+  }
+
+  if (query.categoryId.trim().length === 0) {
+    throw new Error("Target query categoryId must be a non-empty string.");
+  }
+
+  return query;
+}
+
 export type ForecastMethod = "moving-average-3m" | "fallback-zero";
 
 export interface ForecastEntry {
