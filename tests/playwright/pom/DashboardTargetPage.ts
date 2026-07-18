@@ -41,11 +41,11 @@ export class DashboardTargetPage {
   }
 
   categoryRow(category: string): Locator {
-    return this.table.getByRole("row", { name: new RegExp(`^${escapeRegExp(category)}`) });
+    return this.table.getByRole("row").filter({ hasText: new RegExp(`^${escapeRegExp(category)}`) });
   }
 
   categoryCell(category: string): Locator {
-    return this.categoryRow(category).getByRole("cell").first();
+    return this.categoryRow(category).getByRole("cell", { name: category, exact: true });
   }
 
   targetCell(category: string): Locator {

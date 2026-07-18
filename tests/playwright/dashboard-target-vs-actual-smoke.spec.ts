@@ -1,10 +1,14 @@
 import { test, expect, _electron as electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DashboardTargetPage } from "./pom/DashboardTargetPage.js";
 
-const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
+const MAIN_ENTRY = fileURLToPath(new URL("../../out/main/index.js", import.meta.url));
 const DEFAULT_YEAR_MONTH = "2026-05";
+const GROCERIES_ACTUAL_MINOR = 8500;
+const GROCERIES_BASELINE_TARGET_MINOR = 9000;
+const GROCERIES_UPDATED_TARGET_MINOR = 9500;
+const SALARY_ACTUAL_MINOR = 54000;
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
   style: "currency",
   currency: "NOK",
@@ -16,12 +20,31 @@ function formatMinor(minor: number): string {
   return nokCurrencyFormatter.format(minor / 100);
 }
 
+async function launchDashboardTargetWindow(): Promise<{
+  app: ElectronApplication;
+  window: Page;
+  targetPage: DashboardTargetPage;
+}> {
+  const app = await electron.launch({
+    args: [MAIN_ENTRY],
+    env: { ...process.env, NODE_ENV: "test" },
+  });
+  const window = await app.firstWindow();
+  await window.waitForLoadState("domcontentloaded");
+
+  return {
+    app,
+    window,
+    targetPage: new DashboardTargetPage(window),
+  };
+}
+
 async function setDashboardTargetViewHandler(
   app: ElectronApplication,
   targetMinor: number
 ): Promise<void> {
   await app.evaluate(
-    async ({ ipcMain }, nextTargetMinor) => {
+    async ({ ipcMain }, targetData) => {
       ipcMain.removeHandler("dashboard:getViewData");
       ipcMain.handle("dashboard:getViewData", async (_event, yearMonth: string) => ({
         state: "ready",
@@ -38,14 +61,14 @@ async function setDashboardTargetViewHandler(
             entries: [
               {
                 categoryId: "salary",
-                label: "salary",
-                totalMinor: 54000,
+                label: "Salary",
+                totalMinor: targetData.salaryActualMinor,
                 transactionCount: 1,
               },
               {
                 categoryId: "groceries",
-                label: "groceries",
-                totalMinor: 8500,
+                label: "Groceries",
+                totalMinor: targetData.groceriesActualMinor,
                 transactionCount: 1,
               },
             ],
@@ -55,14 +78,14 @@ async function setDashboardTargetViewHandler(
             rows: [
               {
                 categoryId: "groceries",
-                targetMinor: nextTargetMinor,
-                actualMinor: 8500,
-                deltaMinor: 8500 - nextTargetMinor,
+                targetMinor: targetData.nextTargetMinor,
+                actualMinor: targetData.groceriesActualMinor,
+                deltaMinor: targetData.groceriesActualMinor - targetData.nextTargetMinor,
               },
               {
                 categoryId: "salary",
                 targetMinor: null,
-                actualMinor: 54000,
+                actualMinor: targetData.salaryActualMinor,
                 deltaMinor: null,
               },
             ],
@@ -70,30 +93,28 @@ async function setDashboardTargetViewHandler(
         },
       }));
     },
-    targetMinor
+    {
+      nextTargetMinor: targetMinor,
+      groceriesActualMinor: GROCERIES_ACTUAL_MINOR,
+      salaryActualMinor: SALARY_ACTUAL_MINOR,
+    }
   );
 }
 
 test.describe("Dashboard target-vs-actual renderer smoke", () => {
-  let app: ElectronApplication | undefined;
+  let app: ElectronApplication;
   let window: Page;
   let targetPage: DashboardTargetPage;
 
   test.beforeAll(async () => {
-    app = await electron.launch({
-      args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
-    });
-    window = await app.firstWindow();
-    await window.waitForLoadState("domcontentloaded");
-    targetPage = new DashboardTargetPage(window);
+    ({ app, window, targetPage } = await launchDashboardTargetWindow());
   });
 
   test.afterAll(async () => {
-    await app?.close();
+    await app.close();
   });
 
-  test("Scenario 1: target-vs-actual section renders target, actual, and delta values", async () => {
+  test("renders target-vs-actual section with visible target, actual, and delta values", async () => {
     await expect(targetPage.section).toBeVisible();
     await expect(targetPage.heading).toBeVisible();
     await expect(targetPage.table).toBeVisible();
@@ -102,14 +123,16 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
     await expect(targetPage.deltaColumn).toBeVisible();
 
     await expect(targetPage.categoryCell("groceries")).toBeVisible();
-    await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(9000));
-    await expect(targetPage.actualCell("groceries")).toHaveText(formatMinor(8500));
-    await expect(targetPage.deltaCell("groceries")).toHaveText(formatMinor(-500));
+    await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_BASELINE_TARGET_MINOR));
+    await expect(targetPage.actualCell("groceries")).toHaveText(formatMinor(GROCERIES_ACTUAL_MINOR));
+    await expect(targetPage.deltaCell("groceries")).toHaveText(
+      formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_BASELINE_TARGET_MINOR)
+    );
   });
 
-  test("Scenario 3: categories without targets show the explicit no-target policy", async () => {
+  test("shows the explicit no-target policy for categories without configured targets", async () => {
     await expect(targetPage.categoryRow("salary")).toBeVisible();
-    await expect(targetPage.actualCell("salary")).toHaveText(formatMinor(54000));
+    await expect(targetPage.actualCell("salary")).toHaveText(formatMinor(SALARY_ACTUAL_MINOR));
     await expect(targetPage.targetCell("salary")).toHaveText("No target");
     await expect(targetPage.deltaCell("salary")).toHaveText("No target");
     await expect(targetPage.noTargetIndicators("salary")).toHaveCount(2);
@@ -117,46 +140,38 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
 });
 
 test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () => {
-  let app: ElectronApplication | undefined;
+  let app: ElectronApplication;
   let window: Page;
   let targetPage: DashboardTargetPage;
 
   test.beforeAll(async () => {
-    app = await electron.launch({
-      args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
-    });
-    window = await app.firstWindow();
-    await window.waitForLoadState("domcontentloaded");
-    targetPage = new DashboardTargetPage(window);
+    ({ app, window, targetPage } = await launchDashboardTargetWindow());
   });
 
   test.afterAll(async () => {
-    await app?.close();
+    await app.close();
   });
 
-  test("Scenario 2: updating a target and refreshing reflects the latest saved values", async () => {
-    if (!app) {
-      throw new Error("Electron application did not launch.");
-    }
-
-    await setDashboardTargetViewHandler(app, 9000);
+  test("reflects the latest saved target values after a refresh", async () => {
+    await setDashboardTargetViewHandler(app, GROCERIES_BASELINE_TARGET_MINOR);
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
 
     await expect(targetPage.section).toBeVisible();
-    await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(9000));
-    await expect(targetPage.deltaCell("groceries")).toHaveText(formatMinor(-500));
+    await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_BASELINE_TARGET_MINOR));
+    await expect(targetPage.deltaCell("groceries")).toHaveText(
+      formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_BASELINE_TARGET_MINOR)
+    );
 
-    await setDashboardTargetViewHandler(app, 9500);
+    await setDashboardTargetViewHandler(app, GROCERIES_UPDATED_TARGET_MINOR);
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
 
-    await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(9500));
-    await expect(targetPage.targetCell("groceries")).not.toHaveText(formatMinor(9000));
-    await expect(targetPage.actualCell("groceries")).toHaveText(formatMinor(8500));
-    await expect(targetPage.deltaCell("groceries")).toHaveText(formatMinor(-1000));
-    await expect(targetPage.deltaCell("groceries")).not.toHaveText(formatMinor(-500));
+    await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_UPDATED_TARGET_MINOR));
+    await expect(targetPage.actualCell("groceries")).toHaveText(formatMinor(GROCERIES_ACTUAL_MINOR));
+    await expect(targetPage.deltaCell("groceries")).toHaveText(
+      formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_UPDATED_TARGET_MINOR)
+    );
     await expect(window.getByRole("combobox", { name: "Select month" })).toHaveValue(DEFAULT_YEAR_MONTH);
   });
 });
