@@ -3,6 +3,7 @@ import { join } from "path";
 import {
   buildDashboardData,
   buildDashboardViewContract,
+  createMonthlyCategoryTargetStore,
   type DashboardData,
   type DashboardViewContract,
 } from "../src/app/dashboardApi.js";
@@ -54,12 +55,29 @@ const sampleTransactions: Transaction[] = [
   },
 ];
 
+const sampleTargetStore = createMonthlyCategoryTargetStore([
+  {
+    yearMonth: "2026-04",
+    categoryId: "groceries",
+    targetMinor: 7000,
+  },
+  {
+    yearMonth: "2026-05",
+    categoryId: "groceries",
+    targetMinor: 9000,
+  },
+]);
+
 function getDashboardData(): DashboardData {
   return buildDashboardData({ monthlyTotals: sampleMonthlyTotals });
 }
 
 function getViewData(yearMonth: string): DashboardViewContract {
-  return buildDashboardViewContract({ transactions: sampleTransactions, selectedYearMonth: yearMonth });
+  return buildDashboardViewContract({
+    transactions: sampleTransactions,
+    selectedYearMonth: yearMonth,
+    monthlyCategoryTargetStore: sampleTargetStore,
+  });
 }
 
 function createWindow(): void {
