@@ -46,7 +46,7 @@ npm run test:integration
 # Vitest end-to-end smoke tests
 npm run test:e2e:vitest
 
-# Playwright runtime tests (when configured for the issue)
+# Playwright runtime tests
 npm run test:e2e:playwright
 
 # No-network verification
