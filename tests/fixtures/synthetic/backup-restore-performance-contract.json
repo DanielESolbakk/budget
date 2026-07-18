@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "contractVersion": 1,
+    "harnessName": "backup-restore-baseline",
+    "workflowName": "backup-restore",
+    "sourceKind": "synthetic-fixture-csv",
+    "fixturePath": "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv",
+    "fixtureDigest": "9d2a54bdb65081b06a51cfb708c7842572e0b75f13bb0e7d87d19dd6f1b159d5",
+    "iterationCount": 2,
+    "noNetworkByDefault": true,
+    "metricKeys": [
+      "fixtureRowCount",
+      "mappedTransactionCount",
+      "restoredTransactionCount",
+      "skippedRowCount",
+      "serializedByteLength",
+      "incomeMinorTotal",
+      "expenseMinorTotal",
+      "netMinorTotal",
+      "roundTripStable"
+    ]
+  },
+  "metrics": {
+    "fixtureRowCount": 10,
+    "mappedTransactionCount": 10,
+    "restoredTransactionCount": 10,
+    "skippedRowCount": 0,
+    "serializedByteLength": 1731,
+    "incomeMinorTotal": 5000000,
+    "expenseMinorTotal": 315280,
+    "netMinorTotal": 4684720,
+    "roundTripStable": true
+  }
+}

@@ -221,6 +221,18 @@ jobs:
         if: steps.detect.outputs.has_package == 'true'
         run: npm run verify:no-network
 
+      - name: Build packaged artifacts
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run build
+
+      - name: Packaged runtime validation
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run validate:packaged-runtime
+
+      - name: Backup/restore benchmark harness validation
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run benchmark:backup-restore -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv
+
       - name: No package marker
         if: steps.detect.outputs.has_package != 'true'
         run: echo "No package.json found. Full CI checks are skipped."

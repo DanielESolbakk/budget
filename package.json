@@ -18,6 +18,8 @@
     "test:e2e:playwright": "playwright test",
     "test:e2e": "npm run test:e2e:vitest",
     "verify:no-network": "vitest run --config vitest.nonetwork.config.ts",
+    "benchmark:backup-restore": "tsx scripts/run-backup-restore-benchmark.ts",
+    "validate:packaged-runtime": "tsx scripts/validate-packaged-runtime.ts",
     "sanitizer": "tsx scripts/sanitize-csv.ts",
     "verify-fixture": "tsx scripts/verify-fixture.ts",
     "eval:skill": "tsx scripts/run-skill-evals.ts",
