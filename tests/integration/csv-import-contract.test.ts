@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildDashboardViewContract } from "../../src/app/dashboardApi.js";
 import {
   CSV_COLUMN_NAMES,
   mapCsvRows,
@@ -133,6 +134,14 @@ describe("csv import contract", () => {
       expect(errors.some((e) => e.code === "INVALID_DATE_FORMAT")).toBe(true);
     });
 
+    it("returns INVALID_DATE_FORMAT for an impossible calendar date", () => {
+      const errors = validateCsvRow(
+        makeRow({ [CSV_COLUMN_NAMES.executionDate]: "31.02.2026", [CSV_COLUMN_NAMES.bookedDate]: "" })
+      );
+
+      expect(errors.some((e) => e.code === "INVALID_DATE_FORMAT")).toBe(true);
+    });
+
     it("returns MISSING_DATE when both date fields are absent", () => {
       const errors = validateCsvRow(
         makeRow({ [CSV_COLUMN_NAMES.executionDate]: "", [CSV_COLUMN_NAMES.bookedDate]: "" })
@@ -144,6 +153,19 @@ describe("csv import contract", () => {
     it("returns MISSING_DESCRIPTION when Beskrivelse is empty", () => {
       const errors = validateCsvRow(makeRow({ [CSV_COLUMN_NAMES.description]: "" }));
 
+      expect(errors.some((e) => e.code === "MISSING_DESCRIPTION")).toBe(true);
+    });
+
+    it("returns explicit validation errors when required headers are missing from the row shape", () => {
+      const rowWithoutRequiredHeaders = {
+        Type: "Varekjøp",
+        Undertype: "Debetkort",
+        [CSV_COLUMN_NAMES.amountOut]: "-12.50",
+      } as Record<string, string>;
+
+      const errors = validateCsvRow(rowWithoutRequiredHeaders);
+
+      expect(errors.some((e) => e.code === "MISSING_DATE")).toBe(true);
       expect(errors.some((e) => e.code === "MISSING_DESCRIPTION")).toBe(true);
     });
 
@@ -161,12 +183,12 @@ describe("csv import contract", () => {
       expect(errors.some((e) => e.code === "INVALID_AMOUNT_FORMAT")).toBe(true);
     });
 
-    it("mapCsvRows returns a CsvImportResult with transactions and skipped arrays", () => {
+    it("mapCsvRows returns no partial record set when any row is invalid", () => {
       const validRow = makeRow();
       const invalidRow = makeRow({ [CSV_COLUMN_NAMES.executionDate]: "", [CSV_COLUMN_NAMES.bookedDate]: "" });
       const result = mapCsvRows([validRow, invalidRow, validRow], MAPPING_OPTIONS);
 
-      expect(result.transactions).toHaveLength(2);
+      expect(result.transactions).toEqual([]);
       expect(result.skipped).toHaveLength(1);
       expect(result.skipped[0]!.rowIndex).toBe(1);
     });
@@ -174,6 +196,7 @@ describe("csv import contract", () => {
     it("mapCsvRows returns empty skipped array when all rows are valid", () => {
       const result = mapCsvRows([makeRow(), makeRow()], MAPPING_OPTIONS);
 
+      expect(result.transactions).toHaveLength(2);
       expect(result.skipped).toEqual([]);
     });
   });
@@ -209,6 +232,7 @@ describe("csv import contract", () => {
       expect(result.transactions.length + result.skipped.length).toBeGreaterThan(0);
       expect(result.transactions).toBeInstanceOf(Array);
       expect(result.skipped).toBeInstanceOf(Array);
+      expect(result.skipped).toEqual([]);
     });
 
     it("importFixtureCsv respects custom householdId and accountId options", () => {
@@ -233,6 +257,21 @@ describe("csv import contract", () => {
       const uniqueIds = new Set(ids);
 
       expect(uniqueIds.size).toBe(ids.length);
+    });
+
+    it("mapped fixture transactions remain compatible with the dashboard app consumer", () => {
+      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const contract = buildDashboardViewContract({
+        transactions,
+        selectedYearMonth: "2026-05",
+      });
+
+      expect(contract.state).toBe("ready");
+      if (contract.state !== "ready") return;
+
+      expect(contract.snapshot.selectedYearMonth).toBe("2026-05");
+      expect(contract.snapshot.monthlyTotals.yearMonth).toBe("2026-05");
+      expect(contract.snapshot.categoryBreakdown.entries.length).toBeGreaterThan(0);
     });
   });
 });

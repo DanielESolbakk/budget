@@ -54,7 +54,20 @@ export interface CsvRowMappingOptions {
 
 function parseNorwegianDate(value: string): string | null {
   if (!/^\d{2}\.\d{2}\.\d{4}$/.test(value)) return null;
-  const [day, month, year] = value.split(".");
+  const [day = "", month = "", year = ""] = value.split(".");
+  const dayNumber = Number.parseInt(day, 10);
+  const monthNumber = Number.parseInt(month, 10);
+  const yearNumber = Number.parseInt(year, 10);
+  const parsed = new Date(Date.UTC(yearNumber, monthNumber - 1, dayNumber));
+
+  if (
+    parsed.getUTCFullYear() !== yearNumber ||
+    parsed.getUTCMonth() !== monthNumber - 1 ||
+    parsed.getUTCDate() !== dayNumber
+  ) {
+    return null;
+  }
+
   return `${year}-${month}-${day}T00:00:00Z`;
 }
 
@@ -188,23 +201,28 @@ export function mapCsvRowToTransaction(
 
 /**
  * Maps an array of raw CSV row objects to a stable CsvImportResult.
- * Rows that fail validation are collected in the `skipped` array; valid rows become `transactions`.
+ * When any row fails validation, the result contains no mapped transactions and
+ * reports every invalid row through the `skipped` array to avoid a partial-success contract.
  */
 export function mapCsvRows(
   rows: Array<Record<string, string>>,
   options: CsvRowMappingOptions
 ): CsvImportResult {
-  const transactions: Transaction[] = [];
+  const mappedTransactions: Transaction[] = [];
   const skipped: Array<{ rowIndex: number; errors: CsvRowValidationError[] }> = [];
 
   for (let i = 0; i < rows.length; i++) {
     const result = mapCsvRowToTransaction(rows[i]!, i, options);
     if (result.ok) {
-      transactions.push(result.transaction);
+      mappedTransactions.push(result.transaction);
     } else {
       skipped.push({ rowIndex: result.rowIndex, errors: result.errors });
     }
   }
 
-  return { transactions, skipped };
+  if (skipped.length > 0) {
+    return { transactions: [], skipped };
+  }
+
+  return { transactions: mappedTransactions, skipped };
 }
