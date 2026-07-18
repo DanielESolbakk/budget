@@ -80,6 +80,14 @@ function buildMetrics(
   };
 }
 
+function describeMetricDifferences(
+  expected: PerformanceHarnessMetrics,
+  actual: PerformanceHarnessMetrics
+): string {
+  const differences = PERFORMANCE_HARNESS_METRIC_KEYS.filter((key) => expected[key] !== actual[key]);
+  return differences.map((key) => `${key}: expected ${expected[key]}, received ${actual[key]}`).join("; ");
+}
+
 export function createPerformanceHarness(options: PerformanceHarnessOptions): PerformanceHarnessResult {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
   const resolvedFixturePath = resolve(projectRoot, options.fixturePath);
@@ -89,11 +97,15 @@ export function createPerformanceHarness(options: PerformanceHarnessOptions): Pe
   const iterationCount = options.iterationCount ?? 2;
 
   if (!Number.isInteger(iterationCount)) {
-    throw new Error(`Performance harness iterationCount must be an integer: ${iterationCount}`);
+    throw new Error(
+      `Performance harness iterationCount must be an integer greater than zero, got non-integer value: ${iterationCount}`
+    );
   }
 
   if (iterationCount <= 0) {
-    throw new Error(`Performance harness iterationCount must be positive: ${iterationCount}`);
+    throw new Error(
+      `Performance harness iterationCount must be an integer greater than zero, got non-positive value: ${iterationCount}`
+    );
   }
 
   const mappingOptions = resolveMappingOptions(options);
@@ -102,7 +114,9 @@ export function createPerformanceHarness(options: PerformanceHarnessOptions): Pe
   for (let iteration = 1; iteration < iterationCount; iteration += 1) {
     const repeatedMetrics = buildMetrics(rows, parsedFixture.rows.length, mappingOptions);
     if (JSON.stringify(repeatedMetrics) !== JSON.stringify(firstMetrics)) {
-      throw new Error("Performance harness contract must remain deterministic across repeated runs.");
+      throw new Error(
+        `Performance harness contract diverged on iteration ${iteration + 1}: ${describeMetricDifferences(firstMetrics, repeatedMetrics)}`
+      );
     }
   }
 

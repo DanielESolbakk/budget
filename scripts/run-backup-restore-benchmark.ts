@@ -16,6 +16,9 @@ const iterationsRaw = getOptionValue(args, "--iterations");
 const iterationCount = iterationsRaw === undefined ? 2 : Number.parseInt(iterationsRaw, 10);
 
 if (!Number.isInteger(iterationCount) || iterationCount <= 0) {
+  if (iterationsRaw !== undefined) {
+    console.error(`Invalid --iterations value: ${iterationsRaw}. Must be a positive integer.`);
+  }
   console.error("Usage: npm run benchmark:backup-restore -- [--input <csv-path>] [--iterations <positive-integer>]");
   process.exit(1);
 }
