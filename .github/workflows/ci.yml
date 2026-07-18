@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    types: [opened, reopened, ready_for_review, synchronize]
   push:
     branches: [main]
   merge_group:
@@ -20,6 +21,7 @@ concurrency:
 jobs:
   detect-changes:
     name: Determine Full CI Scope
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
       run_full: ${{ steps.scope.outputs.run_full }}
@@ -63,6 +65,7 @@ jobs:
 
   ci-fast:
     name: CI Fast
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     steps:
@@ -148,7 +151,7 @@ jobs:
   ci-full:
     name: CI Full
     needs: [detect-changes]
-    if: needs.detect-changes.outputs.run_full == 'true'
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.detect-changes.outputs.run_full == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -207,7 +210,7 @@ jobs:
 
   pr-guardrails:
     name: PR Guardrails
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     steps:
