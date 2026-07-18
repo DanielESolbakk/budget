@@ -83,6 +83,10 @@ function extractTitle(html: string): string | null {
   return match?.[1]?.trim() || null;
 }
 
+function hasPattern(source: string, pattern: RegExp): boolean {
+  return pattern.test(source);
+}
+
 export function validatePackagedRuntime(
   options: PackagedRuntimeValidationOptions = {}
 ): PackagedRuntimeValidationResult {
@@ -96,12 +100,21 @@ export function validatePackagedRuntime(
     mainEntryPresent: mainSource.length > 0,
     preloadEntryPresent: preloadSource.length > 0,
     rendererEntryPresent: rendererSource.length > 0,
-    networkGuardInstalled: mainSource.includes("installNetworkGuard(session.defaultSession)"),
-    browserWindowConfigured: mainSource.includes("new BrowserWindow(") &&
-      mainSource.includes("../preload/index.cjs") &&
-      mainSource.includes("../renderer/index.html"),
-    preloadBridgeExposed: preloadSource.includes('contextBridge.exposeInMainWorld("budgetApi", budgetApi)'),
-    dashboardBridgeAvailable: preloadSource.includes('ipcRenderer.invoke("dashboard:getData")'),
+    networkGuardInstalled: hasPattern(
+      mainSource,
+      /installNetworkGuard\(\s*session\.defaultSession\s*\)/
+    ),
+    browserWindowConfigured: hasPattern(mainSource, /new\s+BrowserWindow\s*\(/) &&
+      hasPattern(mainSource, /preload\s*:\s*[\s\S]*?preload\/index\.(?:cjs|js|ts)/) &&
+      hasPattern(mainSource, /loadFile\(\s*[\s\S]*?renderer\/index\.html/),
+    preloadBridgeExposed: hasPattern(
+      preloadSource,
+      /contextBridge\.exposeInMainWorld\(\s*["']budgetApi["']\s*,/
+    ),
+    dashboardBridgeAvailable: hasPattern(
+      preloadSource,
+      /ipcRenderer\.invoke\(\s*["']dashboard:getData["']/
+    ),
   };
 
   const missing: string[] = [];
