@@ -1,9 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DashboardData } from "../app/dashboardApi.js";
+import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
 import type { ForecastEntry } from "../domain/types.js";
 
 export interface DashboardApi {
   getData: () => Promise<DashboardData>;
+  getViewData: (yearMonth: string) => Promise<DashboardViewContract>;
 }
 
 export interface ForecastApi {
@@ -18,6 +19,8 @@ export interface BudgetApi {
 const budgetApi: BudgetApi = {
   dashboard: {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),
+    getViewData: (yearMonth: string): Promise<DashboardViewContract> =>
+      ipcRenderer.invoke("dashboard:getViewData", yearMonth),
   },
   forecast: {
     getEntries: (): Promise<ForecastEntry[]> =>
