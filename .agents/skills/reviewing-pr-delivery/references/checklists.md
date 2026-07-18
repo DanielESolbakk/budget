@@ -39,8 +39,11 @@ Common overlap signals:
 - Adds endpoints/contracts owned by another story/enabler
 - Adds UI behavior while source issue is enabler-only
 - Includes unrelated schema/persistence changes without linkage
+- Adds missing production/runtime behavior under `src/`, `electron/`, `preload`, IPC handlers, or renderer wiring while the anchor issue is test-only
 
 Flag missing adjacency when PR omits required companion work implied by source issue and related issues, and no deferral is documented.
+
+- If a Test issue PR must create missing production/runtime behavior before the test can run, treat that as a planning-boundary gap or cross-issue semantic conflict rather than normal Test issue delivery.
 
 - For each additional planning issue in PR body, verify explicit coverage mapping or explicit deferral.
 - If neither mapping nor deferral exists, record a traceability ambiguity finding.
@@ -91,11 +94,14 @@ Flag missing adjacency when PR omits required companion work implied by source i
 
 - Target issues for update are explicit from the review workflow.
 - Only allowed sections are targeted: Technical Requirements, Technical Tasks, Stories Enabled, Acceptance Criteria.
+- For Test issues only, additional allowed sections are: Playwright Implementation Standards, Acceptance Criteria Mapping, Test Scenarios, Pass Criteria, Regression Guard.
 - Evidence map exists for each checkbox changed.
 - Check-only policy is used unless user explicitly requested uncheck behavior.
 - Non-checkbox text is preserved exactly.
 - No PR body edits are attempted.
 - No PR comments or issue comments are used for checkbox sync reporting.
+- Test-issue-only checkbox sync uses hard proof per line, not section-level inference.
+- Regression Guard remains unchecked unless explicit regression/fault-path evidence exists.
 
 ## Checkbox Sync Verification
 

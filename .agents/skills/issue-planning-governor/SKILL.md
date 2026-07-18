@@ -55,6 +55,10 @@ Default behavior:
 10. Enforce deterministic task language:
 - fail readiness if Technical Tasks contain uncertainty words such as "if needed", "as needed", "where applicable", "or equivalent", "as appropriate", or "if required"
 - tasks must be explicit, executable, and tied to clear file/module targets
+11. Keep test issues verification-only unless explicitly stated otherwise by policy:
+- a test issue may own test files, test-only helpers, and test harness overrides
+- a test issue must not be assignment-ready if it implicitly requires missing product/runtime behavior under `src/`, `electron/`, `preload`, IPC handlers, or renderer wiring
+- if that production behavior is missing, create or link a story/enabler issue for the implementation and keep the test issue focused on verification
 
 ## Test Necessity Decision Gate (Mandatory)
 
@@ -74,6 +78,7 @@ Mandatory behavior when test issue is required:
 - If no suitable open test issue exists, create one using the Test template.
 - Link it in the issue body under the appropriate section (for example, `### Linked Test Issues` or `### Test Issues In This Feature`).
 - Ensure the test objective verifies the specific functionality created by the issue; avoid tests for test's sake.
+- If the proposed test issue would require creating missing product/runtime behavior before it can execute, stop and create or link the implementation issue first; do not let the test issue absorb that production scope.
 - **Map acceptance criteria to that test issue with inline detail:** Use `### Acceptance Criteria Mapping` section in test issues assigned to cloud agents. Each AC must include: (1) AC definition, (2) which test scenario(s) verify it, (3) specific validation assertion. This eliminates round-trips to parent issues and ensures cloud agents have complete context without leaving the issue.
 - Include concrete validation commands.
 
@@ -181,6 +186,7 @@ Each step is a gate. Do not proceed to the next step until the current step is c
 - [ ] Technical Tasks contain no uncertainty words ("if needed", "as needed", "where applicable", "or equivalent", etc.).
 - [ ] Test Necessity Decision Gate evidence captured and consistent with issue body.
 - [ ] If test issue is required, linked test issue exists and is scoped to verify created functionality at the correct pyramid layer.
+- [ ] Test issues do not implicitly own missing product/runtime behavior; any required `src/`, `electron/`, `preload`, IPC, or renderer implementation is tracked in a story/enabler issue.
 - [ ] **NEW:** Deep-dive assignment-readiness checklist passed (references/assignment-readiness-deep-dive.md):
   - [ ] All ACs are operationalized (testable, not vague).
   - [ ] **For test issues:** AC mapping is inline and explicit (test scenario(s) + validation assertion for each AC, not just list of AC IDs).
@@ -189,6 +195,7 @@ Each step is a gate. Do not proceed to the next step until the current step is c
   - [ ] Blockers are current and non-circular.
   - [ ] Validation commands are sufficient to prove all ACs.
   - [ ] Technical Tasks exist and are concrete (for enablers/stories).
+  - [ ] Test issue scope is verification-only; missing product/runtime behavior is not hidden inside a test assignment.
   - [ ] **Evidence proof is explicit:** include quoted snippets from issue body for each deep-dive pass item (heading + exact phrase used as evidence).
 - **GATE CHECK:** All items checked? If no, return to Step 2 or 3a. If yes, proceed to Step 5.
 

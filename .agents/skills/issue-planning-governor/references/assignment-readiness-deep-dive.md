@@ -44,6 +44,7 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 - [ ] The decision is based on changed functionality, contract, or runtime behavior (not preference).
 - [ ] If test issue is required, linked test issue verifies created functionality at the correct pyramid layer.
 - [ ] If test issue is not required, issue body contains no placeholder/conditional test language.
+- [ ] If the issue is itself a Test issue, it does not implicitly require missing product/runtime behavior under `src/`, `electron/`, `preload`, IPC handlers, or renderer wiring.
 - [ ] Decision avoids "tests for tests sake" by tying verification to concrete risk.
 
 ---
@@ -82,6 +83,12 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 
 - [ ] Technical Tasks (for stories) do not rely on the assignee to infer file creation.
 - [ ] If a Story creates a new module, it explicitly lists: `- [ ] Create src/domain/forecast/buildMonthBuckets.ts`
+
+### Test Issues Do Not Own Product Behavior
+
+- [ ] If the issue type is Test, Technical Tasks are limited to test files, test-only helpers, or test harness work.
+- [ ] If new production behavior is required in `src/`, `electron/`, `preload`, IPC, or renderer modules, that work is linked to a story/enabler issue instead of being hidden in the Test issue.
+- [ ] Out Of Scope or Preconditions explicitly say the runtime/product path must already exist before the test issue is assigned.
 
 ---
 

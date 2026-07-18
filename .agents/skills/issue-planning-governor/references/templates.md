@@ -244,6 +244,11 @@ Use these templates when rewriting issue bodies. Keep section headings exact and
 
 [clear objective]
 
+### Preconditions
+
+- Runtime/product behavior under test already exists in implementation issues or delivered code.
+- If missing `src/`, `electron/`, `preload`, IPC, or renderer behavior is discovered, stop and create or link a story/enabler issue instead of expanding this test issue.
+
 ### Technical Tasks
 
 - [ ] [task, including file creation when needed]

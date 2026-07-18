@@ -141,6 +141,8 @@ Perform three checks:
 - Detect overlap: work likely belonging to sibling/follow-up issues
 - Detect gaps: required adjacent work not addressed and not explicitly deferred
 - If the PR appears to complete only a linked Test issue while the source story or feature still has open technical tasks, report that as a cross-issue boundary gap instead of treating the story as complete.
+- If the anchor issue is a Test issue and the PR adds missing product/runtime behavior under `src/`, `electron/`, `preload`, IPC handlers, or renderer wiring that did not already exist, report that as a cross-issue semantic conflict rather than treating the test issue as cleanly delivered.
+- For Test issues, distinguish verification artifacts from missing product implementation: test files, test-only helpers, and test harness overrides belong to the Test issue; new user-facing runtime behavior or production IPC/preload contracts do not.
 
 4. Delivery hygiene:
 - Compare PR body claims against execution evidence (commands run, outcomes, CI links, checklist state, draft/ready state).
@@ -163,6 +165,7 @@ Before writing any positive completion claim, enforce all rules below.
 3. Completion claim requirements:
 - Do not state "fully implemented", "all ACs covered", or "ready for merge" unless anchor AC statuses are all `satisfied` and no open anchor technical task is left without explicit deferral.
 - If implementation and validation are split across dependent PRs, report as `partially satisfied` or `unproven` with dependency note.
+- If a Test issue PR had to add missing production/runtime behavior so the test path could exist, do not describe that boundary as cleanly planned; call out the planning drift even if the tests pass.
 - **Composition enablers**: For PRs that document composition of already-merged prerequisites (zero new files, ACs satisfied via blocker evidence), this counts as `satisfied` provided: (a) all blocker PRs were merged, (b) ACs map cleanly to existing test evidence in blockers, and (c) the enabler's own composition work is accurately described and trivial/glue-only.
 
 ### Honesty Contract (Mandatory)
@@ -204,6 +207,12 @@ Allowed mutations:
   - `### Technical Tasks`
   - `### Stories Enabled`
   - `### Acceptance Criteria`
+  - For Test issues only, also allow:
+    - `### Playwright Implementation Standards`
+    - `### Acceptance Criteria Mapping`
+    - `### Test Scenarios`
+    - `### Pass Criteria`
+    - `### Regression Guard`
 
 Disallowed mutations:
 - Adding/removing/rewording headings or list items
@@ -218,6 +227,12 @@ Decision rules:
 - If evidence is partial or blocked, leave unchecked and report the ambiguity in the review output.
 - Default policy is check-only.
 - Only allow uncheck when the user explicitly requests bidirectional reconciliation.
+- For Test-issue-only sections, require section-specific hard proof:
+  - `Playwright Implementation Standards`: direct evidence from changed test code, config, or command output for each exact standard line.
+  - `Acceptance Criteria Mapping`: direct evidence that the shipped tests and assertions match the mapped AC definition, scenario, and validation assertion.
+  - `Test Scenarios`: direct evidence that the scenario exists in shipped tests and executed validation covers it.
+  - `Pass Criteria`: direct evidence from executed commands and assertions, not PR narrative alone.
+  - `Regression Guard`: explicit negative-path, fault-injection, or regression-oriented assertion evidence; do not infer this from happy-path smoke coverage.
 
 Update workflow:
 1. Read each target issue body and extract current checkbox lines in allowed sections.
