@@ -61,10 +61,12 @@ test.describe("Dashboard renderer smoke", () => {
     // AC-4: changing the selected month refreshes totals and categories.
     // Wait for initial data to render before capturing baseline.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    await expect(dashboard.categoryEntries.first()).toBeVisible();
 
     // Capture baseline state.
     const beforeMonth = await dashboard.monthSelector.inputValue();
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
+    const beforeCategoryText = (await dashboard.categoryEntries.first().textContent()) ?? "";
 
     // Switch to a different month (2026-04 when default is 2026-05, otherwise 2026-05).
     const targetMonth = beforeMonth === "2026-05" ? "2026-04" : "2026-05";
@@ -76,6 +78,7 @@ test.describe("Dashboard renderer smoke", () => {
     // Assert at least one totals value changed after the month refresh.
     // Uses a web-first assertion so Playwright waits for the re-render.
     await expect(dashboard.incomeValue).not.toHaveText(beforeIncomeText);
+    await expect(dashboard.categoryEntries.first()).not.toHaveText(beforeCategoryText);
 
     // Assert both sections remain visible after the switch.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
