@@ -31,3 +31,5 @@ local/sanitization-map.json
 /dist
 /out
 /playwright-report
+/test-results/
+/test-results/.last-run.json
