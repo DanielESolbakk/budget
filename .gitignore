@@ -30,3 +30,4 @@ local/sanitization-map.json
 # Build output
 /dist
 /out
+/playwright-report
