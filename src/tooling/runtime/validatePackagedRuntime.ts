@@ -127,7 +127,10 @@ export function validatePackagedRuntime(
   if (!checks.dashboardBridgeAvailable) missing.push("dashboard-bridge");
 
   const title = extractTitle(rendererSource);
-  const rootElementPresent = rendererSource.includes('<div id="root"></div>');
+  const rootElementPresent = hasPattern(
+    rendererSource,
+    /<div[^>]*\bid\s*=\s*["']root["'][^>]*>/i
+  );
 
   return {
     contractVersion: PACKAGED_RUNTIME_CONTRACT_VERSION,

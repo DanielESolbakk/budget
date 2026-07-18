@@ -88,8 +88,12 @@ export function createPerformanceHarness(options: PerformanceHarnessOptions): Pe
   const rows = rowsToObjects(parsedFixture);
   const iterationCount = options.iterationCount ?? 2;
 
-  if (!Number.isInteger(iterationCount) || iterationCount <= 0) {
-    throw new Error(`Performance harness iterationCount must be a positive integer: ${iterationCount}`);
+  if (!Number.isInteger(iterationCount)) {
+    throw new Error(`Performance harness iterationCount must be an integer: ${iterationCount}`);
+  }
+
+  if (iterationCount <= 0) {
+    throw new Error(`Performance harness iterationCount must be positive: ${iterationCount}`);
   }
 
   const mappingOptions = resolveMappingOptions(options);
