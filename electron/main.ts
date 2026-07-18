@@ -1,7 +1,12 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
-import { buildDashboardData, type DashboardData } from "../src/app/dashboardApi.js";
-import type { MonthlyTotal } from "../src/domain/types.js";
+import {
+  buildDashboardData,
+  buildDashboardViewContract,
+  type DashboardData,
+  type DashboardViewContract,
+} from "../src/app/dashboardApi.js";
+import type { MonthlyTotal, Transaction } from "../src/domain/types.js";
 
 const sampleMonthlyTotals: MonthlyTotal[] = [
   { yearMonth: "2026-03", totalMinor: 48000 },
@@ -9,8 +14,52 @@ const sampleMonthlyTotals: MonthlyTotal[] = [
   { yearMonth: "2026-05", totalMinor: 54000 },
 ];
 
+// Sample transactions used to build monthly view contracts with income/expense/category breakdown.
+const sampleTransactions: Transaction[] = [
+  {
+    id: "sample-tx-1",
+    householdId: "sample-hh",
+    accountId: "sample-acc",
+    bookedAtIso: "2026-04-15T10:00:00Z",
+    amountMinor: 51000,
+    merchantRaw: "Lønn AS",
+    categoryId: "salary",
+  },
+  {
+    id: "sample-tx-2",
+    householdId: "sample-hh",
+    accountId: "sample-acc",
+    bookedAtIso: "2026-04-20T10:00:00Z",
+    amountMinor: -7200,
+    merchantRaw: "Kiwi",
+    categoryId: "groceries",
+  },
+  {
+    id: "sample-tx-3",
+    householdId: "sample-hh",
+    accountId: "sample-acc",
+    bookedAtIso: "2026-05-02T10:00:00Z",
+    amountMinor: 54000,
+    merchantRaw: "Lønn AS",
+    categoryId: "salary",
+  },
+  {
+    id: "sample-tx-4",
+    householdId: "sample-hh",
+    accountId: "sample-acc",
+    bookedAtIso: "2026-05-15T10:00:00Z",
+    amountMinor: -8500,
+    merchantRaw: "Rema 1000",
+    categoryId: "groceries",
+  },
+];
+
 function getDashboardData(): DashboardData {
   return buildDashboardData({ monthlyTotals: sampleMonthlyTotals });
+}
+
+function getViewData(yearMonth: string): DashboardViewContract {
+  return buildDashboardViewContract({ transactions: sampleTransactions, selectedYearMonth: yearMonth });
 }
 
 function createWindow(): void {
@@ -34,6 +83,10 @@ function createWindow(): void {
 app.whenReady().then(() => {
   ipcMain.handle("dashboard:getData", () => {
     return getDashboardData();
+  });
+
+  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) => {
+    return getViewData(yearMonth);
   });
 
   ipcMain.handle("forecast:getEntries", () => {
