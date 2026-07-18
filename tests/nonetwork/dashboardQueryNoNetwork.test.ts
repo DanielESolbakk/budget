@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { queryCategoryBreakdown, queryMonthlyTotals } from "../../src/app/dashboardApi.js";
+import {
+  createMonthlyCategoryTarget,
+  createMonthlyCategoryTargetStore,
+  queryCategoryBreakdown,
+  queryMonthlyTotals,
+  queryTargetVsActualCategoryRows,
+  readMonthlyCategoryTarget,
+  reloadMonthlyCategoryTargets,
+  updateMonthlyCategoryTarget,
+} from "../../src/app/dashboardApi.js";
 import type { Transaction } from "../../src/domain/types.js";
 
 const sampleTransactions: Transaction[] = [
@@ -51,6 +60,53 @@ describe("dashboard query layer no-network verification", () => {
 
     const result = queryCategoryBreakdown(sampleTransactions, "2026-05");
     expect(result.entries.length).toBeGreaterThan(0);
+    expect(fetchCalled).toBe(false);
+  });
+
+  it("target persistence operations do not invoke fetch", () => {
+    let fetchCalled = false;
+    (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
+      fetchCalled = true;
+      throw new Error("Network access is not allowed in this test.");
+    };
+
+    const store = createMonthlyCategoryTargetStore();
+    createMonthlyCategoryTarget(store, {
+      yearMonth: "2026-05",
+      categoryId: "groceries",
+      targetMinor: 10000,
+    });
+    updateMonthlyCategoryTarget(store, {
+      yearMonth: "2026-05",
+      categoryId: "groceries",
+      targetMinor: 12000,
+    });
+
+    const target = readMonthlyCategoryTarget(store, {
+      yearMonth: "2026-05",
+      categoryId: "groceries",
+    });
+    const reloaded = reloadMonthlyCategoryTargets(store, "2026-05");
+
+    expect(target?.targetMinor).toBe(12000);
+    expect(reloaded).toHaveLength(1);
+    expect(fetchCalled).toBe(false);
+  });
+
+  it("target-vs-actual composition does not invoke fetch", () => {
+    let fetchCalled = false;
+    (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
+      fetchCalled = true;
+      throw new Error("Network access is not allowed in this test.");
+    };
+
+    const store = createMonthlyCategoryTargetStore([
+      { yearMonth: "2026-05", categoryId: "salary", targetMinor: 35000 },
+      { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 15000 },
+    ]);
+
+    const result = queryTargetVsActualCategoryRows(sampleTransactions, store, "2026-05");
+    expect(result.rows.length).toBeGreaterThan(0);
     expect(fetchCalled).toBe(false);
   });
 });
