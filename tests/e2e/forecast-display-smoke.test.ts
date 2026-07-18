@@ -28,6 +28,10 @@ function createFakeBudgetApi(): BudgetApi {
     forecast: {
       getEntries: async () => dashboardData.forecast.entries,
     },
+    categoryTargets: {
+      upsert: async (input) => ({ ...input }),
+      listByMonth: async () => [],
+    },
   };
 }
 
