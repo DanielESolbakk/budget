@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { exportCsv } from "../../src/app/exportCsv.js";
+import { exportCsv, exportCsvToFile } from "../../src/app/exportCsv.js";
 import { buildCsvOutput } from "../../src/domain/export/buildCsvRows.js";
 import { buildTransactionsFromFixturePath } from "../../src/tooling/fixtures/fixtureTransactions.js";
 
@@ -54,5 +57,24 @@ describe("export no-network verification", () => {
     expect(first.csvText).toBe(second.csvText);
     expect(first.rowCount).toBe(second.rowCount);
     expect(fetchCalled).toBe(false);
+  });
+
+  it("exportCsvToFile does not invoke fetch", () => {
+    const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-export-no-network-"));
+    const outputPath = join(tempDir, "export.csv");
+    let fetchCalled = false;
+    (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
+      fetchCalled = true;
+      throw new Error("Network access is not allowed in this test.");
+    };
+
+    try {
+      const result = exportCsvToFile({ transactions, outputPath });
+      expect(result.rowCount).toBeGreaterThan(0);
+      expect(fetchCalled).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

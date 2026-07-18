@@ -9,7 +9,7 @@ import {
   type DashboardData,
   type DashboardViewContract,
 } from "../src/app/dashboardApi.js";
-import { exportCsv } from "../src/app/exportCsv.js";
+import { exportCsv, exportCsvToFile } from "../src/app/exportCsv.js";
 import {
   validateMonthlyCategoryTargetInput,
   type MonthlyCategoryTargetInput,
@@ -142,6 +142,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle("export:toCsv", (_event, transactions: Transaction[]) => {
     return exportCsv({ transactions });
+  });
+
+  ipcMain.handle("export:writeCsv", (_event, transactions: Transaction[], outputPath: string) => {
+    return exportCsvToFile({ transactions, outputPath });
   });
 
   createWindow();

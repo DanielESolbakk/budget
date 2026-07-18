@@ -1,7 +1,10 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildTransactionsFromFixturePath } from "../../src/tooling/fixtures/fixtureTransactions.js";
 import { EXPORT_CSV_HEADERS, buildCsvOutput, buildCsvRow, serializeCsvRow } from "../../src/domain/export/buildCsvRows.js";
-import { exportCsv } from "../../src/app/exportCsv.js";
+import { exportCsv, exportCsvToFile } from "../../src/app/exportCsv.js";
 import type { Transaction } from "../../src/domain/types.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
@@ -99,6 +102,25 @@ describe("csv export contract", () => {
       const first = exportCsv({ transactions });
       const second = exportCsv({ transactions });
       expect(first.csvText).toBe(second.csvText);
+    });
+
+    it("exportCsvToFile writes the produced CSV text to the requested output path", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-export-"));
+      const outputPath = join(tempDir, "transactions.csv");
+
+      try {
+        const result = exportCsvToFile({
+          transactions: SAMPLE_TRANSACTIONS,
+          outputPath,
+        });
+
+        const diskText = readFileSync(outputPath, "utf8");
+        expect(diskText).toBe(result.csvText);
+        expect(result.rowCount).toBe(3);
+        expect(result.outputPath).toBe(outputPath);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 
