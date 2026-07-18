@@ -32,6 +32,9 @@ function createFakeBudgetApi(): BudgetApi {
       upsert: async (input) => ({ ...input }),
       listByMonth: async () => [],
     },
+    export: {
+      toCsv: async (transactions) => ({ csvText: "", rowCount: transactions.length }),
+    },
   };
 }
 
