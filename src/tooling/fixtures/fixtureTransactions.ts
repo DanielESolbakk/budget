@@ -25,8 +25,8 @@ function resolveOptions(options: FixtureTransactionOptions): CsvRowMappingOption
 }
 
 /**
- * Reads a fixture CSV file and returns only the successfully mapped transactions.
- * Rows that fail validation are silently dropped; use importFixtureCsv when skipped rows matter.
+ * Reads a fixture CSV file and returns mapped transactions only when the full
+ * fixture passes validation; use importFixtureCsv when validation failures matter.
  */
 export function buildTransactionsFromFixturePath(
   filePath: string,
@@ -38,8 +38,8 @@ export function buildTransactionsFromFixturePath(
 }
 
 /**
- * Maps pre-parsed fixture row objects to transactions.
- * Rows that fail validation are silently dropped; use mapCsvRows when skipped rows matter.
+ * Maps pre-parsed fixture row objects to transactions only when all rows are valid.
+ * Use mapCsvRows when validation failures matter.
  */
 export function buildTransactionsFromFixtureRows(
   rows: Array<Record<string, string>>,
