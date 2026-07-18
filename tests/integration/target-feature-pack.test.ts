@@ -7,7 +7,7 @@ import {
   reloadMonthlyCategoryTargets,
   updateMonthlyCategoryTarget,
 } from "../../src/app/dashboardApi.js";
-import type { Transaction } from "../../src/domain/types.js";
+import { MonthlyCategoryTargetValidationError, type Transaction } from "../../src/domain/types.js";
 
 function makeTx(
   overrides: Partial<Transaction> & { amountMinor: number; bookedAtIso: string }
@@ -104,6 +104,52 @@ describe("monthly category target persistence", () => {
         targetMinor: 6000,
       })
     ).toThrow(/missing/);
+  });
+
+  it("rejects invalid payloads with a stable validation error contract", () => {
+    const store = createMonthlyCategoryTargetStore();
+
+    expect(() =>
+      createMonthlyCategoryTarget(store, {
+        yearMonth: "2026-13",
+        categoryId: "groceries",
+        targetMinor: 10000,
+      })
+    ).toThrowError(
+      expect.objectContaining<Partial<MonthlyCategoryTargetValidationError>>({
+        name: "MonthlyCategoryTargetValidationError",
+        code: "INVALID_TARGET_YEAR_MONTH",
+        message: "Invalid target yearMonth: 2026-13",
+      })
+    );
+
+    expect(() =>
+      updateMonthlyCategoryTarget(store, {
+        yearMonth: "2026-05",
+        categoryId: " ",
+        targetMinor: 10000,
+      })
+    ).toThrowError(
+      expect.objectContaining<Partial<MonthlyCategoryTargetValidationError>>({
+        name: "MonthlyCategoryTargetValidationError",
+        code: "INVALID_TARGET_CATEGORY_ID",
+        message: "Target categoryId must be a non-empty string.",
+      })
+    );
+
+    expect(() =>
+      createMonthlyCategoryTarget(store, {
+        yearMonth: "2026-05",
+        categoryId: "transport",
+        targetMinor: 1.5,
+      })
+    ).toThrowError(
+      expect.objectContaining<Partial<MonthlyCategoryTargetValidationError>>({
+        name: "MonthlyCategoryTargetValidationError",
+        code: "INVALID_TARGET_MINOR_INTEGER",
+        message: "Target targetMinor must be an integer: 1.5",
+      })
+    );
   });
 });
 
