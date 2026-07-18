@@ -79,6 +79,6 @@ test.describe("Dashboard renderer smoke", () => {
 
     // Assert both sections remain visible after the switch.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
-    await expect(dashboard.categoryBreakdownSection).toBeVisible();
+    await expect(dashboard.categoryBreakdownSection).toBeVisible(); 
   });
 });
