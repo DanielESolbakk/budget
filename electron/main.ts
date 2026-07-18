@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
+import { installNetworkGuard } from "./networkGuard.js";
 import { join } from "path";
 import {
   buildDashboardData,
@@ -105,6 +106,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  installNetworkGuard(session.defaultSession);
+
   ipcMain.handle("dashboard:getData", () => {
     return getDashboardData();
   });
