@@ -44,6 +44,13 @@ async function launchCategoryTargetWindow(): Promise<{
 }
 
 test.describe("Category target entry renderer smoke", () => {
+  /**
+   * Tests in this describe block share one Electron instance (beforeAll/afterAll) because
+   * Scenario 1 and Scenario 3 are stateless from the perspective of each other:
+   * Scenario 1 clears the form inputs before finishing, and Scenario 3's validation error
+   * state does not affect Scenario 1's assertions (visibility of form elements only).
+   * Tests are defined in execution order so there is no execution-order ambiguity.
+   */
   let app: ElectronApplication;
   let window: Page;
   let targetPage: CategoryTargetPage;
@@ -113,10 +120,8 @@ test.describe("Category target entry renderer smoke — save and reload persiste
   let persistTargetPage: CategoryTargetPage;
 
   test.beforeAll(async () => {
-    const launched = await launchCategoryTargetWindow();
-    persistApp = launched.app;
-    persistWindow = launched.window;
-    persistTargetPage = launched.targetPage;
+    ({ app: persistApp, window: persistWindow, targetPage: persistTargetPage } =
+      await launchCategoryTargetWindow());
   });
 
   test.afterAll(async () => {

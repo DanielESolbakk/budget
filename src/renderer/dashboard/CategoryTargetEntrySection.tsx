@@ -28,6 +28,7 @@ export function CategoryTargetEntrySection({
   selectedYearMonth,
 }: CategoryTargetEntrySectionProps): React.JSX.Element {
   const [targets, setTargets] = React.useState<MonthlyCategoryTarget[]>([]);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [categoryId, setCategoryId] = React.useState("");
   const [targetNok, setTargetNok] = React.useState("");
@@ -35,6 +36,7 @@ export function CategoryTargetEntrySection({
 
   React.useEffect(() => {
     let isActive = true;
+    setLoadError(null);
     window.budgetApi.categoryTargets
       .listByMonth(selectedYearMonth)
       .then((loaded) => {
@@ -42,6 +44,7 @@ export function CategoryTargetEntrySection({
       })
       .catch((error: unknown) => {
         console.error("[CategoryTargetEntrySection] Failed to load targets:", error);
+        if (isActive) setLoadError("Unable to load saved targets.");
       });
     return () => {
       isActive = false;
@@ -88,7 +91,9 @@ export function CategoryTargetEntrySection({
   return (
     <section aria-label="Category Target Entry">
       <h2>Set Category Budget Target</h2>
-      {targets.length === 0 ? (
+      {loadError !== null ? (
+        <p>{loadError}</p>
+      ) : targets.length === 0 ? (
         <p>No targets set for {selectedYearMonth}.</p>
       ) : (
         <ul aria-label="Saved category targets">
