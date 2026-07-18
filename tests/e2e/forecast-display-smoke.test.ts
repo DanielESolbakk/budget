@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { buildDashboardData } from "../../src/app/dashboardApi.js";
+import { buildDashboardData, buildDashboardViewContract } from "../../src/app/dashboardApi.js";
 import { ForecastSection } from "../../src/renderer/dashboard/ForecastSection.js";
 import { loadDashboardData } from "../../src/renderer/dashboard/loadDashboardData.js";
 import type { MonthlyTotal } from "../../src/domain/types.js";
@@ -19,6 +19,11 @@ function createFakeBudgetApi(): BudgetApi {
   return {
     dashboard: {
       getData: async () => dashboardData,
+      getViewData: async (yearMonth: string) =>
+        buildDashboardViewContract({
+          transactions: [],
+          selectedYearMonth: yearMonth,
+        }),
     },
     forecast: {
       getEntries: async () => dashboardData.forecast.entries,
