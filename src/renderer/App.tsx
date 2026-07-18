@@ -3,6 +3,7 @@ import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.j
 import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.js";
 import { ForecastSection } from "./dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
+import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
 
 const DEFAULT_YEAR_MONTH = "2026-05";
@@ -91,6 +92,7 @@ export function App(): React.JSX.Element {
           </select>
           <MonthlyTotalsSection viewContract={appState.viewContract} />
           <CategoryBreakdownSection viewContract={appState.viewContract} />
+          <TargetVsActualSection viewContract={appState.viewContract} />
           <ForecastSection dashboardData={appState.dashboardData} />
         </>
       )}

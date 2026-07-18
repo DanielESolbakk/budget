@@ -81,6 +81,27 @@ export interface MonthlyCategoryTargetInput {
 
 export interface MonthlyCategoryTarget extends MonthlyCategoryTargetInput {}
 
+export type MonthlyCategoryTargetValidationErrorCode =
+  | "INVALID_TARGET_YEAR_MONTH"
+  | "INVALID_TARGET_CATEGORY_ID"
+  | "INVALID_TARGET_MINOR_INTEGER"
+  | "INVALID_TARGET_MINOR_RANGE";
+
+export interface MonthlyCategoryTargetValidationErrorResponse {
+  code: MonthlyCategoryTargetValidationErrorCode;
+  message: string;
+}
+
+export class MonthlyCategoryTargetValidationError extends Error {
+  readonly code: MonthlyCategoryTargetValidationErrorCode;
+
+  constructor(response: MonthlyCategoryTargetValidationErrorResponse) {
+    super(response.message);
+    this.name = "MonthlyCategoryTargetValidationError";
+    this.code = response.code;
+  }
+}
+
 export interface MonthlyCategoryTargetQuery {
   /** Calendar month in YYYY-MM format, e.g. "2026-05". */
   yearMonth: string;
@@ -124,19 +145,31 @@ export function validateMonthlyCategoryTargetInput(
   input: MonthlyCategoryTargetInput
 ): MonthlyCategoryTargetInput {
   if (!isYearMonth(input.yearMonth)) {
-    throw new Error(`Invalid target yearMonth: ${input.yearMonth}`);
+    throw new MonthlyCategoryTargetValidationError({
+      code: "INVALID_TARGET_YEAR_MONTH",
+      message: `Invalid target yearMonth: ${input.yearMonth}`,
+    });
   }
 
   if (input.categoryId.trim().length === 0) {
-    throw new Error("Target categoryId must be a non-empty string.");
+    throw new MonthlyCategoryTargetValidationError({
+      code: "INVALID_TARGET_CATEGORY_ID",
+      message: "Target categoryId must be a non-empty string.",
+    });
   }
 
   if (!Number.isInteger(input.targetMinor)) {
-    throw new Error(`Target targetMinor must be an integer: ${input.targetMinor}`);
+    throw new MonthlyCategoryTargetValidationError({
+      code: "INVALID_TARGET_MINOR_INTEGER",
+      message: `Target targetMinor must be an integer: ${input.targetMinor}`,
+    });
   }
 
   if (input.targetMinor < 0) {
-    throw new Error(`Target targetMinor must be zero or positive: ${input.targetMinor}`);
+    throw new MonthlyCategoryTargetValidationError({
+      code: "INVALID_TARGET_MINOR_RANGE",
+      message: `Target targetMinor must be zero or positive: ${input.targetMinor}`,
+    });
   }
 
   return input;
