@@ -402,8 +402,7 @@ jobs:
 
             const isBugByLabel = labels.includes("bug");
             const isBugByTemplate = selectedChangeTypes.includes("bug fix");
-            const isBugByTitle = /\b(fix|bug|regress|regression|hotfix|defect)\b/i.test(title);
-            const isBugFix = isBugByLabel || isBugByTemplate || isBugByTitle;
+            const isBugFix = isBugByLabel || isBugByTemplate;
 
             const bugSection = extractSection(bodyRaw, "Bug Fix Regression Test (required for bug fixes)");
 
