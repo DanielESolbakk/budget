@@ -1,6 +1,7 @@
 import React from "react";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
 import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.js";
+import { CategoryTargetEntrySection } from "./dashboard/CategoryTargetEntrySection.js";
 import { ForecastSection } from "./dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
 import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
@@ -93,6 +94,7 @@ export function App(): React.JSX.Element {
           <MonthlyTotalsSection viewContract={appState.viewContract} />
           <CategoryBreakdownSection viewContract={appState.viewContract} />
           <TargetVsActualSection viewContract={appState.viewContract} />
+          <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
           <ForecastSection dashboardData={appState.dashboardData} />
         </>
       )}

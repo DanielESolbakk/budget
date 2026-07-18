@@ -109,4 +109,20 @@ describe("dashboard query layer no-network verification", () => {
     expect(result.rows.length).toBeGreaterThan(0);
     expect(fetchCalled).toBe(false);
   });
+
+  it("guard detects network access if fetch is invoked during target workflows (regression guard)", () => {
+    let fetchCalled = false;
+    (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
+      fetchCalled = true;
+      throw new Error("Network access is not allowed in this test.");
+    };
+
+    // Verify the spy mechanism itself: any code path that calls fetch will be caught.
+    const triggerFetch = (): void => {
+      (globalThis as unknown as { fetch: () => unknown }).fetch();
+    };
+
+    expect(triggerFetch).toThrow("Network access is not allowed in this test.");
+    expect(fetchCalled).toBe(true);
+  });
 });

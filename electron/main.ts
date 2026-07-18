@@ -4,10 +4,16 @@ import {
   buildDashboardData,
   buildDashboardViewContract,
   createMonthlyCategoryTargetStore,
+  reloadMonthlyCategoryTargets,
   type DashboardData,
   type DashboardViewContract,
 } from "../src/app/dashboardApi.js";
-import type { MonthlyTotal, Transaction } from "../src/domain/types.js";
+import {
+  validateMonthlyCategoryTargetInput,
+  type MonthlyCategoryTargetInput,
+  type MonthlyTotal,
+  type Transaction,
+} from "../src/domain/types.js";
 
 const sampleMonthlyTotals: MonthlyTotal[] = [
   { yearMonth: "2026-03", totalMinor: 48000 },
@@ -109,6 +115,25 @@ app.whenReady().then(() => {
 
   ipcMain.handle("forecast:getEntries", () => {
     return getDashboardData().forecast.entries;
+  });
+
+  ipcMain.handle("categoryTarget:upsert", (_event, input: MonthlyCategoryTargetInput) => {
+    // validateMonthlyCategoryTargetInput throws MonthlyCategoryTargetValidationError on invalid
+    // input; Electron IPC propagates thrown errors to the renderer as a rejected promise, which
+    // the renderer's catch block converts into a user-visible validation message.
+    const validated = validateMonthlyCategoryTargetInput(input);
+    const key = `${validated.yearMonth}::${validated.categoryId}`;
+    const persisted = {
+      yearMonth: validated.yearMonth,
+      categoryId: validated.categoryId,
+      targetMinor: validated.targetMinor,
+    };
+    sampleTargetStore.targetsByMonthAndCategory.set(key, persisted);
+    return { ...persisted };
+  });
+
+  ipcMain.handle("categoryTarget:listByMonth", (_event, yearMonth: string) => {
+    return reloadMonthlyCategoryTargets(sampleTargetStore, yearMonth);
   });
 
   createWindow();
