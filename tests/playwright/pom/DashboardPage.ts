@@ -60,4 +60,33 @@ export class DashboardPage {
   get monthSelector() {
     return this.page.getByRole("combobox", { name: "Select month" });
   }
+
+  /** Select a different month option than the current one and return the selected month value. */
+  async selectDifferentMonth(currentMonth: string): Promise<string> {
+    const options = await this.monthSelector
+      .locator("option")
+      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
+    const candidates = options.filter((option) => option !== currentMonth);
+
+    for (const candidate of candidates) {
+      await this.monthSelector.selectOption(candidate);
+      await this.page.waitForFunction(
+        (value) => {
+          const select = document.querySelector('[aria-label="Select month"]') as HTMLSelectElement | null;
+          return select?.value === value;
+        },
+        candidate
+      );
+
+      try {
+        await this.incomeValue.waitFor({ state: "visible", timeout: 1500 });
+        await this.categoryEntries.first().waitFor({ state: "visible", timeout: 1500 });
+        return candidate;
+      } catch {
+        // Candidate likely led to an empty/loading branch; try the next one.
+      }
+    }
+
+    throw new Error("No alternate data-bearing month option found for month-switch scenario.");
+  }
 }

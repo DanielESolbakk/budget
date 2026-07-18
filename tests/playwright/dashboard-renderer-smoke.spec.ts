@@ -26,6 +26,7 @@ test.describe("Dashboard renderer smoke", () => {
   let app: ElectronApplication;
   let window: Page;
   let dashboard: DashboardPage;
+  let initialMonth: string;
 
   test.beforeAll(async () => {
     app = await electron.launch({
@@ -35,6 +36,18 @@ test.describe("Dashboard renderer smoke", () => {
     window = await app.firstWindow();
     await window.waitForLoadState("domcontentloaded");
     dashboard = new DashboardPage(window);
+    initialMonth = await dashboard.monthSelector.inputValue();
+  });
+
+  test.beforeEach(async () => {
+    // Keep tests isolated from month selection side effects in previous scenarios.
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    await expect(dashboard.categoryBreakdownSection).toBeVisible();
+    const currentMonth = await dashboard.monthSelector.inputValue();
+    if (currentMonth !== initialMonth) {
+      await dashboard.monthSelector.selectOption(initialMonth);
+      await expect(dashboard.monthSelector).toHaveValue(initialMonth);
+    }
   });
 
   test.afterAll(async () => {
@@ -68,15 +81,16 @@ test.describe("Dashboard renderer smoke", () => {
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     const beforeCategoryText = (await dashboard.categoryEntries.first().textContent()) ?? "";
 
-    // Switch to a different month (2026-04 when default is 2026-05, otherwise 2026-05).
-    const targetMonth = beforeMonth === "2026-05" ? "2026-04" : "2026-05";
-    await dashboard.monthSelector.selectOption(targetMonth);
+    // Switch to a different month option dynamically to avoid fixture-coupled hardcoding.
+    const targetMonth = await dashboard.selectDifferentMonth(beforeMonth);
 
     // Assert selected month label updated immediately.
     await expect(dashboard.monthSelector).toHaveValue(targetMonth);
 
-    // Assert at least one totals value changed after the month refresh.
+    // Assert totals and category rows refresh after month switch.
     // Uses a web-first assertion so Playwright waits for the re-render.
+    await expect(dashboard.incomeValue).toBeVisible();
+    await expect(dashboard.categoryEntries.first()).toBeVisible();
     await expect(dashboard.incomeValue).not.toHaveText(beforeIncomeText);
     await expect(dashboard.categoryEntries.first()).not.toHaveText(beforeCategoryText);
 
