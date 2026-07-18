@@ -1,0 +1,238 @@
+import { describe, expect, it } from "vitest";
+import {
+  CSV_COLUMN_NAMES,
+  mapCsvRows,
+  mapCsvRowToTransaction,
+  validateCsvRow,
+} from "../../src/domain/import/csvRowMapper.js";
+import {
+  buildTransactionsFromFixturePath,
+  importFixtureCsv,
+} from "../../src/tooling/fixtures/fixtureTransactions.js";
+
+const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
+
+const MAPPING_OPTIONS = {
+  householdId: "hh-test",
+  accountId: "acc-test",
+};
+
+const ISO_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+function makeRow(overrides: Partial<Record<string, string>> = {}): Record<string, string> {
+  return {
+    [CSV_COLUMN_NAMES.executionDate]: "28.05.2026",
+    [CSV_COLUMN_NAMES.bookedDate]: "28.05.2026",
+    Rentedato: "",
+    [CSV_COLUMN_NAMES.description]: "MERCHANT_TEST",
+    Type: "Varekjøp",
+    Undertype: "Debetkort",
+    "Fra konto": "ACCT-001",
+    Avsender: "",
+    "Til konto": "",
+    Mottakernavn: "",
+    [CSV_COLUMN_NAMES.amountIn]: "",
+    [CSV_COLUMN_NAMES.amountOut]: "-12.50",
+    [CSV_COLUMN_NAMES.currency]: "NOK",
+    [CSV_COLUMN_NAMES.status]: "Bokført",
+    [CSV_COLUMN_NAMES.reference]: "",
+    ...overrides,
+  };
+}
+
+describe("csv import contract", () => {
+  describe("AC-1: stable supported-row mapping and validation surface", () => {
+    it("maps a valid expense row to a Transaction with correct fields", () => {
+      const result = mapCsvRowToTransaction(makeRow(), 0, MAPPING_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.transaction.householdId).toBe("hh-test");
+      expect(result.transaction.accountId).toBe("acc-test");
+      expect(result.transaction.bookedAtIso).toBe("2026-05-28T00:00:00Z");
+      expect(result.transaction.amountMinor).toBe(-1250);
+      expect(result.transaction.merchantRaw).toBe("MERCHANT_TEST");
+    });
+
+    it("maps a valid income row with Beløp inn to a positive amountMinor", () => {
+      const result = mapCsvRowToTransaction(
+        makeRow({ [CSV_COLUMN_NAMES.amountIn]: "50000.00", [CSV_COLUMN_NAMES.amountOut]: "" }),
+        0,
+        MAPPING_OPTIONS
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transaction.amountMinor).toBe(5000000);
+    });
+
+    it("falls back to Utført dato when Bokført dato is empty", () => {
+      const result = mapCsvRowToTransaction(
+        makeRow({ [CSV_COLUMN_NAMES.bookedDate]: "" }),
+        0,
+        MAPPING_OPTIONS
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transaction.bookedAtIso).toBe("2026-05-28T00:00:00Z");
+    });
+
+    it("treats Beløp inn = 0.00 as absent and maps Beløp ut correctly", () => {
+      const result = mapCsvRowToTransaction(
+        makeRow({ [CSV_COLUMN_NAMES.amountIn]: "0.00", [CSV_COLUMN_NAMES.amountOut]: "-350.00" }),
+        0,
+        MAPPING_OPTIONS
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transaction.amountMinor).toBe(-35000);
+    });
+
+    it("assigns zero amountMinor when both amount fields are empty", () => {
+      const result = mapCsvRowToTransaction(
+        makeRow({ [CSV_COLUMN_NAMES.amountIn]: "", [CSV_COLUMN_NAMES.amountOut]: "" }),
+        0,
+        MAPPING_OPTIONS
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transaction.amountMinor).toBe(0);
+    });
+
+    it("sets importJobId when provided in options", () => {
+      const result = mapCsvRowToTransaction(makeRow(), 0, {
+        ...MAPPING_OPTIONS,
+        importJobId: "job-42",
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transaction.importJobId).toBe("job-42");
+    });
+
+    it("uses idPrefix and rowIndex to build the transaction id", () => {
+      const result = mapCsvRowToTransaction(makeRow(), 4, {
+        ...MAPPING_OPTIONS,
+        idPrefix: "test-import",
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transaction.id).toBe("test-import-5");
+    });
+
+    it("returns INVALID_DATE_FORMAT for a malformed date", () => {
+      const errors = validateCsvRow(
+        makeRow({ [CSV_COLUMN_NAMES.executionDate]: "not-a-date", [CSV_COLUMN_NAMES.bookedDate]: "" })
+      );
+
+      expect(errors.some((e) => e.code === "INVALID_DATE_FORMAT")).toBe(true);
+    });
+
+    it("returns MISSING_DATE when both date fields are absent", () => {
+      const errors = validateCsvRow(
+        makeRow({ [CSV_COLUMN_NAMES.executionDate]: "", [CSV_COLUMN_NAMES.bookedDate]: "" })
+      );
+
+      expect(errors.some((e) => e.code === "MISSING_DATE")).toBe(true);
+    });
+
+    it("returns MISSING_DESCRIPTION when Beskrivelse is empty", () => {
+      const errors = validateCsvRow(makeRow({ [CSV_COLUMN_NAMES.description]: "" }));
+
+      expect(errors.some((e) => e.code === "MISSING_DESCRIPTION")).toBe(true);
+    });
+
+    it("returns AMBIGUOUS_AMOUNT when both Beløp inn and Beløp ut are non-zero", () => {
+      const errors = validateCsvRow(
+        makeRow({ [CSV_COLUMN_NAMES.amountIn]: "100.00", [CSV_COLUMN_NAMES.amountOut]: "-50.00" })
+      );
+
+      expect(errors.some((e) => e.code === "AMBIGUOUS_AMOUNT")).toBe(true);
+    });
+
+    it("returns INVALID_AMOUNT_FORMAT for a non-numeric amount", () => {
+      const errors = validateCsvRow(makeRow({ [CSV_COLUMN_NAMES.amountOut]: "not-a-number" }));
+
+      expect(errors.some((e) => e.code === "INVALID_AMOUNT_FORMAT")).toBe(true);
+    });
+
+    it("mapCsvRows returns a CsvImportResult with transactions and skipped arrays", () => {
+      const validRow = makeRow();
+      const invalidRow = makeRow({ [CSV_COLUMN_NAMES.executionDate]: "", [CSV_COLUMN_NAMES.bookedDate]: "" });
+      const result = mapCsvRows([validRow, invalidRow, validRow], MAPPING_OPTIONS);
+
+      expect(result.transactions).toHaveLength(2);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0]!.rowIndex).toBe(1);
+    });
+
+    it("mapCsvRows returns empty skipped array when all rows are valid", () => {
+      const result = mapCsvRows([makeRow(), makeRow()], MAPPING_OPTIONS);
+
+      expect(result.skipped).toEqual([]);
+    });
+  });
+
+  describe("AC-2: fixture adapter determinism", () => {
+    it("buildTransactionsFromFixturePath returns the same result across repeated calls", () => {
+      const first = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const second = buildTransactionsFromFixturePath(FIXTURE_PATH);
+
+      expect(first).toEqual(second);
+    });
+
+    it("all mapped transactions have the required domain fields", () => {
+      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+
+      expect(transactions.length).toBeGreaterThan(0);
+      for (const tx of transactions) {
+        expect(typeof tx.id).toBe("string");
+        expect(tx.id.length).toBeGreaterThan(0);
+        expect(tx.householdId).toBe("hh-fixture");
+        expect(tx.accountId).toBe("acc-fixture");
+        expect(typeof tx.amountMinor).toBe("number");
+        expect(Number.isInteger(tx.amountMinor)).toBe(true);
+        expect(tx.bookedAtIso).toMatch(ISO_DATETIME_PATTERN);
+        expect(typeof tx.merchantRaw).toBe("string");
+        expect(tx.merchantRaw.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("importFixtureCsv returns a CsvImportResult covering all fixture rows", () => {
+      const result = importFixtureCsv(FIXTURE_PATH);
+
+      expect(result.transactions.length + result.skipped.length).toBeGreaterThan(0);
+      expect(result.transactions).toBeInstanceOf(Array);
+      expect(result.skipped).toBeInstanceOf(Array);
+    });
+
+    it("importFixtureCsv respects custom householdId and accountId options", () => {
+      const result = importFixtureCsv(FIXTURE_PATH, {
+        householdId: "hh-custom",
+        accountId: "acc-custom",
+      });
+
+      expect(result.transactions.every((tx) => tx.householdId === "hh-custom")).toBe(true);
+      expect(result.transactions.every((tx) => tx.accountId === "acc-custom")).toBe(true);
+    });
+
+    it("importFixtureCsv with importJobId propagates the id to all transactions", () => {
+      const result = importFixtureCsv(FIXTURE_PATH, { importJobId: "job-fixture-01" });
+
+      expect(result.transactions.every((tx) => tx.importJobId === "job-fixture-01")).toBe(true);
+    });
+
+    it("transaction ids from the fixture are unique", () => {
+      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const ids = transactions.map((tx) => tx.id);
+      const uniqueIds = new Set(ids);
+
+      expect(uniqueIds.size).toBe(ids.length);
+    });
+  });
+});
