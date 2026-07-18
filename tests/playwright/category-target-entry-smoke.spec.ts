@@ -77,6 +77,9 @@ test.describe("Category target entry renderer smoke", () => {
     await targetPage.targetAmountInput.fill("");
   });
 
+  // Note: Scenario 2 (save + reload persistence) is intentionally placed in a
+  // separate describe block below so it can use its own isolated Electron instance
+  // with a clean in-memory store.  This describe block covers Scenario 1 and 3.
   test("Scenario 3: invalid input shows visible validation feedback without blank-screen failure", async () => {
     // AC-3: submitting an empty category ID shows an explicit validation error.
     await targetPage.categoryIdInput.fill("");

@@ -118,6 +118,9 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("categoryTarget:upsert", (_event, input: MonthlyCategoryTargetInput) => {
+    // validateMonthlyCategoryTargetInput throws MonthlyCategoryTargetValidationError on invalid
+    // input; Electron IPC propagates thrown errors to the renderer as a rejected promise, which
+    // the renderer's catch block converts into a user-visible validation message.
     const validated = validateMonthlyCategoryTargetInput(input);
     const key = `${validated.yearMonth}::${validated.categoryId}`;
     const persisted = {

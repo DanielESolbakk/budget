@@ -28,6 +28,7 @@ export function CategoryTargetEntrySection({
   selectedYearMonth,
 }: CategoryTargetEntrySectionProps): React.JSX.Element {
   const [targets, setTargets] = React.useState<MonthlyCategoryTarget[]>([]);
+  const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [categoryId, setCategoryId] = React.useState("");
   const [targetNok, setTargetNok] = React.useState("");
   const [formState, setFormState] = React.useState<FormState>({ status: "idle" });
@@ -39,20 +40,13 @@ export function CategoryTargetEntrySection({
       .then((loaded) => {
         if (isActive) setTargets(loaded);
       })
-      .catch(() => {
-        // Keep empty list on error.
+      .catch((error: unknown) => {
+        console.error("[CategoryTargetEntrySection] Failed to load targets:", error);
       });
     return () => {
       isActive = false;
     };
-  }, [selectedYearMonth]);
-
-  function refreshTargets(): void {
-    window.budgetApi.categoryTargets
-      .listByMonth(selectedYearMonth)
-      .then((loaded) => setTargets(loaded))
-      .catch(() => {});
-  }
+  }, [selectedYearMonth, refreshCounter]);
 
   function handleSubmit(e: React.FormEvent): void {
     e.preventDefault();
@@ -80,7 +74,7 @@ export function CategoryTargetEntrySection({
       .upsert({ yearMonth: selectedYearMonth, categoryId: trimmedCategoryId, targetMinor })
       .then(() => {
         setFormState({ status: "saved" });
-        refreshTargets();
+        setRefreshCounter((c) => c + 1);
         setCategoryId("");
         setTargetNok("");
       })
@@ -129,12 +123,12 @@ export function CategoryTargetEntrySection({
         </button>
       </form>
       {formState.status === "error" && (
-        <p role="alert" aria-label="Target validation error">
+        <p role="alert">
           {formState.message}
         </p>
       )}
       {formState.status === "saved" && (
-        <p role="status" aria-label="Target saved confirmation">
+        <p role="status">
           Target saved.
         </p>
       )}
