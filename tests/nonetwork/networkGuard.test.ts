@@ -7,8 +7,8 @@ describe("network guard — isUrlPermitted", () => {
   // -------------------------------------------------------------------------
 
   it("permits file:// URLs used by the renderer for bundled assets", () => {
-    expect(isUrlPermitted("file:///home/user/.config/budget/out/renderer/index.html")).toBe(true);
-    expect(isUrlPermitted("file:///C:/Users/user/AppData/Local/budget/out/renderer/index.html")).toBe(true);
+    expect(isUrlPermitted("file:///app/out/renderer/index.html")).toBe(true);
+    expect(isUrlPermitted("file:///C:/app/out/renderer/index.html")).toBe(true);
   });
 
   it("permits devtools:// URLs for Chrome DevTools internal frames", () => {
