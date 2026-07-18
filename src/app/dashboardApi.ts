@@ -37,6 +37,7 @@ export interface MonthlyDashboardSnapshot {
   selectedYearMonth: string;
   monthlyTotals: MonthlyBreakdown;
   categoryBreakdown: CategoryBreakdown;
+  targetVsActualCategoryRows: TargetVsActualCategoryRows;
 }
 
 export interface LoadingDashboardViewContract {
@@ -62,6 +63,7 @@ export type DashboardViewContract =
 export interface DashboardViewContractInput {
   transactions: Transaction[];
   selectedYearMonth: string;
+  monthlyCategoryTargetStore?: MonthlyCategoryTargetStore;
   isLoading?: boolean;
 }
 
@@ -266,23 +268,38 @@ export function queryCategoryBreakdown(
 
 export function queryMonthlyDashboardSnapshot(
   transactions: Transaction[],
-  selectedYearMonth: string
+  selectedYearMonth: string,
+  monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore()
 ): MonthlyDashboardSnapshot {
   return {
     selectedYearMonth,
     monthlyTotals: queryMonthlyTotals(transactions, selectedYearMonth),
     categoryBreakdown: queryCategoryBreakdown(transactions, selectedYearMonth),
+    targetVsActualCategoryRows: queryTargetVsActualCategoryRows(
+      transactions,
+      monthlyCategoryTargetStore,
+      selectedYearMonth
+    ),
   };
 }
 
 export function buildDashboardViewContract(input: DashboardViewContractInput): DashboardViewContract {
-  const { transactions, selectedYearMonth, isLoading = false } = input;
+  const {
+    transactions,
+    selectedYearMonth,
+    monthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
+    isLoading = false,
+  } = input;
 
   if (isLoading) {
     return { state: "loading", selectedYearMonth };
   }
 
-  const snapshot = queryMonthlyDashboardSnapshot(transactions, selectedYearMonth);
+  const snapshot = queryMonthlyDashboardSnapshot(
+    transactions,
+    selectedYearMonth,
+    monthlyCategoryTargetStore
+  );
 
   if (snapshot.categoryBreakdown.entries.length === 0) {
     return { state: "empty", snapshot };
@@ -293,8 +310,17 @@ export function buildDashboardViewContract(input: DashboardViewContractInput): D
 
 export function refreshDashboardViewContractMonth(
   transactions: Transaction[],
-  nextSelectedYearMonth: string
+  nextSelectedYearMonth: string,
+  monthlyCategoryTargetStore?: MonthlyCategoryTargetStore
 ): DashboardViewContract {
+  if (monthlyCategoryTargetStore) {
+    return buildDashboardViewContract({
+      transactions,
+      selectedYearMonth: nextSelectedYearMonth,
+      monthlyCategoryTargetStore,
+    });
+  }
+
   return buildDashboardViewContract({
     transactions,
     selectedYearMonth: nextSelectedYearMonth,
