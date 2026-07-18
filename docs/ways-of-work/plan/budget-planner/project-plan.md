@@ -118,7 +118,11 @@ graph TD
 
 ## Definition Of Done
 
-See the canonical DoD checklist in `docs/ways-of-work/plan/budget-planner/definition-of-ready-and-done.md`.
+- Acceptance criteria are complete
+- Required automated tests pass
+- Bug fixes include regression coverage
+- Planning artifacts are updated when architecture, schema, or privacy posture changes
+- Public-repo handling rules are respected
 
 ## Sprint Planning Assumption
 
