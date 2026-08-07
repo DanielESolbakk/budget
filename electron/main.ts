@@ -13,13 +13,15 @@ import { exportCsv, exportCsvToFile } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { restoreBackupSnapshot } from "../src/app/backup/restoreBackupSnapshot.js";
 import type {
-  BackupSnapshotInput,
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
   RestoreSnapshotOutput,
 } from "../src/domain/backup/snapshotContract.js";
 import {
   validateMonthlyCategoryTargetInput,
+  type Household,
+  type Account,
+  type ImportJob,
   type MonthlyCategoryTargetInput,
   type MonthlyTotal,
   type Transaction,
@@ -30,6 +32,20 @@ const sampleMonthlyTotals: MonthlyTotal[] = [
   { yearMonth: "2026-04", totalMinor: 51000 },
   { yearMonth: "2026-05", totalMinor: 54000 },
 ];
+
+// TODO: Replace with persistence-backed data when the storage layer is wired up.
+// Tracked in: https://github.com/DanielESolbakk/budget/issues/38
+const sampleHousehold: Household = {
+  id: "sample-hh",
+  name: "Sample Household",
+  createdAtIso: "2026-01-01T00:00:00Z",
+};
+
+const sampleAccounts: Account[] = [
+  { id: "sample-acc", householdId: "sample-hh", name: "Brukskonto", currencyCode: "NOK" },
+];
+
+const sampleImportJobs: ImportJob[] = [];
 
 // Sample transactions used to build monthly view contracts with income/expense/category breakdown.
 const sampleTransactions: Transaction[] = [
@@ -158,8 +174,17 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     "backup:create",
-    (_event, input: BackupSnapshotInput & { outputPath: string }): BackupSnapshotFileOutput => {
-      return createBackupSnapshot(input);
+    (_event, outputPath: string): BackupSnapshotFileOutput => {
+      return createBackupSnapshot({
+        household: sampleHousehold,
+        accounts: sampleAccounts,
+        transactions: sampleTransactions,
+        importJobs: sampleImportJobs,
+        monthlyCategoryTargets: Array.from(
+          sampleTargetStore.targetsByMonthAndCategory.values()
+        ),
+        outputPath,
+      });
     }
   );
 
