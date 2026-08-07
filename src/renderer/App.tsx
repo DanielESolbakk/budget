@@ -1,5 +1,6 @@
 import React from "react";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
+import { BackupSection } from "./dashboard/BackupSection.js";
 import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "./dashboard/CategoryTargetEntrySection.js";
 import { ForecastSection } from "./dashboard/ForecastSection.js";
@@ -96,6 +97,7 @@ export function App(): React.JSX.Element {
           <TargetVsActualSection viewContract={appState.viewContract} />
           <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
           <ForecastSection dashboardData={appState.dashboardData} />
+          <BackupSection />
         </>
       )}
     </div>
