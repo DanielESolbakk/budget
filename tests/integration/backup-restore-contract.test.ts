@@ -280,6 +280,76 @@ describe("backup/restore contract", () => {
       }
     });
 
+    it("restore from the same snapshot path is idempotent across repeated attempts", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-repeat-restore-"));
+      const snapshotPath = join(tempDir, "snapshot.json");
+
+      try {
+        createBackupSnapshot({
+          household: SAMPLE_HOUSEHOLD,
+          accounts: SAMPLE_ACCOUNTS,
+          transactions: SAMPLE_TRANSACTIONS,
+          importJobs: SAMPLE_IMPORT_JOBS,
+          monthlyCategoryTargets: SAMPLE_TARGETS,
+          createdAtIso: "2026-06-01T12:00:00Z",
+          outputPath: snapshotPath,
+        });
+
+        const snapshotBeforeRestore = readFileSync(snapshotPath, "utf8");
+        const first = restoreBackupSnapshot({ snapshotPath });
+        const second = restoreBackupSnapshot({ snapshotPath });
+        const snapshotAfterRestore = readFileSync(snapshotPath, "utf8");
+
+        expect(second).toEqual(first);
+        expect(snapshotAfterRestore).toBe(snapshotBeforeRestore);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("regression guard: divergence from snapshot source is detectable", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-divergence-"));
+      const snapshotPath = join(tempDir, "snapshot.json");
+
+      try {
+        createBackupSnapshot({
+          household: SAMPLE_HOUSEHOLD,
+          accounts: SAMPLE_ACCOUNTS,
+          transactions: SAMPLE_TRANSACTIONS,
+          importJobs: SAMPLE_IMPORT_JOBS,
+          monthlyCategoryTargets: SAMPLE_TARGETS,
+          createdAtIso: "2026-06-01T12:00:00Z",
+          outputPath: snapshotPath,
+        });
+
+        const tamperedSnapshot = JSON.parse(readFileSync(snapshotPath, "utf8")) as {
+          transactions: Array<{ id: string; amountMinor: number }>;
+        };
+        const tamperedTransactionId = tamperedSnapshot.transactions[0]!.id;
+        tamperedSnapshot.transactions[0]!.amountMinor = 123456;
+        fsWriteFileSync(snapshotPath, JSON.stringify(tamperedSnapshot), "utf8");
+
+        const restored = restoreBackupSnapshot({ snapshotPath });
+        const tamperedRestoredTransaction = restored.transactions.find(
+          (transaction) => transaction.id === tamperedTransactionId
+        );
+        const untouchedRestoredTransactions = restored.transactions
+          .filter((transaction) => transaction.id !== tamperedTransactionId)
+          .sort((a, b) => a.id.localeCompare(b.id));
+        const untouchedSampleTransactions = SAMPLE_TRANSACTIONS
+          .filter((transaction) => transaction.id !== tamperedTransactionId)
+          .sort((a, b) => a.id.localeCompare(b.id));
+
+        expect(tamperedRestoredTransaction?.amountMinor).toBe(123456);
+        expect(untouchedRestoredTransactions).toEqual(untouchedSampleTransactions);
+        expect([...restored.transactions].sort((a, b) => a.id.localeCompare(b.id))).not.toEqual(
+          [...SAMPLE_TRANSACTIONS].sort((a, b) => a.id.localeCompare(b.id))
+        );
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("restoreBackupSnapshot throws on an invalid snapshot version", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "budget-bad-version-"));
       const outputPath = join(tempDir, "bad.json");
