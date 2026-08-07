@@ -6,6 +6,22 @@ import {
   type BackupSnapshotInput,
 } from "../../domain/backup/snapshotContract.js";
 
+function sortJsonValueRecursively(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortJsonValueRecursively(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+        .map(([key, nestedValue]) => [key, sortJsonValueRecursively(nestedValue)])
+    );
+  }
+
+  return value;
+}
+
 /**
  * Builds a deterministic `BackupSnapshot` from the provided ledger data.
  *
@@ -48,7 +64,7 @@ export function createBackupSnapshot(
   input: BackupSnapshotInput & { outputPath: string }
 ): BackupSnapshotFileOutput {
   const snapshot = buildBackupSnapshot(input);
-  const json = JSON.stringify(snapshot, null, 2) + "\n";
+  const json = JSON.stringify(sortJsonValueRecursively(snapshot), null, 2) + "\n";
   writeFileSync(input.outputPath, json, "utf8");
 
   return {

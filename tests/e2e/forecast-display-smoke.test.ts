@@ -41,8 +41,8 @@ function createFakeBudgetApi(): BudgetApi {
       }),
     },
     backup: {
-      create: async (_input) => ({ outputPath: "", transactionCount: 0, createdAtIso: "" }),
-      restore: async (_input) => ({
+      create: async () => ({ outputPath: "", transactionCount: 0, createdAtIso: "" }),
+      restore: async () => ({
         household: { id: "", name: "", createdAtIso: "" },
         accounts: [],
         transactions: [],

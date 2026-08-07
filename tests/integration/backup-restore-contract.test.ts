@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync as fsWriteFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync as fsWriteFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -134,6 +134,86 @@ describe("backup/restore contract", () => {
         expect(result.outputPath).toBe(outputPath);
         expect(result.transactionCount).toBe(2);
         expect(result.createdAtIso).toBe("2026-06-01T12:00:00Z");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("createBackupSnapshot writes byte-identical JSON for equivalent ledger state with different key order", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-backup-stable-"));
+      const pathA = join(tempDir, "snapshot-a.json");
+      const pathB = join(tempDir, "snapshot-b.json");
+
+      try {
+        createBackupSnapshot({
+          household: SAMPLE_HOUSEHOLD,
+          accounts: SAMPLE_ACCOUNTS,
+          transactions: SAMPLE_TRANSACTIONS,
+          importJobs: SAMPLE_IMPORT_JOBS,
+          monthlyCategoryTargets: SAMPLE_TARGETS,
+          createdAtIso: "2026-06-01T12:00:00Z",
+          outputPath: pathA,
+        });
+
+        createBackupSnapshot({
+          household: {
+            createdAtIso: "2026-01-01T00:00:00Z",
+            name: "Test Household",
+            id: "hh-test",
+          },
+          accounts: [
+            {
+              currencyCode: "NOK",
+              name: "Sparekonto",
+              householdId: "hh-test",
+              id: "acc-b",
+            },
+            {
+              currencyCode: "NOK",
+              name: "Brukskonto",
+              householdId: "hh-test",
+              id: "acc-a",
+            },
+          ],
+          transactions: [
+            {
+              categoryId: "salary",
+              merchantRaw: "Lønn AS",
+              amountMinor: 50000,
+              bookedAtIso: "2026-05-01T00:00:00Z",
+              accountId: "acc-a",
+              householdId: "hh-test",
+              id: "tx-1",
+            },
+            {
+              importJobId: "job-01",
+              categoryId: "groceries",
+              merchantRaw: "Kiwi Majorstuen",
+              amountMinor: -2500,
+              bookedAtIso: "2026-05-10T00:00:00Z",
+              accountId: "acc-a",
+              householdId: "hh-test",
+              id: "tx-2",
+            },
+          ],
+          importJobs: [
+            {
+              finishedAtIso: "2026-05-01T08:01:00Z",
+              startedAtIso: "2026-05-01T08:00:00Z",
+              sourceName: "may-2026.csv",
+              sourceType: "csv",
+              householdId: "hh-test",
+              id: "job-01",
+            },
+          ],
+          monthlyCategoryTargets: [
+            { targetMinor: 9000, categoryId: "groceries", yearMonth: "2026-05" },
+          ],
+          createdAtIso: "2026-06-01T12:00:00Z",
+          outputPath: pathB,
+        });
+
+        expect(readFileSync(pathA, "utf8")).toBe(readFileSync(pathB, "utf8"));
       } finally {
         rmSync(tempDir, { recursive: true, force: true });
       }
