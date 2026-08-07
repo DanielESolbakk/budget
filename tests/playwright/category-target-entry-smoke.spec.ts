@@ -55,12 +55,12 @@ test.describe("Category target entry renderer smoke", () => {
    * there is no ordering ambiguity.
    */
   let app: ElectronApplication;
-  let window: Page;
+  let _window: Page;
   let targetPage: CategoryTargetPage;
   let shell: AppShellPage;
 
   test.beforeAll(async () => {
-    ({ app, window, targetPage, shell } = await launchCategoryTargetWindow());
+    ({ app, window: _window, targetPage, shell } = await launchCategoryTargetWindow());
   });
 
   test.afterAll(async () => {

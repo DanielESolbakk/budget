@@ -79,7 +79,7 @@ export interface MonthlyCategoryTargetInput {
   targetMinor: number;
 }
 
-export interface MonthlyCategoryTarget extends MonthlyCategoryTargetInput {}
+export type MonthlyCategoryTarget = MonthlyCategoryTargetInput;
 
 export type MonthlyCategoryTargetValidationErrorCode =
   | "INVALID_TARGET_YEAR_MONTH"

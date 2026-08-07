@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildForecastInput,
   buildForecastInputFromMonthSeries,
@@ -25,6 +25,10 @@ const stubForecast: ForecastResult = {
 function buildMonthSeries(monthlyTotals: MonthlyTotal[]): MonthSeries {
   return { monthlyTotals, forecast: stubForecast };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("buildForecastInput – AC-1: deterministic adapter output", () => {
   it("preserves history reference unchanged", () => {
@@ -71,6 +75,14 @@ describe("buildForecastInput – AC-1: deterministic adapter output", () => {
 });
 
 describe("buildForecastInput – AC-2: insufficient-history fallback representation", () => {
+  it("resolves fallbackStartYearMonth to current UTC month when options are omitted", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-14T12:00:00Z"));
+
+    const input = buildForecastInput(emptyTotals);
+    expect(input.fallbackStartYearMonth).toBe("2026-10");
+  });
+
   it("empty history maps to ForecastInput with explicit fallbackStartYearMonth", () => {
     const input = buildForecastInput(emptyTotals, { fallbackStartYearMonth: "2026-04" });
 
@@ -136,6 +148,15 @@ describe("buildForecastInputFromMonthSeries – AC-1: deterministic adapter outp
 });
 
 describe("buildForecastInputFromMonthSeries – AC-2: insufficient-history fallback representation", () => {
+  it("resolves fallbackStartYearMonth to current UTC month when options are omitted", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-01-05T10:00:00Z"));
+
+    const series = buildMonthSeries(emptyTotals);
+    const input = buildForecastInputFromMonthSeries(series);
+    expect(input.fallbackStartYearMonth).toBe("2027-01");
+  });
+
   it("empty MonthSeries maps to ForecastInput with resolved fallbackStartYearMonth", () => {
     const series = buildMonthSeries(emptyTotals);
     const input = buildForecastInputFromMonthSeries(series, { fallbackStartYearMonth: "2026-04" });

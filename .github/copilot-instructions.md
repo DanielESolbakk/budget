@@ -103,6 +103,21 @@ Avoid inventing near-duplicates for the same concept.
 - Keep fixtures deterministic and Norwegian-representative for reproducibility.
 - Work complete only when test suites pass and acceptance criteria demonstrably covered.
 
+## Coverage Signal Rules (Vitest)
+
+- Treat coverage as a signal, not proof of correctness. Use it to find blind spots, not to replace behavioral assertions.
+- Configure coverage under `test.coverage` in Vitest configs. Do not place coverage options at root level.
+- Coverage signal commands must run with `vitest run` (non-watch) so agent executions terminate predictably.
+- When using `coverage.include`, include target source paths explicitly so uncovered files are reported; otherwise percentages can look falsely high.
+- Keep branch and function coverage in focus for deterministic business logic (import, normalization, categorization, forecasting), not just line coverage.
+- If coverage thresholds fail for a touched deterministic module, add or improve tests in that module before broadening scope.
+
+## AI Test Generation Guardrails (Vitest)
+
+- Keep AI-generated tests behavior-focused and edge-case aware; do not accept happy-path-only output.
+- Use Vitest APIs (`vi.*`) only.
+- Apply detailed test authoring rules from `.github/instructions/testing.instructions.md`.
+
 ## Test Automation Triangle
 
 - Unit (broad base): pure logic, parsing, normalization, validation, deterministic calculations.
@@ -112,14 +127,9 @@ Avoid inventing near-duplicates for the same concept.
 
 ## Playwright Implementation Policy
 
-- When an issue requires Playwright, follow testdino-hq/playwright-skill as a strict implementation contract.
-- Required packs for this repository are mandatory: core, ci, pom.
-- Migration pack is out of scope unless a dedicated migration issue explicitly requires it.
-- Playwright CLI pack is optional and intended for maintainer debugging and trace triage; it is not a mandatory implementation dependency.
-- All Playwright PRs must enforce Golden Rules: role-first locators, web-first assertions, no fixed timeout sleeps, isolated tests, and baseURL-driven navigation.
-- All Playwright CI runs must retain failure artifacts: traces, screenshots, and report output.
-- Playwright tests in this repository must use Page Object Model patterns for reusable UI behavior and keep one behavior per test case.
-- If an assigned issue asks for Playwright coverage and the implementation cannot satisfy these rules, the agent must stop and post a concise blocker comment instead of delivering partial Playwright coverage.
+- For Playwright work, use `.github/instructions/playwright.instructions.md` and `.agents/skills/playwright-skill/SKILL.md` as the implementation contract.
+- Required packs remain mandatory: core, ci, pom.
+- If assigned Playwright coverage cannot be completed to this standard, post a concise blocker instead of shipping partial coverage.
 
 ## Change Management
 

@@ -5,7 +5,9 @@ import type { Transaction } from "../../domain/types.js";
 import { mapCsvRows, type CsvRowMappingOptions } from "../../domain/import/csvRowMapper.js";
 import { parseFixtureCsv, rowsToObjects } from "../fixtures/fixtureCsv.js";
 import {
+  PERFORMANCE_HARNESS_BASELINE_POLICY,
   PERFORMANCE_HARNESS_CONTRACT_VERSION,
+  PERFORMANCE_HARNESS_FIXTURE_DIGEST_ALGORITHM,
   PERFORMANCE_HARNESS_METRIC_KEYS,
   PERFORMANCE_HARNESS_NAME,
   PERFORMANCE_HARNESS_SOURCE_KIND,
@@ -123,9 +125,12 @@ export function createPerformanceHarness(options: PerformanceHarnessOptions): Pe
   return {
     metadata: {
       contractVersion: PERFORMANCE_HARNESS_CONTRACT_VERSION,
+      contractKey: `${PERFORMANCE_HARNESS_NAME}:v${PERFORMANCE_HARNESS_CONTRACT_VERSION}`,
       harnessName: PERFORMANCE_HARNESS_NAME,
       workflowName: PERFORMANCE_HARNESS_WORKFLOW,
       sourceKind: PERFORMANCE_HARNESS_SOURCE_KIND,
+      fixtureDigestAlgorithm: PERFORMANCE_HARNESS_FIXTURE_DIGEST_ALGORITHM,
+      baselinePolicy: PERFORMANCE_HARNESS_BASELINE_POLICY,
       fixturePath: toPortableRelativePath(projectRoot, resolvedFixturePath),
       fixtureDigest: createHash("sha256").update(fixtureText).digest("hex"),
       iterationCount,

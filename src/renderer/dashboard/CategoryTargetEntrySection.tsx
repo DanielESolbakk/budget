@@ -42,7 +42,7 @@ export function CategoryTargetEntrySection({
       .then((loaded) => {
         if (isActive) setTargets(loaded);
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (isActive) setLoadError("Unable to load saved targets.");
       });
     return () => {

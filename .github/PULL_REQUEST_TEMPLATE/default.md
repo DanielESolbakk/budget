@@ -51,6 +51,18 @@ Reason:
 
 Follow-up issue: #
 
+## High-Risk Judgment Checkpoint (required for high-blast-radius changes)
+
+Risk level:
+
+Blast radius summary:
+
+Tradeoff rationale:
+
+Rollback or containment plan:
+
+Follow-up risk issue: #
+
 ## Test Evidence
 
 Commands run and passing:

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.unit.config.ts",
+    "related": true
+  },
+  "mutate": [
+    "src/domain/import/csvRowMapper.ts",
+    "src/domain/import/buildTransactionFingerprint.ts",
+    "src/domain/merchant/normalizeMerchantName.ts",
+    "src/domain/forecast/simpleForecast.ts",
+    "src/domain/forecast/forecastInputAdapter.ts"
+  ],
+  "reporters": [
+    "clear-text",
+    "json",
+    "html"
+  ],
+  "allowConsoleColors": false,
+  "timeoutMS": 60000,
+  "timeoutFactor": 1.5,
+  "concurrency": 2,
+  "tempDirName": "stryker-tmp"
+}

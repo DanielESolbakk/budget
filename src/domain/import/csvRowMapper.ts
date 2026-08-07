@@ -74,6 +74,12 @@ function parseNorwegianDate(value: string): string | null {
 function parseAmount(raw: string): number | null {
   const normalized = raw.trim();
   if (normalized === "") return null;
+  // Accept only canonical decimal numbers to avoid coercive parsing of
+  // tokens such as "12,25" or "NOK12.25".
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+    return null;
+  }
+
   const amount = Number.parseFloat(normalized);
   return Number.isFinite(amount) ? amount : null;
 }

@@ -25,6 +25,7 @@ jobs:
     outputs:
       run_ci: ${{ steps.scope.outputs.run_ci }}
       run_full: ${{ steps.scope.outputs.run_full }}
+      run_harness_gate: ${{ steps.scope.outputs.run_harness_gate }}
 
     steps:
       - name: Determine if full CI should run
@@ -35,6 +36,7 @@ jobs:
             if (context.eventName !== "pull_request") {
               core.setOutput("run_ci", "true");
               core.setOutput("run_full", "true");
+              core.setOutput("run_harness_gate", "true");
               core.info("Full CI enabled for non-PR event.");
               return;
             }
@@ -51,6 +53,7 @@ jobs:
 
             if (!shouldRunCi) {
               core.setOutput("run_full", "false");
+              core.setOutput("run_harness_gate", "false");
               core.info("Skipping CI while PR is still draft.");
               return;
             }
@@ -70,14 +73,33 @@ jobs:
                 path.startsWith("scripts/") ||
                 path === "package.json" ||
                 path === "package-lock.json" ||
+                path === "stryker.config.json" ||
                 path === "tsconfig.json" ||
                 /^vitest.*\.config\.ts$/i.test(path) ||
                 path === ".github/workflows/ci.yml"
               );
             });
 
+            const shouldRunHarnessGate = files.some((file) => {
+              const path = String(file.filename || "");
+              return (
+                path.startsWith("src/tooling/performance/") ||
+                path.startsWith("src/domain/import/") ||
+                path === "scripts/run-skill-evals.ts" ||
+                path === "scripts/run-backup-restore-benchmark.ts" ||
+                path === "tests/integration/performance-harness-contract.test.ts" ||
+                path === "tests/fixtures/synthetic/backup-restore-performance-contract.json" ||
+                path === "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv" ||
+                path === "package.json" ||
+                path === "package-lock.json" ||
+                path === ".github/workflows/ci.yml"
+              );
+            });
+
             core.setOutput("run_full", shouldRunFull ? "true" : "false");
+            core.setOutput("run_harness_gate", shouldRunHarnessGate ? "true" : "false");
             core.info(`Full CI ${shouldRunFull ? "enabled" : "skipped"} based on changed files.`);
+            core.info(`Harness eval gate ${shouldRunHarnessGate ? "enabled" : "skipped"} based on changed files.`);
 
   ci-fast:
     name: CI Fast
@@ -205,17 +227,107 @@ jobs:
       - name: Validate required npm scripts
         if: steps.detect.outputs.has_package == 'true'
         run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const missing=['test:integration','verify:no-network'].filter((name)=>!has(name)); if(!(has('test:e2e:vitest')||has('test:e2e'))){ missing.push('test:e2e:vitest|test:e2e'); } if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const missing=['test:integration','test:e2e:playwright','verify:no-network','deps:audit:signal','ai:feedback:signal','ai:skills:prune:signal','ai:risk:checkpoint:signal'].filter((name)=>!has(name)); if(!(has('test:e2e:vitest')||has('test:e2e'))){ missing.push('test:e2e:vitest|test:e2e'); } if(process.env.RUN_HARNESS_GATE==='true' && !has('eval:skill')){ missing.push('eval:skill'); } if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+        env:
+          RUN_HARNESS_GATE: ${{ needs.detect-changes.outputs.run_harness_gate }}
+
+      - name: Harness eval gate
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_harness_gate == 'true'
+        run: npm run eval:skill
 
       - name: Integration tests
         if: steps.detect.outputs.has_package == 'true'
         run: npm run test:integration
+
+      - name: Coverage thresholds signal (non-blocking)
+        if: steps.detect.outputs.has_package == 'true'
+        continue-on-error: true
+        run: npm run test:coverage:signal
+
+      - name: Mutation score signal (non-blocking)
+        if: steps.detect.outputs.has_package == 'true'
+        continue-on-error: true
+        run: npm run test:mutation:signal
+
+      - name: Upload mutation report artifact
+        if: steps.detect.outputs.has_package == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation
+          if-no-files-found: ignore
+
+      - name: Dependency governance signal (non-blocking)
+        if: steps.detect.outputs.has_package == 'true'
+        continue-on-error: true
+        run: npm run deps:audit:signal
+
+      - name: Upload dependency governance artifact
+        if: steps.detect.outputs.has_package == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-governance
+          path: reports/dependency-audit
+          if-no-files-found: ignore
+
+      - name: AI failure feedback loop (non-blocking)
+        if: steps.detect.outputs.has_package == 'true'
+        continue-on-error: true
+        run: npm run ai:feedback:signal
+
+      - name: Upload AI feedback artifact
+        if: steps.detect.outputs.has_package == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-feedback
+          path: reports/ai-feedback
+          if-no-files-found: ignore
+
+      - name: AI skill pruning loop (non-blocking)
+        if: steps.detect.outputs.has_package == 'true'
+        continue-on-error: true
+        run: npm run ai:skills:prune:signal
+
+      - name: Upload AI skill pruning artifact
+        if: steps.detect.outputs.has_package == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-skill-pruning
+          path: reports/ai-skill-pruning
+          if-no-files-found: ignore
+
+      - name: High-risk judgment checkpoint signal (non-blocking)
+        if: steps.detect.outputs.has_package == 'true'
+        continue-on-error: true
+        run: npm run ai:risk:checkpoint:signal
+
+      - name: Upload high-risk checkpoint artifact
+        if: steps.detect.outputs.has_package == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: high-risk-checkpoint
+          path: reports/high-risk-checkpoint
+          if-no-files-found: ignore
 
       - name: Vitest end-to-end smoke tests
         if: steps.detect.outputs.has_package == 'true'
         run: |
           node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const cmd=has('test:e2e:vitest')?'test:e2e:vitest':(has('test:e2e')?'test:e2e':''); if(!cmd){ console.error('No e2e script found (expected test:e2e:vitest or test:e2e).'); process.exit(1);} console.log(cmd);" > .e2e_cmd
           npm run "$(cat .e2e_cmd)"
+
+      - name: Playwright runtime tests
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run test:e2e:playwright
+
+      - name: Upload Playwright artifacts
+        if: steps.detect.outputs.has_package == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
 
       - name: No-network verification
         if: steps.detect.outputs.has_package == 'true'
@@ -391,6 +503,12 @@ jobs:
             const mappingSection = extractSection(bodyRaw, "Acceptance Criteria to Test Mapping");
             if (!mappingSection) {
               core.setFailed("Pull request description must include the 'Acceptance Criteria to Test Mapping' section.");
+              return;
+            }
+
+            const normalizedMapping = mappingSection.replace(/\s+/g, " ").trim();
+            if (/^(?:n\/a|na|none|not applicable|-|tbd)$/i.test(normalizedMapping)) {
+              core.setFailed("Acceptance Criteria to Test Mapping cannot be empty or placeholder-only (for example: N/A, none, -, TBD).");
               return;
             }
 

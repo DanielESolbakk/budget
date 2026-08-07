@@ -179,7 +179,7 @@ async function main(): Promise<void> {
   if (invalidLines.length > 0) {
     messages.push(
       "Each mapping line must use: '- AC-<n> | <test-level> | <test-id> | <test-file-path>'. Invalid lines: " +
-        invalidLines.map((line) => `\"${line.trim()}\"`).join(", ")
+        invalidLines.map((line) => `"${line.trim()}"`).join(", ")
     );
   }
 

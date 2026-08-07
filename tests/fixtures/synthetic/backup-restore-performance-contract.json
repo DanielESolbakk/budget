@@ -1,11 +1,14 @@
 {
   "metadata": {
     "contractVersion": 1,
+    "contractKey": "backup-restore-baseline:v1",
     "harnessName": "backup-restore-baseline",
     "workflowName": "backup-restore",
     "sourceKind": "synthetic-fixture-csv",
+    "fixtureDigestAlgorithm": "sha256",
+    "baselinePolicy": "strict-equality",
     "fixturePath": "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv",
-    "fixtureDigest": "9d2a54bdb65081b06a51cfb708c7842572e0b75f13bb0e7d87d19dd6f1b159d5",
+    "fixtureDigest": "62c94a1955443589b2e6587fef37fd08b56fadafdfc8ca26b1ba3c0ccef7d3b8",
     "iterationCount": 2,
     "noNetworkByDefault": true,
     "metricKeys": [

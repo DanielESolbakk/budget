@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+set -e
+
+echo "[hooks] Running lint..."
+npm run lint
+
+echo "[hooks] Running typecheck..."
+npm run typecheck

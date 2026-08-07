@@ -16,10 +16,9 @@ description: "Use when creating or editing planning docs, TypeScript application
 
 - Write planning documents in plain, direct language.
 - Use headings that reflect decisions, scope, acceptance criteria, dependencies, and risks.
-- Express acceptance criteria as checklists when the document is intended to drive implementation or issue creation.
-- Keep planning docs consistent with the Epic > Feature > Story or Enabler > Test model.
 - Use repository-relative paths in committed documentation. Do not include user-specific absolute paths from local machines.
 - Treat the repository as public when writing docs. Only reference sanitized or synthetic financial artifacts in committed materials.
+- For detailed planning documentation discipline, follow `.github/instructions/planning.instructions.md`.
 
 ## TypeScript And React
 
@@ -47,13 +46,8 @@ description: "Use when creating or editing planning docs, TypeScript application
 
 - Add or update tests alongside behavior changes when practical.
 - Prefer unit tests for pure logic, integration tests for persistence and import workflows, and end-to-end tests for critical user journeys.
-- Use fixtures that reflect Norwegian merchant names, localized number formats, and realistic statement structures whenever available.
-- For bug fixes, add a regression test that reproduces the failure before the fix.
-- For feature changes, include an acceptance-criteria-to-test mapping in planning docs and keep test names aligned with that language.
-- Keep implementation issues and test issues separate in planning material unless an issue is explicitly test-only; do not let a story or feature read as complete merely because test coverage was added.
-- When drafting a story or feature issue, if validation work is needed, create or link a dedicated Test issue instead of folding the test work into the story issue.
-- Avoid broad mocks for core finance logic when deterministic fixtures can validate behavior directly.
-- Do not disable or delete tests to speed up delivery; fix the implementation or isolate flaky tests with a tracked follow-up.
+- For detailed test authoring rules, follow `.github/instructions/testing.instructions.md`.
+- For Playwright-specific policy, follow `.github/instructions/playwright.instructions.md`.
 
 ## Comments And Formatting
 

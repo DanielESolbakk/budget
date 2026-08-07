@@ -71,6 +71,35 @@ This project is building a desktop application that:
 - Categorization strategy: rules-first with confidence scoring and review flows
 - Privacy model: no bank APIs, no cloud processing of transaction content, no telemetry by default
 
+## AI Oversight Snapshot
+
+- We use AI to speed delivery, but every important change is checked by automated quality gates before merge.
+  Learn more: [.github/workflows/ci.yml](.github/workflows/ci.yml), [.github/workflows/check-dor-dod.yml](.github/workflows/check-dor-dod.yml)
+- A deterministic performance harness validates import and packaging behavior against a known baseline to catch drift early.
+  Learn more: [scripts/run-skill-evals.ts](scripts/run-skill-evals.ts), [tests/fixtures/synthetic/backup-restore-performance-contract.json](tests/fixtures/synthetic/backup-restore-performance-contract.json)
+- Coverage, mutation testing, and dependency risk are tracked as explicit CI signals so weak test quality and security risk stay visible.
+  Learn more: [vitest.unit.config.ts](vitest.unit.config.ts), [stryker.config.json](stryker.config.json), [scripts/check-dependency-governance.ts](scripts/check-dependency-governance.ts)
+- A consolidated AI failure feedback report summarizes unresolved failures and warnings into a single actionable checklist.
+  Learn more: [scripts/ai-failure-feedback-loop.ts](scripts/ai-failure-feedback-loop.ts), [reports/ai-feedback/ai-failure-feedback.md](reports/ai-feedback/ai-failure-feedback.md)
+- A skill pruning loop reviews AI skill packs and flags optional or stale packs to reduce maintenance overhead.
+  Learn more: [scripts/ai-skill-pruning-loop.ts](scripts/ai-skill-pruning-loop.ts), [reports/ai-skill-pruning/ai-skill-pruning.md](reports/ai-skill-pruning/ai-skill-pruning.md)
+- A high-risk judgment checkpoint classifies release risk and requires explicit tradeoff and rollback rationale for high-blast-radius changes.
+  Learn more: [scripts/high-risk-judgment-checkpoint.ts](scripts/high-risk-judgment-checkpoint.ts), [reports/high-risk-checkpoint/high-risk-checkpoint.md](reports/high-risk-checkpoint/high-risk-checkpoint.md), [.github/PULL_REQUEST_TEMPLATE/default.md](.github/PULL_REQUEST_TEMPLATE/default.md)
+- CI always uploads governance artifacts (coverage, mutation, dependency, AI feedback, skill pruning, and risk checkpoint) for transparent review.
+  Learn more: [.github/workflows/ci.yml](.github/workflows/ci.yml)
+- Planning and policy source of truth for AI work lives in plan and repository AI instructions.
+  Learn more: [plan.md](plan.md), [.github/copilot-instructions.md](.github/copilot-instructions.md), [.github/instructions/style.instructions.md](.github/instructions/style.instructions.md), [.github/instructions/planning.instructions.md](.github/instructions/planning.instructions.md), [.github/instructions/testing.instructions.md](.github/instructions/testing.instructions.md), [.github/instructions/playwright.instructions.md](.github/instructions/playwright.instructions.md)
+
+## Agent Readiness
+
+- Universal entrypoint for agents: [AGENTS.md](AGENTS.md)
+- Repo-wide policy: [.github/copilot-instructions.md](.github/copilot-instructions.md)
+- Agent bootstrap workflow: [.github/workflows/copilot-setup-steps.yml](.github/workflows/copilot-setup-steps.yml)
+- Path-scoped instruction packs: [.github/instructions](.github/instructions)
+- Custom reviewer assets: [.github/agents/reviewer.agent.md](.github/agents/reviewer.agent.md), [.github/prompts/review.prompt.md](.github/prompts/review.prompt.md)
+- Dependabot updates and alerts are managed in GitHub repository settings.
+- Optional local hooks: [.github/hooks/README.md](.github/hooks/README.md)
+
 ## Public Repository Handling
 
 This repository is public.
@@ -88,6 +117,6 @@ The planning work for this project is centered around:
 - `plan.md`
 - `.github/copilot-instructions.md`
 - `.github/instructions/style.instructions.md`
-- `.github/skills/breakdown-plan/SKILL.md`
+- `.agents/skills/issue-planning-governor/SKILL.md`
 
 The docs tree under `docs/ways-of-work/plan/` will hold the feature PRD, technical breakdown, implementation plan, project plan, and issue checklist as those artifacts are created.

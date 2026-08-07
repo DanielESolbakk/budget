@@ -73,6 +73,18 @@ jobs:
               return `AC-${match[1]}`;
             };
 
+            const mentionsAcId = (text, acId) => {
+              const normalized = normalizeAcId(acId);
+              if (!normalized) return false;
+              const numberPart = normalized.split('-')[1];
+              if (!numberPart) return false;
+
+              // Accept AC-1, ac 1, AC_1, and @ac(AC-1) style mentions.
+              const direct = new RegExp(`\\bAC[-_\\s]?${numberPart}\\b`, 'i');
+              const tag = new RegExp(`@ac\\(\\s*AC[-_\\s]?${numberPart}\\s*\\)`, 'i');
+              return direct.test(String(text || '')) || tag.test(String(text || ''));
+            };
+
             const parseIssueReferences = (value) => {
               const refs = new Set();
               const text = String(value || '');
@@ -174,6 +186,23 @@ jobs:
 
             const files = await github.rest.pulls.listFiles({ owner, repo, pull_number: pr_number, per_page: 300 });
             const changed = (files.data || []).map((f) => f.filename || '');
+
+            const highBlastRadiusPatterns = [
+              /^src\/domain\//,
+              /^src\/app\//,
+              /^electron\//,
+              /^\.github\/workflows\//,
+              /^package\.json$/,
+              /^package-lock\.json$/,
+              /^tsconfig\.json$/,
+              /^vitest\..*\.config\.ts$/,
+            ];
+            const highBlastRadiusHits = changed.filter((filePath) =>
+              highBlastRadiusPatterns.some((pattern) => pattern.test(filePath))
+            );
+            const highBlastRadiusByVolume = changed.length >= 20;
+            const isHighBlastRadius = highBlastRadiusHits.length >= 2 || highBlastRadiusByVolume;
+
             const typeLabel = prLabels.find((label) => label.startsWith(typePrefix));
             let workType = 'unknown';
             if (typeLabel) {
@@ -190,6 +219,25 @@ jobs:
             const messages = [];
             const warnings = [];
             const hasAcException = prLabels.includes(acExceptionLabel);
+
+            const highRiskSection = extractPrSection(prBody, 'High-Risk Judgment Checkpoint (required for high-blast-radius changes)')
+              || extractPrSection(prBody, 'High-Risk Judgment Checkpoint');
+            if (isHighBlastRadius) {
+              if (!highRiskSection || !highRiskSection.trim()) {
+                messages.push(
+                  'High-blast-radius changes require a non-empty "High-Risk Judgment Checkpoint" section with tradeoff rationale and rollback/containment plan.'
+                );
+              } else {
+                const normalizedHighRiskText = highRiskSection.toLowerCase();
+                const hasTradeoff = /tradeoff|trade-off|risk|accept/i.test(normalizedHighRiskText);
+                const hasContainment = /rollback|containment|mitigation/i.test(normalizedHighRiskText);
+                if (!hasTradeoff || !hasContainment || highRiskSection.trim().length < 40) {
+                  messages.push(
+                    'High-Risk Judgment Checkpoint must include explicit risk tradeoff rationale and rollback/containment details (not placeholders).' 
+                  );
+                }
+              }
+            }
 
             const acExceptionSectionMatch = prBody.match(/(^|\n)##\s*AC Exception Justification[\s\S]*?(?=\n##\s+|$)/i);
             const acExceptionSection = acExceptionSectionMatch ? acExceptionSectionMatch[0] : '';
@@ -219,10 +267,16 @@ jobs:
               messages.push('Primary planning issue must include exactly one issue reference like #123 for AC traceability.');
             }
 
+            // AC source scope is locked to the primary planning issue to avoid cross-issue
+            // scope bleed in PR mapping checks.
             const acSourceIssueRefs = primaryPlanningRefs.length === 1
-              ? (aggregateAcScope ? [...new Set([primaryPlanningRefs[0], ...additionalPlanningRefs])] : [primaryPlanningRefs[0]])
+              ? [primaryPlanningRefs[0]]
               : [];
             const acSourceIssueData = [];
+
+            if (aggregateAcScope) {
+              warnings.push("'AC mapping scope: aggregate' is ignored. AC mapping checks use the Primary planning issue only.");
+            }
 
             for (const sourceIssueRef of acSourceIssueRefs) {
               try {
@@ -254,6 +308,8 @@ jobs:
                 messages.push("Pull request description must include 'Acceptance Criteria to Test Mapping'.");
               } else if (!mappingSection.trim()) {
                 messages.push("'Acceptance Criteria to Test Mapping' section cannot be empty. Describe how this PR addresses each AC from the linked planning issue.");
+              } else if (/^(?:n\/a|na|none|not applicable|-|tbd)$/i.test(mappingSection.replace(/\s+/g, ' ').trim())) {
+                messages.push("'Acceptance Criteria to Test Mapping' section cannot be placeholder-only (for example: N/A, none, -, TBD).");
               } else if (acSourceIssueData.length > 0) {
                 // Soft check: Extract AC IDs from linked planning issues and warn if PR mapping doesn't mention any
                 const acIds = new Set();
@@ -269,7 +325,7 @@ jobs:
                 // Check which AC IDs from the planning issue appear anywhere in the PR mapping section
                 const mentionedAcIds = [];
                 for (const acId of acIds) {
-                  if (mappingSection.includes(acId)) {
+                  if (mentionsAcId(mappingSection, acId)) {
                     mentionedAcIds.push(acId);
                   }
                 }
@@ -291,6 +347,15 @@ jobs:
                   );
                 }
               }
+            }
+
+            const evidenceSection = extractPrSection(prBody, 'Test Evidence');
+            if (!evidenceSection) {
+              messages.push("Pull request description must include 'Test Evidence'.");
+            } else if (/^(?:n\/a|na|none|not applicable|-|tbd)$/i.test(evidenceSection.replace(/\s+/g, ' ').trim())) {
+              messages.push("'Test Evidence' section cannot be placeholder-only (for example: N/A, none, -, TBD).");
+            } else if (!/- \[[xX]\] npm run /i.test(evidenceSection)) {
+              messages.push("'Test Evidence' must include at least one executed command checkbox marked with [x] (for example: '- [x] npm run test:unit').");
             }
 
             const fixtureChanged = changed.some((p) => p.startsWith('tests/fixtures/') || p.includes('/fixtures/') || p.includes('fixtures/'));

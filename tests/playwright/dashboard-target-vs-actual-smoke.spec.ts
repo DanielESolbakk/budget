@@ -103,11 +103,11 @@ async function setDashboardTargetViewHandler(
 
 test.describe("Dashboard target-vs-actual renderer smoke", () => {
   let app: ElectronApplication;
-  let window: Page;
+  let _window: Page;
   let targetPage: DashboardTargetPage;
 
   test.beforeAll(async () => {
-    ({ app, window, targetPage } = await launchDashboardTargetWindow());
+    ({ app, window: _window, targetPage } = await launchDashboardTargetWindow());
   });
 
   test.afterAll(async () => {

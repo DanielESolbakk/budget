@@ -25,6 +25,8 @@
 
 # Sanitizer map (local only)
 local/sanitization-map.json
+
+# Package manager and dependency folders
 /node_modules
 
 # Build output
@@ -33,3 +35,27 @@ local/sanitization-map.json
 /playwright-report
 /test-results/
 /test-results/.last-run.json
+/coverage/
+
+# Generated analysis/temp artifacts
+/mutation-run.log
+/tmp-audit.json
+/.stryker-tmp/
+/.eslintcache
+/npm-debug.log*
+/yarn-debug.log*
+/yarn-error.log*
+/pnpm-debug.log*
+/lerna-debug.log*
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# VS Code extension test runtime
+.vscode-test/
+
+# OS junk files
+.DS_Store
+Thumbs.db
+tw_future_of_software_engineering_europe_2026.pdf
+/reports

@@ -10,4 +10,16 @@ describe("normalizeMerchantName", () => {
   it("keeps meaningful merchant text", () => {
     expect(normalizeMerchantName("Vy Gruppen")).toBe("VY GRUPPEN");
   });
+
+  it("removes all supported legal suffix variants", () => {
+    expect(normalizeMerchantName("Eksempel AS")).toBe("EKSEMPEL");
+    expect(normalizeMerchantName("Eksempel ASA")).toBe("EKSEMPEL");
+    expect(normalizeMerchantName("Eksempel SA")).toBe("EKSEMPEL");
+    expect(normalizeMerchantName("Eksempel ANS")).toBe("EKSEMPEL");
+  });
+
+  it("returns empty string when input only contains removable suffix tokens", () => {
+    expect(normalizeMerchantName(" AS ")).toBe("");
+    expect(normalizeMerchantName("ASA")).toBe("");
+  });
 });

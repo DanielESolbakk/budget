@@ -9,32 +9,24 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 
 - Keep changes small and local to the assigned issue.
 - Prefer the issue body, linked planning issue, and linked test issue as the primary task context.
-- Before writing any code, check the issue for open `Blocked by` dependencies. If any are still open, post a comment listing the blockers and stop - do not implement a partial subset silently.
-- Before writing any code, verify that every path listed under `Implementation Entry Points` exists in the workspace. If a required path is missing (e.g., `src/renderer/` does not exist), post a comment explaining what infrastructure is absent and stop. Do not silently implement only the feasible subset.
-- For AC mapping in PR bodies, treat the primary planning issue as the default source of AC IDs; only aggregate additional planning issues when explicitly requested.
-- Planning validation does not trigger on issue edits. To validate an issue, add the `validate-planning` label; it is removed automatically after processing. Use `workflow_dispatch` on Planning Issue Validation to validate a batch.
-- PRs must satisfy guardrails checks: PR body must include non-empty "Acceptance Criteria to Test Mapping" section describing how the PR satisfies each AC from the linked planning issue. Format is free-form prose; no strict row format required. Mark at least one test command checkbox (lint/typecheck/test:unit/test:integration/test:e2e:vitest/test:e2e:playwright) in "Test Evidence" to confirm validation. Soft warnings will flag if some planning issue ACs are not mentioned in the PR mapping, allowing manual reviewer to verify intent.
-- Run the narrowest validation command that matches the touched slice before widening scope.
-- For planning issues, use template headings exactly and bullet refs as `- #NUMBER` in reference sections.
-- Keep enablers feature-scoped under current lint rules: one `Parent Feature Issue` and matching `Stories Enabled` parents.
-- If feature/story triangle coverage defers a layer, include an explicit follow-up issue reference in the same line.
-- If the agent can comment but cannot edit issue/PR body fields, post a single concise owner action checklist and stop retrying the same operation.
-- Avoid remediation loops: do not repeat near-identical comments unless new evidence, permissions, or validation output changed.
-- Do not add networked features, telemetry, cloud sync, or external data processing.
-- Do not commit raw bank data, local databases, backups, or unsanitized fixtures.
-- For Playwright issues, read `.agents/skills/playwright-skill/SKILL.md` in this repository (fetch via GitHub MCP `get_file_contents`) before writing any test code. Required packs: core, ci, and pom.
-- For Playwright issues, the CLI pack (`playwright-cli/`) is optional and intended for maintainer debugging and trace triage only.
-- For Playwright test implementations: POM classes expose locators only — assertions belong in specs. Electron tests must use `NODE_ENV: 'test'` on launch, `waitForLoadState('domcontentloaded')` after `firstWindow()`, and scoped `beforeAll`/`afterAll` inside describe blocks.
+- Before writing code, enforce blocker discipline from `.github/copilot-instructions.md` (open `Blocked by` issues and missing `Implementation Entry Points` are stop conditions).
+- Follow PR guardrails from `.github/copilot-instructions.md`: AC mapping, test evidence checkbox, and planning-validity checks.
+- Follow planning formatting and hierarchy rules from `.github/copilot-instructions.md` and issue templates.
+- Follow privacy and architecture constraints from `.github/copilot-instructions.md`; do not add cloud processing or telemetry for transaction content.
+- For Playwright issues, use `.github/instructions/playwright.instructions.md` and `.agents/skills/playwright-skill/SKILL.md`.
+- If permissions prevent issue/PR body edits, post one concise owner action checklist and stop retry loops.
 
 ## Build And Test Commands
 
 - Install: `npm install`
 - Typecheck: `npm run typecheck`
 - Unit tests: `npm run test:unit`
+- Coverage thresholds signal: `npm run test:coverage:signal`
 - Integration tests: `npm run test:integration`
 - Vitest end-to-end smoke tests: `npm run test:e2e:vitest`
 - Playwright runtime tests: `npm run test:e2e:playwright`
 - No-network verification: `npm run verify:no-network`
+- Harness eval (determinism + baseline drift): `npm run eval:skill`
 - Fixture verification: `npm run verify-fixture -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv`
 
 ## Architecture Map
