@@ -10,6 +10,14 @@ import {
   type DashboardViewContract,
 } from "../src/app/dashboardApi.js";
 import { exportCsv, exportCsvToFile } from "../src/app/exportCsv.js";
+import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
+import { restoreBackupSnapshot } from "../src/app/backup/restoreBackupSnapshot.js";
+import type {
+  BackupSnapshotInput,
+  BackupSnapshotFileOutput,
+  RestoreSnapshotInput,
+  RestoreSnapshotOutput,
+} from "../src/domain/backup/snapshotContract.js";
 import {
   validateMonthlyCategoryTargetInput,
   type MonthlyCategoryTargetInput,
@@ -147,6 +155,20 @@ app.whenReady().then(() => {
   ipcMain.handle("export:writeCsv", (_event, transactions: Transaction[], outputPath: string) => {
     return exportCsvToFile({ transactions, outputPath });
   });
+
+  ipcMain.handle(
+    "backup:create",
+    (_event, input: BackupSnapshotInput & { outputPath: string }): BackupSnapshotFileOutput => {
+      return createBackupSnapshot(input);
+    }
+  );
+
+  ipcMain.handle(
+    "backup:restore",
+    (_event, input: RestoreSnapshotInput): RestoreSnapshotOutput => {
+      return restoreBackupSnapshot(input);
+    }
+  );
 
   createWindow();
 

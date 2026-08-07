@@ -40,6 +40,17 @@ function createFakeBudgetApi(): BudgetApi {
         outputPath,
       }),
     },
+    backup: {
+      create: async () => ({ outputPath: "", transactionCount: 0, createdAtIso: "" }),
+      restore: async () => ({
+        household: { id: "", name: "", createdAtIso: "" },
+        accounts: [],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+        transactionCount: 0,
+      }),
+    },
   };
 }
 

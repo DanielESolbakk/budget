@@ -7,6 +7,12 @@ import type {
   MonthlyCategoryTargetInput,
   Transaction,
 } from "../domain/types.js";
+import type {
+  BackupSnapshotInput,
+  BackupSnapshotFileOutput,
+  RestoreSnapshotInput,
+  RestoreSnapshotOutput,
+} from "../domain/backup/snapshotContract.js";
 
 export interface DashboardApi {
   getData: () => Promise<DashboardData>;
@@ -27,11 +33,19 @@ export interface ExportApi {
   writeCsv: (transactions: Transaction[], outputPath: string) => Promise<ExportCsvFileOutput>;
 }
 
+export interface BackupApi {
+  create: (
+    input: BackupSnapshotInput & { outputPath: string }
+  ) => Promise<BackupSnapshotFileOutput>;
+  restore: (input: RestoreSnapshotInput) => Promise<RestoreSnapshotOutput>;
+}
+
 export interface BudgetApi {
   dashboard: DashboardApi;
   forecast: ForecastApi;
   categoryTargets: CategoryTargetsApi;
   export: ExportApi;
+  backup: BackupApi;
 }
 
 const budgetApi: BudgetApi = {
@@ -55,6 +69,13 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("export:toCsv", transactions),
     writeCsv: (transactions: Transaction[], outputPath: string): Promise<ExportCsvFileOutput> =>
       ipcRenderer.invoke("export:writeCsv", transactions, outputPath),
+  },
+  backup: {
+    create: (
+      input: BackupSnapshotInput & { outputPath: string }
+    ): Promise<BackupSnapshotFileOutput> => ipcRenderer.invoke("backup:create", input),
+    restore: (input: RestoreSnapshotInput): Promise<RestoreSnapshotOutput> =>
+      ipcRenderer.invoke("backup:restore", input),
   },
 };
 
