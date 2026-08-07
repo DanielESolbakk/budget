@@ -2,20 +2,29 @@ name: Copilot Setup Steps
 
 on:
   workflow_dispatch:
-
-permissions:
-  contents: read
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
 
 jobs:
-  setup:
+  # Job name is contract-critical for Copilot cloud agent setup pickup.
+  copilot-setup-steps:
+    # Ubuntu is intentional for cloud-agent setup reliability in this repository.
     runs-on: ubuntu-latest
+
+    # Keep permissions least-privilege and scoped to this setup job.
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
