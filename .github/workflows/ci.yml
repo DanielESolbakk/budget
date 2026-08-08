@@ -4,6 +4,8 @@ on:
   pull_request:
     branches: [main]
     types: [opened, reopened, ready_for_review, synchronize]
+  pull_request_review:
+    types: [submitted]
   push:
     branches: [main]
   merge_group:
@@ -33,7 +35,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            if (context.eventName !== "pull_request") {
+            if (context.eventName !== "pull_request" && context.eventName !== "pull_request_review") {
               core.setOutput("run_ci", "true");
               core.setOutput("run_full", "true");
               core.setOutput("run_harness_gate", "true");
@@ -48,14 +50,25 @@ jobs:
               pull_number: payloadPr.number,
             });
 
-            // Run CI only after the PR is out of draft (or when that transition event fires).
-            const shouldRunCi = context.payload.action === "ready_for_review" || livePr.draft === false;
+            let shouldRunCi = false;
+            if (context.eventName === "pull_request") {
+              // Run CI only after the PR is out of draft (or when that transition event fires).
+              shouldRunCi = context.payload.action === "ready_for_review" || livePr.draft === false;
+            } else {
+              // Repo-settings-safe fallback: run CI when a non-draft PR receives an approval review.
+              const reviewState = String(context.payload.review?.state || "").toLowerCase();
+              shouldRunCi = reviewState === "approved" && livePr.draft === false;
+            }
             core.setOutput("run_ci", shouldRunCi ? "true" : "false");
 
             if (!shouldRunCi) {
               core.setOutput("run_full", "false");
               core.setOutput("run_harness_gate", "false");
-              core.info("Skipping CI while PR is draft. CI begins after ready_for_review.");
+              if (context.eventName === "pull_request") {
+                core.info("Skipping CI while PR is draft. CI begins after ready_for_review.");
+              } else {
+                core.info("Skipping CI for review event because PR is draft or review is not APPROVED.");
+              }
               return;
             }
 
