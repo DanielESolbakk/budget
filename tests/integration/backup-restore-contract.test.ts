@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildBackupSnapshot, createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
 import type { Account, Household, ImportJob, MonthlyCategoryTarget, Transaction } from "../../src/domain/types.js";
@@ -404,6 +405,205 @@ describe("backup/restore contract", () => {
       expect(snapshot.metadata.accountCount).toBe(0);
       expect(snapshot.transactions).toEqual([]);
       expect(snapshot.accounts).toEqual([]);
+    });
+  });
+
+  describe("AC-3: refactored main-process handler round-trip", () => {
+    /**
+     * Simulates the `backup:create` IPC handler behaviour after refactoring:
+     * the handler receives only `outputPath` from the renderer and loads
+     * ledger data from main-process repositories before building the snapshot.
+     */
+    function simulateMainProcessBackupCreate(
+      ledger: {
+        household: Household;
+        accounts: Account[];
+        transactions: Transaction[];
+        importJobs: ImportJob[];
+        monthlyCategoryTargets: MonthlyCategoryTarget[];
+      },
+      outputPath: string
+    ) {
+      return createBackupSnapshot({
+        household: ledger.household,
+        accounts: ledger.accounts,
+        transactions: ledger.transactions,
+        importJobs: ledger.importJobs,
+        monthlyCategoryTargets: ledger.monthlyCategoryTargets,
+        outputPath,
+      });
+    }
+
+    it("Scenario 1: handler writes snapshot containing all ledger collections when given only outputPath", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-handler-round-trip-"));
+      const outputPath = join(tempDir, "snapshot.json");
+
+      try {
+        const result = simulateMainProcessBackupCreate(
+          {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+          outputPath
+        );
+
+        expect(result.outputPath).toBe(outputPath);
+        expect(result.transactionCount).toBe(SAMPLE_TRANSACTIONS.length);
+
+        const raw = JSON.parse(readFileSync(outputPath, "utf8")) as {
+          household: Household;
+          accounts: Account[];
+          transactions: Transaction[];
+          importJobs: ImportJob[];
+          monthlyCategoryTargets: MonthlyCategoryTarget[];
+          metadata: { version: string; transactionCount: number; accountCount: number };
+        };
+        expect(raw.household).toEqual(SAMPLE_HOUSEHOLD);
+        expect(raw.accounts).toHaveLength(SAMPLE_ACCOUNTS.length);
+        expect(raw.transactions).toHaveLength(SAMPLE_TRANSACTIONS.length);
+        expect(raw.importJobs).toHaveLength(SAMPLE_IMPORT_JOBS.length);
+        expect(raw.monthlyCategoryTargets).toHaveLength(SAMPLE_TARGETS.length);
+        expect(raw.metadata.version).toBe(SNAPSHOT_VERSION);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("Scenario 2: restoring snapshot from refactored handler reproduces equivalent ledger totals and counts", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-handler-restore-"));
+      const outputPath = join(tempDir, "snapshot.json");
+
+      try {
+        simulateMainProcessBackupCreate(
+          {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+          outputPath
+        );
+
+        const restored = restoreBackupSnapshot({ snapshotPath: outputPath });
+
+        expect(restored.household).toEqual(SAMPLE_HOUSEHOLD);
+        expect(restored.accounts).toHaveLength(SAMPLE_ACCOUNTS.length);
+        expect(restored.transactions).toHaveLength(SAMPLE_TRANSACTIONS.length);
+        expect(restored.importJobs).toHaveLength(SAMPLE_IMPORT_JOBS.length);
+        expect(restored.monthlyCategoryTargets).toHaveLength(SAMPLE_TARGETS.length);
+        expect(restored.transactionCount).toBe(SAMPLE_TRANSACTIONS.length);
+
+        const totalAmount = restored.transactions.reduce((sum, tx) => sum + tx.amountMinor, 0);
+        const expectedTotal = SAMPLE_TRANSACTIONS.reduce((sum, tx) => sum + tx.amountMinor, 0);
+        expect(totalAmount).toBe(expectedTotal);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("Scenario 3: repeated restores from the same snapshot preserve equivalent state without drift", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-handler-repeat-"));
+      const outputPath = join(tempDir, "snapshot.json");
+
+      try {
+        simulateMainProcessBackupCreate(
+          {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+          outputPath
+        );
+
+        const first = restoreBackupSnapshot({ snapshotPath: outputPath });
+        const second = restoreBackupSnapshot({ snapshotPath: outputPath });
+        const third = restoreBackupSnapshot({ snapshotPath: outputPath });
+
+        expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+        expect(JSON.stringify(third)).toBe(JSON.stringify(first));
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("AC-1: backup:create loads ledger data from local SQLite", () => {
+    it("loads seeded ledger collections from local SQLite for snapshot creation", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-sqlite-load-"));
+      const dbPath = join(tempDir, "ledger.sqlite");
+      let localLedgerDatabase:
+        | ReturnType<typeof createLocalLedgerDatabase>
+        | undefined;
+
+      try {
+        localLedgerDatabase = createLocalLedgerDatabase({
+          dbPath,
+          seedData: {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+        });
+
+        const loaded = localLedgerDatabase.loadLedgerSnapshotData();
+
+        expect(loaded.household).toEqual(SAMPLE_HOUSEHOLD);
+        expect(loaded.accounts).toEqual(
+          [...SAMPLE_ACCOUNTS].sort((a, b) => a.id.localeCompare(b.id))
+        );
+        expect(loaded.transactions).toEqual(
+          [...SAMPLE_TRANSACTIONS].sort((a, b) => a.id.localeCompare(b.id))
+        );
+        expect(loaded.importJobs).toEqual(SAMPLE_IMPORT_JOBS);
+        expect(loaded.monthlyCategoryTargets).toEqual(SAMPLE_TARGETS);
+      } finally {
+        localLedgerDatabase?.close();
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("builds a restorable snapshot from SQLite-loaded data when handler receives only outputPath", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-sqlite-roundtrip-"));
+      const dbPath = join(tempDir, "ledger.sqlite");
+      const outputPath = join(tempDir, "snapshot.json");
+      let localLedgerDatabase:
+        | ReturnType<typeof createLocalLedgerDatabase>
+        | undefined;
+
+      try {
+        localLedgerDatabase = createLocalLedgerDatabase({
+          dbPath,
+          seedData: {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+        });
+
+        const loaded = localLedgerDatabase.loadLedgerSnapshotData();
+        createBackupSnapshot({
+          ...loaded,
+          outputPath,
+        });
+
+        const restored = restoreBackupSnapshot({ snapshotPath: outputPath });
+        expect(restored.household).toEqual(SAMPLE_HOUSEHOLD);
+        expect(restored.accounts).toHaveLength(SAMPLE_ACCOUNTS.length);
+        expect(restored.transactions).toHaveLength(SAMPLE_TRANSACTIONS.length);
+      } finally {
+        localLedgerDatabase?.close();
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 });
