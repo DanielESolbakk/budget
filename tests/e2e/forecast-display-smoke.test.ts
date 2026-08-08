@@ -51,6 +51,9 @@ function createFakeBudgetApi(): BudgetApi {
         transactionCount: 0,
       }),
     },
+    import: {
+      importCsv: async () => ({ ok: true as const, importJobId: "", transactionCount: 0 }),
+    },
   };
 }
 
