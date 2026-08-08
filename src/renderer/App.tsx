@@ -6,6 +6,7 @@ import { ForecastSection } from "./dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
 import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
+import { BackupSection } from "./backup/BackupSection.js";
 import { RestoreSnapshotSection } from "./dashboard/RestoreSnapshotSection.js";
 
 const DEFAULT_YEAR_MONTH = "2026-05";
@@ -100,6 +101,7 @@ export function App(): React.JSX.Element {
           <TargetVsActualSection viewContract={appState.viewContract} />
           <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
           <ForecastSection dashboardData={appState.dashboardData} />
+          <BackupSection />
           <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((c) => c + 1)} />
         </>
       )}
