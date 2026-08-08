@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildBackupSnapshot, createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
 import type { Account, Household, ImportJob, MonthlyCategoryTarget, Transaction } from "../../src/domain/types.js";
@@ -527,6 +528,80 @@ describe("backup/restore contract", () => {
         expect(JSON.stringify(second)).toBe(JSON.stringify(first));
         expect(JSON.stringify(third)).toBe(JSON.stringify(first));
       } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("AC-1: backup:create loads ledger data from local SQLite", () => {
+    it("loads seeded ledger collections from local SQLite for snapshot creation", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-sqlite-load-"));
+      const dbPath = join(tempDir, "ledger.sqlite");
+      let localLedgerDatabase:
+        | ReturnType<typeof createLocalLedgerDatabase>
+        | undefined;
+
+      try {
+        localLedgerDatabase = createLocalLedgerDatabase({
+          dbPath,
+          seedData: {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+        });
+
+        const loaded = localLedgerDatabase.loadLedgerSnapshotData();
+
+        expect(loaded.household).toEqual(SAMPLE_HOUSEHOLD);
+        expect(loaded.accounts).toEqual(
+          [...SAMPLE_ACCOUNTS].sort((a, b) => a.id.localeCompare(b.id))
+        );
+        expect(loaded.transactions).toEqual(
+          [...SAMPLE_TRANSACTIONS].sort((a, b) => a.id.localeCompare(b.id))
+        );
+        expect(loaded.importJobs).toEqual(SAMPLE_IMPORT_JOBS);
+        expect(loaded.monthlyCategoryTargets).toEqual(SAMPLE_TARGETS);
+      } finally {
+        localLedgerDatabase?.close();
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("builds a restorable snapshot from SQLite-loaded data when handler receives only outputPath", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-sqlite-roundtrip-"));
+      const dbPath = join(tempDir, "ledger.sqlite");
+      const outputPath = join(tempDir, "snapshot.json");
+      let localLedgerDatabase:
+        | ReturnType<typeof createLocalLedgerDatabase>
+        | undefined;
+
+      try {
+        localLedgerDatabase = createLocalLedgerDatabase({
+          dbPath,
+          seedData: {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+        });
+
+        const loaded = localLedgerDatabase.loadLedgerSnapshotData();
+        createBackupSnapshot({
+          ...loaded,
+          outputPath,
+        });
+
+        const restored = restoreBackupSnapshot({ snapshotPath: outputPath });
+        expect(restored.household).toEqual(SAMPLE_HOUSEHOLD);
+        expect(restored.accounts).toHaveLength(SAMPLE_ACCOUNTS.length);
+        expect(restored.transactions).toHaveLength(SAMPLE_TRANSACTIONS.length);
+      } finally {
+        localLedgerDatabase?.close();
         rmSync(tempDir, { recursive: true, force: true });
       }
     });

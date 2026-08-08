@@ -11,6 +11,7 @@ import {
 } from "../src/app/dashboardApi.js";
 import { exportCsv, exportCsvToFile } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
+import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../src/app/backup/restoreBackupSnapshot.js";
 import type {
   BackupSnapshotFileOutput,
@@ -100,6 +101,16 @@ const sampleTargetStore = createMonthlyCategoryTargetStore([
   },
 ]);
 
+const localLedgerDatabase = createLocalLedgerDatabase({
+  seedData: {
+    household: sampleHousehold,
+    accounts: sampleAccounts,
+    transactions: sampleTransactions,
+    importJobs: sampleImportJobs,
+    monthlyCategoryTargets: Array.from(sampleTargetStore.targetsByMonthAndCategory.values()),
+  },
+});
+
 function getDashboardData(): DashboardData {
   return buildDashboardData({ monthlyTotals: sampleMonthlyTotals });
 }
@@ -157,6 +168,7 @@ app.whenReady().then(() => {
       targetMinor: validated.targetMinor,
     };
     sampleTargetStore.targetsByMonthAndCategory.set(key, persisted);
+    localLedgerDatabase.upsertMonthlyCategoryTarget(persisted);
     return { ...persisted };
   });
 
@@ -175,14 +187,9 @@ app.whenReady().then(() => {
   ipcMain.handle(
     "backup:create",
     (_event, outputPath: string): BackupSnapshotFileOutput => {
+      const ledgerSnapshotData = localLedgerDatabase.loadLedgerSnapshotData();
       return createBackupSnapshot({
-        household: sampleHousehold,
-        accounts: sampleAccounts,
-        transactions: sampleTransactions,
-        importJobs: sampleImportJobs,
-        monthlyCategoryTargets: Array.from(
-          sampleTargetStore.targetsByMonthAndCategory.values()
-        ),
+        ...ledgerSnapshotData,
         outputPath,
       });
     }
@@ -206,6 +213,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
+    localLedgerDatabase.close();
     app.quit();
   }
 });
