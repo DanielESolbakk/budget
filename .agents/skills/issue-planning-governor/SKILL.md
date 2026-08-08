@@ -5,7 +5,7 @@ compatibility: Requires GitHub MCP issue read/write/search tools and repository 
 metadata:
   owner: budget-repo
   workflow: issue-planning
-  version: "1.2"
+  version: "1.3"
 ---
 
 # Issue Planning Governor
@@ -53,6 +53,15 @@ Apply these rules in every run.
 - R13 Autonomous repair is default for `govern` runs:
   - if Step 3 returns planning-invalid, execute Step 3a repair in the same run.
   - only escalate after repair limit or hard blocker.
+- R14 Test triangle declaration is mandatory when tests are required:
+  - Unit coverage must map to a Vitest unit issue (`tests/unit/`, `npm run test:unit`).
+  - Integration coverage must map to a Vitest integration issue (`tests/integration/`, `npm run test:integration`).
+  - Runtime end-to-end coverage must map to a Playwright issue (`tests/playwright/`, `npm run test:e2e:playwright`).
+  - Any deferred layer must explicitly include a follow-up issue reference.
+- R15 Layer naming must be strict and non-overlapping:
+  - Do not label Vitest tests as Playwright coverage.
+  - Do not use Playwright labels for `tests/e2e/` Vitest smoke files.
+  - Keep runner and folder labels aligned in issue body and AC mapping.
 
 ## Rule Precedence
 
@@ -93,6 +102,7 @@ Run these checks explicitly at Step 4.
   - decision is recorded and body content matches that decision.
 - G6 AC traceability completeness:
   - if test issue required, all parent AC IDs are present in linked test issue Acceptance Criteria Mapping.
+  - if test issue required, the issue set covers unit (Vitest), integration (Vitest), and runtime end-to-end (Playwright), or explicitly documents deferred layers with follow-up issue refs.
 - G7 Status coherence:
   - blockers are explicit, open/relevant, and non-circular.
   - completion claims do not conflict with linked issue states.
@@ -110,6 +120,11 @@ Run these checks explicitly at Step 4.
 - Run Test Necessity decision and record one outcome:
   - No test issue needed now, or
   - Test issue required (link/create action).
+- Classify test-triangle ownership for this scope:
+  - Vitest unit
+  - Vitest integration
+  - Playwright runtime end-to-end
+  - If any layer is deferred, record follow-up issue references.
 
 Gate:
 - PASS only if type, hierarchy, and Test Necessity decision are clear and consistent.
@@ -122,6 +137,10 @@ Gate:
 - Enforce R5 scope separation.
 - Enforce R6 formatting and R7 uncertainty-term ban.
 - Apply Test Necessity outcome from Step 1 (binding).
+- Ensure triangle declarations and labels are explicit:
+  - Unit uses Vitest unit paths and commands.
+  - Integration uses Vitest integration paths and commands.
+  - Runtime end-to-end uses Playwright paths and commands.
 
 Gate:
 - PASS only if body matches template, refs format, scope boundary, and decision consistency.
@@ -169,6 +188,7 @@ Gate:
 
 - Run Guardrails G1-G8 with explicit evidence.
 - Run references/assignment-readiness-deep-dive.md checks and include quoted proof for passed deep-dive claims.
+- Include explicit quoted proof that test-triangle layer labels match runners, folders, and commands.
 
 Gate:
 - PASS only if all required checks pass.
@@ -248,6 +268,7 @@ Each run must include:
 - Validation evidence from Steps 3-4.
 - Repair attempts summary (attempt count, marker failures, playbooks applied).
 - Test Necessity decision and resulting test issue action.
+- Test triangle status (unit/integration/playwright), including any deferred layer follow-up refs.
 - Remaining blockers and next recommended issue.
 - Residual risks and follow-up issue links.
 
