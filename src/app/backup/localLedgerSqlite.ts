@@ -21,6 +21,8 @@ interface LocalLedgerSeedData {
 export interface LocalLedgerDatabase {
   loadLedgerSnapshotData: () => LedgerSnapshotData;
   upsertMonthlyCategoryTarget: (target: MonthlyCategoryTarget) => void;
+  appendImportJob: (importJob: ImportJob) => void;
+  appendTransactions: (transactions: Transaction[]) => void;
   close: () => void;
 }
 
@@ -281,9 +283,49 @@ export function createLocalLedgerDatabase(
     ).run(target.yearMonth, target.categoryId, target.targetMinor);
   }
 
+  function appendImportJob(importJob: ImportJob): void {
+    db.prepare(
+      "INSERT INTO import_jobs (id, household_id, source_type, source_name, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(
+      importJob.id,
+      importJob.householdId,
+      importJob.sourceType,
+      importJob.sourceName,
+      importJob.startedAtIso,
+      importJob.finishedAtIso ?? null
+    );
+  }
+
+  function appendTransactions(transactions: Transaction[]): void {
+    const insertTransaction = db.prepare(
+      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    db.exec("BEGIN");
+    try {
+      for (const transaction of transactions) {
+        insertTransaction.run(
+          transaction.id,
+          transaction.householdId,
+          transaction.accountId,
+          transaction.bookedAtIso,
+          transaction.amountMinor,
+          transaction.merchantRaw,
+          transaction.categoryId ?? null,
+          transaction.importJobId ?? null
+        );
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   return {
     loadLedgerSnapshotData,
     upsertMonthlyCategoryTarget,
+    appendImportJob,
+    appendTransactions,
     close: () => db.close(),
   };
 }

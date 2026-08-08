@@ -4,6 +4,7 @@ import { BackupSection } from "./backup/BackupSection.js";
 import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "./dashboard/CategoryTargetEntrySection.js";
 import { ForecastSection } from "./dashboard/ForecastSection.js";
+import { CsvImportSection } from "./import/CsvImportSection.js";
 import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
 import { RestoreSnapshotSection } from "./dashboard/RestoreSnapshotSection.js";
 import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
@@ -101,6 +102,7 @@ export function App(): React.JSX.Element {
           <TargetVsActualSection viewContract={appState.viewContract} />
           <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
           <ForecastSection dashboardData={appState.dashboardData} />
+          <CsvImportSection onImportSuccess={() => setRefreshCounter((c) => c + 1)} />
           <BackupSection />
           <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((c) => c + 1)} />
         </>

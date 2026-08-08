@@ -73,6 +73,11 @@ test.describe("CSV import renderer workflow", () => {
     // AC-1, AC-2: submit the fixture CSV path via the renderer input.
     await csvImportPage.submitImport(FIXTURE_PATH);
 
+    // AC-1: success status is shown after import.
+    await expect(csvImportPage.successStatus).toBeVisible({ timeout: 10_000 });
+    const statusText = await csvImportPage.successStatus.textContent();
+    expect(statusText).toMatch(/transactions imported/i);
+
     // The app reloads dashboard state after successful import and remounts the import section.
     // Wait for the remounted input to clear as a stable completion signal.
     await expect(csvImportPage.filePathInput).toHaveValue("", { timeout: 10_000 });
