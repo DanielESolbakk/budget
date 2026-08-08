@@ -1,13 +1,13 @@
 import React from "react";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
+import { BackupSection } from "./backup/BackupSection.js";
 import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "./dashboard/CategoryTargetEntrySection.js";
 import { ForecastSection } from "./dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
+import { RestoreSnapshotSection } from "./dashboard/RestoreSnapshotSection.js";
 import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
-import { BackupSection } from "./backup/BackupSection.js";
-import { RestoreSnapshotSection } from "./dashboard/RestoreSnapshotSection.js";
 
 const DEFAULT_YEAR_MONTH = "2026-05";
 
