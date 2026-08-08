@@ -31,6 +31,7 @@ Do not:
 - call a story `fully implemented` when anchor tasks or AC evidence remain open
 - invent cross-PR dependencies unless quoted from the anchor issue, related issue, or PR text
 - turn an expected validation outcome into a completed outcome
+- present test-runner startup errors, missing dependencies, or shell-environment failures as proof that product behavior failed validation
 
 ## Preferred phrasing
 
