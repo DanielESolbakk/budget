@@ -33,8 +33,13 @@ export interface BackupSnapshot {
   monthlyCategoryTargets: MonthlyCategoryTarget[];
 }
 
-/** Input required to build a snapshot. */
-export interface BackupSnapshotInput {
+/**
+ * Full ledger data required to build a snapshot.
+ *
+ * Used internally by `buildBackupSnapshot` and `createBackupSnapshot`;
+ * never exposed to the renderer.
+ */
+export interface LedgerSnapshotData {
   household: Household;
   accounts: Account[];
   transactions: Transaction[];
@@ -43,6 +48,23 @@ export interface BackupSnapshotInput {
   /** Override the creation timestamp (ISO 8601). Defaults to current UTC time. */
   createdAtIso?: string;
 }
+
+/**
+ * Renderer-facing input for the `backup:create` IPC channel.
+ *
+ * The renderer supplies only the output file path; the main process collects
+ * ledger data directly from local repositories before building the snapshot.
+ */
+export interface BackupSnapshotInput {
+  /** Absolute path where the snapshot file should be written. */
+  outputPath: string;
+}
+
+/**
+ * Full input required by `createBackupSnapshot`: ledger data loaded by the
+ * main process plus the renderer-supplied output path.
+ */
+export type CreateBackupSnapshotInput = LedgerSnapshotData & BackupSnapshotInput;
 
 /** Output produced when a snapshot is serialized to disk. */
 export interface BackupSnapshotFileOutput {

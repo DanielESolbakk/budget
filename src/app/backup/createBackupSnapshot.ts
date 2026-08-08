@@ -3,7 +3,8 @@ import {
   SNAPSHOT_VERSION,
   type BackupSnapshot,
   type BackupSnapshotFileOutput,
-  type BackupSnapshotInput,
+  type CreateBackupSnapshotInput,
+  type LedgerSnapshotData,
 } from "../../domain/backup/snapshotContract.js";
 
 function sortJsonValueRecursively(value: unknown): unknown {
@@ -28,7 +29,7 @@ function sortJsonValueRecursively(value: unknown): unknown {
  * All collections are sorted by `id` ascending so that identical ledger state
  * produces identical JSON when serialized.
  */
-export function buildBackupSnapshot(input: BackupSnapshotInput): BackupSnapshot {
+export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
   const createdAtIso = input.createdAtIso ?? new Date().toISOString();
 
   const accounts = [...input.accounts].sort((a, b) => a.id.localeCompare(b.id));
@@ -60,9 +61,7 @@ export function buildBackupSnapshot(input: BackupSnapshotInput): BackupSnapshot 
  * The snapshot is serialized as deterministic JSON (sorted keys, 2-space
  * indentation) so that byte-for-byte comparison is possible across runs.
  */
-export function createBackupSnapshot(
-  input: BackupSnapshotInput & { outputPath: string }
-): BackupSnapshotFileOutput {
+export function createBackupSnapshot(input: CreateBackupSnapshotInput): BackupSnapshotFileOutput {
   const snapshot = buildBackupSnapshot(input);
   const json = JSON.stringify(sortJsonValueRecursively(snapshot), null, 2) + "\n";
   writeFileSync(input.outputPath, json, "utf8");

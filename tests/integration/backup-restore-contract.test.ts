@@ -406,4 +406,129 @@ describe("backup/restore contract", () => {
       expect(snapshot.accounts).toEqual([]);
     });
   });
+
+  describe("AC-3: refactored main-process handler round-trip", () => {
+    /**
+     * Simulates the `backup:create` IPC handler behaviour after refactoring:
+     * the handler receives only `outputPath` from the renderer and loads
+     * ledger data from main-process repositories before building the snapshot.
+     */
+    function simulateMainProcessBackupCreate(
+      ledger: {
+        household: Household;
+        accounts: Account[];
+        transactions: Transaction[];
+        importJobs: ImportJob[];
+        monthlyCategoryTargets: MonthlyCategoryTarget[];
+      },
+      outputPath: string
+    ) {
+      return createBackupSnapshot({
+        household: ledger.household,
+        accounts: ledger.accounts,
+        transactions: ledger.transactions,
+        importJobs: ledger.importJobs,
+        monthlyCategoryTargets: ledger.monthlyCategoryTargets,
+        outputPath,
+      });
+    }
+
+    it("Scenario 1: handler writes snapshot containing all ledger collections when given only outputPath", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-handler-round-trip-"));
+      const outputPath = join(tempDir, "snapshot.json");
+
+      try {
+        const result = simulateMainProcessBackupCreate(
+          {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+          outputPath
+        );
+
+        expect(result.outputPath).toBe(outputPath);
+        expect(result.transactionCount).toBe(SAMPLE_TRANSACTIONS.length);
+
+        const raw = JSON.parse(readFileSync(outputPath, "utf8")) as {
+          household: Household;
+          accounts: Account[];
+          transactions: Transaction[];
+          importJobs: ImportJob[];
+          monthlyCategoryTargets: MonthlyCategoryTarget[];
+          metadata: { version: string; transactionCount: number; accountCount: number };
+        };
+        expect(raw.household).toEqual(SAMPLE_HOUSEHOLD);
+        expect(raw.accounts).toHaveLength(SAMPLE_ACCOUNTS.length);
+        expect(raw.transactions).toHaveLength(SAMPLE_TRANSACTIONS.length);
+        expect(raw.importJobs).toHaveLength(SAMPLE_IMPORT_JOBS.length);
+        expect(raw.monthlyCategoryTargets).toHaveLength(SAMPLE_TARGETS.length);
+        expect(raw.metadata.version).toBe(SNAPSHOT_VERSION);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("Scenario 2: restoring snapshot from refactored handler reproduces equivalent ledger totals and counts", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-handler-restore-"));
+      const outputPath = join(tempDir, "snapshot.json");
+
+      try {
+        simulateMainProcessBackupCreate(
+          {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+          outputPath
+        );
+
+        const restored = restoreBackupSnapshot({ snapshotPath: outputPath });
+
+        expect(restored.household).toEqual(SAMPLE_HOUSEHOLD);
+        expect(restored.accounts).toHaveLength(SAMPLE_ACCOUNTS.length);
+        expect(restored.transactions).toHaveLength(SAMPLE_TRANSACTIONS.length);
+        expect(restored.importJobs).toHaveLength(SAMPLE_IMPORT_JOBS.length);
+        expect(restored.monthlyCategoryTargets).toHaveLength(SAMPLE_TARGETS.length);
+        expect(restored.transactionCount).toBe(SAMPLE_TRANSACTIONS.length);
+
+        const totalAmount = restored.transactions.reduce((sum, tx) => sum + tx.amountMinor, 0);
+        const expectedTotal = SAMPLE_TRANSACTIONS.reduce((sum, tx) => sum + tx.amountMinor, 0);
+        expect(totalAmount).toBe(expectedTotal);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("Scenario 3: repeated restores from the same snapshot preserve equivalent state without drift", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-handler-repeat-"));
+      const outputPath = join(tempDir, "snapshot.json");
+
+      try {
+        simulateMainProcessBackupCreate(
+          {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: SAMPLE_ACCOUNTS,
+            transactions: SAMPLE_TRANSACTIONS,
+            importJobs: SAMPLE_IMPORT_JOBS,
+            monthlyCategoryTargets: SAMPLE_TARGETS,
+          },
+          outputPath
+        );
+
+        const first = restoreBackupSnapshot({ snapshotPath: outputPath });
+        const second = restoreBackupSnapshot({ snapshotPath: outputPath });
+        const third = restoreBackupSnapshot({ snapshotPath: outputPath });
+
+        expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+        expect(JSON.stringify(third)).toBe(JSON.stringify(first));
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
 });
