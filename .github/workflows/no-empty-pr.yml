@@ -1,0 +1,41 @@
+name: No Empty Pull Request
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  enforce-non-empty-diff:
+    name: Enforce Non-Empty Diff
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fail on empty pull request diff
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            if (!pr) {
+              core.info("No pull request payload found. Skipping.");
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            if (files.length === 0) {
+              core.setFailed(
+                "Pull request has zero changed files. Close this no-op PR and submit a PR with actual code or documentation changes."
+              );
+              return;
+            }
+
+            core.info(`Found ${files.length} changed file(s); pull request is non-empty.`);
