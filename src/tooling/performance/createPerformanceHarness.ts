@@ -90,10 +90,15 @@ function describeMetricDifferences(
   return differences.map((key) => `${key}: expected ${expected[key]}, received ${actual[key]}`).join("; ");
 }
 
+function normalizeFixtureTextForDigest(fixtureText: string): string {
+  return fixtureText.replace(/\r\n/g, "\n");
+}
+
 export function createPerformanceHarness(options: PerformanceHarnessOptions): PerformanceHarnessResult {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
   const resolvedFixturePath = resolve(projectRoot, options.fixturePath);
   const fixtureText = readFileSync(resolvedFixturePath, "utf8");
+  const normalizedFixtureText = normalizeFixtureTextForDigest(fixtureText);
   const parsedFixture = parseFixtureCsv(fixtureText);
   const rows = rowsToObjects(parsedFixture);
   const iterationCount = options.iterationCount ?? 2;
@@ -132,7 +137,7 @@ export function createPerformanceHarness(options: PerformanceHarnessOptions): Pe
       fixtureDigestAlgorithm: PERFORMANCE_HARNESS_FIXTURE_DIGEST_ALGORITHM,
       baselinePolicy: PERFORMANCE_HARNESS_BASELINE_POLICY,
       fixturePath: toPortableRelativePath(projectRoot, resolvedFixturePath),
-      fixtureDigest: createHash("sha256").update(fixtureText).digest("hex"),
+      fixtureDigest: createHash("sha256").update(normalizedFixtureText).digest("hex"),
       iterationCount,
       noNetworkByDefault: true,
       metricKeys: [...PERFORMANCE_HARNESS_METRIC_KEYS],
