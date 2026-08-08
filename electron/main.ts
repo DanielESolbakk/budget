@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
 import { join } from "path";
+import { readFileSync } from "node:fs";
 import {
   buildDashboardData,
   buildDashboardViewContract,
@@ -13,6 +14,13 @@ import { exportCsv, exportCsvToFile } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../src/app/backup/restoreBackupSnapshot.js";
+import {
+  buildCsvImportRequest,
+  normalizeCsvImportErrors,
+  type CsvImportResponse,
+} from "../src/app/import/importCsv.js";
+import { parseCsvText } from "../src/domain/import/parseCsvText.js";
+import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -48,8 +56,8 @@ const sampleAccounts: Account[] = [
 
 const sampleImportJobs: ImportJob[] = [];
 
-// Sample transactions used to build monthly view contracts with income/expense/category breakdown.
-const sampleTransactions: Transaction[] = [
+// Live transaction set: starts with sample data and grows with each import.
+const liveTransactions: Transaction[] = [
   {
     id: "sample-tx-1",
     householdId: "sample-hh",
@@ -105,7 +113,7 @@ const localLedgerDatabase = createLocalLedgerDatabase({
   seedData: {
     household: sampleHousehold,
     accounts: sampleAccounts,
-    transactions: sampleTransactions,
+    transactions: liveTransactions,
     importJobs: sampleImportJobs,
     monthlyCategoryTargets: Array.from(sampleTargetStore.targetsByMonthAndCategory.values()),
   },
@@ -117,7 +125,7 @@ function getDashboardData(): DashboardData {
 
 function getViewData(yearMonth: string): DashboardViewContract {
   return buildDashboardViewContract({
-    transactions: sampleTransactions,
+    transactions: liveTransactions,
     selectedYearMonth: yearMonth,
     monthlyCategoryTargetStore: sampleTargetStore,
   });
@@ -199,6 +207,55 @@ app.whenReady().then(() => {
     "backup:restore",
     (_event, input: RestoreSnapshotInput): RestoreSnapshotOutput => {
       return restoreBackupSnapshot(input);
+    }
+  );
+
+  ipcMain.handle(
+    "import:csv",
+    (_event, filePath: string): CsvImportResponse => {
+      const { householdId, accountId } = sampleHousehold.id
+        ? { householdId: sampleHousehold.id, accountId: sampleAccounts[0]?.id ?? "sample-acc" }
+        : { householdId: "sample-hh", accountId: "sample-acc" };
+
+      const request = buildCsvImportRequest(filePath, { householdId, accountId });
+      const csvText = readFileSync(request.filePath, "utf8");
+      const rows = parseCsvText(csvText);
+
+      const importJobId = `import-csv-${Date.now()}`;
+      const now = new Date().toISOString();
+
+      const result = mapCsvRows(rows, {
+        householdId: request.householdId,
+        accountId: request.accountId,
+        importJobId,
+        idPrefix: importJobId,
+      });
+
+      if (result.skipped.length > 0) {
+        return normalizeCsvImportErrors(result.skipped);
+      }
+
+      const importJob: ImportJob = {
+        id: importJobId,
+        householdId: request.householdId,
+        sourceType: "csv",
+        sourceName: request.filePath,
+        startedAtIso: now,
+        finishedAtIso: now,
+      };
+
+      localLedgerDatabase.appendImportJob(importJob);
+      localLedgerDatabase.appendTransactions(result.transactions);
+
+      for (const transaction of result.transactions) {
+        liveTransactions.push(transaction);
+      }
+
+      return {
+        ok: true,
+        importJobId,
+        transactionCount: result.transactions.length,
+      };
     }
   );
 
