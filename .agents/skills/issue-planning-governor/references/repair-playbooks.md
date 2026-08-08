@@ -1,5 +1,12 @@
 # Repair Playbooks
 
+Autonomous repair loop usage
+
+- Read the newest marker comment (`<!-- planning-validation-marker -->`) and copy each bullet failure verbatim.
+- Map each failure to exactly one playbook below.
+- Apply minimal body edits and re-run validate-planning.
+- Repeat with a maximum of 2 attempts per issue run.
+
 ## Playbook 1: planning-invalid with section format failures
 
 Symptoms
@@ -83,3 +90,17 @@ Owner escalation message template
 - Evidence: [label/comment/error or missing capability]
 - Requested owner action: [exact change needed]
 - Next step after owner action: [planned continuation]
+
+## Playbook 7: Linked Enabler Issues missing for Story validation
+
+Symptoms
+
+- bot comment reports: `Linked Enabler Issues must include at least one issue reference.`
+
+Fix
+
+- Confirm issue type is Story and parent feature is valid.
+- Find an existing enabler in the same feature slice.
+- Add the enabler under `### Linked Enabler Issues` as `- #NUMBER`.
+- If no feature-scoped enabler exists, add a `Blocked by` issue entry that tracks creating the missing enabler and escalate.
+- Re-apply validate-planning.

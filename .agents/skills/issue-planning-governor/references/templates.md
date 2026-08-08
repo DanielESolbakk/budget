@@ -134,6 +134,8 @@ Use these templates when rewriting issue bodies. Keep section headings exact and
 
 - #ENABLER
 
+Note: if repository validation requires this section to be non-empty, do not use `_None_`; link at least one feature-scoped enabler issue.
+
 ### Linked Test Issues
 
 - #TEST
