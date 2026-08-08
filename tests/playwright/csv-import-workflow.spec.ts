@@ -68,6 +68,7 @@ test.describe("CSV import renderer workflow", () => {
     const monthSelector = dashboardPage.monthSelector;
     await monthSelector.selectOption("2026-05");
     await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
+    const beforeIncomeText = ((await dashboardPage.incomeValue.textContent()) ?? "").trim();
 
     // AC-1, AC-2: submit the fixture CSV path via the renderer input.
     await csvImportPage.submitImport(FIXTURE_PATH);
@@ -77,10 +78,19 @@ test.describe("CSV import renderer workflow", () => {
     const statusText = await csvImportPage.successStatus.textContent();
     expect(statusText).toMatch(/transactions imported/i);
 
+    // The app reloads dashboard state after successful import and remounts the import section.
+    // Wait for the remounted input to clear as a stable completion signal.
+    await expect(csvImportPage.filePathInput).toHaveValue("", { timeout: 10_000 });
+
     // AC-4: dashboard automatically reloads after import success;
-    // wait for the monthly totals section to re-render.
+    // wait for the monthly totals section to re-render and values to change.
     await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
     await expect(dashboardPage.categoryEntries.first()).toBeVisible();
+    await expect
+      .poll(async () => ((await dashboardPage.incomeValue.textContent()) ?? "").trim(), {
+        timeout: 10_000,
+      })
+      .not.toBe(beforeIncomeText);
   });
 
   test("Scenario 2: importing an unsupported CSV shape reports validation errors and leaves dashboard unchanged", async () => {
@@ -109,24 +119,26 @@ test.describe("CSV import renderer workflow", () => {
     // The network guard blocks outbound connections; a successful or failed import
     // must complete without throwing a network-guard error.
     const networkErrorMessages: string[] = [];
-
-    window.on("console", (msg) => {
+    const onConsole = (msg: { type: () => string; text: () => string }): void => {
       if (msg.type() === "error" && msg.text().toLowerCase().includes("network")) {
         networkErrorMessages.push(msg.text());
       }
-    });
+    };
 
-    const validPath = FIXTURE_PATH;
-    await csvImportPage.filePathInput.fill(validPath);
+    window.on("console", onConsole);
 
-    // The import button may already be in success state from Scenario 1; reset by re-entering path.
+    // Use a deterministic invalid shape so completion feedback remains visible in this view.
+    const invalidPath = writeInvalidCsvFixture();
+    await csvImportPage.filePathInput.fill(invalidPath);
+
+    // Trigger the import flow while network guard is active.
     await csvImportPage.importButton.click();
 
-    // Wait for either success or validation result — no network error should appear.
-    await expect(
-      csvImportPage.successStatus.or(csvImportPage.errorAlert)
-    ).toBeVisible({ timeout: 10_000 });
+    // Wait for explicit completion feedback and assert network-guard silence.
+    await expect(csvImportPage.errorAlert).toBeVisible({ timeout: 10_000 });
+    await expect(csvImportPage.errorAlert).toContainText(/failed/i);
 
+    window.off("console", onConsole);
     expect(networkErrorMessages).toHaveLength(0);
   });
 });
