@@ -10,282 +10,136 @@ metadata:
 
 # Reviewing PR Delivery
 
-Use this skill to perform a findings-first review of a PR against:
-- the source planning issue
-- repository plan artifacts
-- related planning issues linked from the source issue
+Use this skill for findings-first review of one PR against the source planning issue, plan artifacts, and related planning issues.
 
 ## Scope
 
 In scope:
-- PR-to-issue acceptance criteria coverage checks
-- PR-to-plan alignment checks (plan.md and planning docs)
-- Related-issue overlap and missing-scope detection
-- Test and validation evidence checks for changed behavior
-- Risk-focused review findings with severity and evidence
-- Mandatory issue-body checkbox sync for planning issues based on PR evidence
+- AC coverage and missing-scope checks
+- Plan alignment checks against `plan.md` and planning docs
+- Related-issue overlap and gap checks
+- Validation-evidence and claim-discipline checks
+- Mandatory issue-body checkbox sync based on review evidence
 
 Out of scope:
-- Broad issue-body rewrites, section restructuring, or label changes
 - Implementing code fixes
+- Broad issue-body rewrites or label changes
 - Merge decisions
-
-## Mode Selection
-
-Default mode: one PR at a time.
-
-Execution modes:
-- Review-and-checkbox-sync mode (default): review the PR, then sync planning-issue body checkboxes using evidence.
-
-If the user asks for multiple PRs, process sequentially and complete the full workflow per PR before moving on.
 
 ## Required Inputs
 
-Minimum:
 - PR URL or number
 - Repository owner/name
+- Source issue number if PR linkage is ambiguous
 
-Optional but preferred:
-- Explicit source issue number if PR body linkage is ambiguous
-
-If source issue cannot be determined, stop and ask for exactly one issue number.
-
-Checkbox sync target set:
-- the primary source issue
-- additional planning issues listed in the PR body
-- related planning issues from the resolved related-issue set when they contain allowed checkbox sections and the PR evidence maps to those items
-
-Checkbox sync mutation limits:
-- update issue description body checkboxes only
-- do not edit the PR body
-- do not add PR comments as part of checkbox sync
-- do not add issue comments as part of checkbox sync
+If the source issue cannot be determined, stop and ask for exactly one issue number.
 
 ## Workflow
 
-Copy this checklist and update as you go:
+1. Gather PR title/body, diff, changed test files, linked issues, and Copilot completion signal.
+2. Resolve one primary source issue plus the related-issue set from the PR body and source issue.
+3. Validate planning inputs before content review:
+  - source and related planning issues are not labeled `planning-invalid`
+  - `Blocked by` references are resolved or explicitly accepted in PR scope
+  - required `Implementation Entry Points` exist in the repository or are reported as blockers
+4. Read at least `plan.md` and `docs/ways-of-work/plan/budget-planner/implementation-plan.md`.
+5. Build coverage and overlap analysis:
+   - classify each AC as `satisfied`, `partially satisfied`, `unsatisfied`, or `unproven (validation blocked)`
+   - use direct quotes for semantic mismatches
+   - distinguish test issue verification from missing production/runtime behavior
+   - compare PR claims with observed evidence and flag ambiguity on zero-file composition enablers
+  - determine `User-interactable readiness` for the delivered scope (`yes|partial|no`) from renderer -> preload -> IPC -> service evidence
+6. Run validation commands from the issue when possible; if blocked, record the blocker and classify baseline vs PR-introduced failure when applicable.
+  - if a command fails before executing tests or assertions, classify the failure as `environment/setup` until one disconfirming rerun is attempted
+  - on Windows PowerShell, prefer `npm.cmd` over `npm` for validation commands
+  - when validating a temporary PR-head checkout, ensure dependencies resolve from the workspace install before treating runtime startup errors as product failures
+7. Reconcile issue-body checkbox state to proved review outcome for allowed sections:
+   - capture pre-sync checkbox state from the live issue body
+   - set target state to `checked` only for proved complete items
+   - set target state to `unchecked` for items that are unproven, unsatisfied, contradicted, or explicitly deferred in this review scope
+   - write only the minimal checkbox edits needed to match target state
+   - re-read the issue body and verify post-sync state matches the report
+8. Deliver a findings-first review using the required output template.
 
-```
-PR Review Progress
-- [ ] Step 1: Gather PR data and diff
-- [ ] Step 2: Resolve source issue and related issues
-- [ ] Step 3: Load plan artifacts
-- [ ] Step 4: Build coverage and overlap analysis
-- [ ] Step 5: Run validation commands (if runnable)
-- [ ] Step 6: Sync issue-body checkboxes
-- [ ] Step 7: Deliver findings-first review
-```
+## Core Rules
 
-### Step 1: Gather PR Data And Diff
+- Operate on one PR at a time.
+- Keep the related-issue set to PR-linked planning issues plus source-issue linked sections.
+- Treat test issues as verification-only unless the PR adds missing runtime behavior, which is a boundary gap.
+- For additional planning issues, require explicit coverage mapping or explicit deferral.
+- Use `passed` only for direct command output or CI evidence.
+- Use `observed`, `inferred`, and `unverified` claim tiers.
+- Do not call a test `Playwright` unless repository evidence shows Playwright tooling; if the suite uses Vitest e2e config, name it `Vitest e2e`.
+- Do not say `fully implemented`, `all ACs covered`, or `ready for merge` unless all anchor ACs are satisfied and no open anchor task is deferred.
 
-Collect:
-- PR title/body
-- changed files and key hunks
-- test files changed
-- linked issues from PR body text (for example, `Closes #36`)
-- **Copilot completion signal**: if PR shows "Copilot finished work on behalf of...", record completion timestamp; do not escalate asking if agent is stalled
+## Checkbox Sync
 
-Prefer local diff review for line-level evidence.
+- Default policy is bidirectional reconciliation to evidence-based target state.
+- Allowed sections: `Technical Requirements`, `Technical Tasks`, `Stories Enabled`, `User Stories In This Feature`, `Acceptance Criteria`.
+- Feature user stories may be synced when the review has hard proof for the story text itself.
+- Test issues may also sync `Playwright Implementation Standards`, `Acceptance Criteria Mapping`, `Test Scenarios`, `Pass Criteria`, and `Regression Guard`.
+- Preserve all non-checkbox text exactly.
+- Do not edit the PR body or post sync comments.
 
-If local fetch fails because a PR branch already exists or is checked out, continue with existing local branch state and record that fallback in evidence.
+## Story-Line Handling
 
-**Zero-file composition enablers**: If `changed_files: 0` and PR summary references merged blocker PRs (for example, "All three blockers were resolved and merged to main before this branch"), do not immediately escalate. Instead, parse the blocker references and proceed to Step 2 to verify they were actually merged; zero new files may be intentional if the enabler's ACs are satisfied by composition of existing work.
+- If `User Stories In This Feature` uses narrative lines (not checkboxes), convert each line into an unchecked checkbox item before sync decisions.
+- Conversion rule: preserve each original story sentence verbatim as the checkbox label; do not rewrite wording.
+- After conversion, reconcile each story line to the proved target state.
+- If conversion cannot be done one-to-one safely, do not mutate and report the blocker.
 
-### Step 2: Resolve Source Issue And Related Issues
+## Story-Reason Reporting
 
-Determine one primary source issue.
+- If any feature user story ends unchecked after reconciliation, state why in the `Not Checked — How To Fix` section.
+- Use one of these reasons: insufficient hard proof, evidence maps to a different issue section, narrative story text could not be matched to the PR evidence, or renderer UI trigger missing.
+- Do not leave unchecked user stories without a Fix action.
+- For every unchecked user story, add a **Next Issue** line: search the related-issue set and open issues for an existing issue that covers the missing scope. If one exists, reference it (`Next Issue: #NUMBER — title`). If none exists, outline a minimal new issue plan: title, parent feature, one-line scope, and the single implementation entry point needed.
 
-Build the related-issue set as the union of:
-- issues linked in PR body sections (for example, Additional planning issues)
-- source issue sections (Stories Enabled, Related Planning Issues, parent links)
+## Hard-Proof Contract (Story Sync)
 
-From the source issue body, extract:
-- Parent Epic Issue
-- Parent Feature Issue
-- Stories Enabled or Linked Story/Test/Enabler issues
-- Related Planning Issues
-- Technical Tasks, Validation Commands, Acceptance Criteria
+- A feature story may be marked `checked` only when all three proof artifacts exist:
+  1. `CODE_PROOF`: direct PR diff evidence mapped to the story text. For stories expressed as "As a [user role], I want to [do something]…", CODE_PROOF requires a renderer-triggerable path (a UI component or screen the user can interact with), not only backend/IPC/preload wiring. If `User-interactable readiness` is `partial` or `no`, CODE_PROOF is absent for any story whose text implies a user action.
+  2. `VALIDATION_PROOF`: passing command output or CI artifact tied to the reviewed PR-head SHA.
+  3. `MUTATION_PROOF`: issue-update evidence showing the story checkbox state changed and post-update re-read confirmed it.
+- `MUTATION_PROOF` is produced by a normal sync flow: write checkbox update, then re-read issue body and record the changed line.
+- If CODE_PROOF and VALIDATION_PROOF exist, sync must be attempted to obtain MUTATION_PROOF.
+- If any artifact remains missing after attempt, keep `unchecked` with reason `insufficient hard proof`.
+- If a story's target state is `unchecked` and the pre-sync state is `checked`, sync must attempt to uncheck it and verify the post-sync state.
+- Do not report an item as `left unchecked` unless the post-sync issue body actually shows it unchecked.
 
-Use bullet reference parsing assumptions from repository conventions (`- #NUMBER`).
+## Checkbox Evidence Thresholds
 
-Classify every requirement source as one of:
-- Anchor issue requirement (primary source issue)
-- Cross-issue requirement (related planning issue)
-- Plan-level requirement (plan artifacts)
+- `Technical Tasks` and equivalent implementation-task checkboxes may be `checked` from `CODE_PROOF` alone when the PR diff directly shows the task is completed.
+- Feature `Acceptance Criteria` may be `checked` only with `VALIDATION_PROOF` tied to the reviewed PR-head SHA or equivalent reviewed-SHA CI artifact.
+- `User Stories In This Feature` may be `checked` only with `CODE_PROOF` + `VALIDATION_PROOF` + `MUTATION_PROOF`.
+- Test-issue `Test Scenarios` may be `checked` from `CODE_PROOF` alone when the scenario is directly represented by added test cases.
+- Test-issue `Pass Criteria` may be `checked` only when the referenced assertions actually passed with PR-head or reviewed-SHA evidence.
+- When only baseline evidence exists, keep `Acceptance Criteria`, feature `User Stories`, and test `Pass Criteria` unchecked.
 
-### Step 3: Load Plan Artifacts
+## Output
 
-Read at least:
-- `plan.md`
-- `docs/ways-of-work/plan/budget-planner/implementation-plan.md`
+Use [references/output-template.md](references/output-template.md) for the final report.
 
-Load additional planning docs only when needed for a finding.
+Before finalizing output, enforce these gates:
 
-### Step 4: Build Coverage And Overlap Analysis
+1. Finding integrity gate:
+- Delivery hygiene defaults to Low; High only for anchor AC violation, direct incorrect behavior, or blocking validation failure.
+- Semantic findings require direct issue quotes.
 
-Perform three checks:
+2. Evidence gate:
+- If PR-head validation is `unproven`, AC cannot be `satisfied`.
+- Framework naming must match repo evidence; otherwise use `end-to-end test`.
 
-1. Issue coverage:
-- Which ACs/technical tasks are satisfied by the PR?
-- Which required items appear missing or unproven?
-- For each AC, classify status as `satisfied`, `partially satisfied`, `unsatisfied`, or `unproven (validation blocked)`.
-- For every semantic mismatch finding, include a direct quote from the issue text before asserting intent.
-- Do not treat cross-issue intent as anchor AC failure unless anchor AC text explicitly requires it.
-- If the source issue is a story or feature and the PR only adds tests, test scaffolding, or checkbox updates while implementation tasks remain open, classify the affected ACs as `partially satisfied` or `unproven` rather than `satisfied`, and call out the missing implementation scope explicitly.
+3. Story sync gate:
+- `checked` story requires CODE_PROOF + VALIDATION_PROOF + MUTATION_PROOF.
+- User-facing stories ("As a [role]…") require a renderer-triggerable path as part of CODE_PROOF; backend-only delivery does not satisfy them.
+- Every story remaining unchecked must appear in `Not Checked — How To Fix` with a fix action and a Next Issue reference or new-issue plan.
 
-2. Plan alignment:
-- Does PR behavior align with local-first, deterministic, no-network, and layering constraints?
-- Does the PR skip dependencies implied by plan sequencing?
+4. Output completeness gate:
+- All three required sections must be present: `Findings`, `Checked Off`, `Not Checked — How To Fix`.
+- Every unchecked or failed-to-reconcile item must appear in `Not Checked — How To Fix` exactly once.
 
-3. Related-issue boundary:
-- Detect overlap: work likely belonging to sibling/follow-up issues
-- Detect gaps: required adjacent work not addressed and not explicitly deferred
-- If the PR appears to complete only a linked Test issue while the source story or feature still has open technical tasks, report that as a cross-issue boundary gap instead of treating the story as complete.
-- If the anchor issue is a Test issue and the PR adds missing product/runtime behavior under `src/`, `electron/`, `preload`, IPC handlers, or renderer wiring that did not already exist, report that as a cross-issue semantic conflict rather than treating the test issue as cleanly delivered.
-- For Test issues, distinguish verification artifacts from missing product implementation: test files, test-only helpers, and test harness overrides belong to the Test issue; new user-facing runtime behavior or production IPC/preload contracts do not.
-
-4. Delivery hygiene:
-- Compare PR body claims against execution evidence (commands run, outcomes, CI links, checklist state, draft/ready state).
-- Flag inconsistencies between claimed status and observed evidence.
-- **Composition-enabler hygiene**: If `changed_files: 0` and PR summary names merged blockers, verify each referenced blocker PR was actually merged to main. If all blockers are merged and the enabler ACs map to existing test evidence in those blockers, classify as `intentional zero-file composition` and report it as delivered (not incomplete). If any blocker is still open or the mapping is unclear, report as `ambiguous delivery scope`.
-
-### Step 4.5: Claim Evidence Guardrails (Mandatory)
-
-Before writing any positive completion claim, enforce all rules below.
-
-1. Toolchain truthfulness:
-- Detect the active test framework from repository evidence before naming it (for example, package.json scripts, config files, lockfile deps).
-- Do not call a test "Playwright" unless Playwright tooling is present in repository evidence.
-- If tests are executed via Vitest e2e config, name them as Vitest e2e tests.
-
-2. Pass/fail claim requirements:
-- Use "passed" only when backed by direct command output from this review session or CI status evidence linked in artifacts.
-- If the only source is PR narrative text, label it "claimed in PR body, unverified in review".
-
-3. Completion claim requirements:
-- Do not state "fully implemented", "all ACs covered", or "ready for merge" unless anchor AC statuses are all `satisfied` and no open anchor technical task is left without explicit deferral.
-- If implementation and validation are split across dependent PRs, report as `partially satisfied` or `unproven` with dependency note.
-- If a Test issue PR had to add missing production/runtime behavior so the test path could exist, do not describe that boundary as cleanly planned; call out the planning drift even if the tests pass.
-- **Composition enablers**: For PRs that document composition of already-merged prerequisites (zero new files, ACs satisfied via blocker evidence), this counts as `satisfied` provided: (a) all blocker PRs were merged, (b) ACs map cleanly to existing test evidence in blockers, and (c) the enabler's own composition work is accurately described and trivial/glue-only.
-
-### Honesty Contract (Mandatory)
-
-Constrain only high-risk review claims. Keep the rest of the review flexible and evidence-driven.
-
-- Separate statements into `observed`, `inferred`, or `unverified` claim tiers.
-- Use strong completion wording only for `observed` claims backed by code, issue text, command output, or CI artifacts.
-- If a claim depends on interpretation, label it as `inferred` and cite the evidence source.
-- If a claim comes only from PR narrative or expectation, label it `unverified` rather than resolving it.
-- Do not infer framework, CI state, merge readiness, or cross-PR dependency from filenames, checklist intent, or repository habit alone.
-
-Use [references/honesty-contract.md](references/honesty-contract.md) for allowed phrasing and prohibited shortcuts.
-
-Use [references/checklists.md](references/checklists.md) for signals.
-
-### Step 5: Run Validation Commands
-
-Run validation commands from the source issue when possible.
-
-Execution guidance:
-- On Windows PowerShell environments where script policy blocks `npm`, run `npm.cmd`.
-- If validation fails, run the same commands on `main` to classify baseline vs PR-introduced failures.
-
-If a command cannot run:
-- record exact blocker (for example, environment/tooling limitation)
-- distinguish repository baseline failures from PR-introduced failures
-
-Do not claim AC validation passed without execution evidence.
-
-### Step 6: Sync Issue-Body Checkboxes (Mandatory)
-
-After review evidence is assembled, update issue body checkboxes for the target planning issues.
-
-Allowed mutations:
-- Checkbox state only (`- [ ]` to `- [x]`) in existing issue body lines
-- Only in these sections:
-  - `### Technical Requirements`
-  - `### Technical Tasks`
-  - `### Stories Enabled`
-  - `### Acceptance Criteria`
-  - For Test issues only, also allow:
-    - `### Playwright Implementation Standards`
-    - `### Acceptance Criteria Mapping`
-    - `### Test Scenarios`
-    - `### Pass Criteria`
-    - `### Regression Guard`
-
-Disallowed mutations:
-- Adding/removing/rewording headings or list items
-- Reordering sections
-- Editing labels, dependencies, estimates, or narrative text
-- Editing the PR body
-- Posting PR comments for sync status
-- Posting issue comments for sync status
-
-Decision rules:
-- Check a box only when there is direct evidence from PR diff and/or command output.
-- If evidence is partial or blocked, leave unchecked and report the ambiguity in the review output.
-- Default policy is check-only.
-- Only allow uncheck when the user explicitly requests bidirectional reconciliation.
-- For Test-issue-only sections, require section-specific hard proof:
-  - `Playwright Implementation Standards`: direct evidence from changed test code, config, or command output for each exact standard line.
-  - `Acceptance Criteria Mapping`: direct evidence that the shipped tests and assertions match the mapped AC definition, scenario, and validation assertion.
-  - `Test Scenarios`: direct evidence that the scenario exists in shipped tests and executed validation covers it.
-  - `Pass Criteria`: direct evidence from executed commands and assertions, not PR narrative alone.
-  - `Regression Guard`: explicit negative-path, fault-injection, or regression-oriented assertion evidence; do not infer this from happy-path smoke coverage.
-
-Update workflow:
-1. Read each target issue body and extract current checkbox lines in allowed sections.
-2. Build an evidence map item-by-item from review artifacts.
-3. Apply issue-body updates with checkbox-only edits.
-4. Re-read each updated issue and verify only expected checkbox deltas changed.
-5. Report updated items, unchanged items, and ambiguous items in the final review output.
-
-If any target issue body format is not safely parseable for checkbox-only edits, stop and escalate.
-
-### Step 7: Deliver Findings-First Review
-
-Output must:
-- list findings first, ordered by severity
-- include precise evidence (file paths, issue/PR evidence, command outcomes)
-- explicitly state if no findings were found
-- include residual risks/testing gaps
-- include coverage summary for ACs and related-issue overlap/gap conclusions
-- tag each finding with confidence (`high`, `medium`, `low`) based on evidence strength
-- include reproducibility context (branch, commit SHA, working tree state, local vs CI evidence)
-- use framework-accurate terminology in every test claim (for example, Vitest vs Playwright)
-
-Use [references/output-template.md](references/output-template.md).
-
-### Step 8: Pre-Final Validation Gate (Mandatory)
-
-Before finalizing output, enforce all checks below.
-
-1. Finding class validation:
-- Every finding class must be exactly one of: `anchor-issue violation`, `cross-issue semantic conflict`, `plan alignment gap`, `delivery hygiene gap`.
-- If any finding uses a different class label, revise or drop the finding.
-
-2. Quote-proof validation:
-- Every semantic-intent finding must include at least one direct quote from the cited issue text.
-- If quote evidence is missing, downgrade confidence and severity or remove the finding.
-
-3. Severity calibration:
-- Delivery hygiene findings default to Low.
-- Upgrade delivery hygiene to Medium only when acceptance interpretation or merge-readiness is materially ambiguous.
-- High is allowed only for explicit anchor AC violation, direct incorrect behavior with evidence, or blocking validation failure.
-
-4. Output-shape validation:
-- Final output must include all required template sections from [references/output-template.md](references/output-template.md).
-- Include explicit additional planning issue status: `complete` or `ambiguous`.
-
-5. Confidence rationale:
-- Each finding must include a one-line confidence basis tied to available evidence quality.
-
-6. Terminology validation:
-- Test framework names in findings and summaries must match detected repository toolchain evidence.
-- If framework cannot be determined confidently, use neutral wording: "end-to-end test".
-
-If any check fails, do not finalize. Revise findings first.
+If any gate fails, revise before final output.
 
 ## Severity Model
 
@@ -297,14 +151,6 @@ Do not assign High severity to cross-issue conflicts unless anchor AC text is ex
 
 Delivery hygiene findings should be Low by default unless they create material AC or readiness ambiguity.
 
-## Finding Classes
-
-Classify each finding as one of:
-- Anchor-issue violation
-- Cross-issue semantic conflict
-- Plan alignment gap
-- Delivery hygiene gap
-
 ## Additional Planning Issue Policy
 
 If PR body lists additional planning issues, require one of:
@@ -313,8 +159,14 @@ If PR body lists additional planning issues, require one of:
 
 If neither exists, report a traceability ambiguity finding.
 
-## Stop Conditions
+## Evidence Provenance
 
+- Prefer PR-head command output or CI evidence tied to the reviewed SHA for positive claims.
+- If validation ran only on local main, treat it as baseline evidence; do not use it to prove PR-head behavior.
+- Do not treat dependency-resolution failures, shell-policy failures, or test-runner startup failures as product validation failures until a cheap rerun rules out environment/setup causes.
+
+## Stop Conditions
+2
 Stop and escalate when any apply:
 1. Source issue cannot be resolved from PR context
 2. PR diff cannot be retrieved (excluding empty diff when changed_files is 0 for composition enablers)
@@ -322,6 +174,11 @@ Stop and escalate when any apply:
 4. Access/permission errors prevent issue or PR reads
 5. Any target issue body format is not safely parseable for checkbox-only edits
 6. Blocker references in composition-enabler summary cannot be verified (for example, referenced PR does not exist or is not merged)
+7. Story sync attempted with CODE_PROOF + VALIDATION_PROOF present, but mutation failed due permission or write error
+8. Source or required related planning issue is `planning-invalid` and not fixed in this review cycle
+9. Required implementation entry-point path from the anchor issue does not exist and no documented exception applies
+10. Post-sync issue body state does not match the reported checkbox outcome
+11. Validation is blocked by unresolved local environment/setup failure and no reviewed-SHA CI artifact is available
 
 Escalation message format:
 - Blocked reason: [short reason]
@@ -340,6 +197,10 @@ Escalation message format:
 - For checkbox sync, preserve all non-checkbox text exactly.
 - Never mutate the PR body or post PR comments as part of checkbox sync.
 - Never post issue comments just to summarize checkbox sync results.
+- Keep output compact: one evidence line and one fix per finding/gap; do not repeat narrative across sections.
+- Never hide findings. Report all material findings across all severities.
+- Expand detail only when stop conditions trigger, evidence is contradictory, or user explicitly asks for a deep dive.
+- Before downgrading checkbox state from prior checked to unchecked based on failed validation, rule out obvious environment/setup causes with one cheap rerun or classify the result as blocked rather than failed.
 
 ## References
 
