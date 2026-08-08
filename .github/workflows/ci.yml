@@ -48,13 +48,14 @@ jobs:
               pull_number: payloadPr.number,
             });
 
+            // Run CI only after the PR is out of draft (or when that transition event fires).
             const shouldRunCi = context.payload.action === "ready_for_review" || livePr.draft === false;
             core.setOutput("run_ci", shouldRunCi ? "true" : "false");
 
             if (!shouldRunCi) {
               core.setOutput("run_full", "false");
               core.setOutput("run_harness_gate", "false");
-              core.info("Skipping CI while PR is still draft.");
+              core.info("Skipping CI while PR is draft. CI begins after ready_for_review.");
               return;
             }
 
