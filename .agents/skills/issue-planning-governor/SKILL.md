@@ -5,7 +5,7 @@ compatibility: Requires GitHub MCP issue read/write/search tools and repository 
 metadata:
   owner: budget-repo
   workflow: issue-planning
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Issue Planning Governor
@@ -50,6 +50,9 @@ Apply these rules in every run.
 - R10 Validation timeout is a hard stop: if no processing signal within 180 seconds, escalate validation-timeout and stop.
 - R11 Feature/story readiness requires status coherence across linked issues and blockers.
 - R12 If test issue is required, acceptance criteria traceability must be complete: all parent AC IDs must be covered in linked test issue mapping.
+- R13 Autonomous repair is default for `govern` runs:
+  - if Step 3 returns planning-invalid, execute Step 3a repair in the same run.
+  - only escalate after repair limit or hard blocker.
 
 ## Rule Precedence
 
@@ -134,12 +137,33 @@ Gate:
   - new planning-lint/system comment after label-apply timestamp.
 
 Gate:
-- planning-invalid present -> stop and escalate.
+- planning-invalid present -> proceed to Step 3a repair.
 - validation-timeout (no processing signal at 180 seconds) -> stop and escalate.
 - otherwise proceed.
 
 Repair behavior:
-- Perform Step 3a repair only if user explicitly requests repair.
+- Perform Step 3a repair by default for `govern` runs.
+- Use at most 2 repair attempts per issue run.
+- Each attempt must include: fetch marker comment, map failure to repair playbook, mutate body/links/labels, re-apply validate-planning, and re-poll.
+
+### Step 3a: REPAIR LOOP (AUTONOMOUS)
+
+- Trigger only when Step 3 returns planning-invalid.
+- Fetch newest marker comment (`<!-- planning-validation-marker -->`) and extract all bullet failures.
+- Apply targeted repair playbook(s) from references/repair-playbooks.md.
+- Re-run Step 3 after each repair attempt.
+- Cap at 2 attempts.
+
+Common deterministic handling rules:
+- If validation says a required reference section is empty, add at least one valid issue reference in `- #NUMBER` format from the same feature slice.
+- For Story `Linked Enabler Issues`, if repository validation requires at least one enabler reference:
+  - add an existing enabler from the story's parent feature when available,
+  - otherwise add a blocker and escalate with exact owner action to create/link the enabler.
+- If entry-point path is missing, move non-existing files to Technical Tasks create actions and keep Implementation Entry Points to existing paths.
+
+Gate:
+- PASS if planning-invalid is removed and no new marker failures remain.
+- FAIL if planning-invalid persists after 2 attempts, permissions block mutation, or validation-timeout occurs.
 
 ### Step 4: READINESS GATE
 
@@ -202,7 +226,7 @@ NEXT ACTION
 ## Stop Conditions And Escalation
 
 Stop and escalate when any apply:
-- planning-invalid after Step 3
+- planning-invalid persists after Step 3a attempt limit
 - validation-timeout at 180 seconds
 - permissions block required mutation
 - mandatory hierarchy/blocker condition cannot be verified
@@ -222,6 +246,7 @@ Each run must include:
 - What changed.
 - Why it changed.
 - Validation evidence from Steps 3-4.
+- Repair attempts summary (attempt count, marker failures, playbooks applied).
 - Test Necessity decision and resulting test issue action.
 - Remaining blockers and next recommended issue.
 - Residual risks and follow-up issue links.
@@ -233,6 +258,7 @@ Each run must include:
 - Q3 Complete AC traceability when test issue required (R12 / G6).
 - Q4 No contradictory gate outcomes in one run.
 - Q5 One canonical evidence block per gate (no duplicate formats).
+- Q6 No owner handoff for fixable planning-invalid failures.
 
 ## Token Discipline
 
