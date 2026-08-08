@@ -8,7 +8,6 @@ import type {
   Transaction,
 } from "../domain/types.js";
 import type {
-  BackupSnapshotInput,
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
   RestoreSnapshotOutput,
@@ -34,9 +33,7 @@ export interface ExportApi {
 }
 
 export interface BackupApi {
-  create: (
-    input: BackupSnapshotInput & { outputPath: string }
-  ) => Promise<BackupSnapshotFileOutput>;
+  create: (outputPath: string) => Promise<BackupSnapshotFileOutput>;
   restore: (input: RestoreSnapshotInput) => Promise<RestoreSnapshotOutput>;
 }
 
@@ -71,9 +68,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("export:writeCsv", transactions, outputPath),
   },
   backup: {
-    create: (
-      input: BackupSnapshotInput & { outputPath: string }
-    ): Promise<BackupSnapshotFileOutput> => ipcRenderer.invoke("backup:create", input),
+    create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>
+      ipcRenderer.invoke("backup:create", outputPath),
     restore: (input: RestoreSnapshotInput): Promise<RestoreSnapshotOutput> =>
       ipcRenderer.invoke("backup:restore", input),
   },
