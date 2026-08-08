@@ -7,6 +7,7 @@ import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
 import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
 import { BackupSection } from "./backup/BackupSection.js";
+import { RestoreSnapshotSection } from "./dashboard/RestoreSnapshotSection.js";
 
 const DEFAULT_YEAR_MONTH = "2026-05";
 
@@ -23,9 +24,12 @@ type AppState =
 
 export function App(): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
+  const [refreshCounter, setRefreshCounter] = React.useState(0);
 
   React.useEffect(() => {
     let isActive = true;
+
+    setAppState({ status: "loading" });
 
     Promise.all([
       loadDashboardData(window.budgetApi),
@@ -52,7 +56,7 @@ export function App(): React.JSX.Element {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [refreshCounter]);
 
   function handleMonthChange(yearMonth: string): void {
     if (appState.status !== "ready") return;
@@ -98,6 +102,7 @@ export function App(): React.JSX.Element {
           <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
           <ForecastSection dashboardData={appState.dashboardData} />
           <BackupSection />
+          <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((c) => c + 1)} />
         </>
       )}
     </div>
