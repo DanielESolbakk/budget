@@ -18,7 +18,8 @@ export type PdfTextValidationErrorCode =
   | "MISSING_TRANSACTION_SECTION"
   | "INVALID_DATE_FORMAT"
   | "INVALID_AMOUNT_FORMAT"
-  | "MISSING_DESCRIPTION";
+  | "MISSING_DESCRIPTION"
+  | "FILE_READ_ERROR";
 
 export interface PdfTextValidationError {
   code: PdfTextValidationErrorCode;

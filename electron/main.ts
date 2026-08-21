@@ -324,7 +324,7 @@ app.whenReady().then(() => {
       } catch (fileError) {
         const message =
           fileError instanceof Error ? fileError.message : "Could not read PDF text file.";
-        return normalizePdfImportErrors([{ code: "UNSUPPORTED_LAYOUT", message }]);
+        return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
       }
 
       const importJobId = `import-pdf-${Date.now()}`;
