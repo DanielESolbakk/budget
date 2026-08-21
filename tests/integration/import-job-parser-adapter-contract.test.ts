@@ -6,14 +6,18 @@
  * that failure paths produce explicit errors with no partial candidates.
  */
 
-import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
 import {
   defaultParserAdapterRegistry,
   ParserAdapterRegistry,
 } from "../../src/domain/import/parserAdapterRegistry.js";
 import { ROGALAND_ADAPTER_ID } from "../../src/domain/import/pdfTextParser.js";
-import type { ImportJob } from "../../src/domain/types.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-statement.txt";
 
@@ -22,125 +26,150 @@ const BASE_OPTIONS = {
   accountId: "acc-integration",
 };
 
-const ISO_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
-
 function loadFixture(): string {
   return readFileSync(FIXTURE_PATH, "utf8");
 }
 
-/** Builds an ImportJob from a successful parse result (simulates what main.ts does). */
-function buildImportJobFromParse(
-  importJobId: string,
-  sourceName: string,
-  householdId: string,
-  adapterId: string,
-  candidateCount: number
-): ImportJob {
-  const now = new Date().toISOString();
+function createTestLedger() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), "budget-import-contract-"));
+  const ledger = createLocalLedgerDatabase({
+    dbPath: join(tempDirectory, "ledger.sqlite"),
+    seedData: {
+      household: {
+        id: BASE_OPTIONS.householdId,
+        name: "Integration Household",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      },
+      accounts: [],
+      transactions: [],
+      importJobs: [],
+      monthlyCategoryTargets: [],
+    },
+  });
+
   return {
-    id: importJobId,
-    householdId,
-    sourceType: "pdf",
-    sourceName,
-    adapterId,
-    candidateCount,
-    validationFailureCount: 0,
-    startedAtIso: now,
-    finishedAtIso: now,
+    ledger,
+    close: () => {
+      ledger.close();
+      rmSync(tempDirectory, { recursive: true, force: true });
+    },
   };
+}
+
+function runWorkflow(
+  pdfText: string,
+  ledger: ReturnType<typeof createTestLedger>["ledger"],
+  importJobId: string
+) {
+  const timestamp = "2026-05-31T12:00:00Z";
+  return runPdfImportWorkflow(
+    {
+      pdfText,
+      filePath: FIXTURE_PATH,
+      householdId: BASE_OPTIONS.householdId,
+      accountId: BASE_OPTIONS.accountId,
+      importJobId,
+      startedAtIso: timestamp,
+      finishedAtIso: timestamp,
+    },
+    {
+      parserRegistry: defaultParserAdapterRegistry,
+      appendImportJob: ledger.appendImportJob,
+      appendTransactions: ledger.appendTransactions,
+    }
+  );
 }
 
 describe("import job / parser adapter contract", () => {
   describe("AC-1: import job carries full provenance", () => {
-    it("import job records source identity from fixture parse", () => {
-      const text = loadFixture();
-      const importJobId = "job-contract-test-1";
-
-      const parseResult = defaultParserAdapterRegistry.parse(text, {
-        ...BASE_OPTIONS,
-        importJobId,
-        idPrefix: importJobId,
-      });
-
-      expect(parseResult.ok).toBe(true);
-      if (!parseResult.ok) return;
-
-      const job = buildImportJobFromParse(
-        importJobId,
-        FIXTURE_PATH,
-        BASE_OPTIONS.householdId,
-        parseResult.adapterId,
-        parseResult.candidates.length
-      );
-
-      expect(job.sourceType).toBe("pdf");
-      expect(job.sourceName).toBe(FIXTURE_PATH);
-      expect(job.householdId).toBe("hh-integration");
-    });
-
-    it("import job records adapter identity from parse result", () => {
-      const text = loadFixture();
-      const importJobId = "job-contract-test-2";
-
-      const parseResult = defaultParserAdapterRegistry.parse(text, {
-        ...BASE_OPTIONS,
-        importJobId,
-      });
-
-      expect(parseResult.ok).toBe(true);
-      if (!parseResult.ok) return;
-
-      const job = buildImportJobFromParse(
-        importJobId,
-        FIXTURE_PATH,
-        BASE_OPTIONS.householdId,
-        parseResult.adapterId,
-        parseResult.candidates.length
-      );
-
-      expect(job.adapterId).toBe(ROGALAND_ADAPTER_ID);
-    });
-
-    it("import job candidate count matches parse result", () => {
-      const text = loadFixture();
-      const importJobId = "job-contract-test-3";
-
-      const parseResult = defaultParserAdapterRegistry.parse(text, {
-        ...BASE_OPTIONS,
-        importJobId,
-      });
-
-      expect(parseResult.ok).toBe(true);
-      if (!parseResult.ok) return;
-
-      const job = buildImportJobFromParse(
-        importJobId,
-        FIXTURE_PATH,
-        BASE_OPTIONS.householdId,
-        parseResult.adapterId,
-        parseResult.candidates.length
-      );
-
-      expect(job.candidateCount).toBe(parseResult.candidates.length);
-      expect(job.candidateCount).toBeGreaterThan(0);
-    });
-
-    it("all candidates carry importJobId provenance", () => {
-      const text = loadFixture();
+    it("persists import provenance and candidates through the application workflow", () => {
+      const testLedger = createTestLedger();
       const importJobId = "job-provenance-check";
 
-      const parseResult = defaultParserAdapterRegistry.parse(text, {
-        ...BASE_OPTIONS,
-        importJobId,
+      try {
+        const result = runWorkflow(loadFixture(), testLedger.ledger, importJobId);
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const snapshot = testLedger.ledger.loadLedgerSnapshotData();
+        expect(snapshot.importJobs).toEqual([
+          expect.objectContaining({
+            id: importJobId,
+            householdId: BASE_OPTIONS.householdId,
+            sourceType: "pdf",
+            sourceName: FIXTURE_PATH,
+            adapterId: ROGALAND_ADAPTER_ID,
+            candidateCount: result.transactionCount,
+            validationFailureCount: 0,
+          }),
+        ]);
+        expect(snapshot.transactions).toHaveLength(result.transactionCount);
+        expect(
+          snapshot.transactions.every((candidate) => candidate.importJobId === importJobId)
+        ).toBe(true);
+      } finally {
+        testLedger.close();
+      }
+    });
+
+    it("migrates a legacy import job table and preserves new provenance fields", () => {
+      const tempDirectory = mkdtempSync(join(tmpdir(), "budget-import-migration-"));
+      const dbPath = join(tempDirectory, "legacy.sqlite");
+      const legacyDatabase = new DatabaseSync(dbPath);
+
+      legacyDatabase.exec(`
+        CREATE TABLE households (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at_iso TEXT NOT NULL);
+        INSERT INTO households (id, name, created_at_iso) VALUES ('hh-legacy', 'Legacy Household', '2026-01-01T00:00:00Z');
+        CREATE TABLE import_jobs (
+          id TEXT PRIMARY KEY,
+          household_id TEXT NOT NULL,
+          source_type TEXT NOT NULL,
+          source_name TEXT NOT NULL,
+          started_at_iso TEXT NOT NULL,
+          finished_at_iso TEXT
+        );
+      `);
+      legacyDatabase.close();
+
+      const ledger = createLocalLedgerDatabase({
+        dbPath,
+        seedData: {
+          household: {
+            id: "hh-legacy",
+            name: "Legacy Household",
+            createdAtIso: "2026-01-01T00:00:00Z",
+          },
+          accounts: [],
+          transactions: [],
+          importJobs: [],
+          monthlyCategoryTargets: [],
+        },
       });
 
-      expect(parseResult.ok).toBe(true);
-      if (!parseResult.ok) return;
+      try {
+        ledger.appendImportJob({
+          id: "job-legacy-migration",
+          householdId: "hh-legacy",
+          sourceType: "pdf",
+          sourceName: FIXTURE_PATH,
+          adapterId: ROGALAND_ADAPTER_ID,
+          candidateCount: 2,
+          validationFailureCount: 0,
+          startedAtIso: "2026-05-31T12:00:00Z",
+          finishedAtIso: "2026-05-31T12:00:00Z",
+        });
 
-      for (const candidate of parseResult.candidates) {
-        expect(candidate.importJobId).toBe(importJobId);
-        expect(candidate.bookedAtIso).toMatch(ISO_DATETIME_PATTERN);
-        expect(Number.isInteger(candidate.amountMinor)).toBe(true);
+        expect(ledger.loadLedgerSnapshotData().importJobs[0]).toEqual(
+          expect.objectContaining({
+            adapterId: ROGALAND_ADAPTER_ID,
+            candidateCount: 2,
+            validationFailureCount: 0,
+          })
+        );
+      } finally {
+        ledger.close();
+        rmSync(tempDirectory, { recursive: true, force: true });
       }
     });
   });

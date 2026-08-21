@@ -99,6 +99,25 @@ describe("ParserAdapterRegistry", () => {
     });
   });
 
+  describe("AC-3: malformed recognized source returns adapter validation errors", () => {
+    it("forwards malformed Rogaland input without partial candidates", () => {
+      const result = defaultParserAdapterRegistry.parse(
+        [
+          "ROGALAND SPAREBANK",
+          "Dato         Beskrivelse                              Beløp          Saldo",
+          "27.05.2026   MERCHANT-INVALID                         invalid-amount  75 000,00",
+        ].join("\n"),
+        BASE_OPTIONS
+      );
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.adapterId).toBe(ROGALAND_ADAPTER_ID);
+      expect(result.errors[0]?.code).toBe("INVALID_AMOUNT_FORMAT");
+      expect((result as { candidates?: unknown }).candidates).toBeUndefined();
+    });
+  });
+
   describe("default registry", () => {
     it("includes the Rogaland adapter", () => {
       expect(defaultParserAdapterRegistry.registeredIds()).toContain(ROGALAND_ADAPTER_ID);

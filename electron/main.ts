@@ -22,6 +22,7 @@ import {
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
+  runPdfImportWorkflow,
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
@@ -330,42 +331,25 @@ app.whenReady().then(() => {
       const importJobId = `import-pdf-${Date.now()}`;
       const now = new Date().toISOString();
 
-      const parseResult = defaultParserAdapterRegistry.parse(pdfText, {
-        householdId: request.householdId,
-        accountId: request.accountId,
-        importJobId,
-        idPrefix: importJobId,
-      });
-
-      if (!parseResult.ok) {
-        return normalizePdfImportErrors(parseResult.errors);
-      }
-
-      const importJob: ImportJob = {
-        id: importJobId,
-        householdId: request.householdId,
-        sourceType: "pdf",
-        sourceName: request.filePath,
-        adapterId: parseResult.adapterId,
-        candidateCount: parseResult.candidates.length,
-        validationFailureCount: 0,
-        startedAtIso: now,
-        finishedAtIso: now,
-      };
-
-      localLedgerDatabase.appendImportJob(importJob);
-      localLedgerDatabase.appendTransactions(parseResult.candidates);
-
-      for (const transaction of parseResult.candidates) {
-        liveTransactions.push(transaction);
-      }
-
-      return {
-        ok: true,
-        importJobId,
-        transactionCount: parseResult.candidates.length,
-        adapterId: parseResult.adapterId,
-      };
+      return runPdfImportWorkflow(
+        {
+          pdfText,
+          filePath: request.filePath,
+          householdId: request.householdId,
+          accountId: request.accountId,
+          importJobId,
+          startedAtIso: now,
+          finishedAtIso: now,
+        },
+        {
+          parserRegistry: defaultParserAdapterRegistry,
+          appendImportJob: localLedgerDatabase.appendImportJob,
+          appendTransactions: localLedgerDatabase.appendTransactions,
+          onTransactionsPersisted: (transactions) => {
+            liveTransactions.push(...transactions);
+          },
+        }
+      );
     }
   );
 
