@@ -2,6 +2,8 @@ import type { Transaction } from "../types.js";
 
 /** Identifier for the Rogaland Sparebank text PDF adapter. */
 export const ROGALAND_ADAPTER_ID = "rogaland-sparebank-text-v1";
+/** Source identity for the Rogaland Sparebank digital text statement layout. */
+export const ROGALAND_SOURCE_ID = "no.rogaland-sparebank.statement-text";
 
 /** Header token that identifies this statement layout. */
 const ROGALAND_HEADER_TOKEN = "ROGALAND SPAREBANK";
