@@ -69,6 +69,8 @@ function ensureSchema(db: DatabaseSync): void {
       source_type TEXT NOT NULL,
       source_name TEXT NOT NULL,
       adapter_id TEXT,
+      candidate_count INTEGER,
+      validation_failure_count INTEGER,
       started_at_iso TEXT NOT NULL,
       finished_at_iso TEXT
     );
@@ -90,8 +92,15 @@ function ensureSchema(db: DatabaseSync): void {
   }
 
   const importJobColumns = db.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>;
-  if (!importJobColumns.some((column) => column.name === "adapter_id")) {
-    db.exec("ALTER TABLE import_jobs ADD COLUMN adapter_id TEXT");
+  const importJobColumnsToAdd = [
+    ["adapter_id", "TEXT"],
+    ["candidate_count", "INTEGER"],
+    ["validation_failure_count", "INTEGER"],
+  ] as const;
+  for (const [columnName, columnType] of importJobColumnsToAdd) {
+    if (!importJobColumns.some((column) => column.name === columnName)) {
+      db.exec(`ALTER TABLE import_jobs ADD COLUMN ${columnName} ${columnType}`);
+    }
   }
 }
 
@@ -137,7 +146,7 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
     }
 
     const insertImportJob = db.prepare(
-      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     for (const importJob of seedData.importJobs) {
       insertImportJob.run(
@@ -146,6 +155,8 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
         importJob.sourceType,
         importJob.sourceName,
         importJob.adapterId ?? null,
+        importJob.candidateCount ?? null,
+        importJob.validationFailureCount ?? null,
         importJob.startedAtIso,
         importJob.finishedAtIso ?? null
       );
@@ -222,7 +233,7 @@ export function createLocalLedgerDatabase(
 
     const importJobs = db
       .prepare(
-        "SELECT id, household_id, source_type, source_name, adapter_id, started_at_iso, finished_at_iso FROM import_jobs ORDER BY id"
+        "SELECT id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso FROM import_jobs ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -230,6 +241,8 @@ export function createLocalLedgerDatabase(
       source_type: string;
       source_name: string;
       adapter_id: string | null;
+      candidate_count: number | null;
+      validation_failure_count: number | null;
       started_at_iso: string;
       finished_at_iso: string | null;
     }>;
@@ -281,6 +294,14 @@ export function createLocalLedgerDatabase(
         mapped.adapterId = importJob.adapter_id;
       }
 
+      if (importJob.candidate_count !== null) {
+        mapped.candidateCount = importJob.candidate_count;
+      }
+
+      if (importJob.validation_failure_count !== null) {
+        mapped.validationFailureCount = importJob.validation_failure_count;
+      }
+
       if (importJob.finished_at_iso !== null) {
         mapped.finishedAtIso = importJob.finished_at_iso;
       }
@@ -318,13 +339,15 @@ export function createLocalLedgerDatabase(
 
   function appendImportJob(importJob: ImportJob): void {
     db.prepare(
-      "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       importJob.id,
       importJob.householdId,
       importJob.sourceType,
       importJob.sourceName,
       importJob.adapterId ?? null,
+      importJob.candidateCount ?? null,
+      importJob.validationFailureCount ?? null,
       importJob.startedAtIso,
       importJob.finishedAtIso ?? null
     );
