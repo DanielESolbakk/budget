@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { buildTransactionFingerprint } from "../../domain/import/buildTransactionFingerprint.js";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import type {
   Account,
@@ -9,6 +10,35 @@ import type {
   MonthlyCategoryTarget,
   Transaction,
 } from "../../domain/types.js";
+
+/** Input for submitting a single manual transaction. */
+export interface ManualTransactionInput {
+  id: string;
+  householdId: string;
+  accountId: string;
+  bookedAtIso: string;
+  amountMinor: number;
+  merchantRaw: string;
+  categoryId?: string;
+  importJobId?: string;
+}
+
+/** Returned when a manual transaction is accepted and persisted. */
+export interface ManualEntryAccepted {
+  ok: true;
+  transactionId: string;
+  fingerprint: string;
+}
+
+/** Returned when a manual transaction matches an existing ledger row by fingerprint. */
+export interface ManualEntryDuplicate {
+  ok: false;
+  duplicate: true;
+  fingerprint: string;
+  existingTransactionId: string;
+}
+
+export type ManualEntryResult = ManualEntryAccepted | ManualEntryDuplicate;
 
 interface LocalLedgerSeedData {
   household: Household;
@@ -23,6 +53,7 @@ export interface LocalLedgerDatabase {
   upsertMonthlyCategoryTarget: (target: MonthlyCategoryTarget) => void;
   appendImportJob: (importJob: ImportJob) => void;
   appendTransactions: (transactions: Transaction[]) => void;
+  submitManualTransaction: (input: ManualTransactionInput) => ManualEntryResult;
   close: () => void;
 }
 
@@ -58,7 +89,8 @@ function ensureSchema(db: DatabaseSync): void {
       amount_minor INTEGER NOT NULL,
       merchant_raw TEXT NOT NULL,
       category_id TEXT,
-      import_job_id TEXT
+      import_job_id TEXT,
+      fingerprint TEXT UNIQUE
     );
 
     CREATE TABLE IF NOT EXISTS import_jobs (
@@ -321,11 +353,54 @@ export function createLocalLedgerDatabase(
     }
   }
 
+  function submitManualTransaction(input: ManualTransactionInput): ManualEntryResult {
+    const fingerprint = buildTransactionFingerprint({
+      accountId: input.accountId,
+      bookedAtIso: input.bookedAtIso,
+      amountMinor: input.amountMinor,
+      merchantRaw: input.merchantRaw,
+    });
+
+    db.exec("BEGIN");
+    try {
+      const existing = db
+        .prepare("SELECT id FROM transactions WHERE fingerprint = ?")
+        .get(fingerprint) as { id: string } | undefined;
+
+      if (existing) {
+        db.exec("ROLLBACK");
+        return { ok: false, duplicate: true, fingerprint, existingTransactionId: existing.id };
+      }
+
+      db.prepare(
+        "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id, fingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(
+        input.id,
+        input.householdId,
+        input.accountId,
+        input.bookedAtIso,
+        input.amountMinor,
+        input.merchantRaw,
+        input.categoryId ?? null,
+        input.importJobId ?? null,
+        fingerprint
+      );
+
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+
+    return { ok: true, transactionId: input.id, fingerprint };
+  }
+
   return {
     loadLedgerSnapshotData,
     upsertMonthlyCategoryTarget,
     appendImportJob,
     appendTransactions,
+    submitManualTransaction,
     close: () => db.close(),
   };
 }
