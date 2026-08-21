@@ -59,6 +59,9 @@ describe("AC traceability governance checks", () => {
     }
 
     expect(governedFiles[0]).toContain("Generated output files");
+    for (const generatedArtifact of ["PRODUCT.md", "DESIGN.md", "skill caches"]) {
+      expect(governedFiles[0]).toContain(generatedArtifact);
+    }
     expect(governedFiles[1]).toContain("Do NOT commit generated files");
   });
 });
