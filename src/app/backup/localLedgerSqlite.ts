@@ -298,7 +298,7 @@ export function createLocalLedgerDatabase(
 
   function appendTransactions(transactions: Transaction[]): void {
     const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     );
     db.exec("BEGIN");
     try {
