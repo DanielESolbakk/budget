@@ -65,6 +65,11 @@ Apply these rules in every run.
   - Do not label Vitest tests as Playwright coverage.
   - Do not use Playwright labels for `tests/e2e/` Vitest smoke files.
   - Keep runner and folder labels aligned in issue body and AC mapping.
+- R16 Frontend planning completeness is mandatory for issues with renderer entry points or visible UI changes:
+  - design direction, design-system preservation, responsive behavior, accessibility, and visual-validation intent must all be documented.
+  - Impeccable is the preferred visual-validation tool (`npx impeccable check`) but is opt-in; any equivalent deterministic review is acceptable.
+  - Impeccable must not be used for cloud processing, telemetry, analytics, or network access to transaction content.
+  - Issues without renderer entry points or UI changes are exempt from R16.
 
 ## Rule Precedence
 
@@ -113,6 +118,13 @@ Run these checks explicitly at Step 4.
 - G8 Entry points policy:
   - assignable-now entry points point to existing paths.
   - new files are listed under Technical Tasks, not as required existing entry points.
+- G9 Frontend planning completeness (applies only to issues with renderer entry points or visible UI changes):
+  - design direction is stated.
+  - design-system preservation is documented.
+  - responsive behavior is addressed.
+  - accessibility requirements are explicit.
+  - visual-validation intent is recorded (Impeccable check or equivalent deterministic review).
+  - If the issue has no renderer entry points or UI changes, G9 is not applicable.
 
 ## Workflow (Sequential Gates)
 
