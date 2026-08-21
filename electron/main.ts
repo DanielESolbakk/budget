@@ -22,14 +22,13 @@ import {
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
+  runPdfImportWorkflow,
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
-import {
-  buildRogalandImportJobId,
-  parseRogalandStatementText,
-} from "../src/domain/import/pdfTextParser.js";
+import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
+import { buildRogalandImportJobId } from "../src/domain/import/pdfTextParser.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -336,44 +335,31 @@ app.whenReady().then(() => {
       });
       const now = new Date().toISOString();
 
-      const parseResult = parseRogalandStatementText(pdfText, {
-        householdId: request.householdId,
-        accountId: request.accountId,
-        importJobId,
-        idPrefix: importJobId,
-      });
-
-      if (!parseResult.ok) {
-        return normalizePdfImportErrors(parseResult.errors);
-      }
-
-      const importJob: ImportJob = {
-        id: importJobId,
-        householdId: request.householdId,
-        sourceType: "pdf",
-        sourceName: request.filePath,
-        adapterId: parseResult.adapterId,
-        startedAtIso: now,
-        finishedAtIso: now,
-      };
-
-      localLedgerDatabase.appendImportJob(importJob);
-      localLedgerDatabase.appendTransactions(parseResult.transactions);
-
-      const existingIds = new Set(liveTransactions.map((transaction) => transaction.id));
-      for (const transaction of parseResult.transactions) {
-        if (!existingIds.has(transaction.id)) {
-          liveTransactions.push(transaction);
-          existingIds.add(transaction.id);
+      return runPdfImportWorkflow(
+        {
+          pdfText,
+          filePath: request.filePath,
+          householdId: request.householdId,
+          accountId: request.accountId,
+          importJobId,
+          startedAtIso: now,
+          finishedAtIso: now,
+        },
+        {
+          parserRegistry: defaultParserAdapterRegistry,
+          appendImportJob: localLedgerDatabase.appendImportJob,
+          appendTransactions: localLedgerDatabase.appendTransactions,
+          onTransactionsPersisted: (transactions) => {
+            const existingIds = new Set(liveTransactions.map((transaction) => transaction.id));
+            for (const transaction of transactions) {
+              if (!existingIds.has(transaction.id)) {
+                liveTransactions.push(transaction);
+                existingIds.add(transaction.id);
+              }
+            }
+          },
         }
-      }
-
-      return {
-        ok: true,
-        importJobId,
-        transactionCount: parseResult.transactions.length,
-        adapterId: parseResult.adapterId,
-      };
+      );
     }
   );
 
