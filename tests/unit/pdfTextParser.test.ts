@@ -237,5 +237,98 @@ describe("pdfTextParser unit tests", () => {
 
       expect(result.ok).toBe(false);
     });
+
+    it("returns INVALID_DATE_FORMAT for an impossible calendar date (31 February)", () => {
+      const text = [
+        "ROGALAND SPAREBANK",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+        "31.02.2026   SALARY                                  +50 000,00     75 000,00 ",
+      ].join("\n");
+
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("INVALID_DATE_FORMAT");
+    });
+  });
+
+  describe("Scenario 2: reordered input rows produce deterministic per-row results", () => {
+    it("parsing reordered rows produces a result with the same set of merchantRaw values", () => {
+      const header = [
+        "ROGALAND SPAREBANK",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+      ];
+      const row1 = "27.05.2026   SALARY                                  +50 000,00     75 000,00 ";
+      const row2 = "26.05.2026   MERCHANT-005 Butikkkjøp                    -97,70      24 902,30 ";
+
+      const original = parseRogalandStatementText([...header, row1, row2].join("\n"), BASE_OPTIONS);
+      const reordered = parseRogalandStatementText([...header, row2, row1].join("\n"), BASE_OPTIONS);
+
+      expect(original.ok).toBe(true);
+      expect(reordered.ok).toBe(true);
+      if (!original.ok || !reordered.ok) return;
+
+      const originalMerchants = original.transactions.map((tx) => tx.merchantRaw).sort();
+      const reorderedMerchants = reordered.transactions.map((tx) => tx.merchantRaw).sort();
+      expect(originalMerchants).toEqual(reorderedMerchants);
+    });
+
+    it("parsing reordered rows yields a different transaction order", () => {
+      const header = [
+        "ROGALAND SPAREBANK",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+      ];
+      const row1 = "27.05.2026   SALARY                                  +50 000,00     75 000,00 ";
+      const row2 = "26.05.2026   MERCHANT-005 Butikkkjøp                    -97,70      24 902,30 ";
+
+      const original = parseRogalandStatementText([...header, row1, row2].join("\n"), BASE_OPTIONS);
+      const reordered = parseRogalandStatementText([...header, row2, row1].join("\n"), BASE_OPTIONS);
+
+      expect(original.ok).toBe(true);
+      expect(reordered.ok).toBe(true);
+      if (!original.ok || !reordered.ok) return;
+
+      expect(original.transactions[0]?.merchantRaw).not.toBe(reordered.transactions[0]?.merchantRaw);
+    });
+
+    it("parsing the same reordered input twice produces identical results (deterministic)", () => {
+      const text = [
+        "ROGALAND SPAREBANK",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+        "26.05.2026   MERCHANT-005 Butikkkjøp                    -97,70      24 902,30 ",
+        "27.05.2026   SALARY                                  +50 000,00     75 000,00 ",
+      ].join("\n");
+
+      const first = parseRogalandStatementText(text, BASE_OPTIONS);
+      const second = parseRogalandStatementText(text, BASE_OPTIONS);
+      expect(first).toEqual(second);
+    });
+  });
+
+  describe("importJobId and idPrefix edge cases", () => {
+    it("omitting importJobId means importJobId is absent from transactions", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      for (const tx of result.transactions) {
+        expect(Object.prototype.hasOwnProperty.call(tx, "importJobId")).toBe(false);
+      }
+    });
+
+    it("default idPrefix is 'pdf' when not specified", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transactions.every((tx) => tx.id.startsWith("pdf-"))).toBe(true);
+    });
   });
 });
