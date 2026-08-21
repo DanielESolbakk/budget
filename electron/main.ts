@@ -132,10 +132,19 @@ const localLedgerDatabase = createLocalLedgerDatabase({
         existingIds.add(tx.id);
       }
     }
-  } catch {
-    // Ledger may be empty on first run — ignore and continue with seed data.
+  } catch (error) {
+    console.error("Failed to hydrate transactions from local ledger:", error);
   }
 })();
+
+function resolveDefaultAccountId(householdId: string): string {
+  const account = sampleAccounts.find((item) => item.householdId === householdId);
+  if (!account) {
+    throw new Error(`No account available for household ${householdId}`);
+  }
+
+  return account.id;
+}
 
 function getDashboardData(): DashboardData {
   return buildDashboardData({ monthlyTotals: sampleMonthlyTotals });
@@ -230,11 +239,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     "import:csv",
-    (_event, filePath: string): CsvImportResponse => {
+    (
+      _event,
+      input: { filePath: string; accountId?: string }
+    ): CsvImportResponse => {
       const householdId = sampleHousehold.id;
-      const accountId = sampleAccounts[0]!.id;
+      const accountId = input.accountId ?? resolveDefaultAccountId(householdId);
 
-      const request = buildCsvImportRequest(filePath, { householdId, accountId });
+      const request = buildCsvImportRequest(input.filePath, { householdId, accountId });
 
       let csvText: string;
       try {

@@ -34,7 +34,7 @@ export interface ExportApi {
 }
 
 export interface ImportApi {
-  importCsv: (filePath: string) => Promise<CsvImportResponse>;
+  importCsv: (input: { filePath: string; accountId?: string }) => Promise<CsvImportResponse>;
 }
 
 export interface BackupApi {
@@ -74,8 +74,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("export:writeCsv", transactions, outputPath),
   },
   import: {
-    importCsv: (filePath: string): Promise<CsvImportResponse> =>
-      ipcRenderer.invoke("import:csv", filePath),
+    importCsv: (input: { filePath: string; accountId?: string }): Promise<CsvImportResponse> =>
+      ipcRenderer.invoke("import:csv", input),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

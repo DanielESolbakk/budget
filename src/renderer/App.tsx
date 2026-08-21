@@ -26,11 +26,14 @@ type AppState =
 export function App(): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
   const [refreshCounter, setRefreshCounter] = React.useState(0);
+  const hasLoadedInitialState = React.useRef(false);
 
   React.useEffect(() => {
     let isActive = true;
 
-    setAppState({ status: "loading" });
+    if (!hasLoadedInitialState.current) {
+      setAppState({ status: "loading" });
+    }
 
     Promise.all([
       loadDashboardData(window.budgetApi),
@@ -38,6 +41,7 @@ export function App(): React.JSX.Element {
     ])
       .then(([dashboardData, viewContract]) => {
         if (!isActive) return;
+        hasLoadedInitialState.current = true;
         const availableMonths = dashboardData.monthlyTotals.map((t) => t.yearMonth);
         setAppState({
           status: "ready",
