@@ -45,12 +45,11 @@ async function launchCategoryTargetWindow(): Promise<{
 
 test.describe("Category target entry renderer smoke", () => {
   let app: ElectronApplication;
-  let window: Page;
   let targetPage: CategoryTargetPage;
   let shell: AppShellPage;
 
   test.beforeEach(async () => {
-    ({ app, window, targetPage, shell } = await launchCategoryTargetWindow());
+    ({ app, targetPage, shell } = await launchCategoryTargetWindow());
   });
 
   test.afterEach(async () => {
