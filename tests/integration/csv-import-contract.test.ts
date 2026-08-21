@@ -274,4 +274,69 @@ describe("csv import contract", () => {
       expect(contract.snapshot.categoryBreakdown.entries.length).toBeGreaterThan(0);
     });
   });
+
+  describe("Regression guard: amount-sign, date, and header defects", () => {
+    it("regression: Beløp ut stored as positive value is mapped to negative amountMinor", () => {
+      // Defect guard: some CSV exports omit the negative sign on Beløp ut, so
+      // the mapper must normalise to negative regardless of the sign in the source.
+      const resultPositive = mapCsvRowToTransaction(
+        makeRow({ [CSV_COLUMN_NAMES.amountOut]: "99.00" }),
+        0,
+        MAPPING_OPTIONS,
+      );
+      const resultNegative = mapCsvRowToTransaction(
+        makeRow({ [CSV_COLUMN_NAMES.amountOut]: "-99.00" }),
+        0,
+        MAPPING_OPTIONS,
+      );
+
+      expect(resultPositive.ok).toBe(true);
+      if (!resultPositive.ok) return;
+      expect(resultPositive.transaction.amountMinor).toBe(-9900);
+
+      expect(resultNegative.ok).toBe(true);
+      if (!resultNegative.ok) return;
+      expect(resultNegative.transaction.amountMinor).toBe(-9900);
+    });
+
+    it("regression: leap-year date 29.02.2024 is accepted as valid", () => {
+      const errors = validateCsvRow(
+        makeRow({ [CSV_COLUMN_NAMES.executionDate]: "29.02.2024", [CSV_COLUMN_NAMES.bookedDate]: "" }),
+      );
+
+      expect(errors.filter((e) => e.code === "INVALID_DATE_FORMAT")).toHaveLength(0);
+    });
+
+    it("regression: non-leap-year date 29.02.2026 is rejected with INVALID_DATE_FORMAT", () => {
+      const errors = validateCsvRow(
+        makeRow({ [CSV_COLUMN_NAMES.executionDate]: "29.02.2026", [CSV_COLUMN_NAMES.bookedDate]: "" }),
+      );
+
+      expect(errors.some((e) => e.code === "INVALID_DATE_FORMAT")).toBe(true);
+    });
+
+    it("regression: amount with comma separator is rejected with INVALID_AMOUNT_FORMAT", () => {
+      // Defect guard: some CSV exports use comma as the decimal separator; the
+      // mapper must reject "12,50" rather than silently coercing it to a NaN result.
+      const errors = validateCsvRow(
+        makeRow({ [CSV_COLUMN_NAMES.amountOut]: "12,50" }),
+      );
+
+      expect(errors.some((e) => e.code === "INVALID_AMOUNT_FORMAT")).toBe(true);
+    });
+
+    it("regression: missing Beskrivelse header produces MISSING_DESCRIPTION not an uncaught exception", () => {
+      const rowMissingDescription: Record<string, string> = {
+        [CSV_COLUMN_NAMES.executionDate]: "28.05.2026",
+        [CSV_COLUMN_NAMES.bookedDate]: "28.05.2026",
+        [CSV_COLUMN_NAMES.amountOut]: "-10.00",
+        [CSV_COLUMN_NAMES.currency]: "NOK",
+        [CSV_COLUMN_NAMES.status]: "Bokført",
+      };
+
+      const errors = validateCsvRow(rowMissingDescription);
+
+      expect(errors.some((e) => e.code === "MISSING_DESCRIPTION")).toBe(true);
+    });
+  });
 });
