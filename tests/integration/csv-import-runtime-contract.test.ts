@@ -1,8 +1,8 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import {
   buildCsvImportRequest,
@@ -252,8 +252,8 @@ describe("csv-import-runtime-contract", () => {
         selectedYearMonth: "2026-05",
       });
 
+      expect(contract.state).toBe("ready");
       if (contract.state !== "ready") {
-        expect(contract.state).toBe("ready");
         return;
       }
 
