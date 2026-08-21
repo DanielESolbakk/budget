@@ -119,6 +119,33 @@ const localLedgerDatabase = createLocalLedgerDatabase({
   },
 });
 
+// Load persisted transactions from the SQLite ledger so that dashboard views include
+// data imported in previous sessions. This merges DB transactions with the seed set
+// by deduplicating on id to avoid double-counting sample rows already in the ledger.
+(function hydrateFromLedger(): void {
+  try {
+    const snapshot = localLedgerDatabase.loadLedgerSnapshotData();
+    const existingIds = new Set(liveTransactions.map((tx) => tx.id));
+    for (const tx of snapshot.transactions) {
+      if (!existingIds.has(tx.id)) {
+        liveTransactions.push(tx);
+        existingIds.add(tx.id);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to hydrate transactions from local ledger:", error);
+  }
+})();
+
+function resolveDefaultAccountId(householdId: string): string {
+  const account = sampleAccounts.find((item) => item.householdId === householdId);
+  if (!account) {
+    throw new Error(`No account available for household ${householdId}`);
+  }
+
+  return account.id;
+}
+
 function getDashboardData(): DashboardData {
   return buildDashboardData({ monthlyTotals: sampleMonthlyTotals });
 }
@@ -212,15 +239,30 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     "import:csv",
-    (_event, filePath: string): CsvImportResponse => {
-      const { householdId, accountId } = sampleHousehold.id
-        ? { householdId: sampleHousehold.id, accountId: sampleAccounts[0]?.id ?? "sample-acc" }
-        : { householdId: "sample-hh", accountId: "sample-acc" };
+    (
+      _event,
+      input: { filePath: string; accountId?: string }
+    ): CsvImportResponse => {
+      const householdId = sampleHousehold.id;
+      const accountId = input.accountId ?? resolveDefaultAccountId(householdId);
 
-      const request = buildCsvImportRequest(filePath, { householdId, accountId });
-      const csvText = readFileSync(request.filePath, "utf8");
+      const request = buildCsvImportRequest(input.filePath, { householdId, accountId });
+
+      let csvText: string;
+      try {
+        csvText = readFileSync(request.filePath, "utf8");
+      } catch (fileError) {
+        const message =
+          fileError instanceof Error ? fileError.message : "Could not read CSV file.";
+        return normalizeCsvImportErrors([
+          {
+            rowIndex: -1,
+            errors: [{ code: "MISSING_DATE", message, field: "file" }],
+          },
+        ]);
+      }
+
       const rows = parseCsvText(csvText);
-
       const importJobId = `import-csv-${Date.now()}`;
       const now = new Date().toISOString();
 

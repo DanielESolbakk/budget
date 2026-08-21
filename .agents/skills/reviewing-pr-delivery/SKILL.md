@@ -81,6 +81,13 @@ If the source issue cannot be determined, stop and ask for exactly one issue num
 - Preserve all non-checkbox text exactly.
 - Do not edit the PR body or post sync comments.
 
+### Conditional Regression Guards
+
+- Treat a `Regression Guard` checkbox as conditional, not as an unconditional delivery task.
+- First determine whether the PR fixed a defect in that test issue's scope.
+- If no defect in that scope was fixed, classify the guard as `not applicable`; leave it unchecked, do not report it as a gap or finding, and do not create a test solely to check it.
+- If a defect in that scope was fixed, require a focused regression test and sync the guard only when direct test evidence proves it.
+
 ## Story-Line Handling
 
 - If `User Stories In This Feature` uses narrative lines (not checkboxes), convert each line into an unchecked checkbox item before sync decisions.
@@ -134,10 +141,12 @@ Before finalizing output, enforce these gates:
 - `checked` story requires CODE_PROOF + VALIDATION_PROOF + MUTATION_PROOF.
 - User-facing stories ("As a [role]…") require a renderer-triggerable path as part of CODE_PROOF; backend-only delivery does not satisfy them.
 - Every story remaining unchecked must appear in `Not Checked — How To Fix` with a fix action and a Next Issue reference or new-issue plan.
+- Conditional `Regression Guard` items with no defect fixed in their issue scope are `not applicable` and are excluded from checkbox-gap reporting.
 
 4. Output completeness gate:
 - All three required sections must be present: `Findings`, `Checked Off`, `Not Checked — How To Fix`.
-- Every unchecked or failed-to-reconcile item must appear in `Not Checked — How To Fix` exactly once.
+- Every applicable unchecked or failed-to-reconcile item must appear in `Not Checked — How To Fix` exactly once.
+- `Not applicable` conditional regression guards must not be listed as unchecked gaps; they may be summarized once as an applicability note when useful.
 
 If any gate fails, revise before final output.
 
