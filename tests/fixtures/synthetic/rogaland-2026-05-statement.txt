@@ -1,0 +1,18 @@
+ROGALAND SPAREBANK
+Kontoopplysninger
+Kontonummer:        1234 56 78901
+Kontonavn:          Brukskonto NOK
+Periode:            01.05.2026 - 31.05.2026
+Valuta:             NOK
+
+Dato         Beskrivelse                              Beløp          Saldo
+27.05.2026   SALARY                                  +50 000,00     75 000,00
+26.05.2026   MERCHANT-005 Butikkkjøp                    -97,70      24 902,30
+25.05.2026   MERCHANT_005 Netthandel                   -458,00      25 000,00
+24.05.2026   MERCHANT_007 Valutakjøp GBP                -78,00      25 458,00
+23.05.2026   MERCHANT_008 Dagligvare                   -973,10      25 536,00
+22.05.2026   MERCHANT_009 Dagligvare                   -145,00      26 509,10
+21.05.2026   MERCHANT_010 Dagligvare                   -250,00      26 654,10
+20.05.2026   PAYMENT_EF Overføring                     -350,00      26 904,10
+18.05.2026   MERCHANT_011 Butikkkjøp                    -62,50      27 254,10
+15.05.2026   SALARY_ADVANCE Forskudd                  +5 000,00     27 316,60

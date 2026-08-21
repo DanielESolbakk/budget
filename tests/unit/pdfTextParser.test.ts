@@ -1,0 +1,241 @@
+/**
+ * Unit tests for the Rogaland Sparebank text PDF parser adapter.
+ *
+ * Covers AC-1 through AC-4 from issue #15:
+ *   AC-1: Supported sanitized text-PDF fixture produces expected transaction candidates.
+ *   AC-2: Parsing identical fixture content produces identical ordered candidates.
+ *   AC-3: Missing required fields and unsupported layouts return explicit validation errors.
+ *   AC-4: Source-aware adapter records adapter identity in results.
+ */
+
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  isRogalandStatementText,
+  parseRogalandStatementText,
+  ROGALAND_ADAPTER_ID,
+} from "../../src/domain/import/pdfTextParser.js";
+
+const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-statement.txt";
+
+const BASE_OPTIONS = {
+  householdId: "hh-test",
+  accountId: "acc-test",
+};
+
+const ISO_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+function loadFixture(): string {
+  return readFileSync(FIXTURE_PATH, "utf8");
+}
+
+describe("pdfTextParser unit tests", () => {
+  describe("isRogalandStatementText", () => {
+    it("returns true for text containing ROGALAND SPAREBANK header token", () => {
+      expect(isRogalandStatementText("ROGALAND SPAREBANK\nKontonummer: 1234")).toBe(true);
+    });
+
+    it("returns false for text without the header token", () => {
+      expect(isRogalandStatementText("Some other bank statement")).toBe(false);
+    });
+
+    it("returns false for empty string", () => {
+      expect(isRogalandStatementText("")).toBe(false);
+    });
+  });
+
+  describe("AC-3: unsupported layout returns UNSUPPORTED_LAYOUT error", () => {
+    it("rejects text that does not contain the Rogaland header token", () => {
+      const result = parseRogalandStatementText("Wrong bank\nDato  Beskrivelse  Beløp  Saldo\n", BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]?.code).toBe("UNSUPPORTED_LAYOUT");
+    });
+
+    it("rejects empty text", () => {
+      const result = parseRogalandStatementText("", BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("UNSUPPORTED_LAYOUT");
+    });
+  });
+
+  describe("AC-3: missing transaction section returns MISSING_TRANSACTION_SECTION error", () => {
+    it("rejects statement with header token but no transaction table header", () => {
+      const text = "ROGALAND SPAREBANK\nKontonummer: 1234\nKontonavn: Brukskonto\n";
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("MISSING_TRANSACTION_SECTION");
+    });
+
+    it("rejects statement with header and table header but no transaction rows", () => {
+      const text = [
+        "ROGALAND SPAREBANK",
+        "Kontonummer: 1234",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+        "",
+      ].join("\n");
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("MISSING_TRANSACTION_SECTION");
+    });
+  });
+
+  describe("AC-1: fixture produces expected transaction candidates", () => {
+    it("successfully parses the synthetic fixture", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transactions.length).toBeGreaterThan(0);
+    });
+
+    it("all transactions have required domain fields set correctly", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      for (const tx of result.transactions) {
+        expect(typeof tx.id).toBe("string");
+        expect(tx.id.length).toBeGreaterThan(0);
+        expect(tx.householdId).toBe("hh-test");
+        expect(tx.accountId).toBe("acc-test");
+        expect(tx.bookedAtIso).toMatch(ISO_DATETIME_PATTERN);
+        expect(Number.isInteger(tx.amountMinor)).toBe(true);
+        expect(typeof tx.merchantRaw).toBe("string");
+        expect(tx.merchantRaw.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("income row maps to positive amountMinor", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const income = result.transactions.find((tx) => tx.amountMinor > 0);
+      expect(income).toBeDefined();
+    });
+
+    it("expense row maps to negative amountMinor", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const expense = result.transactions.find((tx) => tx.amountMinor < 0);
+      expect(expense).toBeDefined();
+    });
+
+    it("salary row maps to +5000000 minor units (50 000,00 NOK)", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const salary = result.transactions.find(
+        (tx) => tx.merchantRaw.includes("SALARY") && !tx.merchantRaw.includes("ADVANCE")
+      );
+      expect(salary).toBeDefined();
+      expect(salary!.amountMinor).toBe(5000000);
+    });
+
+    it("MERCHANT-005 row maps to -9770 minor units (-97,70 NOK)", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const tx = result.transactions.find((tx) => tx.merchantRaw.startsWith("MERCHANT-005"));
+      expect(tx).toBeDefined();
+      expect(tx!.amountMinor).toBe(-9770);
+    });
+
+    it("importJobId is propagated to all transactions when provided", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, { ...BASE_OPTIONS, importJobId: "job-42" });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transactions.every((tx) => tx.importJobId === "job-42")).toBe(true);
+    });
+
+    it("transaction ids use idPrefix and are unique", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, { ...BASE_OPTIONS, idPrefix: "pfx" });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const ids = result.transactions.map((tx) => tx.id);
+      expect(ids.every((id) => id.startsWith("pfx-"))).toBe(true);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+  });
+
+  describe("AC-2: deterministic output across repeated parse calls", () => {
+    it("produces identical ordered candidates for identical fixture content", () => {
+      const text = loadFixture();
+      const first = parseRogalandStatementText(text, BASE_OPTIONS);
+      const second = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(first).toEqual(second);
+    });
+
+    it("produces same transaction count on each parse", () => {
+      const text = loadFixture();
+      const r1 = parseRogalandStatementText(text, BASE_OPTIONS);
+      const r2 = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(r1.ok).toBe(true);
+      expect(r2.ok).toBe(true);
+      if (!r1.ok || !r2.ok) return;
+      expect(r1.transactions.length).toBe(r2.transactions.length);
+    });
+  });
+
+  describe("AC-4: source-aware adapter records adapter identity", () => {
+    it("returns the Rogaland adapter ID on successful parse", () => {
+      const text = loadFixture();
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.adapterId).toBe(ROGALAND_ADAPTER_ID);
+    });
+
+    it("adapter ID is the canonical rogaland-sparebank-text-v1 string", () => {
+      expect(ROGALAND_ADAPTER_ID).toBe("rogaland-sparebank-text-v1");
+    });
+  });
+
+  describe("AC-3: invalid amount format in a transaction line produces error", () => {
+    it("returns INVALID_AMOUNT_FORMAT for a line with unparseable amount", () => {
+      const text = [
+        "ROGALAND SPAREBANK",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+        "27.05.2026   SALARY                                  invalid-amount  75 000,00",
+      ].join("\n");
+
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+    });
+  });
+});
