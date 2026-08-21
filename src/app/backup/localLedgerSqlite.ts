@@ -32,7 +32,7 @@ interface CreateLocalLedgerDatabaseOptions {
 }
 
 function defaultLocalDatabasePath(): string {
-  return join(process.cwd(), "data", "local", "budget.sqlite");
+  return process.env.BUDGET_DB_PATH ?? join(process.cwd(), "data", "local", "budget.sqlite");
 }
 
 function ensureSchema(db: DatabaseSync): void {
@@ -57,6 +57,8 @@ function ensureSchema(db: DatabaseSync): void {
       booked_at_iso TEXT NOT NULL,
       amount_minor INTEGER NOT NULL,
       merchant_raw TEXT NOT NULL,
+      currency_code TEXT,
+      source_type TEXT,
       category_id TEXT,
       import_job_id TEXT
     );
@@ -81,20 +83,22 @@ function ensureSchema(db: DatabaseSync): void {
     );
   `);
 
-  const existingColumns = new Set(
-    (db.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>).map(
-      (column) => column.name
-    )
-  );
+  const transactionColumns = db.prepare("PRAGMA table_info(transactions)").all() as Array<{ name: string }>;
+  if (!transactionColumns.some((column) => column.name === "currency_code")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN currency_code TEXT");
+  }
+  if (!transactionColumns.some((column) => column.name === "source_type")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN source_type TEXT");
+  }
 
-  const columnsToAdd = [
+  const importJobColumns = db.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>;
+  const importJobColumnsToAdd = [
     ["adapter_id", "TEXT"],
     ["candidate_count", "INTEGER"],
     ["validation_failure_count", "INTEGER"],
   ] as const;
-
-  for (const [columnName, columnType] of columnsToAdd) {
-    if (!existingColumns.has(columnName)) {
+  for (const [columnName, columnType] of importJobColumnsToAdd) {
+    if (!importJobColumns.some((column) => column.name === columnName)) {
       db.exec(`ALTER TABLE import_jobs ADD COLUMN ${columnName} ${columnType}`);
     }
   }
@@ -124,7 +128,7 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
     }
 
     const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     for (const transaction of seedData.transactions) {
       insertTransaction.run(
@@ -134,6 +138,8 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
         transaction.bookedAtIso,
         transaction.amountMinor,
         transaction.merchantRaw,
+        transaction.currencyCode ?? null,
+        transaction.sourceType ?? null,
         transaction.categoryId ?? null,
         transaction.importJobId ?? null
       );
@@ -210,7 +216,7 @@ export function createLocalLedgerDatabase(
 
     const transactions = db
       .prepare(
-        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id FROM transactions ORDER BY id"
+        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id FROM transactions ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -219,6 +225,8 @@ export function createLocalLedgerDatabase(
       booked_at_iso: string;
       amount_minor: number;
       merchant_raw: string;
+      currency_code: "NOK" | null;
+      source_type: NonNullable<Transaction["sourceType"]> | null;
       category_id: string | null;
       import_job_id: string | null;
     }>;
@@ -254,6 +262,13 @@ export function createLocalLedgerDatabase(
         amountMinor: transaction.amount_minor,
         merchantRaw: transaction.merchant_raw,
       };
+
+      if (transaction.currency_code !== null) {
+        mapped.currencyCode = transaction.currency_code;
+      }
+      if (transaction.source_type !== null) {
+        mapped.sourceType = transaction.source_type;
+      }
 
       if (transaction.category_id !== null) {
         mapped.categoryId = transaction.category_id;
@@ -324,7 +339,7 @@ export function createLocalLedgerDatabase(
 
   function appendImportJob(importJob: ImportJob): void {
     db.prepare(
-      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       importJob.id,
       importJob.householdId,
@@ -340,7 +355,7 @@ export function createLocalLedgerDatabase(
 
   function appendTransactions(transactions: Transaction[]): void {
     const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     db.exec("BEGIN");
     try {
@@ -352,6 +367,8 @@ export function createLocalLedgerDatabase(
           transaction.bookedAtIso,
           transaction.amountMinor,
           transaction.merchantRaw,
+          transaction.currencyCode ?? null,
+          transaction.sourceType ?? null,
           transaction.categoryId ?? null,
           transaction.importJobId ?? null
         );

@@ -10,14 +10,23 @@
  *         in import provenance.
  */
 
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { parseRogalandStatementText, ROGALAND_ADAPTER_ID } from "../../src/domain/import/pdfTextParser.js";
+import {
+  buildRogalandImportJobId,
+  parseRogalandStatementText,
+  ROGALAND_ADAPTER_ID,
+} from "../../src/domain/import/pdfTextParser.js";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { buildDashboardViewContract } from "../../src/app/dashboardApi.js";
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
 } from "../../src/app/import/importPdf.js";
+import type { Account, Household, ImportJob } from "../../src/domain/types.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-statement.txt";
 
@@ -28,8 +37,37 @@ const MAPPING_OPTIONS = {
 
 const ISO_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
+const SAMPLE_HOUSEHOLD: Household = {
+  id: "hh-test",
+  name: "Integration Household",
+  createdAtIso: "2026-01-01T00:00:00Z",
+};
+
+const SAMPLE_ACCOUNT: Account = {
+  id: "acc-test",
+  householdId: SAMPLE_HOUSEHOLD.id,
+  name: "Brukskonto",
+  currencyCode: "NOK",
+};
+
 function loadFixture(): string {
   return readFileSync(FIXTURE_PATH, "utf8");
+}
+
+function makeTestLedger() {
+  const directory = join(tmpdir(), `budget-pdf-integration-${randomUUID()}`);
+  mkdirSync(directory, { recursive: true });
+
+  return createLocalLedgerDatabase({
+    dbPath: join(directory, "test.sqlite"),
+    seedData: {
+      household: SAMPLE_HOUSEHOLD,
+      accounts: [SAMPLE_ACCOUNT],
+      transactions: [],
+      importJobs: [],
+      monthlyCategoryTargets: [],
+    },
+  });
 }
 
 describe("pdf import contract", () => {
@@ -52,6 +90,8 @@ describe("pdf import contract", () => {
         expect(Number.isInteger(tx.amountMinor)).toBe(true);
         expect(typeof tx.merchantRaw).toBe("string");
         expect(tx.merchantRaw.length).toBeGreaterThan(0);
+        expect(tx.currencyCode).toBe("NOK");
+        expect(tx.sourceType).toBe("pdf");
       }
     });
 
@@ -127,6 +167,43 @@ describe("pdf import contract", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.transactions.every((tx) => tx.importJobId === "job-pdf-01")).toBe(true);
+    });
+
+    it("persists adapter provenance and ignores a repeated import", () => {
+      const ledger = makeTestLedger();
+      const text = loadFixture();
+      const importJobId = buildRogalandImportJobId(text, MAPPING_OPTIONS);
+      const result = parseRogalandStatementText(text, {
+        ...MAPPING_OPTIONS,
+        importJobId,
+        idPrefix: importJobId,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const importJob: ImportJob = {
+        id: importJobId,
+        householdId: SAMPLE_HOUSEHOLD.id,
+        sourceType: "pdf",
+        sourceName: "statement.txt",
+        adapterId: result.adapterId,
+        startedAtIso: "2026-05-31T00:00:00Z",
+        finishedAtIso: "2026-05-31T00:00:00Z",
+      };
+
+      ledger.appendImportJob(importJob);
+      ledger.appendTransactions(result.transactions);
+      ledger.appendImportJob(importJob);
+      ledger.appendTransactions(result.transactions);
+
+      const snapshot = ledger.loadLedgerSnapshotData();
+      expect(snapshot.importJobs).toHaveLength(1);
+      expect(snapshot.importJobs[0]?.adapterId).toBe(ROGALAND_ADAPTER_ID);
+      expect(snapshot.transactions).toHaveLength(result.transactions.length);
+      expect(snapshot.transactions.every((tx) => tx.currencyCode === "NOK")).toBe(true);
+      expect(snapshot.transactions.every((tx) => tx.sourceType === "pdf")).toBe(true);
+      ledger.close();
     });
   });
 
