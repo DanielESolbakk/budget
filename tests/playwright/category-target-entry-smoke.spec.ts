@@ -44,26 +44,16 @@ async function launchCategoryTargetWindow(): Promise<{
 }
 
 test.describe("Category target entry renderer smoke", () => {
-  /**
-   * Tests in this describe block share one Electron instance (beforeAll/afterAll).
-   * Scenario 1 and Scenario 3 are independent: both start with empty form fields
-   * (the component's default state on mount) and neither test leaves residual state
-   * that affects the other's assertions.  Scenario 1 explicitly clears the inputs
-   * before finishing; Scenario 3 checks for the presence of an alert which only
-   * appears after a submit action and does not interfere with Scenario 1's
-   * element-visibility assertions.  Tests are defined in execution order so
-   * there is no ordering ambiguity.
-   */
   let app: ElectronApplication;
-  let _window: Page;
+  let window: Page;
   let targetPage: CategoryTargetPage;
   let shell: AppShellPage;
 
-  test.beforeAll(async () => {
-    ({ app, window: _window, targetPage, shell } = await launchCategoryTargetWindow());
+  test.beforeEach(async () => {
+    ({ app, window, targetPage, shell } = await launchCategoryTargetWindow());
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await app.close();
   });
 
@@ -122,12 +112,12 @@ test.describe("Category target entry renderer smoke — save and reload persiste
   let persistWindow: Page;
   let persistTargetPage: CategoryTargetPage;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     ({ app: persistApp, window: persistWindow, targetPage: persistTargetPage } =
       await launchCategoryTargetWindow());
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await persistApp.close();
   });
 

@@ -28,7 +28,7 @@ test.describe("Dashboard renderer smoke", () => {
   let dashboard: DashboardPage;
   let initialMonth: string;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     app = await electron.launch({
       args: [MAIN_ENTRY],
       env: { ...process.env, NODE_ENV: "test" },
@@ -37,20 +37,13 @@ test.describe("Dashboard renderer smoke", () => {
     await window.waitForLoadState("domcontentloaded");
     dashboard = new DashboardPage(window);
     initialMonth = await dashboard.monthSelector.inputValue();
-  });
-
-  test.beforeEach(async () => {
-    // Keep tests isolated from month selection side effects in previous scenarios.
+    // Keep each test isolated from month selection side effects.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
-    const currentMonth = await dashboard.monthSelector.inputValue();
-    if (currentMonth !== initialMonth) {
-      await dashboard.monthSelector.selectOption(initialMonth);
-      await expect(dashboard.monthSelector).toHaveValue(initialMonth);
-    }
+    await expect(dashboard.monthSelector).toHaveValue(initialMonth);
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await app.close();
   });
 

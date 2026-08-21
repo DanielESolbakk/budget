@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 /**
  * Page Object Model for the monthly dashboard sections of the Budget Planner.
@@ -28,17 +28,17 @@ export class DashboardPage {
 
   /** The income definition value inside the monthly totals section. */
   get incomeValue() {
-    return this.monthlyTotalsSection.locator('[aria-label="Income"]');
+    return this.monthlyTotalsSection.getByLabel("Income");
   }
 
   /** The expenses definition value inside the monthly totals section. */
   get expenseValue() {
-    return this.monthlyTotalsSection.locator('[aria-label="Expenses"]');
+    return this.monthlyTotalsSection.getByLabel("Expenses");
   }
 
   /** The net definition value inside the monthly totals section. */
   get netValue() {
-    return this.monthlyTotalsSection.locator('[aria-label="Net"]');
+    return this.monthlyTotalsSection.getByLabel("Net");
   }
 
   /** The landmark region wrapping the category breakdown (aria-label="Category Breakdown"). */
@@ -64,19 +64,13 @@ export class DashboardPage {
   /** Select a different month option than the current one and return the selected month value. */
   async selectDifferentMonth(currentMonth: string): Promise<string> {
     const options = await this.monthSelector
-      .locator("option")
+      .getByRole("option")
       .evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
     const candidates = options.filter((option) => option !== currentMonth);
 
     for (const candidate of candidates) {
       await this.monthSelector.selectOption(candidate);
-      await this.page.waitForFunction(
-        (value) => {
-          const select = document.querySelector('[aria-label="Select month"]') as HTMLSelectElement | null;
-          return select?.value === value;
-        },
-        candidate
-      );
+      await expect(this.monthSelector).toHaveValue(candidate);
 
       try {
         await this.incomeValue.waitFor({ state: "visible", timeout: 1500 });

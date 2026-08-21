@@ -28,7 +28,7 @@ test.describe("No-network guard smoke", () => {
   let shell: AppShellPage;
   let dashboard: DashboardPage;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     app = await electron.launch({
       args: [MAIN_ENTRY],
       env: { ...process.env, NODE_ENV: "test" },
@@ -39,7 +39,7 @@ test.describe("No-network guard smoke", () => {
     dashboard = new DashboardPage(window);
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await app.close();
   });
 

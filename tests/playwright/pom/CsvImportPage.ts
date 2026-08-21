@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
 
 /**
  * Page Object Model for the CSV Import section of the Budget Planner.
@@ -27,7 +27,7 @@ export class CsvImportPage {
 
   /** The file path text input. */
   get filePathInput() {
-    return this.page.locator("#csv-file-path");
+    return this.page.getByRole("textbox", { name: "CSV file path" });
   }
 
   /** The Import CSV action button. */

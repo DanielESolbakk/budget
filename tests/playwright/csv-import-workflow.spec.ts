@@ -42,7 +42,7 @@ test.describe("CSV import renderer workflow", () => {
   let csvImportPage: CsvImportPage;
   let dashboardPage: DashboardPage;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     app = await electron.launch({
       args: [MAIN_ENTRY],
       env: { ...process.env, NODE_ENV: "test" },
@@ -53,7 +53,7 @@ test.describe("CSV import renderer workflow", () => {
     dashboardPage = new DashboardPage(window);
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await app.close();
   });
 

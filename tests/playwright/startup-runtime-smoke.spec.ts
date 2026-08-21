@@ -32,7 +32,7 @@ test.describe("Electron startup smoke", () => {
   let forecast: ForecastPage;
   let bridge: PreloadBridgePage;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     app = await electron.launch({
       args: [MAIN_ENTRY],
       env: { ...process.env, NODE_ENV: "test" },
@@ -44,7 +44,7 @@ test.describe("Electron startup smoke", () => {
     bridge = new PreloadBridgePage(window);
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await app.close();
   });
 
@@ -98,7 +98,7 @@ test.describe("Electron startup smoke — fallback branch", () => {
   let fallbackWindow: Page;
   let fallbackForecast: ForecastPage;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     fallbackApp = await electron.launch({
       args: [MAIN_ENTRY],
       env: { ...process.env, NODE_ENV: "test" },
@@ -121,7 +121,7 @@ test.describe("Electron startup smoke — fallback branch", () => {
     await fallbackWindow.reload();
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await fallbackApp.close();
   });
 

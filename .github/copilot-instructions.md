@@ -127,9 +127,10 @@ Avoid inventing near-duplicates for the same concept.
 
 ## Playwright Implementation Policy
 
-- For Playwright work, use `.github/instructions/playwright.instructions.md` and `.agents/skills/playwright-skill/SKILL.md` as the implementation contract.
-- Required packs remain mandatory: core, ci, pom.
-- If assigned Playwright coverage cannot be completed to this standard, post a concise blocker instead of shipping partial coverage.
+- Canonical detailed contract: `.agents/skills/playwright-skill/SKILL.md`. Do not create a second Playwright rule set in issue bodies or other instruction files.
+- `.github/instructions/playwright.instructions.md` is only the path trigger and pointer to that canonical skill.
+- For an assigned Playwright issue, read the canonical skill before editing, use its required packs (`core`, `ci`, `pom`), and follow its locator, waiting, isolation, fixture, and artifact rules.
+- If assigned Playwright coverage cannot be completed to that contract, post a concise blocker instead of shipping partial coverage.
 
 ## Change Management
 

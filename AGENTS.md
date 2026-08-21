@@ -13,7 +13,7 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Follow PR guardrails from `.github/copilot-instructions.md`: AC mapping, test evidence checkbox, and planning-validity checks.
 - Follow planning formatting and hierarchy rules from `.github/copilot-instructions.md` and issue templates.
 - Follow privacy and architecture constraints from `.github/copilot-instructions.md`; do not add cloud processing or telemetry for transaction content.
-- For Playwright issues, use `.github/instructions/playwright.instructions.md` and `.agents/skills/playwright-skill/SKILL.md`.
+- For Playwright issues, treat `.agents/skills/playwright-skill/SKILL.md` as the only detailed implementation authority; `.github/instructions/playwright.instructions.md` is a pointer, not a competing rule set.
 - If permissions prevent issue/PR body edits, post one concise owner action checklist and stop retry loops.
 
 ## Build And Test Commands

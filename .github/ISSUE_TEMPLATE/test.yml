@@ -113,6 +113,20 @@ body:
       required: true
 
   - type: textarea
+    id: playwright_implementation_standards
+    attributes:
+      label: Playwright Implementation Standards
+      description: Include this section only for Playwright runtime tests. Point to the canonical skill; do not copy its rules into the issue.
+      placeholder: |
+        Canonical contract: .agents/skills/playwright-skill/SKILL.md
+        Test command: npm run test:e2e:playwright
+        Required packs: core, ci, pom
+        Runtime entry points: tests/playwright/ and tests/playwright/pom/
+        Completion rule: stop and report a blocker if the assigned coverage cannot meet the canonical contract.
+    validations:
+      required: false
+
+  - type: textarea
     id: scenarios
     attributes:
       label: Test Scenarios

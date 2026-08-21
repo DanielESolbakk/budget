@@ -106,11 +106,11 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
   let _window: Page;
   let targetPage: DashboardTargetPage;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     ({ app, window: _window, targetPage } = await launchDashboardTargetWindow());
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await app.close();
   });
 
@@ -144,11 +144,11 @@ test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () =
   let window: Page;
   let targetPage: DashboardTargetPage;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     ({ app, window, targetPage } = await launchDashboardTargetWindow());
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await app.close();
   });
 
