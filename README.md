@@ -23,6 +23,19 @@ npm start
 
 This command builds the renderer and main process and opens the Electron desktop window. The app runs entirely locally — no network connection is required.
 
+### Import a digital text PDF statement
+
+Use the PDF import flow in the desktop app to load a local text-based statement exported by a supported bank. The current adapter is focused on Rogaland Sparebank digital text statements that include the `ROGALAND SPAREBANK` header and a `Dato  Beskrivelse` transaction table.
+
+Example local usage:
+
+```bash
+# Example fixture path in the repo
+# tests/fixtures/synthetic/rogaland-2026-05-statement.txt
+```
+
+The app validates the file before import, rejects unsupported layouts without partial writes, and records the adapter identity in the import provenance metadata. All processing stays local by default and the no-network guard blocks outbound external requests during the import flow.
+
 ### Build for production
 
 ```bash
