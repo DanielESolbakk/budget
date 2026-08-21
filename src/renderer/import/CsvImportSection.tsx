@@ -23,7 +23,7 @@ export function CsvImportSection({ onImportSuccess }: CsvImportSectionProps): Re
     setImportState({ status: "pending" });
 
     window.budgetApi.import
-      .importCsv(trimmedPath)
+      .importCsv({ filePath: trimmedPath })
       .then((response) => {
         if (response.ok) {
           setImportState({
@@ -31,7 +31,10 @@ export function CsvImportSection({ onImportSuccess }: CsvImportSectionProps): Re
             importJobId: response.importJobId,
             transactionCount: response.transactionCount,
           });
-          onImportSuccess();
+          setFilePath("");
+          setTimeout(() => {
+            onImportSuccess();
+          }, 0);
         } else {
           setImportState({ status: "validation", errors: response });
         }

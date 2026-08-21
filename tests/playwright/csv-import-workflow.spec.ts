@@ -93,6 +93,20 @@ test.describe("CSV import renderer workflow", () => {
       .not.toBe(beforeIncomeText);
   });
 
+  test("Regression: successful import keeps success feedback visible before and after dashboard refresh", async () => {
+    await expect(csvImportPage.importSection).toBeVisible();
+
+    await csvImportPage.submitImport(FIXTURE_PATH);
+
+    // Regression guard for the previous refresh race: success feedback must be observable.
+    await expect(csvImportPage.successStatus).toBeVisible({ timeout: 10_000 });
+    await expect(csvImportPage.successStatus).toContainText(/transactions imported/i);
+
+    // Refresh now runs without tearing down the section and clears the input for next import.
+    await expect(csvImportPage.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(csvImportPage.importSection).toBeVisible();
+  });
+
   test("Scenario 2: importing an unsupported CSV shape reports validation errors and leaves dashboard unchanged", async () => {
     // Ensure dashboard is in a known state before the invalid import.
     await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
