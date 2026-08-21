@@ -81,6 +81,8 @@ Use these templates when rewriting issue bodies. Keep section headings exact and
 ### Acceptance Criteria To Test Mapping
 
 - AC-1 | [test-level] | #TEST_ISSUE | [test-file-path]
+
+Mapping rule: AC IDs belong to this issue. If the test issue is story- or enabler-scoped, identify the source issue in `Parent AC IDs Covered` and do not infer feature AC completion from a matching child AC number. A feature mapping that reuses child-test evidence must explicitly state that the evidence covers the feature AC.
 - AC-2 | [test-level] | #TEST_ISSUE | [test-file-path]
 ```
 
@@ -236,7 +238,7 @@ Note: if repository validation requires this section to be non-empty, do not use
 
 ### Parent AC IDs Covered
 
-- AC-1
+- AC-1 (from #PARENT_STORY_OR_ENABLER)
 
 ### Test Level
 

@@ -57,7 +57,7 @@ body:
     id: parent_ac_ids
     attributes:
       label: Parent AC IDs Covered
-      description: List each parent acceptance criterion this test issue validates.
+      description: List each acceptance criterion from the immediate Parent Story Or Enabler Issue. AC numbers are local to that issue; do not copy AC IDs from Related Planning Issues or the Parent Feature Issue.
       placeholder: |
         - AC-1 (from #201)
         - AC-2 (from #201)
@@ -126,10 +126,10 @@ body:
     id: pass_criteria
     attributes:
       label: Pass Criteria
-      description: Use AC IDs local to this test issue for deterministic completion checks.
+      description: Use AC IDs local to this test issue and retain the source parent reference in each criterion.
       placeholder: |
-        - [ ] AC-1: ...
-        - [ ] AC-2: ...
+        - [ ] AC-1 (from #201): ...
+        - [ ] AC-2 (from #201): ...
     validations:
       required: true
 

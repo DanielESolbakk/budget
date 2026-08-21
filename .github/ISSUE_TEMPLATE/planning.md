@@ -23,6 +23,8 @@ Acceptance Criteria (use AC IDs):
 Acceptance Criteria To Test Mapping:
 
 - Format: `- AC-<n> | <test-level> | <test-id> | <test-file-path>`
+- AC IDs are local to this issue. Test issues must qualify each parent AC as `(from #PARENT_STORY_OR_ENABLER)`.
+- Do not infer a feature AC from a child story or enabler AC with the same number; explicitly state when child-test evidence covers the feature AC.
 - Allowed test levels: `unit`, `integration`, `vitest-e2e-smoke`, `playwright-runtime-e2e`, `performance`, `privacy`, `no-network`
 - AC-1 | integration | import ledger totals remain stable | tests/integration/importLedger.test.ts
 - AC-2 | vitest-e2e-smoke | low confidence review queue is visible | tests/e2e/workflow-smoke.test.ts

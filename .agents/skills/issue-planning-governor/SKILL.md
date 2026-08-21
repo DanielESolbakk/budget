@@ -50,6 +50,9 @@ Apply these rules in every run.
 - R10 Validation timeout is a hard stop: if no processing signal within 180 seconds, escalate validation-timeout and stop.
 - R11 Feature/story readiness requires status coherence across linked issues and blockers.
 - R12 If test issue is required, acceptance criteria traceability must be complete: all parent AC IDs must be covered in linked test issue mapping.
+- R12a Acceptance-criteria ownership is local to the declaring issue. `AC-1` on a feature, story, enabler, or test issue is not the same criterion as `AC-1` on another issue.
+- R12b A test issue's `Parent AC IDs Covered` must name the immediate parent issue as the AC source. Do not derive AC ownership from `Related Planning Issues` or `Parent Feature Issue` when `Parent Story Or Enabler Issue` is present.
+- R12c A feature may reuse evidence from a child story or enabler test only when the feature mapping explicitly names the feature AC as the covered scope. Do not mark a feature AC complete solely because a related story test has the same numeric AC ID.
 - R13 Autonomous repair is default for `govern` runs:
   - if Step 3 returns planning-invalid, execute Step 3a repair in the same run.
   - only escalate after repair limit or hard blocker.
@@ -103,6 +106,7 @@ Run these checks explicitly at Step 4.
 - G6 AC traceability completeness:
   - if test issue required, all parent AC IDs are present in linked test issue Acceptance Criteria Mapping.
   - if test issue required, the issue set covers unit (Vitest), integration (Vitest), and runtime end-to-end (Playwright), or explicitly documents deferred layers with follow-up issue refs.
+- G6a AC provenance: every test issue AC entry identifies the immediate parent issue, and every feature mapping distinguishes feature AC evidence from child-story AC evidence.
 - G7 Status coherence:
   - blockers are explicit, open/relevant, and non-circular.
   - completion claims do not conflict with linked issue states.

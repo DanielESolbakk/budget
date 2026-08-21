@@ -119,7 +119,7 @@ body:
     id: test_mapping
     attributes:
       label: Acceptance Criteria To Test Mapping
-      description: Map each AC ID to strict evidence rows using AC-ID | test-level | test-id | test-file-path.
+      description: Map each feature-local AC ID to strict evidence rows using AC-ID | test-level | test-id | test-file-path. Child story or enabler tests may be reused only when the mapping text explicitly says the evidence covers this feature AC; matching numeric AC IDs alone are not sufficient.
       placeholder: |
         - AC-1 | integration | import ledger totals remain stable | tests/integration/importLedger.test.ts
         - AC-2 | vitest-e2e-smoke | low confidence review queue is visible | tests/e2e/workflow-smoke.test.ts
