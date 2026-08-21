@@ -31,6 +31,8 @@ describe("AC traceability governance checks", () => {
 
     expect(planningSkill).toContain("R16 Frontend planning completeness");
     expect(planningSkill).toContain("G9 Frontend planning completeness");
+    expect(planningSkill).toContain("Issues without renderer entry points or UI changes are exempt from R16");
+    expect(planningSkill).toContain("If the issue has no renderer entry points or UI changes, G9 is not applicable");
     for (const requirement of [
       "design direction",
       "design-system preservation",
