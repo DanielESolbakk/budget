@@ -20,6 +20,7 @@ import { test, expect, _electron as electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { PdfImportPage } from "./pom/PdfImportPage.js";
 import { DashboardPage } from "./pom/DashboardPage.js";
@@ -43,9 +44,10 @@ test.describe("PDF import renderer workflow", () => {
   let dashboardPage: DashboardPage;
 
   test.beforeEach(async () => {
+    const databasePath = join(tmpdir(), "budget-playwright-pdf", randomUUID(), "budget.sqlite");
     app = await electron.launch({
       args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
+      env: { ...process.env, NODE_ENV: "test", BUDGET_DB_PATH: databasePath },
     });
     window = await app.firstWindow();
     await window.waitForLoadState("domcontentloaded");

@@ -32,7 +32,7 @@ interface CreateLocalLedgerDatabaseOptions {
 }
 
 function defaultLocalDatabasePath(): string {
-  return join(process.cwd(), "data", "local", "budget.sqlite");
+  return process.env.BUDGET_DB_PATH ?? join(process.cwd(), "data", "local", "budget.sqlite");
 }
 
 function ensureSchema(db: DatabaseSync): void {
