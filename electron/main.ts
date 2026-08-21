@@ -26,7 +26,10 @@ import {
 } from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
-import { parseRogalandStatementText } from "../src/domain/import/pdfTextParser.js";
+import {
+  buildRogalandImportJobId,
+  parseRogalandStatementText,
+} from "../src/domain/import/pdfTextParser.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -327,7 +330,10 @@ app.whenReady().then(() => {
         return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
       }
 
-      const importJobId = `import-pdf-${Date.now()}`;
+      const importJobId = buildRogalandImportJobId(pdfText, {
+        householdId: request.householdId,
+        accountId: request.accountId,
+      });
       const now = new Date().toISOString();
 
       const parseResult = parseRogalandStatementText(pdfText, {
@@ -346,6 +352,7 @@ app.whenReady().then(() => {
         householdId: request.householdId,
         sourceType: "pdf",
         sourceName: request.filePath,
+        adapterId: parseResult.adapterId,
         startedAtIso: now,
         finishedAtIso: now,
       };
@@ -353,8 +360,12 @@ app.whenReady().then(() => {
       localLedgerDatabase.appendImportJob(importJob);
       localLedgerDatabase.appendTransactions(parseResult.transactions);
 
+      const existingIds = new Set(liveTransactions.map((transaction) => transaction.id));
       for (const transaction of parseResult.transactions) {
-        liveTransactions.push(transaction);
+        if (!existingIds.has(transaction.id)) {
+          liveTransactions.push(transaction);
+          existingIds.add(transaction.id);
+        }
       }
 
       return {
