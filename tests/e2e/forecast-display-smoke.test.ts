@@ -53,6 +53,7 @@ function createFakeBudgetApi(): BudgetApi {
     },
     import: {
       importCsv: async () => ({ ok: true as const, importJobId: "", transactionCount: 0 }),
+      importPdf: async () => ({ ok: true as const, importJobId: "", transactionCount: 0, adapterId: "" }),
     },
   };
 }

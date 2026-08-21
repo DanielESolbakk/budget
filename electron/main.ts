@@ -19,8 +19,14 @@ import {
   normalizeCsvImportErrors,
   type CsvImportResponse,
 } from "../src/app/import/importCsv.js";
+import {
+  buildPdfImportRequest,
+  normalizePdfImportErrors,
+  type PdfImportResponse,
+} from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
+import { parseRogalandStatementText } from "../src/domain/import/pdfTextParser.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -297,6 +303,65 @@ app.whenReady().then(() => {
         ok: true,
         importJobId,
         transactionCount: result.transactions.length,
+      };
+    }
+  );
+
+  ipcMain.handle(
+    "import:pdf",
+    (
+      _event,
+      input: { filePath: string; accountId?: string }
+    ): PdfImportResponse => {
+      const householdId = sampleHousehold.id;
+      const accountId = input.accountId ?? resolveDefaultAccountId(householdId);
+
+      const request = buildPdfImportRequest(input.filePath, { householdId, accountId });
+
+      let pdfText: string;
+      try {
+        pdfText = readFileSync(request.filePath, "utf8");
+      } catch (fileError) {
+        const message =
+          fileError instanceof Error ? fileError.message : "Could not read PDF text file.";
+        return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
+      }
+
+      const importJobId = `import-pdf-${Date.now()}`;
+      const now = new Date().toISOString();
+
+      const parseResult = parseRogalandStatementText(pdfText, {
+        householdId: request.householdId,
+        accountId: request.accountId,
+        importJobId,
+        idPrefix: importJobId,
+      });
+
+      if (!parseResult.ok) {
+        return normalizePdfImportErrors(parseResult.errors);
+      }
+
+      const importJob: ImportJob = {
+        id: importJobId,
+        householdId: request.householdId,
+        sourceType: "pdf",
+        sourceName: request.filePath,
+        startedAtIso: now,
+        finishedAtIso: now,
+      };
+
+      localLedgerDatabase.appendImportJob(importJob);
+      localLedgerDatabase.appendTransactions(parseResult.transactions);
+
+      for (const transaction of parseResult.transactions) {
+        liveTransactions.push(transaction);
+      }
+
+      return {
+        ok: true,
+        importJobId,
+        transactionCount: parseResult.transactions.length,
+        adapterId: parseResult.adapterId,
       };
     }
   );

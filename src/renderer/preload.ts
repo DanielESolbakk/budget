@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
 import type { ExportCsvFileOutput, ExportCsvOutput } from "../app/exportCsv.js";
 import type { CsvImportResponse } from "../app/import/importCsv.js";
+import type { PdfImportResponse } from "../app/import/importPdf.js";
 import type {
   ForecastEntry,
   MonthlyCategoryTarget,
@@ -35,6 +36,7 @@ export interface ExportApi {
 
 export interface ImportApi {
   importCsv: (input: { filePath: string; accountId?: string }) => Promise<CsvImportResponse>;
+  importPdf: (input: { filePath: string; accountId?: string }) => Promise<PdfImportResponse>;
 }
 
 export interface BackupApi {
@@ -76,6 +78,8 @@ const budgetApi: BudgetApi = {
   import: {
     importCsv: (input: { filePath: string; accountId?: string }): Promise<CsvImportResponse> =>
       ipcRenderer.invoke("import:csv", input),
+    importPdf: (input: { filePath: string; accountId?: string }): Promise<PdfImportResponse> =>
+      ipcRenderer.invoke("import:pdf", input),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>
