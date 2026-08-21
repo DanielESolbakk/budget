@@ -23,6 +23,86 @@ export interface Transaction {
   importJobId?: string;
 }
 
+/**
+ * Raw input provided by a household user when manually entering a transaction.
+ * All fields are strings at the boundary; validation converts them to canonical types.
+ */
+export interface ManualEntryInput {
+  householdId: string;
+  accountId: string;
+  /** ISO 8601 date string, e.g. "2026-05-23" or "2026-05-23T00:00:00Z". */
+  bookedAtIso: string;
+  /** Transaction amount in minor units (integer, may be negative for expenses). */
+  amountMinor: number;
+  /** Raw merchant or description text as entered by the user. */
+  merchantRaw: string;
+  /** Optional category identifier. */
+  categoryId?: string;
+}
+
+export type ManualEntryValidationErrorCode =
+  | "INVALID_HOUSEHOLD_ID"
+  | "INVALID_ACCOUNT_ID"
+  | "INVALID_BOOKED_AT_ISO"
+  | "INVALID_AMOUNT_MINOR_INTEGER"
+  | "INVALID_MERCHANT_RAW";
+
+export interface ManualEntryValidationError {
+  code: ManualEntryValidationErrorCode;
+  message: string;
+}
+
+export class ManualEntryValidationException extends Error {
+  readonly code: ManualEntryValidationErrorCode;
+
+  constructor(error: ManualEntryValidationError) {
+    super(error.message);
+    this.name = "ManualEntryValidationException";
+    this.code = error.code;
+  }
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(T\d{2}:\d{2}:\d{2}Z)?$/;
+
+/**
+ * Validates a manual entry input.
+ * Throws ManualEntryValidationException when any field is invalid;
+ * otherwise returns the input unchanged.
+ */
+export function validateManualEntryInput(input: ManualEntryInput): ManualEntryInput {
+  if (!input.householdId.trim()) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_HOUSEHOLD_ID",
+      message: "householdId must be a non-empty string.",
+    });
+  }
+  if (!input.accountId.trim()) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_ACCOUNT_ID",
+      message: "accountId must be a non-empty string.",
+    });
+  }
+  if (!ISO_DATE_PATTERN.test(input.bookedAtIso.trim())) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_BOOKED_AT_ISO",
+      message: `bookedAtIso must be a valid ISO 8601 date: ${input.bookedAtIso}`,
+    });
+  }
+  if (!Number.isInteger(input.amountMinor)) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_AMOUNT_MINOR_INTEGER",
+      message: `amountMinor must be an integer: ${input.amountMinor}`,
+    });
+  }
+  if (!input.merchantRaw.trim()) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_MERCHANT_RAW",
+      message: "merchantRaw must be a non-empty string.",
+    });
+  }
+  return input;
+}
+
 export interface ImportJob {
   id: string;
   householdId: string;

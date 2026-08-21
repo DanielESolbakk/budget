@@ -19,6 +19,10 @@ import {
   normalizeCsvImportErrors,
   type CsvImportResponse,
 } from "../src/app/import/importCsv.js";
+import {
+  submitManualEntry,
+  type ManualEntryResponse,
+} from "../src/app/import/manualEntry.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
 import type {
@@ -31,6 +35,7 @@ import {
   type Household,
   type Account,
   type ImportJob,
+  type ManualEntryInput,
   type MonthlyCategoryTargetInput,
   type MonthlyTotal,
   type Transaction,
@@ -298,6 +303,33 @@ app.whenReady().then(() => {
         importJobId,
         transactionCount: result.transactions.length,
       };
+    }
+  );
+
+  ipcMain.handle(
+    "transaction:addManual",
+    (_event, input: unknown): ManualEntryResponse => {
+      if (
+        typeof input !== "object" ||
+        input === null ||
+        typeof (input as Record<string, unknown>).householdId !== "string" ||
+        typeof (input as Record<string, unknown>).accountId !== "string" ||
+        typeof (input as Record<string, unknown>).bookedAtIso !== "string" ||
+        typeof (input as Record<string, unknown>).amountMinor !== "number" ||
+        typeof (input as Record<string, unknown>).merchantRaw !== "string"
+      ) {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_HOUSEHOLD_ID",
+          message: "Manual entry input is missing required fields or has invalid types.",
+        };
+      }
+      const response = submitManualEntry(input as ManualEntryInput, liveTransactions, localLedgerDatabase);
+      if (response.ok) {
+        liveTransactions.push(response.transaction);
+      }
+      return response;
     }
   );
 

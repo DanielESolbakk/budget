@@ -53,6 +53,7 @@ function createFakeBudgetApi(): BudgetApi {
     },
     import: {
       importCsv: async () => ({ ok: true as const, importJobId: "", transactionCount: 0 }),
+      addManualTransaction: async () => ({ ok: false as const, reason: "validation" as const, code: "INVALID_MERCHANT_RAW", message: "" }),
     },
   };
 }

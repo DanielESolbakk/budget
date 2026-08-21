@@ -2,8 +2,10 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
 import type { ExportCsvFileOutput, ExportCsvOutput } from "../app/exportCsv.js";
 import type { CsvImportResponse } from "../app/import/importCsv.js";
+import type { ManualEntryResponse } from "../app/import/manualEntry.js";
 import type {
   ForecastEntry,
+  ManualEntryInput,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
   Transaction,
@@ -35,6 +37,7 @@ export interface ExportApi {
 
 export interface ImportApi {
   importCsv: (input: { filePath: string; accountId?: string }) => Promise<CsvImportResponse>;
+  addManualTransaction: (input: ManualEntryInput) => Promise<ManualEntryResponse>;
 }
 
 export interface BackupApi {
@@ -76,6 +79,8 @@ const budgetApi: BudgetApi = {
   import: {
     importCsv: (input: { filePath: string; accountId?: string }): Promise<CsvImportResponse> =>
       ipcRenderer.invoke("import:csv", input),
+    addManualTransaction: (input: ManualEntryInput): Promise<ManualEntryResponse> =>
+      ipcRenderer.invoke("transaction:addManual", input),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>
