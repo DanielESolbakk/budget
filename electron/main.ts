@@ -26,7 +26,7 @@ import {
 } from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
-import { parseRogalandStatementText } from "../src/domain/import/pdfTextParser.js";
+import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -330,7 +330,7 @@ app.whenReady().then(() => {
       const importJobId = `import-pdf-${Date.now()}`;
       const now = new Date().toISOString();
 
-      const parseResult = parseRogalandStatementText(pdfText, {
+      const parseResult = defaultParserAdapterRegistry.parse(pdfText, {
         householdId: request.householdId,
         accountId: request.accountId,
         importJobId,
@@ -346,21 +346,24 @@ app.whenReady().then(() => {
         householdId: request.householdId,
         sourceType: "pdf",
         sourceName: request.filePath,
+        adapterId: parseResult.adapterId,
+        candidateCount: parseResult.candidates.length,
+        validationFailureCount: 0,
         startedAtIso: now,
         finishedAtIso: now,
       };
 
       localLedgerDatabase.appendImportJob(importJob);
-      localLedgerDatabase.appendTransactions(parseResult.transactions);
+      localLedgerDatabase.appendTransactions(parseResult.candidates);
 
-      for (const transaction of parseResult.transactions) {
+      for (const transaction of parseResult.candidates) {
         liveTransactions.push(transaction);
       }
 
       return {
         ok: true,
         importJobId,
-        transactionCount: parseResult.transactions.length,
+        transactionCount: parseResult.candidates.length,
         adapterId: parseResult.adapterId,
       };
     }

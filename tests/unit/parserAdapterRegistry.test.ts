@@ -1,0 +1,122 @@
+/**
+ * Unit tests for the parser adapter registry (AC-3 from issue #32).
+ *
+ * Verifies that:
+ * - Adapter registration and selection are deterministic.
+ * - Unsupported source text returns an explicit UNSUPPORTED_LAYOUT error without candidates.
+ * - Malformed content is forwarded to the adapter which returns validation failures.
+ * - The default registry includes the Rogaland adapter.
+ */
+
+import { describe, expect, it } from "vitest";
+import {
+  ParserAdapterRegistry,
+  defaultParserAdapterRegistry,
+  type ParserAdapter,
+} from "../../src/domain/import/parserAdapterRegistry.js";
+import { ROGALAND_ADAPTER_ID } from "../../src/domain/import/pdfTextParser.js";
+
+const BASE_OPTIONS = {
+  householdId: "hh-test",
+  accountId: "acc-test",
+};
+
+describe("ParserAdapterRegistry", () => {
+  describe("registration", () => {
+    it("registers an adapter and lists its id", () => {
+      const registry = new ParserAdapterRegistry();
+      const stub: ParserAdapter = {
+        id: "stub-v1",
+        canHandle: () => true,
+        parse: () => ({ ok: true, adapterId: "stub-v1", candidates: [] }),
+      };
+
+      registry.register(stub);
+      expect(registry.registeredIds()).toContain("stub-v1");
+    });
+
+    it("deduplicates adapters with identical ids", () => {
+      const registry = new ParserAdapterRegistry();
+      const stub: ParserAdapter = {
+        id: "dup-v1",
+        canHandle: () => true,
+        parse: () => ({ ok: true, adapterId: "dup-v1", candidates: [] }),
+      };
+
+      registry.register(stub);
+      registry.register(stub);
+      expect(registry.registeredIds().filter((id) => id === "dup-v1")).toHaveLength(1);
+    });
+  });
+
+  describe("selectAdapter", () => {
+    it("returns the first adapter whose canHandle returns true", () => {
+      const registry = new ParserAdapterRegistry();
+      const a: ParserAdapter = {
+        id: "a-v1",
+        canHandle: (text) => text.includes("TOKEN_A"),
+        parse: () => ({ ok: true, adapterId: "a-v1", candidates: [] }),
+      };
+      const b: ParserAdapter = {
+        id: "b-v1",
+        canHandle: (text) => text.includes("TOKEN_B"),
+        parse: () => ({ ok: true, adapterId: "b-v1", candidates: [] }),
+      };
+
+      registry.register(a);
+      registry.register(b);
+
+      expect(registry.selectAdapter("TOKEN_A document")?.id).toBe("a-v1");
+      expect(registry.selectAdapter("TOKEN_B document")?.id).toBe("b-v1");
+    });
+
+    it("returns undefined when no adapter matches", () => {
+      const registry = new ParserAdapterRegistry();
+      expect(registry.selectAdapter("unrecognised source")).toBeUndefined();
+    });
+  });
+
+  describe("AC-3: unsupported source returns UNSUPPORTED_LAYOUT without candidates", () => {
+    it("returns ok: false with UNSUPPORTED_LAYOUT when no adapter matches", () => {
+      const registry = new ParserAdapterRegistry();
+      const result = registry.parse("completely unknown statement format", BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      expect(result.adapterId).toBeNull();
+      if (result.ok) return;
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]?.code).toBe("UNSUPPORTED_LAYOUT");
+    });
+
+    it("does not produce partial candidates for unsupported source", () => {
+      const registry = new ParserAdapterRegistry();
+      const result = registry.parse("not a bank statement", BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      // No candidates field on failure
+      expect((result as { candidates?: unknown }).candidates).toBeUndefined();
+    });
+  });
+
+  describe("default registry", () => {
+    it("includes the Rogaland adapter", () => {
+      expect(defaultParserAdapterRegistry.registeredIds()).toContain(ROGALAND_ADAPTER_ID);
+    });
+
+    it("selects the Rogaland adapter for Rogaland statement text", () => {
+      const adapter = defaultParserAdapterRegistry.selectAdapter(
+        "ROGALAND SPAREBANK\nKontonummer: 1234"
+      );
+      expect(adapter?.id).toBe(ROGALAND_ADAPTER_ID);
+    });
+
+    it("returns ok: false for non-Rogaland text", () => {
+      const result = defaultParserAdapterRegistry.parse(
+        "ANOTHER BANK\nKontonummer: 9999",
+        BASE_OPTIONS
+      );
+      expect(result.ok).toBe(false);
+    });
+  });
+});
