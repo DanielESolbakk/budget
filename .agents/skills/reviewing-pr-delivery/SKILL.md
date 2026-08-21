@@ -5,7 +5,7 @@ compatibility: Requires GitHub issue/PR read tools, local repository file access
 metadata:
   owner: budget-repo
   workflow: pr-review
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Reviewing PR Delivery
@@ -23,7 +23,7 @@ In scope:
 
 Out of scope:
 - Implementing code fixes
-- Broad issue-body rewrites or label changes
+- Broad issue-body rewrites or label changes; the only structural exception is the one-to-one narrative story conversion explicitly defined in Story-Line Handling
 - Merge decisions
 
 ## Required Inputs
@@ -97,7 +97,7 @@ Apply these rules throughout the review:
 - Allowed sections: `Technical Requirements`, `Technical Tasks`, `Stories Enabled`, `User Stories In This Feature`, `Acceptance Criteria`.
 - Feature user stories may be synced when the review has hard proof for the story text itself.
 - Test issues may also sync `Playwright Implementation Standards`, `Acceptance Criteria Mapping`, `Test Scenarios`, `Pass Criteria`, and `Regression Guard`.
-- Preserve all non-checkbox text exactly.
+- Preserve all non-checkbox text exactly, except for the one-to-one narrative story conversion explicitly permitted in Story-Line Handling.
 - Do not edit the PR body or post sync comments.
 
 ### Per-Issue Sync Matrix
@@ -127,6 +127,7 @@ Issue | Section | Checkbox item | Pre-state | Target state | Proof artifact | Po
 
 ## Story-Line Handling
 
+- This is the only allowed structural mutation to an issue body. It is an exception to the non-checkbox preservation rule and does not authorize any other rewrite.
 - If `User Stories In This Feature` uses narrative lines (not checkboxes), convert each line into an unchecked checkbox item before sync decisions.
 - Conversion rule: preserve each original story sentence verbatim as the checkbox label; do not rewrite wording.
 - After conversion, reconcile each story line to the proved target state.
@@ -249,7 +250,7 @@ Escalation message format:
 - Keep terminology consistent with repository domain language.
 - Use forward slashes in all skill file paths.
 - For semantic-intent findings, include quote-level evidence from the cited issue.
-- For checkbox sync, preserve all non-checkbox text exactly.
+- For checkbox sync, preserve all non-checkbox text exactly, except for the one-to-one narrative story conversion explicitly permitted in Story-Line Handling.
 - Never mutate the PR body or post PR comments as part of checkbox sync.
 - Never post issue comments just to summarize checkbox sync results.
 - Keep output compact: one evidence line and one fix per finding/gap; do not repeat narrative across sections.
