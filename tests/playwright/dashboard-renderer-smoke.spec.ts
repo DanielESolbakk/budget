@@ -17,6 +17,8 @@
 
 import { test, expect } from "./fixtures/electron.js";
 
+const MOBILE_SCREENSHOT_DIFF_RATIO = process.platform === "linux" ? 0.03 : 0.01;
+
 test.describe("Dashboard renderer smoke", () => {
   test.beforeEach(async ({ dashboard }) => {
     const initialMonth = await dashboard.monthSelector.inputValue();
@@ -71,7 +73,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
   });
 
-  test("Scenario 4: each monthly total keeps its label paired with its value", async ({ dashboard }) => {
+  test("Scenario 4: each monthly total keeps its label paired with its value", async ({ dashboard }) =>
     await expect(dashboard.monthlyTotal("Income")).toContainText("Income");
     await expect(dashboard.monthlyTotal("Income").getByLabel("Income", { exact: true })).toBeVisible();
     await expect(dashboard.monthlyTotal("Expenses")).toContainText("Expenses");
@@ -80,7 +82,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyTotal("Net").getByLabel("Net", { exact: true })).toBeVisible();
   });
 
-  test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) => {
+  test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) =>
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-03";
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
@@ -111,7 +113,7 @@ test.describe("Dashboard renderer smoke", () => {
 
     await expect(window).toHaveScreenshot("dashboard-mobile.png", {
       animations: "disabled",
-      maxDiffPixelRatio: 0.03,
+      maxDiffPixelRatio: MOBILE_SCREENSHOT_DIFF_RATIO,
     });
   });
 });
