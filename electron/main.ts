@@ -27,6 +27,7 @@ import {
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
+  appendUniqueTransactions,
   runPdfImportWorkflow,
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
@@ -447,13 +448,7 @@ app.whenReady().then(async () => {
           appendImportJob: localLedgerDatabase.appendImportJob,
           appendTransactions: localLedgerDatabase.appendTransactions,
           onTransactionsPersisted: (transactions) => {
-            const existingIds = new Set(liveTransactions.map((transaction) => transaction.id));
-            for (const transaction of transactions) {
-              if (!existingIds.has(transaction.id)) {
-                liveTransactions.push(transaction);
-                existingIds.add(transaction.id);
-              }
-            }
+            appendUniqueTransactions(liveTransactions, transactions);
           },
         }
       );

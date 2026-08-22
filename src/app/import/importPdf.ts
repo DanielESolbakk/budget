@@ -1,4 +1,5 @@
 import type { PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import { buildTransactionFingerprint } from "../../domain/import/buildTransactionFingerprint.js";
 import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
 import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
 
@@ -90,6 +91,22 @@ export function normalizePdfImportErrors(
   };
 }
 
+export function appendUniqueTransactions(
+  target: Transaction[],
+  transactions: readonly Transaction[]
+): void {
+  const existingIds = new Set(target.map((transaction) => transaction.id));
+
+  for (const transaction of transactions) {
+    if (existingIds.has(transaction.id)) {
+      continue;
+    }
+
+    target.push(transaction);
+    existingIds.add(transaction.id);
+  }
+}
+
 export function runPdfImportWorkflow(
   input: PdfImportWorkflowInput,
   dependencies: PdfImportWorkflowDependencies
@@ -98,12 +115,21 @@ export function runPdfImportWorkflow(
     householdId: input.householdId,
     accountId: input.accountId,
     importJobId: input.importJobId,
-    idPrefix: input.importJobId,
   });
 
   if (!parseResult.ok) {
     return normalizePdfImportErrors(parseResult.errors);
   }
+
+  const transactions = parseResult.candidates.map((transaction) => ({
+    ...transaction,
+    id: buildTransactionFingerprint({
+      accountId: transaction.accountId,
+      bookedAtIso: transaction.bookedAtIso,
+      amountMinor: transaction.amountMinor,
+      merchantRaw: transaction.merchantRaw,
+    }),
+  }));
 
   const importJob: ImportJob = {
     id: input.importJobId,
@@ -111,7 +137,7 @@ export function runPdfImportWorkflow(
     sourceType: "pdf",
     sourceName: input.filePath,
     adapterId: parseResult.adapterId,
-    candidateCount: parseResult.candidates.length,
+    candidateCount: transactions.length,
     validationFailureCount: 0,
     startedAtIso: input.startedAtIso,
     finishedAtIso: input.finishedAtIso,
@@ -123,13 +149,13 @@ export function runPdfImportWorkflow(
   };
 
   dependencies.appendImportJob(importJob);
-  dependencies.appendTransactions(parseResult.candidates);
-  dependencies.onTransactionsPersisted?.(parseResult.candidates);
+  dependencies.appendTransactions(transactions);
+  dependencies.onTransactionsPersisted?.(transactions);
 
   return {
     ok: true,
     importJobId: input.importJobId,
-    transactionCount: parseResult.candidates.length,
+    transactionCount: transactions.length,
     adapterId: parseResult.adapterId,
   };
 }

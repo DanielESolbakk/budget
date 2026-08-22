@@ -69,6 +69,17 @@ test.describe("PDF import renderer workflow", () => {
         timeout: 10_000,
       })
       .not.toBe(beforeIncomeText);
+
+    const beforeSecondImportIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
+    await pdfImport.filePathInput.fill(FIXTURE_PATH);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(pdfImport.successStatus).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), {
+        timeout: 10_000,
+      })
+      .toBe(beforeSecondImportIncomeText);
   });
 
   test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async ({ pdfImport, dashboard }) => {
