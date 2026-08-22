@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * Page Object Model for the monthly dashboard sections of the Budget Planner.
@@ -28,17 +28,17 @@ export class DashboardPage {
 
   /** The income definition value inside the monthly totals section. */
   get incomeValue() {
-    return this.monthlyTotalsSection.getByLabel("Income");
+    return this.monthlyTotalsSection.getByLabel("Income", { exact: true });
   }
 
   /** The expenses definition value inside the monthly totals section. */
   get expenseValue() {
-    return this.monthlyTotalsSection.getByLabel("Expenses");
+    return this.monthlyTotalsSection.getByLabel("Expenses", { exact: true });
   }
 
   /** The net definition value inside the monthly totals section. */
   get netValue() {
-    return this.monthlyTotalsSection.getByLabel("Net");
+    return this.monthlyTotalsSection.getByLabel("Net", { exact: true });
   }
 
   /** The landmark region wrapping the category breakdown (aria-label="Category Breakdown"). */
@@ -59,6 +59,18 @@ export class DashboardPage {
   /** The month selector combobox. */
   get monthSelector() {
     return this.page.getByRole("combobox", { name: "Select month" });
+  }
+
+  get monthFrameButtons() {
+    return this.page.getByRole("button", { name: /^Select .+ for review$/ });
+  }
+
+  monthFrame(yearMonth: string): Locator {
+    return this.monthFrameButtons.filter({ hasText: yearMonth });
+  }
+
+  monthlyTotal(label: "Income" | "Expenses" | "Net"): Locator {
+    return this.monthlyTotalsSection.getByRole("group", { name: `${label} total` });
   }
 
   /** Select a different month option than the current one and return the selected month value. */

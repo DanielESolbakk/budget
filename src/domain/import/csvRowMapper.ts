@@ -13,6 +13,7 @@ export const CSV_COLUMN_NAMES = {
 } as const;
 
 export type CsvRowValidationErrorCode =
+  | "EMPTY_CSV"
   | "MISSING_DATE"
   | "INVALID_DATE_FORMAT"
   | "MISSING_DESCRIPTION"
@@ -178,6 +179,7 @@ export function mapCsvRowToTransaction(
   const amountOutRaw = (row[CSV_COLUMN_NAMES.amountOut] ?? "").trim();
   const amountIn = parseAmount(amountInRaw) ?? 0;
   const amountOut = parseAmount(amountOutRaw) ?? 0;
+  const currencyCode = (row[CSV_COLUMN_NAMES.currency] ?? "").trim();
 
   // Use -Math.abs() to ensure expense amounts are always negative regardless of
   // whether the source CSV stores Beløp ut as a negative value (e.g. "-45.00") or positive.
@@ -202,6 +204,10 @@ export function mapCsvRowToTransaction(
     transaction.importJobId = options.importJobId;
   }
 
+  if (currencyCode) {
+    transaction.currencyCode = currencyCode;
+  }
+
   return { ok: true, transaction };
 }
 
@@ -214,6 +220,24 @@ export function mapCsvRows(
   rows: Array<Record<string, string>>,
   options: CsvRowMappingOptions
 ): CsvImportResult {
+  if (rows.length === 0) {
+    return {
+      transactions: [],
+      skipped: [
+        {
+          rowIndex: -1,
+          errors: [
+            {
+              code: "EMPTY_CSV",
+              message: "CSV must contain at least one data row.",
+              field: "file",
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   const mappedTransactions: Transaction[] = [];
   const skipped: Array<{ rowIndex: number; errors: CsvRowValidationError[] }> = [];
 
