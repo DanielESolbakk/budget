@@ -1,5 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
+const outputDir = process.env["PLAYWRIGHT_OUTPUT_DIR"] ?? "test-results";
+const reportDir = process.env["PLAYWRIGHT_REPORT_DIR"] ?? "playwright-report";
+
 /**
  * Playwright configuration for Electron runtime smoke tests.
  *
@@ -13,7 +16,7 @@ import { defineConfig } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "tests/playwright",
-  outputDir: "test-results",
+  outputDir,
   snapshotPathTemplate: "{testDir}/{testFilePath}-snapshots/{arg}{ext}",
   // Keep scenarios within each file serial; the Electron fixture creates an
   // isolated application and database for every test.
@@ -21,7 +24,7 @@ export default defineConfig({
   forbidOnly: !!process.env["CI"],
   retries: process.env["CI"] ? 2 : 0,
   reporter: [
-    ["html", { outputFolder: "playwright-report", open: "never" }],
+    ["html", { outputFolder: reportDir, open: "never" }],
     ["list"],
     ...(process.env["CI"] ? [["github"] as ["github"]] : []),
   ],
