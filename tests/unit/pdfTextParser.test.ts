@@ -286,7 +286,7 @@ describe("pdfTextParser unit tests", () => {
       expect(originalMerchants).toEqual(reorderedMerchants);
     });
 
-    it("parsing reordered rows yields a different transaction order", () => {
+    it("parsing reordered rows yields the same canonical transaction order", () => {
       const header = [
         "ROGALAND SPAREBANK",
         "",
@@ -302,7 +302,7 @@ describe("pdfTextParser unit tests", () => {
       expect(reordered.ok).toBe(true);
       if (!original.ok || !reordered.ok) return;
 
-      expect(original.transactions[0]?.merchantRaw).not.toBe(reordered.transactions[0]?.merchantRaw);
+      expect(reordered).toEqual(original);
     });
 
     it("parsing the same reordered input twice produces identical results (deterministic)", () => {
@@ -317,6 +317,57 @@ describe("pdfTextParser unit tests", () => {
       const first = parseRogalandStatementText(text, BASE_OPTIONS);
       const second = parseRogalandStatementText(text, BASE_OPTIONS);
       expect(first).toEqual(second);
+    });
+  });
+
+  describe("Scenario 3: malformed input returns explicit failures without partial results", () => {
+    it("rejects a transaction row with a missing amount", () => {
+      const text = [
+        "ROGALAND SPAREBANK",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+        "27.05.2026   SALARY",
+      ].join("\n");
+
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("INVALID_AMOUNT_FORMAT");
+      expect(result).not.toHaveProperty("transactions");
+    });
+
+    it("rejects a malformed row after a valid row without returning partial transactions", () => {
+      const text = [
+        "ROGALAND SPAREBANK",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+        "27.05.2026   SALARY                                  +50 000,00     75 000,00 ",
+        "26.05.2026   MERCHANT-005 Butikkkjøp                    invalid-amount  24 902,30 ",
+      ].join("\n");
+
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("INVALID_AMOUNT_FORMAT");
+      expect(result).not.toHaveProperty("transactions");
+    });
+
+    it("rejects an unsupported layout without returning partial transactions", () => {
+      const text = [
+        "OTHER BANK",
+        "",
+        "Dato         Beskrivelse                              Beløp          Saldo",
+        "27.05.2026   SALARY                                  +50 000,00     75 000,00 ",
+      ].join("\n");
+
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("UNSUPPORTED_LAYOUT");
+      expect(result).not.toHaveProperty("transactions");
     });
   });
 
