@@ -229,7 +229,7 @@ export function createLocalLedgerDatabase(
       booked_at_iso: string;
       amount_minor: number;
       merchant_raw: string;
-      currency_code: "NOK" | null;
+      currency_code: string | null;
       source_type: NonNullable<Transaction["sourceType"]> | null;
       category_id: string | null;
       import_job_id: string | null;

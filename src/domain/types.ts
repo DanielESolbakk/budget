@@ -18,7 +18,7 @@ export interface Transaction {
   bookedAtIso: string;
   amountMinor: number;
   merchantRaw: string;
-  currencyCode?: "NOK";
+  currencyCode?: string;
   sourceType?: "csv" | "pdf" | "manual";
   merchantAlias?: string;
   categoryId?: string;

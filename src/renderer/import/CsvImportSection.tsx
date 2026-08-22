@@ -79,7 +79,7 @@ export function CsvImportSection({ onImportSuccess }: CsvImportSectionProps): Re
           <ul>
             {importState.errors.errors.map((e) => (
               <li key={e.rowIndex}>
-                Row {e.rowIndex + 1}: {e.messages.join("; ")}
+                {e.rowIndex < 0 ? "File" : `Row ${e.rowIndex + 1}`}: {e.messages.join("; ")}
               </li>
             ))}
           </ul>
