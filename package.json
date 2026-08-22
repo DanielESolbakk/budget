@@ -19,6 +19,7 @@
     "test:e2e:vitest": "vitest run --config vitest.e2e.config.ts",
     "pretest:e2e:playwright": "npm run build",
     "test:e2e:playwright": "playwright test",
+    "test:e2e:playwright:ci": "playwright test",
     "test:e2e": "npm run test:e2e:vitest",
     "deps:audit:signal": "tsx scripts/check-dependency-governance.ts --fail-on high",
     "ai:feedback:signal": "tsx scripts/ai-failure-feedback-loop.ts",
