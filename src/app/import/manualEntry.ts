@@ -56,8 +56,8 @@ export function submitManualEntry(
   } catch (err: unknown) {
     const code =
       err instanceof Error && "code" in err
-        ? (err as { code: string }).code
-        : "UNKNOWN";
+        ? (err as { code: ManualEntryValidationErrorCode }).code
+        : "INVALID_HOUSEHOLD_ID";
     const message = err instanceof Error ? err.message : "Validation failed.";
     return { ok: false, reason: "validation", code, message };
   }

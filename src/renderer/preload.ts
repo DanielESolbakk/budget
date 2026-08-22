@@ -5,6 +5,7 @@ import type { CsvImportResponse } from "../app/import/importCsv.js";
 import type { ManualEntryResponse } from "../app/import/manualEntry.js";
 import type { PdfImportResponse } from "../app/import/importPdf.js";
 import type {
+  Account,
   ForecastEntry,
   ManualEntryInput,
   MonthlyCategoryTarget,

@@ -4,8 +4,7 @@ import type {
   ManualEntryResponse,
   ManualEntrySuccess,
 } from "../../app/import/manualEntry.js";
-import type { ManualEntryInput } from "../../domain/types.js";
-import type { Account } from "../../domain/types.js";
+import type { Account, ManualEntryInput } from "../../domain/types.js";
 
 const DEFAULT_HOUSEHOLD_ID = "sample-hh";
 
