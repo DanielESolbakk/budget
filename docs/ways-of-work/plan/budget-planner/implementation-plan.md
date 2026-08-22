@@ -23,9 +23,11 @@ Exit criteria:
 
 ### Phase 2: Import And Categorization Core
 
-- Implement import jobs and parser adapters
-- Implement digital text PDF import spike and validate samples
-- Implement CSV import and manual entry
+- Implement import jobs and extensible parser adapters
+- Implement standalone text and binary PDF extraction with multi-page row handling
+- Implement CSV import and field mapping
+- Implement cross-format import review, correction, and dismissal audit
+- Implement manual entry and duplicate detection
 - Implement duplicate detection
 - Implement merchant normalization and deterministic categorization
 - Implement review queue and correction workflow
@@ -68,7 +70,8 @@ Exit criteria:
 | --- | --- | --- |
 | ADR and glossary | None | Schema, technical breakdown, consistent issue writing |
 | Schema and repositories | ADR and glossary | Import, categorization, budget target persistence |
-| Import pipeline | Schema | Review queue, dashboard totals, export |
+| Import pipeline | Schema | Import review, dashboard totals, export |
+| Import review and correction | Import pipeline and row-state schema | Corrected ledger records and downstream categorization |
 | Categorization engine | Schema and import pipeline | Review workflow, dashboard accuracy |
 | Desktop shell and UI | Schema, import, categorization | End-to-end flows |
 | Backup, export, privacy verification | Stable schema and shell | Release readiness |
@@ -78,18 +81,18 @@ Exit criteria:
 
 ### Before Import Buildout
 
-- Validate sanitized digital text PDF samples
-- Confirm CSV variants and likely account mapping cases
+- Validate sanitized text, CSV, and binary PDF samples for multiple bank layouts
+- Confirm multi-page PDFs, wrapped descriptions, malformed rows, and likely account mapping cases
 
 ### During Import And Categorization
 
-- Add unit coverage for parsers and rule logic
-- Add integration coverage for import-to-ledger behavior
+- Add unit coverage for extraction, parser adapters, row classification, and rule logic
+- Add integration coverage for import-to-ledger and review-state behavior
 - Add regression tests for duplicate and correction behavior when bugs are fixed
 
 ### During UI Delivery
 
-- Add Playwright coverage for import, review, dashboard, forecast, export, and backup flows
+- Add Playwright coverage for file selection, import review, correction, dismissal, dashboard, forecast, export, and backup flows
 
 ### Before Release Readiness
 

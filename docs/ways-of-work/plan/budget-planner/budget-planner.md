@@ -2,7 +2,7 @@
 
 ## Overview
 
-Budget Planner is a Windows-first desktop application for a household user managing multiple accounts on one machine. The product imports digital bank statement PDFs, CSV exports, and manual entries, then organizes transactions with deterministic categorization rules and human review workflows.
+Budget Planner is a Windows-first desktop application for a household user managing multiple accounts on one machine. The product imports standalone text statements, binary bank statement PDFs, CSV exports, and manual entries, then organizes transactions with deterministic categorization rules and human review workflows.
 
 The first milestone prioritizes reliable import, understandable categorization, searchable review, monthly dashboards, monthly category targets, simple forecasting, and backup and export.
 
@@ -19,7 +19,8 @@ The user needs a modern local desktop tool to understand income and expenses wit
 
 ## Goals
 
-- Import transactions from digital text PDFs, CSV files, and manual entry
+- Import transactions from standalone text files, CSV files, binary digital PDFs, and manual entry
+- Route imports through extensible source-aware adapters without hard-coding one bank in the import coordinator
 - Normalize merchants and categorize transactions using deterministic rules first
 - Surface low-confidence classifications for review and correction
 - Show monthly dashboards for income, expenses, and category performance
@@ -42,7 +43,8 @@ The user needs a modern local desktop tool to understand income and expenses wit
 ### In Scope
 
 - Household, account, transaction, category, merchant alias, categorization rule, budget target, forecast assumption, import job, and backup snapshot concepts
-- Digital text PDF statement import
+- Standalone text statement import
+- Binary digital PDF statement import
 - CSV import
 - Manual transaction entry
 - Duplicate detection and import provenance
@@ -64,8 +66,8 @@ The user needs a modern local desktop tool to understand income and expenses wit
 
 ## Core User Flows
 
-1. Import a bank statement file and preview detected transactions.
-2. Confirm import, duplicate handling, and account mapping.
+1. Select a local text, CSV, or PDF statement and preview detected transactions.
+2. Correct or dismiss unresolved import rows, then confirm duplicate handling and account mapping.
 3. Review low-confidence categories and correct transactions.
 4. Browse the ledger with search and filters.
 5. View monthly totals, category trends, and budget target performance.
@@ -76,7 +78,9 @@ The user needs a modern local desktop tool to understand income and expenses wit
 
 ### Import
 
-- The application must import transactions from digital text PDFs, CSV files, and manual transaction entry.
+- The application must import transactions from standalone text files, CSV files, binary digital PDFs, and manual transaction entry.
+- The application must route each input through an extensible source-aware adapter boundary without hard-coding one bank in the coordinator.
+- The application must retain unresolved import rows for manual correction or audited dismissal.
 - The application must preserve import provenance, including source type and import job history.
 - The application must detect likely duplicates before finalizing import.
 - The application must show import errors and partial failures clearly.
@@ -108,7 +112,7 @@ The user needs a modern local desktop tool to understand income and expenses wit
 
 ## Acceptance Criteria
 
-- [ ] AC1: A user can import a digital text PDF and preview detected transactions before commit.
+- [ ] AC1: A user can import a standalone text file or binary digital PDF and preview detected transactions and unresolved rows.
 - [ ] AC2: A user can import a CSV file and map required fields when headers do not match defaults.
 - [ ] AC3: Duplicate detection prevents accidental duplicate transaction creation during repeated imports.
 - [ ] AC4: Merchant normalization and categorization rules assign categories to common household transactions with reviewable confidence.
@@ -137,7 +141,7 @@ The user needs a modern local desktop tool to understand income and expenses wit
 
 | Acceptance criterion | Unit | Integration | End-to-end |
 | --- | --- | --- | --- |
-| AC1 PDF import preview | Parser tokenization and row extraction | Import job persistence and preview generation | Import PDF through desktop workflow |
+| AC1 Text/PDF import review | Extraction, adapter selection, and row classification | Import job and review persistence | Import text/PDF through desktop workflow |
 | AC2 CSV mapping | Field mapping validation | CSV import orchestration | Import CSV through desktop workflow |
 | AC3 duplicate detection | Duplicate fingerprint rules | Repeat import against stored ledger | Re-import scenario in desktop flow |
 | AC4 categorization | Merchant normalization and rule engine | Categorization during import | Import plus review confirmation |
