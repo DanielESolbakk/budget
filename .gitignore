@@ -41,6 +41,13 @@ local/sanitization-map.json
 /mutation-run.log
 /tmp-audit.json
 /.stryker-tmp/
+
+# Impeccable generated product/design artifacts
+/PRODUCT.md
+/DESIGN.md
+/.impeccable/design.json
+/.impeccable/review/
+
 /.eslintcache
 /npm-debug.log*
 /yarn-debug.log*

@@ -54,6 +54,7 @@ describe("csv import contract", () => {
       expect(result.transaction.bookedAtIso).toBe("2026-05-28T00:00:00Z");
       expect(result.transaction.amountMinor).toBe(-1250);
       expect(result.transaction.merchantRaw).toBe("MERCHANT_TEST");
+      expect(result.transaction.currencyCode).toBe("NOK");
     });
 
     it("maps a valid income row with Beløp inn to a positive amountMinor", () => {
@@ -66,6 +67,18 @@ describe("csv import contract", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.transaction.amountMinor).toBe(5000000);
+    });
+
+    it("preserves a non-NOK source currency from Valuta", () => {
+      const result = mapCsvRowToTransaction(
+        makeRow({ [CSV_COLUMN_NAMES.currency]: "GBP" }),
+        0,
+        MAPPING_OPTIONS
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transaction.currencyCode).toBe("GBP");
     });
 
     it("falls back to Utført dato when Bokført dato is empty", () => {
@@ -198,6 +211,23 @@ describe("csv import contract", () => {
 
       expect(result.transactions).toHaveLength(2);
       expect(result.skipped).toEqual([]);
+    });
+
+    it("rejects an empty row set as a file-level validation error", () => {
+      const result = mapCsvRows([], MAPPING_OPTIONS);
+
+      expect(result.transactions).toEqual([]);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0]).toEqual({
+        rowIndex: -1,
+        errors: [
+          {
+            code: "EMPTY_CSV",
+            message: "CSV must contain at least one data row.",
+            field: "file",
+          },
+        ],
+      });
     });
   });
 
