@@ -17,7 +17,6 @@ describe("AC traceability governance checks", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
     );
-
     expect(adr).toMatch(/^## Status\s+Accepted$/m);
     expect(adr).toMatch(
       /### Import and Parser Layer[\s\S]*source-aware parser adapters[\s\S]*parser-specific logic isolated/m,
@@ -25,7 +24,18 @@ describe("AC traceability governance checks", () => {
     expect(adr).toMatch(
       /## Privacy and Data Handling Constraints[\s\S]*Transaction content remains local by default[\s\S]*No background network calls for transaction workflows/m,
     );
-    for (const term of ["Electron", "React", "TypeScript", "SQLite", "renderer", "Main Process", "Shared Layer"]) {
+    for (const term of [
+      "Electron",
+      "React",
+      "TypeScript",
+      "SQLite",
+      "renderer",
+      "Main Process",
+      "Shared Layer",
+      "parser adapter",
+      "local-first",
+      "no-network",
+    ]) {
       expect(adr, `ADR must contain "${term}"`).toContain(term);
     }
   });
