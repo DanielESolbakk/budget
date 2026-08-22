@@ -1,5 +1,13 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { verifyFixture } from "../../src/tooling/fixtures/verifyFixture.js";
+
+const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+
+function readRepositoryFile(relativePath: string): string {
+  return readFileSync(new URL(relativePath, `file://${repositoryRoot}/`), "utf8");
+}
 
 describe("verifyFixture", () => {
   it("accepts the committed synthetic fixture", () => {
@@ -21,5 +29,36 @@ describe("verifyFixture", () => {
     expect(
       report.warnings.some((warning) => warning.includes("Near-duplicate merchant variants"))
     ).toBe(true);
+  });
+
+  it("verifies ADR and glossary artifacts are present and linked from plan.md", () => {
+    const adr = readRepositoryFile(
+      "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
+    );
+    const glossary = readRepositoryFile(
+      "docs/ways-of-work/plan/budget-planner/domain-glossary.md",
+    );
+    const planMd = readRepositoryFile("plan.md");
+
+    expect(adr).toMatch(/^## Status\s+Accepted$/m);
+    expect(adr).toContain("### Import and Parser Layer");
+    expect(adr).toContain("## Privacy and Data Handling Constraints");
+    expect(planMd).toContain("adr-001-stack-and-runtime-boundaries.md");
+    expect(planMd).toContain("domain-glossary.md");
+
+    for (const term of [
+      "household",
+      "account",
+      "transaction",
+      "category",
+      "merchant alias",
+      "categorization rule",
+      "import job",
+      "budget target",
+      "forecast assumption",
+      "backup snapshot",
+    ]) {
+      expect(glossary).toMatch(new RegExp(`^\\| ${term} \\| \\S[^|]* \\|`, "m"));
+    }
   });
 });
