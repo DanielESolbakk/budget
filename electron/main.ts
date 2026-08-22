@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
+import { createDashboardProvider } from "./dashboardProvider.js";
 import { join } from "path";
 import { readFileSync } from "node:fs";
 import {
@@ -22,11 +23,13 @@ import {
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
+  runPdfImportWorkflow,
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
-import { parseRogalandStatementText } from "../src/domain/import/pdfTextParser.js";
+import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
+import { buildRogalandImportJobId } from "../src/domain/import/pdfTextParser.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -182,16 +185,26 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   installNetworkGuard(session.defaultSession);
 
-  ipcMain.handle("dashboard:getData", () => {
-    return getDashboardData();
+  const dashboardTestOverrides =
+    process.env["NODE_ENV"] === "test"
+      ? (await import("./testDashboardOverrides.js")).createTestDashboardOverrides()
+      : undefined;
+  const dashboardProvider = createDashboardProvider({
+    getData: getDashboardData,
+    getViewData,
+    ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
 
-  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) => {
-    return getViewData(yearMonth);
+  ipcMain.handle("dashboard:getData", () => {
+    return dashboardProvider.getData();
   });
+
+  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) =>
+    dashboardProvider.getViewData(yearMonth)
+  );
 
   ipcMain.handle("forecast:getEntries", () => {
     return getDashboardData().forecast.entries;
@@ -327,42 +340,37 @@ app.whenReady().then(() => {
         return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
       }
 
-      const importJobId = `import-pdf-${Date.now()}`;
-      const now = new Date().toISOString();
-
-      const parseResult = parseRogalandStatementText(pdfText, {
+      const importJobId = buildRogalandImportJobId(pdfText, {
         householdId: request.householdId,
         accountId: request.accountId,
-        importJobId,
-        idPrefix: importJobId,
       });
+      const now = new Date().toISOString();
 
-      if (!parseResult.ok) {
-        return normalizePdfImportErrors(parseResult.errors);
-      }
-
-      const importJob: ImportJob = {
-        id: importJobId,
-        householdId: request.householdId,
-        sourceType: "pdf",
-        sourceName: request.filePath,
-        startedAtIso: now,
-        finishedAtIso: now,
-      };
-
-      localLedgerDatabase.appendImportJob(importJob);
-      localLedgerDatabase.appendTransactions(parseResult.transactions);
-
-      for (const transaction of parseResult.transactions) {
-        liveTransactions.push(transaction);
-      }
-
-      return {
-        ok: true,
-        importJobId,
-        transactionCount: parseResult.transactions.length,
-        adapterId: parseResult.adapterId,
-      };
+      return runPdfImportWorkflow(
+        {
+          pdfText,
+          filePath: request.filePath,
+          householdId: request.householdId,
+          accountId: request.accountId,
+          importJobId,
+          startedAtIso: now,
+          finishedAtIso: now,
+        },
+        {
+          parserRegistry: defaultParserAdapterRegistry,
+          appendImportJob: localLedgerDatabase.appendImportJob,
+          appendTransactions: localLedgerDatabase.appendTransactions,
+          onTransactionsPersisted: (transactions) => {
+            const existingIds = new Set(liveTransactions.map((transaction) => transaction.id));
+            for (const transaction of transactions) {
+              if (!existingIds.has(transaction.id)) {
+                liveTransactions.push(transaction);
+                existingIds.add(transaction.id);
+              }
+            }
+          },
+        }
+      );
     }
   );
 

@@ -1,4 +1,6 @@
 import type { PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
+import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
 export interface PdfImportRequest {
@@ -26,6 +28,25 @@ export interface PdfImportFailure {
 
 /** Discriminated union returned by the `import:pdf` IPC channel. */
 export type PdfImportResponse = PdfImportSuccess | PdfImportFailure;
+
+export interface PdfImportWorkflowInput extends PdfImportRequest {
+  pdfText: string;
+  importJobId: string;
+  startedAtIso: string;
+  finishedAtIso: string;
+}
+
+export interface PdfImportWorkflowDependencies {
+  parserRegistry: Pick<ParserAdapterRegistry, "parse">;
+  appendImportJob: (importJob: ImportJob) => void;
+  appendTransactions: (transactions: Transaction[]) => void;
+  onTransactionsPersisted?: (transactions: Transaction[]) => void;
+}
+
+const PDF_IMPORT_STORY_ANCHOR: ImportJobStoryAnchor = {
+  enablerIssueId: "32",
+  featureIssueId: "15",
+};
 
 /**
  * Builds a normalized PdfImportRequest from a raw file path and household/account context.
@@ -66,5 +87,49 @@ export function normalizePdfImportErrors(
   return {
     ok: false,
     errors: errors.map((e) => ({ code: e.code, message: e.message })),
+  };
+}
+
+export function runPdfImportWorkflow(
+  input: PdfImportWorkflowInput,
+  dependencies: PdfImportWorkflowDependencies
+): PdfImportResponse {
+  const parseResult = dependencies.parserRegistry.parse(input.pdfText, {
+    householdId: input.householdId,
+    accountId: input.accountId,
+    importJobId: input.importJobId,
+    idPrefix: input.importJobId,
+  });
+
+  if (!parseResult.ok) {
+    return normalizePdfImportErrors(parseResult.errors);
+  }
+
+  const importJob: ImportJob = {
+    id: input.importJobId,
+    householdId: input.householdId,
+    sourceType: "pdf",
+    sourceName: input.filePath,
+    adapterId: parseResult.adapterId,
+    candidateCount: parseResult.candidates.length,
+    validationFailureCount: 0,
+    startedAtIso: input.startedAtIso,
+    finishedAtIso: input.finishedAtIso,
+    provenance: {
+      sourceIdentity: parseResult.sourceIdentity,
+      adapterId: parseResult.adapterId,
+      storyAnchor: PDF_IMPORT_STORY_ANCHOR,
+    },
+  };
+
+  dependencies.appendImportJob(importJob);
+  dependencies.appendTransactions(parseResult.candidates);
+  dependencies.onTransactionsPersisted?.(parseResult.candidates);
+
+  return {
+    ok: true,
+    importJobId: input.importJobId,
+    transactionCount: parseResult.candidates.length,
+    adapterId: parseResult.adapterId,
   };
 }

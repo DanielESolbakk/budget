@@ -18,6 +18,8 @@ export interface Transaction {
   bookedAtIso: string;
   amountMinor: number;
   merchantRaw: string;
+  currencyCode?: "NOK";
+  sourceType?: "csv" | "pdf" | "manual";
   merchantAlias?: string;
   categoryId?: string;
   importJobId?: string;
@@ -28,8 +30,26 @@ export interface ImportJob {
   householdId: string;
   sourceType: "csv" | "pdf" | "manual";
   sourceName: string;
+  /** Stable adapter identifier, e.g. "rogaland-sparebank-text-v1". Absent for manual imports. */
+  adapterId?: string;
+  /** Number of transaction candidates produced by the parser. */
+  candidateCount?: number;
+  /** Number of explicit validation failures recorded during parsing. */
+  validationFailureCount?: number;
   startedAtIso: string;
   finishedAtIso?: string;
+  provenance?: ImportJobProvenance;
+}
+
+export interface ImportJobStoryAnchor {
+  enablerIssueId: string;
+  featureIssueId: string;
+}
+
+export interface ImportJobProvenance {
+  sourceIdentity: string;
+  adapterId?: string;
+  storyAnchor?: ImportJobStoryAnchor;
 }
 
 export interface MonthlyTotal {

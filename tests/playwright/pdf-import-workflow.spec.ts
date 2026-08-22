@@ -16,124 +16,104 @@
  * pretest script. To run manually first: `npm run build && npm run test:e2e:playwright`.
  */
 
-import { test, expect, _electron as electron } from "@playwright/test";
-import type { ElectronApplication, Page } from "@playwright/test";
+import { test, expect } from "./fixtures/electron.js";
+import type { Request } from "@playwright/test";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
-import { PdfImportPage } from "./pom/PdfImportPage.js";
-import { DashboardPage } from "./pom/DashboardPage.js";
 
-const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
 
 /** Writes an unsupported text content to a temp file and returns the absolute path. */
 function writeUnsupportedFixture(): string {
   const dir = join(tmpdir(), "budget-playwright-pdf");
   mkdirSync(dir, { recursive: true });
-  const path = join(dir, `unsupported-${Date.now()}.txt`);
+  const path = join(dir, `unsupported-${randomUUID()}.txt`);
   writeFileSync(path, "Not a supported bank statement format.\nSome other bank\n", "utf8");
   return path;
 }
 
 test.describe("PDF import renderer workflow", () => {
-  let app: ElectronApplication;
-  let window: Page;
-  let pdfImportPage: PdfImportPage;
-  let dashboardPage: DashboardPage;
-
-  test.beforeEach(async () => {
-    app = await electron.launch({
-      args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
-    });
-    window = await app.firstWindow();
-    await window.waitForLoadState("domcontentloaded");
-    pdfImportPage = new PdfImportPage(window);
-    dashboardPage = new DashboardPage(window);
-  });
-
-  test.afterEach(async () => {
-    await app.close();
-  });
-
-  test("Scenario 1: importing the supported synthetic text PDF fixture reports success and displays adapter identity", async () => {
+  test("Scenario 1: importing the supported synthetic text PDF fixture reports success and displays adapter identity", async ({ pdfImport, dashboard }) => {
     // AC-1: PDF import section is visible with file path input and button.
-    await expect(pdfImportPage.importSection).toBeVisible();
-    await expect(pdfImportPage.importHeading).toBeVisible();
-    await expect(pdfImportPage.filePathInput).toBeVisible();
-    await expect(pdfImportPage.importButton).toBeVisible();
+    await expect(pdfImport.importSection).toBeVisible();
+    await expect(pdfImport.importHeading).toBeVisible();
+    await expect(pdfImport.filePathInput).toBeVisible();
+    await expect(pdfImport.importButton).toBeVisible();
 
     // Capture baseline dashboard income value before import.
-    const monthSelector = dashboardPage.monthSelector;
+    const monthSelector = dashboard.monthSelector;
     await monthSelector.selectOption("2026-05");
-    await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
-    const beforeIncomeText = ((await dashboardPage.incomeValue.textContent()) ?? "").trim();
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    const beforeIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
 
     // AC-1, AC-2: submit the fixture text path via the renderer input.
-    await pdfImportPage.submitImport(FIXTURE_PATH);
+    await pdfImport.submitImport(FIXTURE_PATH);
 
     // AC-1: success status is shown after import.
-    await expect(pdfImportPage.successStatus).toBeVisible({ timeout: 10_000 });
-    const statusText = await pdfImportPage.successStatus.textContent();
+    await expect(pdfImport.successStatus).toBeVisible({ timeout: 10_000 });
+    const statusText = await pdfImport.successStatus.textContent();
     expect(statusText).toMatch(/transactions imported/i);
 
     // AC-4: adapter identity is shown in the success message.
     expect(statusText).toMatch(/rogaland-sparebank-text-v1/i);
 
     // The app reloads dashboard state after successful import and remounts the import section.
-    await expect(pdfImportPage.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
 
     // AC-5: dashboard automatically reloads after import success.
-    await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect
-      .poll(async () => ((await dashboardPage.incomeValue.textContent()) ?? "").trim(), {
+      .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), {
         timeout: 10_000,
       })
       .not.toBe(beforeIncomeText);
   });
 
-  test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async () => {
+  test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async ({ pdfImport, dashboard }) => {
     // Ensure dashboard is in a known state before the invalid import.
-    await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
-    const beforeIncomeText = (await dashboardPage.incomeValue.textContent()) ?? "";
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
 
     const unsupportedPath = writeUnsupportedFixture();
 
     // AC-1, AC-3: submit unsupported layout path via renderer input.
-    await pdfImportPage.submitImport(unsupportedPath);
+    await pdfImport.submitImport(unsupportedPath);
 
     // AC-3: alert with validation failure is shown.
-    await expect(pdfImportPage.errorAlert).toBeVisible({ timeout: 10_000 });
-    const alertText = await pdfImportPage.errorAlert.textContent();
+    await expect(pdfImport.errorAlert).toBeVisible({ timeout: 10_000 });
+    const alertText = await pdfImport.errorAlert.textContent();
     expect(alertText).toMatch(/failed/i);
 
     // AC-5: dashboard totals remain unchanged after a failed import.
-    await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
-    const afterIncomeText = (await dashboardPage.incomeValue.textContent()) ?? "";
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    const afterIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     expect(afterIncomeText).toBe(beforeIncomeText);
   });
 
-  test("Scenario 3: PDF import workflow runs under network guard with no outbound network calls", async () => {
-    // AC-5: verify the network guard is active — import:pdf must not trigger network.
-    const networkErrorMessages: string[] = [];
-    const onConsole = (msg: { type: () => string; text: () => string }): void => {
-      if (msg.type() === "error" && msg.text().toLowerCase().includes("network")) {
-        networkErrorMessages.push(msg.text());
+  test("Scenario 3: PDF import workflow runs under network guard with no outbound network calls", async ({ pdfImport, window }) => {
+    // AC-5: verify the successful import path emits no external HTTP(S) request.
+    const outboundRequests: string[] = [];
+    const onRequest = (request: Request): void => {
+      const requestUrl = new URL(request.url());
+      const isExternalHttpRequest =
+        (requestUrl.protocol === "http:" || requestUrl.protocol === "https:") &&
+        requestUrl.hostname !== "localhost" &&
+        requestUrl.hostname !== "127.0.0.1";
+
+      if (isExternalHttpRequest) {
+        outboundRequests.push(requestUrl.href);
       }
     };
 
-    window.on("console", onConsole);
+    window.on("request", onRequest);
 
-    const unsupportedPath = writeUnsupportedFixture();
-    await pdfImportPage.filePathInput.fill(unsupportedPath);
+    await pdfImport.submitImport(FIXTURE_PATH);
 
-    await pdfImportPage.importButton.click();
+    await expect(pdfImport.successStatus).toBeVisible({ timeout: 10_000 });
 
-    await expect(pdfImportPage.errorAlert).toBeVisible({ timeout: 10_000 });
-    await expect(pdfImportPage.errorAlert).toContainText(/failed/i);
-
-    window.off("console", onConsole);
-    expect(networkErrorMessages).toHaveLength(0);
+    window.off("request", onRequest);
+    expect(outboundRequests).toHaveLength(0);
   });
 });

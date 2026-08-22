@@ -14,49 +14,23 @@
  * pretest script. To run manually first: `npm run build && npm run test:e2e:playwright`.
  */
 
-import { test, expect, _electron as electron } from "@playwright/test";
-import type { ElectronApplication, Page } from "@playwright/test";
-import { join } from "node:path";
-import { DashboardPage } from "./pom/DashboardPage.js";
-import { AppShellPage } from "./pom/AppShellPage.js";
-
-const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
+import { test, expect } from "./fixtures/electron.js";
 
 test.describe("No-network guard smoke", () => {
-  let app: ElectronApplication;
-  let window: Page;
-  let shell: AppShellPage;
-  let dashboard: DashboardPage;
-
-  test.beforeEach(async () => {
-    app = await electron.launch({
-      args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
-    });
-    window = await app.firstWindow();
-    await window.waitForLoadState("domcontentloaded");
-    shell = new AppShellPage(window);
-    dashboard = new DashboardPage(window);
-  });
-
-  test.afterEach(async () => {
-    await app.close();
-  });
-
-  test("Scenario 1: app shell renders correctly with the network guard active", async () => {
+  test("Scenario 1: app shell renders correctly with the network guard active", async ({ appShell }) => {
     // F5.3 AC-1: the guard does not break the local renderer startup path.
-    await expect(shell.heading).toBeVisible();
-    await expect(shell.introText).toBeVisible();
+    await expect(appShell.heading).toBeVisible();
+    await expect(appShell.banner).toBeVisible();
   });
 
-  test("Scenario 2: dashboard IPC flow works under the network guard", async () => {
+  test("Scenario 2: dashboard IPC flow works under the network guard", async ({ dashboard }) => {
     // F5.3 AC-3: local IPC flows are not affected by the guard; dashboard data loads.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.monthlyTotalsHeading).toBeVisible();
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
   });
 
-  test("Scenario 3: external HTTPS fetch from the renderer is blocked by the guard", async () => {
+  test("Scenario 3: external HTTPS fetch from the renderer is blocked by the guard", async ({ window }) => {
     // F5.3 AC-2: the session-level network guard cancels outbound external requests.
     // The fetch is expected to reject with a network error because the guard
     // calls callback({ cancel: true }) for any non-local URL.
@@ -72,7 +46,7 @@ test.describe("No-network guard smoke", () => {
     expect(blocked).toBe(true);
   });
 
-  test("Scenario 4: external HTTP fetch from the renderer is blocked by the guard", async () => {
+  test("Scenario 4: external HTTP fetch from the renderer is blocked by the guard", async ({ window }) => {
     // F5.3 AC-2: HTTP (non-TLS) external requests are also blocked.
     const blocked = await window.evaluate(async () => {
       try {
