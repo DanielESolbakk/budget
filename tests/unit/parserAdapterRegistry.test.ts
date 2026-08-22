@@ -27,8 +27,14 @@ describe("ParserAdapterRegistry", () => {
       const registry = new ParserAdapterRegistry();
       const stub: ParserAdapter = {
         id: "stub-v1",
+        sourceIdentity: "stub-source",
         canHandle: () => true,
-        parse: () => ({ ok: true, adapterId: "stub-v1", candidates: [] }),
+        parse: () => ({
+          ok: true,
+          adapterId: "stub-v1",
+          sourceIdentity: "stub-source",
+          candidates: [],
+        }),
       };
 
       registry.register(stub);
@@ -39,8 +45,14 @@ describe("ParserAdapterRegistry", () => {
       const registry = new ParserAdapterRegistry();
       const stub: ParserAdapter = {
         id: "dup-v1",
+        sourceIdentity: "duplicate-source",
         canHandle: () => true,
-        parse: () => ({ ok: true, adapterId: "dup-v1", candidates: [] }),
+        parse: () => ({
+          ok: true,
+          adapterId: "dup-v1",
+          sourceIdentity: "duplicate-source",
+          candidates: [],
+        }),
       };
 
       registry.register(stub);
@@ -54,13 +66,25 @@ describe("ParserAdapterRegistry", () => {
       const registry = new ParserAdapterRegistry();
       const a: ParserAdapter = {
         id: "a-v1",
+        sourceIdentity: "source-a",
         canHandle: (text) => text.includes("TOKEN_A"),
-        parse: () => ({ ok: true, adapterId: "a-v1", candidates: [] }),
+        parse: () => ({
+          ok: true,
+          adapterId: "a-v1",
+          sourceIdentity: "source-a",
+          candidates: [],
+        }),
       };
       const b: ParserAdapter = {
         id: "b-v1",
+        sourceIdentity: "source-b",
         canHandle: (text) => text.includes("TOKEN_B"),
-        parse: () => ({ ok: true, adapterId: "b-v1", candidates: [] }),
+        parse: () => ({
+          ok: true,
+          adapterId: "b-v1",
+          sourceIdentity: "source-b",
+          candidates: [],
+        }),
       };
 
       registry.register(a);
@@ -115,6 +139,22 @@ describe("ParserAdapterRegistry", () => {
       expect(result.adapterId).toBe(ROGALAND_ADAPTER_ID);
       expect(result.errors[0]?.code).toBe("INVALID_AMOUNT_FORMAT");
       expect((result as { candidates?: unknown }).candidates).toBeUndefined();
+    });
+
+    it("rejects a date-like row with an unsupported date format instead of skipping it", () => {
+      const result = defaultParserAdapterRegistry.parse(
+        [
+          "ROGALAND SPAREBANK",
+          "Dato         Beskrivelse                              Beløp          Saldo",
+          "27.05.2026   VALID                                  +1,00       1,00",
+          "2026-05-27   MALFORMED DATE                         +2,00       3,00",
+        ].join("\n"),
+        BASE_OPTIONS
+      );
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("INVALID_DATE_FORMAT");
     });
   });
 

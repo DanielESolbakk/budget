@@ -4,16 +4,18 @@ import {
   isRogalandStatementText,
   parseRogalandStatementText,
   ROGALAND_ADAPTER_ID,
+  ROGALAND_SOURCE_ID,
 } from "./pdfTextParser.js";
 
 /**
  * Discriminated result returned by a parser adapter.
- * On success: stable adapter id and ordered transaction candidates.
+ * On success: stable adapter id, source identity, and ordered transaction candidates.
  * On failure: explicit validation errors; no partial candidates.
  */
 export interface AdapterParseSuccess {
   ok: true;
   adapterId: string;
+  sourceIdentity: string;
   candidates: Transaction[];
 }
 
@@ -27,12 +29,13 @@ export type AdapterParseResult = AdapterParseSuccess | AdapterParseFailure;
 
 /**
  * Source-aware parser adapter contract.
- * Each adapter exposes a stable `id`, a `canHandle` probe for source detection,
- * and a `parse` method that produces deterministic results.
+ * Each adapter exposes a stable id, source identity, source probe, and parse method.
  */
 export interface ParserAdapter {
   /** Stable, versioned adapter identifier. */
   readonly id: string;
+  /** Stable identity for the source layout handled by this adapter. */
+  readonly sourceIdentity: string;
   /** Returns true when this adapter recognises the source text. */
   canHandle(text: string): boolean;
   /** Parses the source text into ordered transaction candidates. */
@@ -69,10 +72,7 @@ export class ParserAdapterRegistry {
     return this.adapters.find((a) => a.canHandle(text));
   }
 
-  /**
-   * Selects and runs the appropriate adapter.
-   * Returns UnsupportedSourceFailure when no adapter matches.
-   */
+  /** Selects and runs the appropriate adapter, or returns an explicit unsupported-source failure. */
   parse(text: string, options: PdfTextParseOptions): RegistryParseResult {
     const adapter = this.selectAdapter(text);
 
@@ -99,18 +99,21 @@ export class ParserAdapterRegistry {
   }
 }
 
-/**
- * Rogaland Sparebank text-PDF parser adapter.
- */
 const rogalandAdapter: ParserAdapter = {
   id: ROGALAND_ADAPTER_ID,
+  sourceIdentity: ROGALAND_SOURCE_ID,
   canHandle(text: string): boolean {
     return isRogalandStatementText(text);
   },
   parse(text: string, options: PdfTextParseOptions): AdapterParseResult {
     const result = parseRogalandStatementText(text, options);
     if (result.ok) {
-      return { ok: true, adapterId: result.adapterId, candidates: result.transactions };
+      return {
+        ok: true,
+        adapterId: result.adapterId,
+        sourceIdentity: ROGALAND_SOURCE_ID,
+        candidates: result.transactions,
+      };
     }
     return { ok: false, adapterId: ROGALAND_ADAPTER_ID, errors: result.errors };
   },

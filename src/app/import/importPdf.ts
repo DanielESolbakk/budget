@@ -1,6 +1,6 @@
 import type { PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
 import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
-import type { ImportJob, Transaction } from "../../domain/types.js";
+import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
 export interface PdfImportRequest {
@@ -29,11 +29,8 @@ export interface PdfImportFailure {
 /** Discriminated union returned by the `import:pdf` IPC channel. */
 export type PdfImportResponse = PdfImportSuccess | PdfImportFailure;
 
-export interface PdfImportWorkflowInput {
+export interface PdfImportWorkflowInput extends PdfImportRequest {
   pdfText: string;
-  filePath: string;
-  householdId: string;
-  accountId: string;
   importJobId: string;
   startedAtIso: string;
   finishedAtIso: string;
@@ -45,6 +42,11 @@ export interface PdfImportWorkflowDependencies {
   appendTransactions: (transactions: Transaction[]) => void;
   onTransactionsPersisted?: (transactions: Transaction[]) => void;
 }
+
+const PDF_IMPORT_STORY_ANCHOR: ImportJobStoryAnchor = {
+  enablerIssueId: "32",
+  featureIssueId: "15",
+};
 
 /**
  * Builds a normalized PdfImportRequest from a raw file path and household/account context.
@@ -113,6 +115,11 @@ export function runPdfImportWorkflow(
     validationFailureCount: 0,
     startedAtIso: input.startedAtIso,
     finishedAtIso: input.finishedAtIso,
+    provenance: {
+      sourceIdentity: parseResult.sourceIdentity,
+      adapterId: parseResult.adapterId,
+      storyAnchor: PDF_IMPORT_STORY_ANCHOR,
+    },
   };
 
   dependencies.appendImportJob(importJob);

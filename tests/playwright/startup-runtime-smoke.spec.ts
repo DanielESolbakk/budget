@@ -51,7 +51,7 @@ test.describe("Electron startup smoke", () => {
   test("Scenario 1: window opens and root shell renders without blank-screen failure", async () => {
     // AC-1, AC-4: renderer reaches a loaded state with the application heading.
     await expect(shell.heading).toBeVisible();
-    await expect(shell.introText).toBeVisible();
+    await expect(shell.banner).toBeVisible();
   });
 
   test("Scenario 2: preload bridge exposes window.budgetApi with dashboard contract methods", async () => {

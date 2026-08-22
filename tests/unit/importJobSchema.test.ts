@@ -51,9 +51,22 @@ describe("ImportJob schema", () => {
         sourceName: "statement.txt",
         adapterId: "rogaland-sparebank-text-v1",
         startedAtIso: "2026-05-01T10:00:00Z",
+        provenance: {
+          sourceIdentity: "no.rogaland-sparebank.statement-text",
+          adapterId: "rogaland-sparebank-text-v1",
+          storyAnchor: {
+            enablerIssueId: "32",
+            featureIssueId: "15",
+          },
+        },
       };
 
       expect(job.adapterId).toBe("rogaland-sparebank-text-v1");
+      expect(job.provenance?.sourceIdentity).toBe("no.rogaland-sparebank.statement-text");
+      expect(job.provenance?.storyAnchor).toEqual({
+        enablerIssueId: "32",
+        featureIssueId: "15",
+      });
     });
 
     it("adapterId is optional for non-adapter imports", () => {
