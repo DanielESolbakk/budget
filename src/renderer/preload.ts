@@ -31,6 +31,10 @@ export interface CategoryTargetsApi {
   listByMonth: (yearMonth: string) => Promise<MonthlyCategoryTarget[]>;
 }
 
+export interface AccountsApi {
+  list: (householdId: string) => Promise<Account[]>;
+}
+
 export interface ExportApi {
   toCsv: (transactions: Transaction[]) => Promise<ExportCsvOutput>;
   writeCsv: (transactions: Transaction[], outputPath: string) => Promise<ExportCsvFileOutput>;
@@ -49,6 +53,7 @@ export interface BackupApi {
 
 export interface BudgetApi {
   dashboard: DashboardApi;
+  accounts: AccountsApi;
   forecast: ForecastApi;
   categoryTargets: CategoryTargetsApi;
   export: ExportApi;
@@ -57,6 +62,10 @@ export interface BudgetApi {
 }
 
 const budgetApi: BudgetApi = {
+  accounts: {
+    list: (householdId: string): Promise<Account[]> =>
+      ipcRenderer.invoke("account:list", householdId),
+  },
   dashboard: {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),
     getViewData: (yearMonth: string): Promise<DashboardViewContract> =>

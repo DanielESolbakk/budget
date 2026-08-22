@@ -235,6 +235,13 @@ app.whenReady().then(async () => {
     return reloadMonthlyCategoryTargets(sampleTargetStore, yearMonth);
   });
 
+  ipcMain.handle("account:list", (_event, householdId: unknown): Account[] => {
+    if (typeof householdId !== "string" || householdId.trim().length === 0) {
+      return [];
+    }
+    return localLedgerDatabase.getAccountsForHousehold(householdId.trim());
+  });
+
   ipcMain.handle("export:toCsv", (_event, transactions: Transaction[]) => {
     return exportCsv({ transactions });
   });
@@ -328,41 +335,49 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "transaction:addManual",
     (_event, input: unknown): ManualEntryResponse => {
+      const inputRecord =
+        typeof input === "object" && input !== null
+          ? (input as Record<string, unknown>)
+          : undefined;
+
       if (
-        typeof input !== "object" ||
-        input === null ||
-        typeof (input as Record<string, unknown>).householdId !== "string" ||
-        typeof (input as Record<string, unknown>).accountId !== "string" ||
-        typeof (input as Record<string, unknown>).bookedAtIso !== "string" ||
-        typeof (input as Record<string, unknown>).amountMinor !== "number" ||
-        typeof (input as Record<string, unknown>).merchantRaw !== "string" ||
-        ((input as Record<string, unknown>).categoryId !== undefined &&
-          typeof (input as Record<string, unknown>).categoryId !== "string")
+        inputRecord === undefined ||
+        typeof inputRecord.householdId !== "string" ||
+        typeof inputRecord.accountId !== "string" ||
+        typeof inputRecord.bookedAtIso !== "string" ||
+        typeof inputRecord.amountMinor !== "number" ||
+        typeof inputRecord.merchantRaw !== "string"
       ) {
         return {
           ok: false,
           reason: "validation",
-          code:
-            typeof (input as Record<string, unknown>).categoryId !== "undefined" &&
-            typeof (input as Record<string, unknown>).categoryId !== "string"
-              ? "INVALID_CATEGORY_ID"
-              : "INVALID_HOUSEHOLD_ID",
-          message:
-            typeof (input as Record<string, unknown>).categoryId !== "undefined" &&
-            typeof (input as Record<string, unknown>).categoryId !== "string"
-              ? "categoryId must be a string when provided."
-              : "Manual entry input is missing required fields or has invalid types.",
+          code: "INVALID_HOUSEHOLD_ID",
+          message: "Manual entry input is missing required fields or has invalid types.",
         };
       }
-      const response = submitManualEntry(input as ManualEntryInput, liveTransactions, localLedgerDatabase);
+
+      if (inputRecord.categoryId !== undefined && typeof inputRecord.categoryId !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_CATEGORY_ID",
+          message: "categoryId must be a string when provided.",
+        };
+      }
+
+      const response = submitManualEntry(
+        inputRecord as ManualEntryInput,
+        liveTransactions,
+        localLedgerDatabase
+      );
       if (response.ok) {
         liveTransactions.push(response.transaction);
       }
       return response;
-      }
-      );
+    }
+  );
 
-      ipcMain.handle(
+  ipcMain.handle(
     "import:pdf",
     (
       _event,

@@ -44,4 +44,23 @@ test.describe("Manual entry and duplicate detection", () => {
     await expect(entry.resultAlert).toContainText("Fingerprint:");
     await expect(dashboard.expenseValue).toHaveText(afterFirstEntryExpenses ?? "");
   });
+
+  test("Scenario 3: malformed optional category data is rejected by the IPC boundary", async ({ window: page }) => {
+    const response = await page.evaluate(async () =>
+      window.budgetApi.import.addManualTransaction({
+        householdId: "sample-hh",
+        accountId: "sample-acc",
+        bookedAtIso: "2026-05-23",
+        amountMinor: -1250,
+        merchantRaw: "Malformed category probe",
+        categoryId: 123 as unknown as string,
+      })
+    );
+
+    expect(response).toMatchObject({
+      ok: false,
+      reason: "validation",
+      code: "INVALID_CATEGORY_ID",
+    });
+  });
 });

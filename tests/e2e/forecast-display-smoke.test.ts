@@ -17,6 +17,9 @@ function createFakeBudgetApi(): BudgetApi {
   const dashboardData = buildDashboardData({ monthlyTotals });
 
   return {
+    accounts: {
+      list: async () => [{ id: "sample-acc", householdId: "sample-hh", name: "Brukskonto", currencyCode: "NOK" as const }],
+    },
     dashboard: {
       getData: async () => dashboardData,
       getViewData: async (yearMonth: string) =>

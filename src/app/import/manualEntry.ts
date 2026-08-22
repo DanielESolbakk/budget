@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   validateManualEntryInput,
+  type ManualEntryValidationErrorCode,
   type ManualEntryInput,
   type ImportJob,
   type Transaction,
@@ -26,7 +27,7 @@ export interface ManualEntryDuplicate {
 export interface ManualEntryValidationFailure {
   ok: false;
   reason: "validation";
-  code: string;
+  code: ManualEntryValidationErrorCode;
   message: string;
 }
 
@@ -36,8 +37,8 @@ export type ManualEntryResponse =
   | ManualEntryValidationFailure;
 
 export interface ManualEntryLedger {
-  appendImportJob: (job: ImportJob) => void;
-  appendTransactions: (transactions: Transaction[]) => void;
+  getAccountsForHousehold: (householdId: string) => readonly { id: string }[];
+  appendManualEntry: (importJob: ImportJob, transaction: Transaction) => void;
 }
 
 /**
@@ -61,9 +62,25 @@ export function submitManualEntry(
     return { ok: false, reason: "validation", code, message };
   }
 
+  const householdId = input.householdId.trim();
+  const accountId = input.accountId.trim();
+  const categoryId = input.categoryId?.trim();
+  const accountExists = ledger
+    .getAccountsForHousehold(householdId)
+    .some((account) => account.id === accountId);
+
+  if (!accountExists) {
+    return {
+      ok: false,
+      reason: "validation",
+      code: "INVALID_ACCOUNT_ID",
+      message: "accountId must identify an account belonging to the household.",
+    };
+  }
+
   const duplicateResult = detectDuplicate(
     {
-      accountId: input.accountId,
+      accountId,
       bookedAtIso: input.bookedAtIso.trim(),
       amountMinor: input.amountMinor,
       merchantRaw: input.merchantRaw,
@@ -85,7 +102,7 @@ export function submitManualEntry(
 
   const importJob: ImportJob = {
     id: importJobId,
-    householdId: input.householdId,
+    householdId,
     sourceType: "manual",
     sourceName: "manual-entry",
     startedAtIso: now,
@@ -94,17 +111,16 @@ export function submitManualEntry(
 
   const transaction: Transaction = {
     id: `tx-manual-${randomUUID()}`,
-    householdId: input.householdId,
-    accountId: input.accountId,
+    householdId,
+    accountId,
     bookedAtIso: input.bookedAtIso.trim(),
     amountMinor: input.amountMinor,
     merchantRaw: input.merchantRaw.trim(),
     importJobId,
-    ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
+    ...(categoryId !== undefined ? { categoryId } : {}),
   };
 
-  ledger.appendImportJob(importJob);
-  ledger.appendTransactions([transaction]);
+  ledger.appendManualEntry(importJob, transaction);
 
   return { ok: true, transaction, importJobId };
 }
