@@ -24,7 +24,7 @@ export class ManualEntryPage {
   }
 
   get accountInput() {
-    return this.entrySection.getByLabel("Account ID");
+    return this.entrySection.getByLabel("Account");
   }
 
   get bookedDateInput() {
@@ -56,7 +56,7 @@ export class ManualEntryPage {
   }
 
   async submitEntry(values: ManualEntryValues): Promise<void> {
-    await this.accountInput.fill(values.accountId);
+    await this.accountInput.selectOption(values.accountId);
     await this.bookedDateInput.fill(values.bookedAtIso);
     await this.amountInput.fill(values.amountMinor);
     await this.merchantInput.fill(values.merchantRaw);

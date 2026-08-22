@@ -56,6 +56,14 @@ describe("detectDuplicate", () => {
     expect(result.isDuplicate).toBe(true);
   });
 
+  it("detects duplicate when date-only and midnight UTC representations are equivalent", () => {
+    const result = detectDuplicate(
+      { ...candidate, bookedAtIso: "2026-05-23" },
+      [baseTx]
+    );
+    expect(result.isDuplicate).toBe(true);
+  });
+
   it("does not detect duplicate when amount sign differs (AC-3 explainability)", () => {
     const result = detectDuplicate(
       { ...candidate, amountMinor: 1250 },

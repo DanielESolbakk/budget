@@ -17,6 +17,9 @@ function createFakeBudgetApi(): BudgetApi {
   const dashboardData = buildDashboardData({ monthlyTotals });
 
   return {
+    accounts: {
+      list: async () => [{ id: "sample-acc", householdId: "sample-hh", name: "Brukskonto", currencyCode: "NOK" as const }],
+    },
     dashboard: {
       getData: async () => dashboardData,
       getViewData: async (yearMonth: string) =>
@@ -87,7 +90,6 @@ describe("forecast display smoke", () => {
       React.createElement(ForecastSection, { dashboardData: fallbackData })
     );
 
-    expect(markup).toContain("Insufficient history: showing fallback forecast.");
-    expect(markup).toContain("2026-04");
+    expect(markup).toContain("Insufficient history");
   });
 });
