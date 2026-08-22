@@ -47,7 +47,7 @@ test.describe("Manual entry and duplicate detection", () => {
 
   test("Scenario 3: malformed optional category data is rejected by the IPC boundary", async ({ window }) => {
     const response = await window.evaluate(async () =>
-      window.budgetApi.import.addManualTransaction({
+      globalThis.budgetApi.import.addManualTransaction({
         householdId: "sample-hh",
         accountId: "sample-acc",
         bookedAtIso: "2026-05-23",
