@@ -241,7 +241,7 @@ jobs:
       - name: Validate required npm scripts
         if: steps.detect.outputs.has_package == 'true'
         run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const missing=['test:integration','test:e2e:playwright','verify:no-network','deps:audit:signal','ai:feedback:signal','ai:skills:prune:signal','ai:risk:checkpoint:signal'].filter((name)=>!has(name)); if(!(has('test:e2e:vitest')||has('test:e2e'))){ missing.push('test:e2e:vitest|test:e2e'); } if(process.env.RUN_HARNESS_GATE==='true' && !has('eval:skill')){ missing.push('eval:skill'); } if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const missing=['test:integration','test:e2e:playwright','test:e2e:playwright:ci','verify:no-network','deps:audit:signal','ai:feedback:signal','ai:skills:prune:signal','ai:risk:checkpoint:signal'].filter((name)=>!has(name)); if(!(has('test:e2e:vitest')||has('test:e2e'))){ missing.push('test:e2e:vitest|test:e2e'); } if(process.env.RUN_HARNESS_GATE==='true' && !has('eval:skill')){ missing.push('eval:skill'); } if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
         env:
           RUN_HARNESS_GATE: ${{ needs.detect-changes.outputs.run_harness_gate }}
 
@@ -333,23 +333,43 @@ jobs:
         if: steps.detect.outputs.has_package == 'true'
         run: node node_modules/electron/install.js
 
+      - name: Build Playwright artifacts
+        if: steps.detect.outputs.has_package == 'true'
+        run: npm run build
+
       - name: Playwright runtime tests
         if: steps.detect.outputs.has_package == 'true'
-        run: xvfb-run -a npm run test:e2e:playwright -- --grep-invert '@visual'
+        env:
+          PLAYWRIGHT_OUTPUT_DIR: test-results/functional
+          PLAYWRIGHT_REPORT_DIR: playwright-report/functional
+        run: xvfb-run -a npm run test:e2e:playwright:ci -- --grep-invert '@visual'
 
-      - name: Playwright visual tests (informational)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: xvfb-run -a npm run test:e2e:playwright -- --grep '@visual'
-
-      - name: Upload Playwright artifacts
+      - name: Upload Playwright functional artifacts
         if: steps.detect.outputs.has_package == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-artifacts
+          name: playwright-functional-artifacts
           path: |
-            playwright-report
-            test-results
+            playwright-report/functional
+            test-results/functional
+          if-no-files-found: ignore
+
+      - name: Playwright visual tests (informational)
+        if: steps.detect.outputs.has_package == 'true' && always()
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_OUTPUT_DIR: test-results/visual
+          PLAYWRIGHT_REPORT_DIR: playwright-report/visual
+        run: xvfb-run -a npm run test:e2e:playwright:ci -- --grep '@visual'
+
+      - name: Upload Playwright visual artifacts
+        if: steps.detect.outputs.has_package == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-visual-artifacts
+          path: |
+            playwright-report/visual
+            test-results/visual
           if-no-files-found: ignore
 
       - name: No-network verification
