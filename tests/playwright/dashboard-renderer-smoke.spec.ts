@@ -73,7 +73,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
   });
 
-  test("Scenario 4: each monthly total keeps its label paired with its value", async ({ dashboard }) =>
+  test("Scenario 4: each monthly total keeps its label paired with its value", async ({ dashboard }) => {
     await expect(dashboard.monthlyTotal("Income")).toContainText("Income");
     await expect(dashboard.monthlyTotal("Income").getByLabel("Income", { exact: true })).toBeVisible();
     await expect(dashboard.monthlyTotal("Expenses")).toContainText("Expenses");
@@ -82,7 +82,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyTotal("Net").getByLabel("Net", { exact: true })).toBeVisible();
   });
 
-  test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) =>
+  test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) => {
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-03";
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
@@ -95,7 +95,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.incomeValue).toContainText("510");
   });
 
-  test("@visual Visual: desktop dashboard preserves the monthly review layout", async ({ window, electronApp }) =>
+  test("@visual Visual: desktop dashboard preserves the monthly review layout", async ({ window, electronApp }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
     });
@@ -106,7 +106,7 @@ test.describe("Dashboard renderer smoke", () => {
     });
   });
 
-  test("@visual Visual: mobile dashboard preserves the horizontal month rail", async ({ window, electronApp }) =>
+  test("@visual Visual: mobile dashboard preserves the horizontal month rail", async ({ window, electronApp }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
