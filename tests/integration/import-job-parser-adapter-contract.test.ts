@@ -11,6 +11,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { ImportJob } from "../../src/domain/types.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
 import {
@@ -25,6 +26,13 @@ const BASE_OPTIONS = {
   householdId: "hh-integration",
   accountId: "acc-integration",
 };
+
+const MALFORMED_STATEMENT = [
+  "ROGALAND SPAREBANK",
+  "Dato  Beskrivelse  Beløp",
+  "31.05.2026  Valid merchant  -10,00 ",
+  "31.05.2026  Broken merchant  not-a-number ",
+].join("\n");
 
 function loadFixture(): string {
   return readFileSync(FIXTURE_PATH, "utf8");
@@ -78,6 +86,12 @@ function runWorkflow(
       appendTransactions: ledger.appendTransactions,
     }
   );
+}
+
+function stableImportJobFields(importJob: ImportJob): Omit<ImportJob, "id"> {
+  const { id: ignoredImportJobId, ...stableFields } = importJob;
+  void ignoredImportJobId;
+  return stableFields;
 }
 
 describe("import job / parser adapter contract", () => {
@@ -198,9 +212,57 @@ describe("import job / parser adapter contract", () => {
       expect(r1.candidates).toEqual(r2.candidates);
       expect(r1.adapterId).toBe(r2.adapterId);
     });
+
+    it("repeated workflow runs persist identical provenance fields", () => {
+      const firstLedger = createTestLedger();
+      const secondLedger = createTestLedger();
+
+      try {
+        const firstResult = runWorkflow(loadFixture(), firstLedger.ledger, "job-repeat-1");
+        const secondResult = runWorkflow(loadFixture(), secondLedger.ledger, "job-repeat-2");
+
+        expect(firstResult.ok).toBe(true);
+        expect(secondResult.ok).toBe(true);
+        if (!firstResult.ok || !secondResult.ok) return;
+
+        const firstSnapshot = firstLedger.ledger.loadLedgerSnapshotData();
+        const secondSnapshot = secondLedger.ledger.loadLedgerSnapshotData();
+        expect(firstSnapshot.importJobs).toHaveLength(1);
+        expect(secondSnapshot.importJobs).toHaveLength(1);
+
+        const firstJob = firstSnapshot.importJobs[0];
+        const secondJob = secondSnapshot.importJobs[0];
+        expect(firstJob).toBeDefined();
+        expect(secondJob).toBeDefined();
+        if (!firstJob || !secondJob) return;
+
+        expect(stableImportJobFields(firstJob)).toEqual(stableImportJobFields(secondJob));
+      } finally {
+        firstLedger.close();
+        secondLedger.close();
+      }
+    });
   });
 
   describe("AC-3: malformed and unsupported sources produce explicit failures", () => {
+    it("malformed transaction rows fail before persisting jobs or candidates", () => {
+      const testLedger = createTestLedger();
+
+      try {
+        const result = runWorkflow(MALFORMED_STATEMENT, testLedger.ledger, "job-malformed");
+
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.errors.some((error) => error.code === "INVALID_AMOUNT_FORMAT")).toBe(true);
+
+        const snapshot = testLedger.ledger.loadLedgerSnapshotData();
+        expect(snapshot.importJobs).toHaveLength(0);
+        expect(snapshot.transactions).toHaveLength(0);
+      } finally {
+        testLedger.close();
+      }
+    });
+
     it("unsupported source returns failure with no candidates and UNSUPPORTED_LAYOUT code", () => {
       const registry = new ParserAdapterRegistry();
       const result = registry.parse("irrelevant content", BASE_OPTIONS);
@@ -210,6 +272,24 @@ describe("import job / parser adapter contract", () => {
       if (result.ok) return;
       expect(result.errors[0]?.code).toBe("UNSUPPORTED_LAYOUT");
       expect((result as { candidates?: unknown }).candidates).toBeUndefined();
+    });
+
+    it("unsupported workflow input is rejected without persisting jobs or candidates", () => {
+      const testLedger = createTestLedger();
+
+      try {
+        const result = runWorkflow("irrelevant content", testLedger.ledger, "job-unsupported");
+
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.errors[0]?.code).toBe("UNSUPPORTED_LAYOUT");
+
+        const snapshot = testLedger.ledger.loadLedgerSnapshotData();
+        expect(snapshot.importJobs).toHaveLength(0);
+        expect(snapshot.transactions).toHaveLength(0);
+      } finally {
+        testLedger.close();
+      }
     });
 
     it("Rogaland statement with missing transaction section returns failure", () => {
