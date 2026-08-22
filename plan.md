@@ -50,7 +50,7 @@ Build a Windows-first, local-first household budgeting desktop app using Electro
 
 ## Decisions
 
-- Included scope: Windows-first desktop app, one local user managing a household across multiple accounts, digital PDF + CSV + manual entry, local-only storage, backup/export, dashboard, budgeting, forecasting, search, and manual correction.
+- Included scope: Windows-first desktop app, one local user managing a household across multiple accounts, standalone text + binary PDF + CSV + manual entry, local-only storage, backup/export, dashboard, budgeting, forecasting, search, and manual correction.
 - Deliberately excluded from the first milestone: bank APIs, live bank sync, multi-device collaboration, cloud-hosted processing of transaction content, scanned-image OCR unless sample artifacts force it, and advanced envelope or goal planning as day-one requirements.
 - Recommended stack: Electron + React + TypeScript + better-sqlite3 or equivalent SQLite binding, shared schema validation, and Playwright/Vitest for testability. This is favored over Tauri or PySide because the repo is empty, the future developer is likely an LLM, and the Electron/TypeScript ecosystem gives the most predictable implementation path for a modern GUI app.
 - Stack comparison outcome: Tauri remains technically viable, but it is not the preferred choice because Rust plus a split frontend/backend stack raises delivery risk, slows iteration, and weakens LLM-driven implementation and testing compared with a unified TypeScript desktop architecture.
