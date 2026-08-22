@@ -48,7 +48,7 @@ describe("verifyFixture", () => {
     );
     const planMd = readRepositoryFile("plan.md");
 
-    expect(adr).toMatch(/^## Status\\s+Accepted$/m);
+    expect(adr).toMatch(/^## Status\s+Accepted$/m);
     const parserSection = readMarkdownSection(adr, "### Import and Parser Layer");
     expect(parserSection).toContain("source-aware parser adapters");
     expect(parserSection).toContain("parser-specific logic isolated");
