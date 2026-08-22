@@ -25,7 +25,17 @@ describe("AC traceability governance checks", () => {
     expect(adr).toMatch(
       /## Privacy and Data Handling Constraints[\s\S]*Transaction content remains local by default[\s\S]*No background network calls for transaction workflows/m,
     );
-    for (const term of ["Electron", "React", "TypeScript", "SQLite", "renderer", "Main Process", "Shared Layer"]) {
+    for (const term of [
+      "Electron",
+      "React",
+      "TypeScript",
+      "SQLite",
+      "renderer",
+      "Main Process",
+      "Shared Layer",
+      "local-first",
+      "no-network",
+    ]) {
       expect(adr, `ADR must contain "${term}"`).toContain(term);
     }
   });
