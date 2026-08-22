@@ -11,7 +11,8 @@
  *         in import provenance.
  */
 
-import { mkdirSync, readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -21,10 +22,11 @@ import { buildDashboardViewContract } from "../../src/app/dashboardApi.js";
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
+  appendUniqueTransactions,
+  runPdfImportWorkflow,
 } from "../../src/app/import/importPdf.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
-import { buildTransactionFingerprint } from "../../src/domain/import/buildTransactionFingerprint.js";
-import type { Household, Account, ImportJob } from "../../src/domain/types.js";
+import type { Household, Account, Transaction } from "../../src/domain/types.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-statement.txt";
 
@@ -80,47 +82,24 @@ function runPdfImportOrchestration(
   ledger: ReturnType<typeof makeTestLedger>,
   options: { householdId: string; accountId: string; sourceName?: string }
 ) {
-  const importJobId = `import-pdf-${Date.now()}`;
+  const importJobId = `import-pdf-test-${randomUUID()}`;
   const now = new Date().toISOString();
 
-  const parseResult = parseRogalandStatementText(text, {
-    householdId: options.householdId,
-    accountId: options.accountId,
-    importJobId,
-  });
-
-  if (!parseResult.ok) {
-    return normalizePdfImportErrors(parseResult.errors);
-  }
-
-  const transactionsWithFingerprintIds = parseResult.transactions.map((tx) => ({
-    ...tx,
-    id: buildTransactionFingerprint({
-      accountId: tx.accountId,
-      bookedAtIso: tx.bookedAtIso,
-      amountMinor: tx.amountMinor,
-      merchantRaw: tx.merchantRaw,
-    }),
-  }));
-
-  const importJob: ImportJob = {
-    id: importJobId,
-    householdId: options.householdId,
-    sourceType: "pdf",
-    sourceName: options.sourceName ?? "rogaland-statement.txt",
-    startedAtIso: now,
-    finishedAtIso: now,
-  };
-
-  ledger.appendImportJob(importJob);
-  ledger.appendTransactions(transactionsWithFingerprintIds);
-
-  return {
-    ok: true as const,
-    importJobId,
-    transactionCount: transactionsWithFingerprintIds.length,
-    adapterId: parseResult.adapterId,
-  };
+  return runPdfImportWorkflow(
+    {
+      pdfText: text,
+      filePath: options.sourceName ?? "rogaland-statement.txt",
+      householdId: options.householdId,
+      accountId: options.accountId,
+      importJobId,
+      startedAtIso: now,
+      finishedAtIso: now,
+    },
+    {
+      appendImportJob: ledger.appendImportJob,
+      appendTransactions: ledger.appendTransactions,
+    }
+  );
 }
 
 describe("pdf import contract", () => {
@@ -333,8 +312,17 @@ describe("pdf import contract", () => {
       const snapshot = ledger.loadLedgerSnapshotData();
 
       expect(snapshot.importJobs).toHaveLength(1);
-      expect(snapshot.importJobs[0]!.sourceType).toBe("pdf");
-      expect(snapshot.importJobs[0]!.id).toBe(response.importJobId);
+      expect(snapshot.importJobs[0]).toEqual({
+        id: response.importJobId,
+        householdId: SAMPLE_HOUSEHOLD.id,
+        sourceType: "pdf",
+        sourceName: "rogaland-statement.txt",
+        adapterId: ROGALAND_ADAPTER_ID,
+        candidateCount: response.transactionCount,
+        validationFailureCount: 0,
+        startedAtIso: expect.any(String),
+        finishedAtIso: expect.any(String),
+      });
       expect(snapshot.transactions).toHaveLength(response.transactionCount);
 
       for (const tx of snapshot.transactions) {
@@ -476,6 +464,57 @@ describe("pdf import contract", () => {
 
       ledger.close();
     });
+
+    it("re-importing does not duplicate the visible transaction collection", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const visibleTransactions: Transaction[] = [];
+      const text = loadFixture();
+      const appendVisibleTransactions = (transactions: Transaction[]): void => {
+        appendUniqueTransactions(visibleTransactions, transactions);
+      };
+
+      const first = runPdfImportWorkflow(
+        {
+          pdfText: text,
+          filePath: "rogaland-statement.txt",
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          importJobId: `import-pdf-test-${randomUUID()}`,
+          startedAtIso: "2026-05-31T12:00:00Z",
+          finishedAtIso: "2026-05-31T12:00:00Z",
+        },
+        {
+          appendImportJob: ledger.appendImportJob,
+          appendTransactions: ledger.appendTransactions,
+          onTransactionsPersisted: appendVisibleTransactions,
+        }
+      );
+
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+
+      const second = runPdfImportWorkflow(
+        {
+          pdfText: text,
+          filePath: "rogaland-statement.txt",
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          importJobId: `import-pdf-test-${randomUUID()}`,
+          startedAtIso: "2026-05-31T12:00:01Z",
+          finishedAtIso: "2026-05-31T12:00:01Z",
+        },
+        {
+          appendImportJob: ledger.appendImportJob,
+          appendTransactions: ledger.appendTransactions,
+          onTransactionsPersisted: appendVisibleTransactions,
+        }
+      );
+
+      expect(second.ok).toBe(true);
+      expect(visibleTransactions).toHaveLength(first.transactionCount);
+
+      ledger.close();
+    });
   });
 
   describe("Scenario 3: malformed input persists no partial transactions", () => {
@@ -512,6 +551,175 @@ describe("pdf import contract", () => {
       expect(snapshot.importJobs).toHaveLength(0);
 
       ledger.close();
+    });
+  });
+
+  describe("Scenario 4: legacy SQLite schema migration", () => {
+    it("adds nullable import provenance columns and preserves existing records after reopen", () => {
+      const tempDirectory = mkdtempSync(join(tmpdir(), "budget-pdf-migration-"));
+      const dbPath = join(tempDirectory, "legacy.sqlite");
+      const legacyDatabase = new DatabaseSync(dbPath);
+
+      legacyDatabase.exec(`
+        CREATE TABLE households (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at_iso TEXT NOT NULL
+        );
+        INSERT INTO households (id, name, created_at_iso)
+        VALUES ('hh-legacy', 'Legacy Household', '2026-01-01T00:00:00Z');
+        CREATE TABLE accounts (
+          id TEXT PRIMARY KEY,
+          household_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          currency_code TEXT NOT NULL
+        );
+        INSERT INTO accounts (id, household_id, name, currency_code)
+        VALUES ('acc-legacy', 'hh-legacy', 'Brukskonto', 'NOK');
+        CREATE TABLE transactions (
+          id TEXT PRIMARY KEY,
+          household_id TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          booked_at_iso TEXT NOT NULL,
+          amount_minor INTEGER NOT NULL,
+          merchant_raw TEXT NOT NULL,
+          category_id TEXT,
+          import_job_id TEXT
+        );
+        INSERT INTO transactions (
+          id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+          category_id, import_job_id
+        ) VALUES (
+          'tx-legacy', 'hh-legacy', 'acc-legacy', '2026-05-01T00:00:00Z', -1250,
+          'Legacy Merchant', 'groceries', 'job-legacy'
+        );
+        CREATE TABLE import_jobs (
+          id TEXT PRIMARY KEY,
+          household_id TEXT NOT NULL,
+          source_type TEXT NOT NULL,
+          source_name TEXT NOT NULL,
+          started_at_iso TEXT NOT NULL,
+          finished_at_iso TEXT
+        );
+        INSERT INTO import_jobs (
+          id, household_id, source_type, source_name, started_at_iso, finished_at_iso
+        ) VALUES (
+          'job-legacy', 'hh-legacy', 'pdf', 'legacy.pdf',
+          '2026-05-01T00:00:00Z', '2026-05-01T00:01:00Z'
+        );
+        CREATE TABLE monthly_category_targets (
+          year_month TEXT NOT NULL,
+          category_id TEXT NOT NULL,
+          target_minor INTEGER NOT NULL,
+          PRIMARY KEY (year_month, category_id)
+        );
+      `);
+      legacyDatabase.close();
+
+      const ledger = createLocalLedgerDatabase({
+        dbPath,
+        seedData: {
+          household: SAMPLE_HOUSEHOLD,
+          accounts: [],
+          transactions: [],
+          importJobs: [],
+          monthlyCategoryTargets: [],
+        },
+      });
+      let ledgerClosed = false;
+
+      try {
+        const before = ledger.loadLedgerSnapshotData();
+
+        expect(before.household).toEqual({
+          id: "hh-legacy",
+          name: "Legacy Household",
+          createdAtIso: "2026-01-01T00:00:00Z",
+        });
+        expect(before.accounts).toEqual([
+          {
+            id: "acc-legacy",
+            householdId: "hh-legacy",
+            name: "Brukskonto",
+            currencyCode: "NOK",
+          },
+        ]);
+        expect(before.transactions).toEqual([
+          {
+            id: "tx-legacy",
+            householdId: "hh-legacy",
+            accountId: "acc-legacy",
+            bookedAtIso: "2026-05-01T00:00:00Z",
+            amountMinor: -1250,
+            merchantRaw: "Legacy Merchant",
+            categoryId: "groceries",
+            importJobId: "job-legacy",
+          },
+        ]);
+        expect(before.importJobs).toEqual([
+          {
+            id: "job-legacy",
+            householdId: "hh-legacy",
+            sourceType: "pdf",
+            sourceName: "legacy.pdf",
+            startedAtIso: "2026-05-01T00:00:00Z",
+            finishedAtIso: "2026-05-01T00:01:00Z",
+          },
+        ]);
+
+        ledger.appendImportJob({
+          id: "job-migrated",
+          householdId: "hh-legacy",
+          sourceType: "pdf",
+          sourceName: "migrated.pdf",
+          adapterId: ROGALAND_ADAPTER_ID,
+          candidateCount: 1,
+          validationFailureCount: 0,
+          startedAtIso: "2026-05-02T00:00:00Z",
+          finishedAtIso: "2026-05-02T00:01:00Z",
+        });
+
+        const after = ledger.loadLedgerSnapshotData();
+        expect(after.household).toEqual(before.household);
+        expect(after.accounts).toEqual(before.accounts);
+        expect(after.transactions).toEqual(before.transactions);
+        expect(after.importJobs[0]).toEqual(before.importJobs[0]);
+        expect(after.importJobs[1]).toEqual({
+          id: "job-migrated",
+          householdId: "hh-legacy",
+          sourceType: "pdf",
+          sourceName: "migrated.pdf",
+          adapterId: ROGALAND_ADAPTER_ID,
+          candidateCount: 1,
+          validationFailureCount: 0,
+          startedAtIso: "2026-05-02T00:00:00Z",
+          finishedAtIso: "2026-05-02T00:01:00Z",
+        });
+
+        ledger.close();
+        ledgerClosed = true;
+
+        const reopenedLedger = createLocalLedgerDatabase({
+          dbPath,
+          seedData: {
+            household: SAMPLE_HOUSEHOLD,
+            accounts: [],
+            transactions: [],
+            importJobs: [],
+            monthlyCategoryTargets: [],
+          },
+        });
+        try {
+          expect(reopenedLedger.loadLedgerSnapshotData()).toEqual(after);
+        } finally {
+          reopenedLedger.close();
+        }
+      } finally {
+        if (!ledgerClosed) {
+          ledger.close();
+        }
+        rmSync(tempDirectory, { recursive: true, force: true });
+      }
     });
   });
 });

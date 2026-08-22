@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
 import { join } from "path";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   buildDashboardData,
@@ -22,11 +23,12 @@ import {
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
+  appendUniqueTransactions,
+  runPdfImportWorkflow,
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
-import { parseRogalandStatementText } from "../src/domain/import/pdfTextParser.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -327,42 +329,27 @@ app.whenReady().then(() => {
         return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
       }
 
-      const importJobId = `import-pdf-${Date.now()}`;
+      const importJobId = `import-pdf-${randomUUID()}`;
       const now = new Date().toISOString();
 
-      const parseResult = parseRogalandStatementText(pdfText, {
-        householdId: request.householdId,
-        accountId: request.accountId,
-        importJobId,
-        idPrefix: importJobId,
-      });
-
-      if (!parseResult.ok) {
-        return normalizePdfImportErrors(parseResult.errors);
-      }
-
-      const importJob: ImportJob = {
-        id: importJobId,
-        householdId: request.householdId,
-        sourceType: "pdf",
-        sourceName: request.filePath,
-        startedAtIso: now,
-        finishedAtIso: now,
-      };
-
-      localLedgerDatabase.appendImportJob(importJob);
-      localLedgerDatabase.appendTransactions(parseResult.transactions);
-
-      for (const transaction of parseResult.transactions) {
-        liveTransactions.push(transaction);
-      }
-
-      return {
-        ok: true,
-        importJobId,
-        transactionCount: parseResult.transactions.length,
-        adapterId: parseResult.adapterId,
-      };
+      return runPdfImportWorkflow(
+        {
+          pdfText,
+          filePath: request.filePath,
+          householdId: request.householdId,
+          accountId: request.accountId,
+          importJobId,
+          startedAtIso: now,
+          finishedAtIso: now,
+        },
+        {
+          appendImportJob: localLedgerDatabase.appendImportJob,
+          appendTransactions: localLedgerDatabase.appendTransactions,
+          onTransactionsPersisted: (transactions) => {
+            appendUniqueTransactions(liveTransactions, transactions);
+          },
+        }
+      );
     }
   );
 

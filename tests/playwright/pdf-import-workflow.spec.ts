@@ -20,6 +20,7 @@ import { test, expect, _electron as electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { PdfImportPage } from "./pom/PdfImportPage.js";
 import { DashboardPage } from "./pom/DashboardPage.js";
@@ -43,9 +44,10 @@ test.describe("PDF import renderer workflow", () => {
   let dashboardPage: DashboardPage;
 
   test.beforeEach(async () => {
+    const databasePath = join(tmpdir(), "budget-playwright-pdf", randomUUID(), "budget.sqlite");
     app = await electron.launch({
       args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
+      env: { ...process.env, NODE_ENV: "test", BUDGET_DB_PATH: databasePath },
     });
     window = await app.firstWindow();
     await window.waitForLoadState("domcontentloaded");
@@ -80,6 +82,7 @@ test.describe("PDF import renderer workflow", () => {
 
     // AC-4: adapter identity is shown in the success message.
     expect(statusText).toMatch(/rogaland-sparebank-text-v1/i);
+    const firstSuccessStatusText = statusText ?? "";
 
     // The app reloads dashboard state after successful import and remounts the import section.
     await expect(pdfImportPage.filePathInput).toHaveValue("", { timeout: 10_000 });
@@ -91,6 +94,21 @@ test.describe("PDF import renderer workflow", () => {
         timeout: 10_000,
       })
       .not.toBe(beforeIncomeText);
+
+    const beforeSecondImportIncomeText = ((await dashboardPage.incomeValue.textContent()) ?? "").trim();
+    await pdfImportPage.submitImport(FIXTURE_PATH);
+    await expect
+      .poll(async () => (await pdfImportPage.successStatus.textContent()) ?? "", {
+        timeout: 10_000,
+      })
+      .not.toBe(firstSuccessStatusText);
+    await expect(pdfImportPage.successStatus).toBeVisible({ timeout: 10_000 });
+    await expect(pdfImportPage.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect
+      .poll(async () => ((await dashboardPage.incomeValue.textContent()) ?? "").trim(), {
+        timeout: 10_000,
+      })
+      .toBe(beforeSecondImportIncomeText);
   });
 
   test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async () => {

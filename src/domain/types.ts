@@ -28,6 +28,9 @@ export interface ImportJob {
   householdId: string;
   sourceType: "csv" | "pdf" | "manual";
   sourceName: string;
+  adapterId?: string;
+  candidateCount?: number;
+  validationFailureCount?: number;
   startedAtIso: string;
   finishedAtIso?: string;
 }
