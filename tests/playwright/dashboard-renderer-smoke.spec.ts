@@ -93,7 +93,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.incomeValue).toContainText("510");
   });
 
-  test("Visual: desktop dashboard preserves the monthly review layout", async ({ window, electronApp }) => {
+  test("@visual Visual: desktop dashboard preserves the monthly review layout", async ({ window, electronApp }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
     });
@@ -104,7 +104,7 @@ test.describe("Dashboard renderer smoke", () => {
     });
   });
 
-  test("Visual: mobile dashboard preserves the horizontal month rail", async ({ window, electronApp }) => {
+  test("@visual Visual: mobile dashboard preserves the horizontal month rail", async ({ window, electronApp }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
