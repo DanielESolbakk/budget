@@ -21,6 +21,7 @@ import {
   buildRogalandImportJobId,
   parseRogalandStatementText,
   ROGALAND_ADAPTER_ID,
+  ROGALAND_SOURCE_ID,
 } from "../../src/domain/import/pdfTextParser.js";
 import { defaultParserAdapterRegistry } from "../../src/domain/import/parserAdapterRegistry.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
@@ -358,6 +359,14 @@ describe("pdf import contract", () => {
         adapterId: ROGALAND_ADAPTER_ID,
         candidateCount: response.transactionCount,
         validationFailureCount: 0,
+        provenance: {
+          sourceIdentity: ROGALAND_SOURCE_ID,
+          adapterId: ROGALAND_ADAPTER_ID,
+          storyAnchor: {
+            enablerIssueId: "32",
+            featureIssueId: "15",
+          },
+        },
         startedAtIso: expect.any(String),
         finishedAtIso: expect.any(String),
       });

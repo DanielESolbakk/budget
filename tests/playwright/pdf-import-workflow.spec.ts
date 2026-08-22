@@ -58,7 +58,6 @@ test.describe("PDF import renderer workflow", () => {
 
     // AC-4: adapter identity is shown in the success message.
     expect(statusText).toMatch(/rogaland-sparebank-text-v1/i);
-    const firstSuccessStatusText = statusText ?? "";
 
     // The app reloads dashboard state after successful import and remounts the import section.
     await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
@@ -74,8 +73,7 @@ test.describe("PDF import renderer workflow", () => {
     const beforeSecondImportIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
     await pdfImport.filePathInput.fill(FIXTURE_PATH);
     await pdfImport.importButton.click();
-    await expect(pdfImport.importButton).toBeDisabled({ timeout: 10_000 });
-    await expect(pdfImport.importButton).toBeEnabled({ timeout: 10_000 });
+    await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
     await expect(pdfImport.successStatus).toBeVisible({ timeout: 10_000 });
     await expect
       .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), {
