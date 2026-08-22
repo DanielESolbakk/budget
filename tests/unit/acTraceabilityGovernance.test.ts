@@ -8,12 +8,23 @@ function readRepositoryFile(relativePath: string): string {
   return readFileSync(new URL(relativePath, `file://${repositoryRoot}/`), "utf8");
 }
 
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 describe("AC traceability governance checks", () => {
   it("AC-1: ADR records required stack and runtime boundary decisions", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
     );
-    const requiredTerms = [
+    expect(adr).toMatch(/^## Status\s+Accepted$/m);
+    expect(adr).toMatch(
+      /### Import and Parser Layer[\s\S]*source-aware parser adapters[\s\S]*parser-specific logic isolated/m,
+    );
+    expect(adr).toMatch(
+      /## Privacy and Data Handling Constraints[\s\S]*Transaction content remains local by default[\s\S]*No background network calls for transaction workflows/m,
+    );
+    for (const term of [
       "Electron",
       "React",
       "TypeScript",
@@ -24,11 +35,9 @@ describe("AC traceability governance checks", () => {
       "parser adapter",
       "local-first",
       "no-network",
-    ];
-    for (const term of requiredTerms) {
+    ]) {
       expect(adr, `ADR must contain "${term}"`).toContain(term);
     }
-    expect(adr).toContain("Accepted");
   });
 
   it("AC-2: glossary defines all canonical domain terms and plan.md links both artifacts", () => {
@@ -37,7 +46,7 @@ describe("AC traceability governance checks", () => {
     );
     const planMd = readRepositoryFile("plan.md");
 
-    const requiredTerms = [
+    for (const term of [
       "household",
       "account",
       "transaction",
@@ -48,9 +57,11 @@ describe("AC traceability governance checks", () => {
       "budget target",
       "forecast assumption",
       "backup snapshot",
-    ];
-    for (const term of requiredTerms) {
-      expect(glossary, `Glossary must define "${term}"`).toContain(term);
+    ]) {
+      const escapedTerm = escapeRegularExpression(term);
+      expect(glossary, `Glossary must define "${term}"`).toMatch(
+        new RegExp(`^\\| ${escapedTerm} \\| \\S[^|]* \\|`, "m"),
+      );
     }
 
     expect(planMd).toContain("adr-001-stack-and-runtime-boundaries.md");

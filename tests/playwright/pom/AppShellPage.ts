@@ -22,4 +22,14 @@ export class AppShellPage {
   get banner() {
     return this.page.getByRole("banner");
   }
+
+  /** Product copy identifying the local household ledger. */
+  get localLedgerLabel() {
+    return this.page.getByText("Local household ledger", { exact: true });
+  }
+
+  /** Product copy identifying that the workflow stays on the device. */
+  get onDeviceLabel() {
+    return this.page.getByText("On device", { exact: true });
+  }
 }
