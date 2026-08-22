@@ -35,7 +35,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.netValue).toBeVisible();
   });
 
-  test("Scenario 2: category breakdown section renders with at least one category row visible", async ({ dashboard }) =>
+  test("Scenario 2: category breakdown section renders with at least one category row visible", async ({ dashboard }) => {
     // AC-3: renderer path shows category breakdown section without runtime errors.
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
     await expect(dashboard.categoryBreakdownHeading).toBeVisible();
@@ -71,7 +71,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
   });
 
-  test("Scenario 4: each monthly total keeps its label paired with its value", async ({ dashboard }) =>
+  test("Scenario 4: each monthly total keeps its label paired with its value", async ({ dashboard }) => {
     await expect(dashboard.monthlyTotal("Income")).toContainText("Income");
     await expect(dashboard.monthlyTotal("Income").getByLabel("Income", { exact: true })).toBeVisible();
     await expect(dashboard.monthlyTotal("Expenses")).toContainText("Expenses");
