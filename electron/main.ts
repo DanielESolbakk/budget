@@ -366,7 +366,7 @@ app.whenReady().then(async () => {
       }
 
       const response = submitManualEntry(
-        inputRecord as ManualEntryInput,
+        inputRecord as unknown as ManualEntryInput,
         liveTransactions,
         localLedgerDatabase
       );

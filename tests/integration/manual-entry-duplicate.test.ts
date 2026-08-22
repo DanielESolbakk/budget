@@ -93,7 +93,7 @@ describe("manual-entry-duplicate integration", () => {
     });
   });
 
-  describe("AC-3: provenance is recorded for accepted and duplicate entries", () =>
+  describe("AC-3: provenance is recorded for accepted and duplicate entries", () => {
     it("returns explainable duplicate data for normalized merchant variants", () => {
       const first = submitManualEntry(validInput, ledger.loadLedgerSnapshotData().transactions, ledger);
       expect(first.ok).toBe(true);

@@ -81,7 +81,7 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
       .then((response: ManualEntryResponse) => {
         if (response.ok) {
           setEntryState({ status: "success", response });
-          setFormValues(initialFormValues);
+          setFormValues((current) => ({ ...initialFormValues, accountId: current.accountId }));
           onEntrySuccess();
           return;
         }
@@ -180,6 +180,9 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
       {entryState.status === "pending" && <p role="status">Saving transaction...</p>}
       {accountState === "loading" && <p role="status">Loading accounts...</p>}
       {accountState === "error" && <p role="alert">Accounts could not be loaded.</p>}
+      {accountState === "ready" && accounts.length === 0 && (
+        <p role="alert">No accounts are available for this household.</p>
+      )}
       {entryState.status === "success" && (
         <p role="status">
           Transaction added: {entryState.response.transaction.merchantRaw}; account {entryState.response.transaction.accountId}; date {entryState.response.transaction.bookedAtIso}; amount {entryState.response.transaction.amountMinor} minor units; category {entryState.response.transaction.categoryId ?? "uncategorized"}.
