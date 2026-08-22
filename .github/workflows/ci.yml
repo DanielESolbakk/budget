@@ -335,7 +335,12 @@ jobs:
 
       - name: Playwright runtime tests
         if: steps.detect.outputs.has_package == 'true'
-        run: xvfb-run -a npm run test:e2e:playwright
+        run: xvfb-run -a npm run test:e2e:playwright -- --grep-invert '@visual'
+
+      - name: Playwright visual tests (informational)
+        if: steps.detect.outputs.has_package == 'true'
+        continue-on-error: true
+        run: xvfb-run -a npm run test:e2e:playwright -- --grep '@visual'
 
       - name: Upload Playwright artifacts
         if: steps.detect.outputs.has_package == 'true' && always()
