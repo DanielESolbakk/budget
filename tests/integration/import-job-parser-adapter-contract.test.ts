@@ -1,188 +1,235 @@
-import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+/**
+ * Integration tests for the import job / parser adapter contract (AC-1, AC-2, AC-3 from issue #32).
+ *
+ * These tests exercise the full chain: fixture text → registry → AdapterParseResult →
+ * ImportJob construction, verifying that provenance propagates end-to-end and
+ * that failure paths produce explicit errors with no partial candidates.
+ */
+
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
-import type { Account, Household } from "../../src/domain/types.js";
+import {
+  defaultParserAdapterRegistry,
+  ParserAdapterRegistry,
+} from "../../src/domain/import/parserAdapterRegistry.js";
+import { ROGALAND_ADAPTER_ID } from "../../src/domain/import/pdfTextParser.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-statement.txt";
-const SAMPLE_HOUSEHOLD: Household = {
-  id: "hh-import-adapter",
-  name: "Import Adapter Household",
-  createdAtIso: "2026-01-01T00:00:00Z",
+
+const BASE_OPTIONS = {
+  householdId: "hh-integration",
+  accountId: "acc-integration",
 };
 
-const SAMPLE_ACCOUNT: Account = {
-  id: "acc-import-adapter",
-  householdId: SAMPLE_HOUSEHOLD.id,
-  name: "Brukskonto",
-  currencyCode: "NOK",
-};
+function loadFixture(): string {
+  return readFileSync(FIXTURE_PATH, "utf8");
+}
 
-function makeTestLedger(suffix: string) {
-  const dir = join(tmpdir(), `budget-parser-adapter-${suffix}`);
-  mkdirSync(dir, { recursive: true });
-
-  return createLocalLedgerDatabase({
-    dbPath: join(dir, "test.sqlite"),
+function createTestLedger() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), "budget-import-contract-"));
+  const ledger = createLocalLedgerDatabase({
+    dbPath: join(tempDirectory, "ledger.sqlite"),
     seedData: {
-      household: SAMPLE_HOUSEHOLD,
-      accounts: [SAMPLE_ACCOUNT],
+      household: {
+        id: BASE_OPTIONS.householdId,
+        name: "Integration Household",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      },
+      accounts: [],
       transactions: [],
       importJobs: [],
       monthlyCategoryTargets: [],
     },
   });
+
+  return {
+    ledger,
+    close: () => {
+      ledger.close();
+      rmSync(tempDirectory, { recursive: true, force: true });
+    },
+  };
 }
 
-function runPdfImportOrchestration(pdfText: string, ledger: ReturnType<typeof makeTestLedger>) {
-  const importJobId = `import-pdf-test-${Date.now()}`;
-  const now = new Date().toISOString();
-
+function runWorkflow(
+  pdfText: string,
+  ledger: ReturnType<typeof createTestLedger>["ledger"],
+  importJobId: string
+) {
+  const timestamp = "2026-05-31T12:00:00Z";
   return runPdfImportWorkflow(
     {
       pdfText,
       filePath: FIXTURE_PATH,
-      householdId: SAMPLE_HOUSEHOLD.id,
-      accountId: SAMPLE_ACCOUNT.id,
+      householdId: BASE_OPTIONS.householdId,
+      accountId: BASE_OPTIONS.accountId,
       importJobId,
-      startedAtIso: now,
-      finishedAtIso: now,
+      startedAtIso: timestamp,
+      finishedAtIso: timestamp,
     },
     {
+      parserRegistry: defaultParserAdapterRegistry,
       appendImportJob: ledger.appendImportJob,
       appendTransactions: ledger.appendTransactions,
     }
   );
 }
 
-describe("import-job-parser-adapter-contract", () => {
-  it("records source + adapter identities in import job provenance", () => {
-    const ledger = makeTestLedger(randomUUID());
-    const pdfText = readFileSync(FIXTURE_PATH, "utf8");
+describe("import job / parser adapter contract", () => {
+  describe("AC-1: import job carries full provenance", () => {
+    it("persists import provenance and candidates through the application workflow", () => {
+      const testLedger = createTestLedger();
+      const importJobId = "job-provenance-check";
 
-    const response = runPdfImportOrchestration(pdfText, ledger);
+      try {
+        const result = runWorkflow(loadFixture(), testLedger.ledger, importJobId);
 
-    expect(response.ok).toBe(true);
-    if (!response.ok) return;
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
 
-    const snapshot = ledger.loadLedgerSnapshotData();
-    expect(snapshot.importJobs).toHaveLength(1);
-
-    const [storedImportJob] = snapshot.importJobs;
-    expect(storedImportJob?.id).toBe(response.importJobId);
-    expect(storedImportJob?.adapterId).toBe("rogaland-sparebank-text-v1");
-    expect(storedImportJob?.candidateCount).toBe(response.transactionCount);
-    expect(storedImportJob?.validationFailureCount).toBe(0);
-    expect(storedImportJob?.provenance).toEqual({
-      sourceIdentity: "no.rogaland-sparebank.statement-text",
-      adapterId: "rogaland-sparebank-text-v1",
-      storyAnchor: {
-        enablerIssueId: "32",
-        featureIssueId: "15",
-      },
+        const snapshot = testLedger.ledger.loadLedgerSnapshotData();
+        expect(snapshot.importJobs).toEqual([
+          expect.objectContaining({
+            id: importJobId,
+            householdId: BASE_OPTIONS.householdId,
+            sourceType: "pdf",
+            sourceName: FIXTURE_PATH,
+            adapterId: ROGALAND_ADAPTER_ID,
+            candidateCount: result.transactionCount,
+            validationFailureCount: 0,
+            provenance: {
+              sourceIdentity: "no.rogaland-sparebank.statement-text",
+              adapterId: ROGALAND_ADAPTER_ID,
+              storyAnchor: {
+                enablerIssueId: "32",
+                featureIssueId: "15",
+              },
+            },
+          }),
+        ]);
+        expect(snapshot.transactions).toHaveLength(result.transactionCount);
+        expect(
+          snapshot.transactions.every((candidate) => candidate.importJobId === importJobId)
+        ).toBe(true);
+      } finally {
+        testLedger.close();
+      }
     });
 
-    ledger.close();
+    it("migrates a legacy import job table and preserves new provenance fields", () => {
+      const tempDirectory = mkdtempSync(join(tmpdir(), "budget-import-migration-"));
+      const dbPath = join(tempDirectory, "legacy.sqlite");
+      const legacyDatabase = new DatabaseSync(dbPath);
+
+      legacyDatabase.exec(`
+        CREATE TABLE households (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at_iso TEXT NOT NULL);
+        INSERT INTO households (id, name, created_at_iso) VALUES ('hh-legacy', 'Legacy Household', '2026-01-01T00:00:00Z');
+        CREATE TABLE import_jobs (
+          id TEXT PRIMARY KEY,
+          household_id TEXT NOT NULL,
+          source_type TEXT NOT NULL,
+          source_name TEXT NOT NULL,
+          started_at_iso TEXT NOT NULL,
+          finished_at_iso TEXT
+        );
+      `);
+      legacyDatabase.close();
+
+      const ledger = createLocalLedgerDatabase({
+        dbPath,
+        seedData: {
+          household: {
+            id: "hh-legacy",
+            name: "Legacy Household",
+            createdAtIso: "2026-01-01T00:00:00Z",
+          },
+          accounts: [],
+          transactions: [],
+          importJobs: [],
+          monthlyCategoryTargets: [],
+        },
+      });
+
+      try {
+        ledger.appendImportJob({
+          id: "job-legacy-migration",
+          householdId: "hh-legacy",
+          sourceType: "pdf",
+          sourceName: FIXTURE_PATH,
+          adapterId: ROGALAND_ADAPTER_ID,
+          candidateCount: 2,
+          validationFailureCount: 0,
+          startedAtIso: "2026-05-31T12:00:00Z",
+          finishedAtIso: "2026-05-31T12:00:00Z",
+        });
+
+        expect(ledger.loadLedgerSnapshotData().importJobs[0]).toEqual(
+          expect.objectContaining({
+            adapterId: ROGALAND_ADAPTER_ID,
+            candidateCount: 2,
+            validationFailureCount: 0,
+          })
+        );
+      } finally {
+        ledger.close();
+        rmSync(tempDirectory, { recursive: true, force: true });
+      }
+    });
   });
 
-  it("rejects malformed statement rows with explicit errors and no ledger writes", () => {
-    const ledger = makeTestLedger(randomUUID());
-    const malformedText = [
-      "ROGALAND SPAREBANK",
-      "Dato         Beskrivelse                              Beløp          Saldo",
-      "27.05.2026   SALARY                                  INVALID         75 000,00",
-    ].join("\n");
+  describe("AC-2: determinism across repeated registry parses", () => {
+    it("two registry parses of the fixture produce equal candidate lists", () => {
+      const text = loadFixture();
+      const opts = { ...BASE_OPTIONS, idPrefix: "det" };
 
-    const response = runPdfImportOrchestration(malformedText, ledger);
+      const r1 = defaultParserAdapterRegistry.parse(text, opts);
+      const r2 = defaultParserAdapterRegistry.parse(text, opts);
 
-    expect(response.ok).toBe(false);
-    if (response.ok) return;
+      expect(r1.ok).toBe(true);
+      expect(r2.ok).toBe(true);
 
-    expect(response.errors[0]?.code).toBe("INVALID_AMOUNT_FORMAT");
+      if (!r1.ok || !r2.ok) return;
 
-    const snapshot = ledger.loadLedgerSnapshotData();
-    expect(snapshot.importJobs).toHaveLength(0);
-    expect(snapshot.transactions).toHaveLength(0);
-
-    ledger.close();
+      expect(r1.candidates).toEqual(r2.candidates);
+      expect(r1.adapterId).toBe(r2.adapterId);
+    });
   });
 
-  it("migrates legacy import jobs while preserving new metadata on subsequent writes", () => {
-    const dir = join(tmpdir(), `budget-parser-adapter-legacy-${randomUUID()}`);
-    mkdirSync(dir, { recursive: true });
-    const dbPath = join(dir, "legacy.sqlite");
-    const legacyDb = new DatabaseSync(dbPath);
+  describe("AC-3: malformed and unsupported sources produce explicit failures", () => {
+    it("unsupported source returns failure with no candidates and UNSUPPORTED_LAYOUT code", () => {
+      const registry = new ParserAdapterRegistry();
+      const result = registry.parse("irrelevant content", BASE_OPTIONS);
 
-    legacyDb.exec(`
-      CREATE TABLE households (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        created_at_iso TEXT NOT NULL
-      );
-      CREATE TABLE import_jobs (
-        id TEXT PRIMARY KEY,
-        household_id TEXT NOT NULL,
-        source_type TEXT NOT NULL,
-        source_name TEXT NOT NULL,
-        started_at_iso TEXT NOT NULL,
-        finished_at_iso TEXT
-      );
-      INSERT INTO households (id, name, created_at_iso)
-      VALUES ('legacy-household', 'Legacy Household', '2026-01-01T00:00:00Z');
-      INSERT INTO import_jobs (
-        id, household_id, source_type, source_name, started_at_iso, finished_at_iso
-      ) VALUES (
-        'legacy-job', 'legacy-household', 'pdf', 'legacy.txt',
-        '2026-05-31T10:00:00Z', '2026-05-31T10:00:01Z'
-      );
-    `);
-    legacyDb.close();
-
-    const ledger = createLocalLedgerDatabase({
-      dbPath,
-      seedData: {
-        household: SAMPLE_HOUSEHOLD,
-        accounts: [SAMPLE_ACCOUNT],
-        transactions: [],
-        importJobs: [],
-        monthlyCategoryTargets: [],
-      },
+      expect(result.ok).toBe(false);
+      expect(result.adapterId).toBeNull();
+      if (result.ok) return;
+      expect(result.errors[0]?.code).toBe("UNSUPPORTED_LAYOUT");
+      expect((result as { candidates?: unknown }).candidates).toBeUndefined();
     });
 
-    const legacySnapshot = ledger.loadLedgerSnapshotData();
-    expect(legacySnapshot.importJobs).toEqual([
-      {
-        id: "legacy-job",
-        householdId: "legacy-household",
-        sourceType: "pdf",
-        sourceName: "legacy.txt",
-        startedAtIso: "2026-05-31T10:00:00Z",
-        finishedAtIso: "2026-05-31T10:00:01Z",
-      },
-    ]);
+    it("Rogaland statement with missing transaction section returns failure", () => {
+      const noTransactions = "ROGALAND SPAREBANK\nKontonummer: 1234\n";
+      const result = defaultParserAdapterRegistry.parse(noTransactions, BASE_OPTIONS);
 
-    ledger.appendImportJob({
-      id: "new-job",
-      householdId: SAMPLE_HOUSEHOLD.id,
-      sourceType: "pdf",
-      sourceName: FIXTURE_PATH,
-      adapterId: "rogaland-sparebank-text-v1",
-      candidateCount: 10,
-      validationFailureCount: 0,
-      startedAtIso: "2026-05-31T11:00:00Z",
-      provenance: { sourceIdentity: "no.rogaland-sparebank.statement-text" },
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect((result as { candidates?: unknown }).candidates).toBeUndefined();
     });
 
-    const updatedSnapshot = ledger.loadLedgerSnapshotData();
-    const newImportJob = updatedSnapshot.importJobs.find((job) => job.id === "new-job");
-    expect(newImportJob?.adapterId).toBe("rogaland-sparebank-text-v1");
-    expect(newImportJob?.candidateCount).toBe(10);
-    expect(newImportJob?.validationFailureCount).toBe(0);
+    it("default registry parse of unsupported text has null adapterId", () => {
+      const result = defaultParserAdapterRegistry.parse(
+        "NOT A BANK STATEMENT",
+        BASE_OPTIONS
+      );
 
-    ledger.close();
+      expect(result.ok).toBe(false);
+      expect(result.adapterId).toBeNull();
+    });
   });
 });

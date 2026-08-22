@@ -1,15 +1,6 @@
-import {
-  parsePdfStatementWithRegisteredAdapter,
-} from "../../domain/import/parserAdapterRegistry.js";
-import type {
-  PdfTextParseOptions,
-  PdfTextValidationError,
-} from "../../domain/import/pdfTextParser.js";
-import type {
-  ImportJob,
-  ImportJobStoryAnchor,
-  Transaction,
-} from "../../domain/types.js";
+import type { PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
+import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
 export interface PdfImportRequest {
@@ -46,6 +37,7 @@ export interface PdfImportWorkflowInput extends PdfImportRequest {
 }
 
 export interface PdfImportWorkflowDependencies {
+  parserRegistry: Pick<ParserAdapterRegistry, "parse">;
   appendImportJob: (importJob: ImportJob) => void;
   appendTransactions: (transactions: Transaction[]) => void;
   onTransactionsPersisted?: (transactions: Transaction[]) => void;
@@ -102,13 +94,12 @@ export function runPdfImportWorkflow(
   input: PdfImportWorkflowInput,
   dependencies: PdfImportWorkflowDependencies
 ): PdfImportResponse {
-  const parseOptions: PdfTextParseOptions = {
+  const parseResult = dependencies.parserRegistry.parse(input.pdfText, {
     householdId: input.householdId,
     accountId: input.accountId,
     importJobId: input.importJobId,
     idPrefix: input.importJobId,
-  };
-  const parseResult = parsePdfStatementWithRegisteredAdapter(input.pdfText, parseOptions);
+  });
 
   if (!parseResult.ok) {
     return normalizePdfImportErrors(parseResult.errors);
@@ -120,7 +111,7 @@ export function runPdfImportWorkflow(
     sourceType: "pdf",
     sourceName: input.filePath,
     adapterId: parseResult.adapterId,
-    candidateCount: parseResult.transactions.length,
+    candidateCount: parseResult.candidates.length,
     validationFailureCount: 0,
     startedAtIso: input.startedAtIso,
     finishedAtIso: input.finishedAtIso,
@@ -132,13 +123,13 @@ export function runPdfImportWorkflow(
   };
 
   dependencies.appendImportJob(importJob);
-  dependencies.appendTransactions(parseResult.transactions);
-  dependencies.onTransactionsPersisted?.(parseResult.transactions);
+  dependencies.appendTransactions(parseResult.candidates);
+  dependencies.onTransactionsPersisted?.(parseResult.candidates);
 
   return {
     ok: true,
     importJobId: input.importJobId,
-    transactionCount: parseResult.transactions.length,
+    transactionCount: parseResult.candidates.length,
     adapterId: parseResult.adapterId,
   };
 }

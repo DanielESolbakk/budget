@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Transaction } from "../types.js";
 
 /** Identifier for the Rogaland Sparebank text PDF adapter. */
@@ -49,6 +50,20 @@ export interface PdfTextParseOptions {
   importJobId?: string;
   /** Prefix for generated transaction IDs. Defaults to "pdf". */
   idPrefix?: string;
+}
+
+export function buildRogalandImportJobId(
+  text: string,
+  options: Pick<PdfTextParseOptions, "householdId" | "accountId">
+): string {
+  const canonical = [
+    ROGALAND_ADAPTER_ID,
+    options.householdId.trim(),
+    options.accountId.trim(),
+    text,
+  ].join("|");
+
+  return `import-pdf-${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 24)}`;
 }
 
 /**
@@ -196,6 +211,8 @@ export function parseRogalandStatementText(
       bookedAtIso,
       amountMinor: toMinorUnits(amount),
       merchantRaw: description,
+      currencyCode: "NOK",
+      sourceType: "pdf",
     };
 
     if (options.importJobId !== undefined) {

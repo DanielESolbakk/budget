@@ -17,9 +17,10 @@
  */
 
 import { test, expect, _electron as electron } from "@playwright/test";
-import type { ElectronApplication, Page } from "@playwright/test";
+import type { ElectronApplication, Page, Request } from "@playwright/test";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { PdfImportPage } from "./pom/PdfImportPage.js";
 import { DashboardPage } from "./pom/DashboardPage.js";
@@ -43,9 +44,10 @@ test.describe("PDF import renderer workflow", () => {
   let dashboardPage: DashboardPage;
 
   test.beforeEach(async () => {
+    const databasePath = join(tmpdir(), "budget-playwright-pdf", randomUUID(), "budget.sqlite");
     app = await electron.launch({
       args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
+      env: { ...process.env, NODE_ENV: "test", BUDGET_DB_PATH: databasePath },
     });
     window = await app.firstWindow();
     await window.waitForLoadState("domcontentloaded");
@@ -115,25 +117,27 @@ test.describe("PDF import renderer workflow", () => {
   });
 
   test("Scenario 3: PDF import workflow runs under network guard with no outbound network calls", async () => {
-    // AC-5: verify the network guard is active — import:pdf must not trigger network.
-    const networkErrorMessages: string[] = [];
-    const onConsole = (msg: { type: () => string; text: () => string }): void => {
-      if (msg.type() === "error" && msg.text().toLowerCase().includes("network")) {
-        networkErrorMessages.push(msg.text());
+    // AC-5: verify the successful import path emits no external HTTP(S) request.
+    const outboundRequests: string[] = [];
+    const onRequest = (request: Request): void => {
+      const requestUrl = new URL(request.url());
+      const isExternalHttpRequest =
+        (requestUrl.protocol === "http:" || requestUrl.protocol === "https:") &&
+        requestUrl.hostname !== "localhost" &&
+        requestUrl.hostname !== "127.0.0.1";
+
+      if (isExternalHttpRequest) {
+        outboundRequests.push(requestUrl.href);
       }
     };
 
-    window.on("console", onConsole);
+    window.on("request", onRequest);
 
-    const unsupportedPath = writeUnsupportedFixture();
-    await pdfImportPage.filePathInput.fill(unsupportedPath);
+    await pdfImportPage.submitImport(FIXTURE_PATH);
 
-    await pdfImportPage.importButton.click();
+    await expect(pdfImportPage.successStatus).toBeVisible({ timeout: 10_000 });
 
-    await expect(pdfImportPage.errorAlert).toBeVisible({ timeout: 10_000 });
-    await expect(pdfImportPage.errorAlert).toContainText(/failed/i);
-
-    window.off("console", onConsole);
-    expect(networkErrorMessages).toHaveLength(0);
+    window.off("request", onRequest);
+    expect(outboundRequests).toHaveLength(0);
   });
 });
