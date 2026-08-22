@@ -28,6 +28,12 @@ export interface ImportJob {
   householdId: string;
   sourceType: "csv" | "pdf" | "manual";
   sourceName: string;
+  /** Stable adapter identifier, e.g. "rogaland-sparebank-text-v1". */
+  adapterId?: string;
+  /** Number of transaction candidates produced by the parser. */
+  candidateCount?: number;
+  /** Number of explicit validation failures recorded during parsing. */
+  validationFailureCount?: number;
   startedAtIso: string;
   finishedAtIso?: string;
   provenance?: ImportJobProvenance;

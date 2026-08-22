@@ -8,6 +8,9 @@ describe("import job schema", () => {
       householdId: "hh-1",
       sourceType: "pdf",
       sourceName: "tests/fixtures/synthetic/rogaland-2026-05-statement.txt",
+      adapterId: "rogaland-sparebank-text-v1",
+      candidateCount: 10,
+      validationFailureCount: 0,
       startedAtIso: "2026-05-31T12:00:00Z",
       finishedAtIso: "2026-05-31T12:00:01Z",
       provenance: {
@@ -20,6 +23,9 @@ describe("import job schema", () => {
       },
     };
 
+    expect(importJob.adapterId).toBe("rogaland-sparebank-text-v1");
+    expect(importJob.candidateCount).toBe(10);
+    expect(importJob.validationFailureCount).toBe(0);
     expect(importJob.provenance?.sourceIdentity).toBe("no.rogaland-sparebank.statement-text");
     expect(importJob.provenance?.adapterId).toBe("rogaland-sparebank-text-v1");
     expect(importJob.provenance?.storyAnchor).toEqual({

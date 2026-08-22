@@ -22,11 +22,11 @@ import {
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
+  runPdfImportWorkflow,
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
-import { parsePdfStatementWithRegisteredAdapter } from "../src/domain/import/parserAdapterRegistry.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -114,11 +114,6 @@ const sampleTargetStore = createMonthlyCategoryTargetStore([
     targetMinor: 9000,
   },
 ]);
-
-const IMPORT_STORY_ANCHOR = {
-  enablerIssueId: "32",
-  featureIssueId: "15",
-} as const;
 
 const localLedgerDatabase = createLocalLedgerDatabase({
   seedData: {
@@ -335,44 +330,24 @@ app.whenReady().then(() => {
       const importJobId = `import-pdf-${Date.now()}`;
       const now = new Date().toISOString();
 
-      const parseResult = parsePdfStatementWithRegisteredAdapter(pdfText, {
-        householdId: request.householdId,
-        accountId: request.accountId,
-        importJobId,
-        idPrefix: importJobId,
-      });
-
-      if (!parseResult.ok) {
-        return normalizePdfImportErrors(parseResult.errors);
-      }
-
-      const importJob: ImportJob = {
-        id: importJobId,
-        householdId: request.householdId,
-        sourceType: "pdf",
-        sourceName: request.filePath,
-        startedAtIso: now,
-        finishedAtIso: now,
-        provenance: {
-          sourceIdentity: parseResult.sourceIdentity,
-          adapterId: parseResult.adapterId,
-          storyAnchor: IMPORT_STORY_ANCHOR,
+      return runPdfImportWorkflow(
+        {
+          ...request,
+          pdfText,
+          importJobId,
+          startedAtIso: now,
+          finishedAtIso: now,
         },
-      };
-
-      localLedgerDatabase.appendImportJob(importJob);
-      localLedgerDatabase.appendTransactions(parseResult.transactions);
-
-      for (const transaction of parseResult.transactions) {
-        liveTransactions.push(transaction);
-      }
-
-      return {
-        ok: true,
-        importJobId,
-        transactionCount: parseResult.transactions.length,
-        adapterId: parseResult.adapterId,
-      };
+        {
+          appendImportJob: localLedgerDatabase.appendImportJob,
+          appendTransactions: localLedgerDatabase.appendTransactions,
+          onTransactionsPersisted: (transactions) => {
+            for (const transaction of transactions) {
+              liveTransactions.push(transaction);
+            }
+          },
+        }
+      );
     }
   );
 

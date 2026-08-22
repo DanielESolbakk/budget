@@ -45,4 +45,19 @@ describe("parser adapter registry", () => {
 
     expect(result.errors[0]?.code).toBe("UNSUPPORTED_LAYOUT");
   });
+
+  it("rejects date-like rows with an unsupported date format instead of silently skipping them", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Dato         Beskrivelse                              Beløp          Saldo",
+      "27.05.2026   VALID                                  +1,00       1,00",
+      "2026-05-27   MALFORMED DATE                         +2,00       3,00",
+    ].join("\n");
+    const result = parsePdfStatementWithRegisteredAdapter(text, OPTIONS);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.errors[0]?.code).toBe("INVALID_DATE_FORMAT");
+  });
 });

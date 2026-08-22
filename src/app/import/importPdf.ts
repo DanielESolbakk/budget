@@ -1,4 +1,15 @@
-import type { PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import {
+  parsePdfStatementWithRegisteredAdapter,
+} from "../../domain/import/parserAdapterRegistry.js";
+import type {
+  PdfTextParseOptions,
+  PdfTextValidationError,
+} from "../../domain/import/pdfTextParser.js";
+import type {
+  ImportJob,
+  ImportJobStoryAnchor,
+  Transaction,
+} from "../../domain/types.js";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
 export interface PdfImportRequest {
@@ -26,6 +37,24 @@ export interface PdfImportFailure {
 
 /** Discriminated union returned by the `import:pdf` IPC channel. */
 export type PdfImportResponse = PdfImportSuccess | PdfImportFailure;
+
+export interface PdfImportWorkflowInput extends PdfImportRequest {
+  pdfText: string;
+  importJobId: string;
+  startedAtIso: string;
+  finishedAtIso: string;
+}
+
+export interface PdfImportWorkflowDependencies {
+  appendImportJob: (importJob: ImportJob) => void;
+  appendTransactions: (transactions: Transaction[]) => void;
+  onTransactionsPersisted?: (transactions: Transaction[]) => void;
+}
+
+const PDF_IMPORT_STORY_ANCHOR: ImportJobStoryAnchor = {
+  enablerIssueId: "32",
+  featureIssueId: "15",
+};
 
 /**
  * Builds a normalized PdfImportRequest from a raw file path and household/account context.
@@ -66,5 +95,50 @@ export function normalizePdfImportErrors(
   return {
     ok: false,
     errors: errors.map((e) => ({ code: e.code, message: e.message })),
+  };
+}
+
+export function runPdfImportWorkflow(
+  input: PdfImportWorkflowInput,
+  dependencies: PdfImportWorkflowDependencies
+): PdfImportResponse {
+  const parseOptions: PdfTextParseOptions = {
+    householdId: input.householdId,
+    accountId: input.accountId,
+    importJobId: input.importJobId,
+    idPrefix: input.importJobId,
+  };
+  const parseResult = parsePdfStatementWithRegisteredAdapter(input.pdfText, parseOptions);
+
+  if (!parseResult.ok) {
+    return normalizePdfImportErrors(parseResult.errors);
+  }
+
+  const importJob: ImportJob = {
+    id: input.importJobId,
+    householdId: input.householdId,
+    sourceType: "pdf",
+    sourceName: input.filePath,
+    adapterId: parseResult.adapterId,
+    candidateCount: parseResult.transactions.length,
+    validationFailureCount: 0,
+    startedAtIso: input.startedAtIso,
+    finishedAtIso: input.finishedAtIso,
+    provenance: {
+      sourceIdentity: parseResult.sourceIdentity,
+      adapterId: parseResult.adapterId,
+      storyAnchor: PDF_IMPORT_STORY_ANCHOR,
+    },
+  };
+
+  dependencies.appendImportJob(importJob);
+  dependencies.appendTransactions(parseResult.transactions);
+  dependencies.onTransactionsPersisted?.(parseResult.transactions);
+
+  return {
+    ok: true,
+    importJobId: input.importJobId,
+    transactionCount: parseResult.transactions.length,
+    adapterId: parseResult.adapterId,
   };
 }

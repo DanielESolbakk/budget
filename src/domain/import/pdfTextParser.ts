@@ -14,6 +14,8 @@ const ROGALAND_HEADER_TOKEN = "ROGALAND SPAREBANK";
  */
 const TRANSACTION_LINE_PATTERN =
   /^(\d{2}\.\d{2}\.\d{4})\s{2,}(.+?)\s{2,}([+-]?\d[\d\s]*,\d{2})\s/;
+const VALID_TRANSACTION_DATE_PREFIX_PATTERN = /^\s*\d{2}\.\d{2}\.\d{4}(?=\s)/;
+const TRANSACTION_DATE_LIKE_PREFIX_PATTERN = /^\s*\d{1,4}[./-]\d{1,4}[./-]\d{1,4}(?=\s)/;
 
 export type PdfTextValidationErrorCode =
   | "UNSUPPORTED_LAYOUT"
@@ -144,11 +146,14 @@ export function parseRogalandStatementText(
   for (const line of transactionLines) {
     const match = TRANSACTION_LINE_PATTERN.exec(line);
     if (!match) {
-      // Lines that start with a date but don't match the full pattern are errors.
-      // Lines that don't start with a date are ignored (continuation lines, footers).
-      if (/^\s*\d{2}\.\d{2}\.\d{4}/.test(line)) {
+      if (VALID_TRANSACTION_DATE_PREFIX_PATTERN.test(line)) {
         errors.push({
           code: "INVALID_AMOUNT_FORMAT",
+          message: `Could not parse transaction line: "${line.trim()}"`,
+        });
+      } else if (TRANSACTION_DATE_LIKE_PREFIX_PATTERN.test(line)) {
+        errors.push({
+          code: "INVALID_DATE_FORMAT",
           message: `Could not parse transaction line: "${line.trim()}"`,
         });
       }
