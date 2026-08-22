@@ -9,6 +9,54 @@ function readRepositoryFile(relativePath: string): string {
 }
 
 describe("AC traceability governance checks", () => {
+  it("AC-1: ADR records required stack and runtime boundary decisions", () => {
+    const adr = readRepositoryFile(
+      "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
+    );
+    const requiredTerms = [
+      "Electron",
+      "React",
+      "TypeScript",
+      "SQLite",
+      "renderer",
+      "Main Process",
+      "Shared Layer",
+      "parser adapter",
+      "local-first",
+      "no-network",
+    ];
+    for (const term of requiredTerms) {
+      expect(adr, `ADR must contain "${term}"`).toContain(term);
+    }
+    expect(adr).toContain("Accepted");
+  });
+
+  it("AC-2: glossary defines all canonical domain terms and plan.md links both artifacts", () => {
+    const glossary = readRepositoryFile(
+      "docs/ways-of-work/plan/budget-planner/domain-glossary.md",
+    );
+    const planMd = readRepositoryFile("plan.md");
+
+    const requiredTerms = [
+      "household",
+      "account",
+      "transaction",
+      "category",
+      "merchant alias",
+      "categorization rule",
+      "import job",
+      "budget target",
+      "forecast assumption",
+      "backup snapshot",
+    ];
+    for (const term of requiredTerms) {
+      expect(glossary, `Glossary must define "${term}"`).toContain(term);
+    }
+
+    expect(planMd).toContain("adr-001-stack-and-runtime-boundaries.md");
+    expect(planMd).toContain("domain-glossary.md");
+  });
+
   it("keeps deterministic AC evidence contract documented", () => {
     const requiredRowFormat = "AC-ID | test-level | test-id | test-file-path";
     expect(requiredRowFormat).toContain("test-id");
