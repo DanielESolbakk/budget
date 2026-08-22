@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: "Arial Narrow", "Aptos Narrow", "Segoe UI", sans-serif;
+  font-family: "Barlow Condensed", "Segoe UI", sans-serif;
   color: #f2eee5;
   background: #090909;
   font-synthesis: none;
@@ -26,6 +26,25 @@
 html {
   min-width: 320px;
   background: var(--ink);
+  scrollbar-color: var(--orange) var(--panel);
+  scrollbar-width: thin;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: var(--panel);
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  border: 2px solid var(--panel);
+  background: var(--orange);
 }
 
 body {
@@ -204,9 +223,7 @@ li::marker {
 
 .brand-lockup p,
 .header-meta,
-.section-label,
 .rail-count,
-.month-picker label,
 .month-picker-code,
 .frame-index,
 .frame-code,
@@ -272,13 +289,6 @@ li::marker {
   gap: 2rem;
   border-bottom: 1px solid var(--line);
   padding-bottom: 2.2rem;
-}
-
-.section-label {
-  margin: 0 0 0.7rem;
-  color: var(--orange);
-  font-size: 0.7rem;
-  font-weight: 800;
 }
 
 .review-intro h2 {
@@ -580,6 +590,10 @@ section[aria-label="Monthly Totals"] dl {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   margin: 0;
+}
+
+section[aria-label="Monthly Totals"] .monthly-total {
+  min-width: 0;
 }
 
 section[aria-label="Monthly Totals"] dt {

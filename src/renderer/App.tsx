@@ -1,5 +1,8 @@
 import React from "react";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
+import "@fontsource/barlow-condensed/400.css";
+import "@fontsource/barlow-condensed/700.css";
+import "@fontsource/barlow-condensed/800.css";
 import "./app.css";
 import { BackupSection } from "./backup/BackupSection.js";
 import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.js";
@@ -13,7 +16,7 @@ import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
 
 const DEFAULT_YEAR_MONTH = "2026-05";
-const monthFormatter = new Intl.DateTimeFormat("nb-NO", {
+const monthFormatter = new Intl.DateTimeFormat("en-GB", {
   month: "short",
   year: "numeric",
   timeZone: "UTC",
@@ -46,37 +49,57 @@ export function App(): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [isChangingMonth, setIsChangingMonth] = React.useState(false);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [monthChangeError, setMonthChangeError] = React.useState<string | null>(null);
+  const [refreshError, setRefreshError] = React.useState<string | null>(null);
   const hasLoadedInitialState = React.useRef(false);
+  const selectedYearMonthRef = React.useRef(DEFAULT_YEAR_MONTH);
+  const latestViewRequestRef = React.useRef(0);
 
   React.useEffect(() => {
     let isActive = true;
+    const requestId = latestViewRequestRef.current + 1;
+    latestViewRequestRef.current = requestId;
+    const requestedYearMonth = selectedYearMonthRef.current;
 
+    setMonthChangeError(null);
+    setIsChangingMonth(false);
     if (!hasLoadedInitialState.current) {
       setAppState({ status: "loading" });
+    } else {
+      setIsRefreshing(true);
+      setRefreshError(null);
     }
 
     Promise.all([
       loadDashboardData(window.budgetApi),
-      window.budgetApi.dashboard.getViewData(DEFAULT_YEAR_MONTH),
+      window.budgetApi.dashboard.getViewData(requestedYearMonth),
     ])
       .then(([dashboardData, viewContract]) => {
-        if (!isActive) return;
+        if (!isActive || requestId !== latestViewRequestRef.current) return;
         hasLoadedInitialState.current = true;
+        setIsRefreshing(false);
+        setRefreshError(null);
         const availableMonths = dashboardData.monthlyTotals.map((t) => t.yearMonth);
+        selectedYearMonthRef.current = requestedYearMonth;
         setAppState({
           status: "ready",
           dashboardData,
           viewContract,
-          selectedYearMonth: DEFAULT_YEAR_MONTH,
+          selectedYearMonth: requestedYearMonth,
           availableMonths,
         });
       })
       .catch((error: unknown) => {
-        if (!isActive) return;
+        if (!isActive || requestId !== latestViewRequestRef.current) return;
         const message =
           error instanceof Error ? error.message : "Unknown dashboard loading error.";
-        setAppState({ status: "error", message });
+        setIsRefreshing(false);
+        if (hasLoadedInitialState.current) {
+          setRefreshError(message);
+        } else {
+          setAppState({ status: "error", message });
+        }
       });
 
     return () => {
@@ -87,18 +110,23 @@ export function App(): React.JSX.Element {
   function handleMonthChange(yearMonth: string): void {
     if (appState.status !== "ready") return;
 
+    const requestId = latestViewRequestRef.current + 1;
+    latestViewRequestRef.current = requestId;
     setIsChangingMonth(true);
     setMonthChangeError(null);
     window.budgetApi.dashboard
       .getViewData(yearMonth)
       .then((viewContract) => {
+        if (requestId !== latestViewRequestRef.current) return;
         setAppState((prev) => {
           if (prev.status !== "ready") return prev;
           return { ...prev, viewContract, selectedYearMonth: yearMonth };
         });
+        selectedYearMonthRef.current = yearMonth;
         setIsChangingMonth(false);
       })
       .catch(() => {
+        if (requestId !== latestViewRequestRef.current) return;
         setIsChangingMonth(false);
         setMonthChangeError("Unable to change month. The current review is still shown.");
       });
@@ -109,13 +137,17 @@ export function App(): React.JSX.Element {
       ? "Loading review"
       : appState.status === "error"
         ? "Needs attention"
-        : isChangingMonth
+        : refreshError !== null
+          ? "Needs attention"
+        : isChangingMonth || isRefreshing
           ? "Updating review"
           : "Ready for review";
   const headerStatusClassName =
     appState.status === "error"
       ? "header-status is-error"
-      : isChangingMonth || appState.status === "loading"
+      : refreshError !== null
+        ? "header-status is-error"
+      : isChangingMonth || isRefreshing || appState.status === "loading"
         ? "header-status is-loading"
         : "header-status";
 
@@ -140,7 +172,6 @@ export function App(): React.JSX.Element {
       <main className="workspace" aria-labelledby="review-heading">
         <section className="review-intro" aria-labelledby="review-heading">
           <div>
-            <p className="section-label">Monthly review</p>
             <h2 id="review-heading">Cut the month into something clear.</h2>
             <p className="intro-copy">
               Read the selected month first, then pin the work that keeps the ledger useful.
@@ -190,10 +221,21 @@ export function App(): React.JSX.Element {
       )}
       {appState.status === "ready" && (
         <>
+          {refreshError !== null && (
+            <section className="status-panel status-error" role="alert">
+              <div className="status-heading">
+                <span className="status-marker" aria-hidden="true">!</span>
+                <h2>Review refresh failed</h2>
+              </div>
+              <p>{refreshError}</p>
+              <button type="button" onClick={() => setRefreshCounter((counter) => counter + 1)}>
+                Try again
+              </button>
+            </section>
+          )}
           <section className="month-rail" aria-labelledby="rail-heading">
             <div className="rail-heading-row">
               <div>
-                <p className="section-label">Review rail</p>
                 <h2 id="rail-heading">Choose a frame</h2>
               </div>
               <span className="rail-count">
@@ -225,12 +267,12 @@ export function App(): React.JSX.Element {
               </ol>
             </nav>
             {isChangingMonth && (
-              <p className="rail-status" role="status">Cutting to {formatYearMonth(appState.selectedYearMonth)}...</p>
+              <p className="rail-status" role="status">Updating month...</p>
             )}
             {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
           </section>
 
-          <div className="review-grid" aria-busy={isChangingMonth}>
+          <div className="review-grid" aria-busy={isChangingMonth || isRefreshing}>
             <div className="review-primary">
               <MonthlyTotalsSection viewContract={appState.viewContract} />
               <TargetVsActualSection viewContract={appState.viewContract} />
@@ -245,7 +287,6 @@ export function App(): React.JSX.Element {
           <section className="work-bin" aria-labelledby="work-bin-heading">
             <div className="work-bin-heading">
               <div>
-                <p className="section-label">Pinned work</p>
                 <h2 id="work-bin-heading">Keep the ledger recoverable.</h2>
               </div>
               <p>Imports, snapshots, and restores stay close without competing with the monthly read.</p>
