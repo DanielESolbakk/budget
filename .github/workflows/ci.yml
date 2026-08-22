@@ -329,6 +329,10 @@ jobs:
           node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const cmd=has('test:e2e:vitest')?'test:e2e:vitest':(has('test:e2e')?'test:e2e':''); if(!cmd){ console.error('No e2e script found (expected test:e2e:vitest or test:e2e).'); process.exit(1);} console.log(cmd);" > .e2e_cmd
           npm run "$(cat .e2e_cmd)"
 
+      - name: Install Electron runtime
+        if: steps.detect.outputs.has_package == 'true'
+        run: node node_modules/electron/install.js
+
       - name: Playwright runtime tests
         if: steps.detect.outputs.has_package == 'true'
         run: xvfb-run -a npm run test:e2e:playwright
