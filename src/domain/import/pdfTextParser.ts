@@ -14,7 +14,7 @@ const ROGALAND_HEADER_TOKEN = "ROGALAND SPAREBANK";
  * optionally preceded by whitespace.
  */
 const TRANSACTION_LINE_PATTERN =
-  /^(\d{2}\.\d{2}\.\d{4})\s{2,}(.+?)\s{2,}([+-]?\d[\d\s]*,\d{2})\s/;
+  /^(\d{2}\.\d{2}\.\d{4})\s{2,}(.+?)\s{2,}([+-]?\d[\d\s]*,\d{2})\s{2,}([+-]?\d[\d\s]*,\d{2})\s*$/;
 const VALID_TRANSACTION_DATE_PREFIX_PATTERN = /^\s*\d{2}\.\d{2}\.\d{4}(?=\s)/;
 const TRANSACTION_DATE_LIKE_PREFIX_PATTERN = /^\s*\d{1,4}[./-]\d{1,4}[./-]\d{1,4}(?=\s)/;
 
@@ -238,6 +238,22 @@ export function parseRogalandStatementText(
       ],
     };
   }
+
+  transactions.sort((left, right) => {
+    const dateComparison = right.bookedAtIso.localeCompare(left.bookedAtIso);
+    if (dateComparison !== 0) return dateComparison;
+
+    const amountComparison = left.amountMinor - right.amountMinor;
+    if (amountComparison !== 0) return amountComparison;
+
+    if (left.merchantRaw < right.merchantRaw) return -1;
+    if (left.merchantRaw > right.merchantRaw) return 1;
+    return 0;
+  });
+
+  transactions.forEach((transaction, index) => {
+    transaction.id = `${idPrefix}-${index + 1}`;
+  });
 
   return {
     ok: true,
