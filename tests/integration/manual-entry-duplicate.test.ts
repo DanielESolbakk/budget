@@ -1,129 +1,126 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createLocalLedgerDatabase, type LocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { submitManualEntry } from "../../src/app/import/manualEntry.js";
-import type { ImportJob, ManualEntryInput, Transaction } from "../../src/domain/types.js";
+import type { Account, Household, ManualEntryInput } from "../../src/domain/types.js";
 
-function makeLedger(): {
-  jobs: ImportJob[];
-  transactions: Transaction[];
-  appendImportJob: (job: ImportJob) => void;
-  appendTransactions: (txs: Transaction[]) => void;
-} {
-  const jobs: ImportJob[] = [];
-  const transactions: Transaction[] = [];
-  return {
-    jobs,
-    transactions,
-    appendImportJob: (job) => { jobs.push(job); },
-    appendTransactions: (txs) => { transactions.push(...txs); },
-  };
-}
+const sampleHousehold: Household = {
+  id: "hh-test",
+  name: "Test Household",
+  createdAtIso: "2026-01-01T00:00:00Z",
+};
+
+const sampleAccounts: Account[] = [
+  { id: "acc-test", householdId: sampleHousehold.id, name: "Brukskonto", currencyCode: "NOK" },
+];
 
 const validInput: ManualEntryInput = {
-  householdId: "hh-1",
-  accountId: "acc-1",
+  householdId: sampleHousehold.id,
+  accountId: sampleAccounts[0]!.id,
   bookedAtIso: "2026-05-23",
   amountMinor: -1250,
   merchantRaw: "Kiwi Stavanger",
   categoryId: "groceries",
 };
 
+let temporaryDirectory: string;
+let ledger: LocalLedgerDatabase;
+
+beforeEach(() => {
+  temporaryDirectory = mkdtempSync(join(tmpdir(), "manual-entry-test-"));
+  ledger = createLocalLedgerDatabase({
+    dbPath: join(temporaryDirectory, "budget.sqlite"),
+    seedData: {
+      household: sampleHousehold,
+      accounts: sampleAccounts,
+      transactions: [],
+      importJobs: [],
+      monthlyCategoryTargets: [],
+    },
+  });
+});
+
+afterEach(() => {
+  ledger.close();
+  rmSync(temporaryDirectory, { recursive: true, force: true });
+});
+
 describe("manual-entry-duplicate integration", () => {
   describe("AC-1: valid manual transaction is persisted with correct fields", () => {
-    it("persists the transaction with the entered fields", () => {
-      const ledger = makeLedger();
-      const result = submitManualEntry(validInput, [], ledger);
+    it("persists the transaction and manual import job in SQLite", () => {
+      const result = submitManualEntry(validInput, ledger.loadLedgerSnapshotData().transactions, ledger);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
 
-      const tx = result.transaction;
-      expect(tx.householdId).toBe("hh-1");
-      expect(tx.accountId).toBe("acc-1");
-      expect(tx.bookedAtIso).toBe("2026-05-23");
-      expect(tx.amountMinor).toBe(-1250);
-      expect(tx.merchantRaw).toBe("Kiwi Stavanger");
-      expect(tx.categoryId).toBe("groceries");
-      expect(tx.importJobId).toBeTruthy();
-    });
-
-    it("creates an import job with sourceType 'manual'", () => {
-      const ledger = makeLedger();
-      const result = submitManualEntry(validInput, [], ledger);
-
-      expect(result.ok).toBe(true);
-      expect(ledger.jobs).toHaveLength(1);
-      expect(ledger.jobs[0]?.sourceType).toBe("manual");
-    });
-
-    it("appends exactly one transaction to the ledger", () => {
-      const ledger = makeLedger();
-      submitManualEntry(validInput, [], ledger);
-      expect(ledger.transactions).toHaveLength(1);
+      const snapshot = ledger.loadLedgerSnapshotData();
+      expect(snapshot.transactions).toHaveLength(1);
+      expect(snapshot.transactions[0]).toMatchObject({
+        householdId: validInput.householdId,
+        accountId: validInput.accountId,
+        bookedAtIso: validInput.bookedAtIso,
+        amountMinor: validInput.amountMinor,
+        merchantRaw: validInput.merchantRaw,
+        categoryId: validInput.categoryId,
+        importJobId: result.importJobId,
+      });
+      expect(snapshot.importJobs).toHaveLength(1);
+      expect(snapshot.importJobs[0]).toMatchObject({
+        id: result.importJobId,
+        householdId: validInput.householdId,
+        sourceType: "manual",
+        sourceName: "manual-entry",
+      });
     });
   });
 
   describe("AC-2: duplicate submission leaves ledger row count unchanged", () => {
-    it("returns duplicate result and does not persist a second row", () => {
-      const ledger = makeLedger();
-
-      const first = submitManualEntry(validInput, [], ledger);
+    it("returns duplicate result and does not persist a second SQLite row", () => {
+      const first = submitManualEntry(validInput, ledger.loadLedgerSnapshotData().transactions, ledger);
       expect(first.ok).toBe(true);
 
-      // Simulate the live ledger growing after first insert
-      const existing = ledger.transactions.slice();
-      const second = submitManualEntry(validInput, existing, ledger);
+      const beforeDuplicate = ledger.loadLedgerSnapshotData();
+      const second = submitManualEntry(validInput, beforeDuplicate.transactions, ledger);
 
       expect(second.ok).toBe(false);
       if (second.ok) return;
       expect(second.reason).toBe("duplicate");
-      // Ledger transaction count must remain at 1
-      expect(ledger.transactions).toHaveLength(1);
+      const afterDuplicate = ledger.loadLedgerSnapshotData();
+      expect(afterDuplicate.transactions).toHaveLength(beforeDuplicate.transactions.length);
+      expect(afterDuplicate.importJobs).toHaveLength(beforeDuplicate.importJobs.length);
     });
+  });
 
-    it("duplicate result contains a fingerprint and matchingTransactionId (AC-3)", () => {
-      const ledger = makeLedger();
-      submitManualEntry(validInput, [], ledger);
-      const existing = ledger.transactions.slice();
+  describe("AC-3: provenance is recorded for accepted and duplicate entries", () => {
+    it("returns explainable duplicate data for normalized merchant variants", () => {
+      const first = submitManualEntry(validInput, ledger.loadLedgerSnapshotData().transactions, ledger);
+      expect(first.ok).toBe(true);
 
-      const duplicate = submitManualEntry(validInput, existing, ledger);
+      const duplicate = submitManualEntry(
+        { ...validInput, merchantRaw: "  kiwi   stavanger  " },
+        ledger.loadLedgerSnapshotData().transactions,
+        ledger
+      );
       expect(duplicate.ok).toBe(false);
       if (duplicate.ok) return;
-      if (duplicate.reason !== "duplicate") return;
+      expect(duplicate.reason).toBe("duplicate");
+      if (duplicate.reason !== "duplicate" || !first.ok) return;
       expect(duplicate.fingerprint).toMatch(/^[a-f0-9]{64}$/);
-      expect(duplicate.matchingTransactionId).toBeTruthy();
+      expect(duplicate.matchingTransactionId).toBe(first.transaction.id);
     });
   });
 
-  describe("AC-3: provenance is recorded on accepted entry", () => {
-    it("accepted transaction carries importJobId linking to the manual import job", () => {
-      const ledger = makeLedger();
-      const result = submitManualEntry(validInput, [], ledger);
+  it("rejects invalid input without changing the SQLite ledger", () => {
+    const result = submitManualEntry(
+      { ...validInput, merchantRaw: "" },
+      ledger.loadLedgerSnapshotData().transactions,
+      ledger
+    );
 
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.transaction.importJobId).toBe(result.importJobId);
-      expect(ledger.jobs[0]?.id).toBe(result.importJobId);
-    });
-  });
-
-  describe("validation failures", () => {
-    it("returns validation failure without persisting anything", () => {
-      const ledger = makeLedger();
-      const result = submitManualEntry({ ...validInput, merchantRaw: "" }, [], ledger);
-
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.reason).toBe("validation");
-      expect(ledger.transactions).toHaveLength(0);
-    });
-
-    it("returns validation failure for non-integer amountMinor", () => {
-      const ledger = makeLedger();
-      const result = submitManualEntry({ ...validInput, amountMinor: 12.5 }, [], ledger);
-
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.reason).toBe("validation");
-    });
+    expect(result.ok).toBe(false);
+    expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(0);
+    expect(ledger.loadLedgerSnapshotData().importJobs).toHaveLength(0);
   });
 });

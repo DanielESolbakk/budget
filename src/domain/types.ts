@@ -47,7 +47,8 @@ export type ManualEntryValidationErrorCode =
   | "INVALID_ACCOUNT_ID"
   | "INVALID_BOOKED_AT_ISO"
   | "INVALID_AMOUNT_MINOR_INTEGER"
-  | "INVALID_MERCHANT_RAW";
+  | "INVALID_MERCHANT_RAW"
+  | "INVALID_CATEGORY_ID";
 
 export interface ManualEntryValidationError {
   code: ManualEntryValidationErrorCode;
@@ -64,7 +65,24 @@ export class ManualEntryValidationException extends Error {
   }
 }
 
-const ISO_DATE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(T\d{2}:\d{2}:\d{2}Z)?$/;
+const ISO_DATE_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(?:T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)Z)?$/;
+
+function isValidIsoDate(value: string): boolean {
+  const match = ISO_DATE_PATTERN.exec(value.trim());
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(0, month - 1, day));
+  parsed.setUTCFullYear(year);
+
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+}
 
 /**
  * Validates a manual entry input.
@@ -84,7 +102,7 @@ export function validateManualEntryInput(input: ManualEntryInput): ManualEntryIn
       message: "accountId must be a non-empty string.",
     });
   }
-  if (!ISO_DATE_PATTERN.test(input.bookedAtIso.trim())) {
+  if (!isValidIsoDate(input.bookedAtIso)) {
     throw new ManualEntryValidationException({
       code: "INVALID_BOOKED_AT_ISO",
       message: `bookedAtIso must be a valid ISO 8601 date: ${input.bookedAtIso}`,
@@ -100,6 +118,12 @@ export function validateManualEntryInput(input: ManualEntryInput): ManualEntryIn
     throw new ManualEntryValidationException({
       code: "INVALID_MERCHANT_RAW",
       message: "merchantRaw must be a non-empty string.",
+    });
+  }
+  if (input.categoryId !== undefined && (typeof input.categoryId !== "string" || !input.categoryId.trim())) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_CATEGORY_ID",
+      message: "categoryId must be a non-empty string when provided.",
     });
   }
   return input;

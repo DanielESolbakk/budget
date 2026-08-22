@@ -9,6 +9,7 @@ import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.j
 import { CategoryTargetEntrySection } from "./dashboard/CategoryTargetEntrySection.js";
 import { ForecastSection } from "./dashboard/ForecastSection.js";
 import { CsvImportSection } from "./import/CsvImportSection.js";
+import { ManualEntrySection } from "./import/ManualEntrySection.js";
 import { PdfImportSection } from "./import/PdfImportSection.js";
 import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
 import { RestoreSnapshotSection } from "./dashboard/RestoreSnapshotSection.js";
@@ -292,6 +293,7 @@ export function App(): React.JSX.Element {
               <p>Imports, snapshots, and restores stay close without competing with the monthly read.</p>
             </div>
             <div className="work-bin-grid">
+              <ManualEntrySection onEntrySuccess={() => setRefreshCounter((counter) => counter + 1)} />
               <CsvImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
               <PdfImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
               <BackupSection />

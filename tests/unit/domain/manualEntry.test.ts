@@ -72,6 +72,18 @@ describe("validateManualEntryInput", () => {
     ).toThrow(expect.objectContaining({ code: "INVALID_BOOKED_AT_ISO" }));
   });
 
+  it("throws INVALID_BOOKED_AT_ISO for an impossible calendar date", () => {
+    expect(() =>
+      validateManualEntryInput({ ...validInput, bookedAtIso: "2026-02-31" })
+    ).toThrow(expect.objectContaining({ code: "INVALID_BOOKED_AT_ISO" }));
+  });
+
+  it("throws INVALID_BOOKED_AT_ISO for an invalid time", () => {
+    expect(() =>
+      validateManualEntryInput({ ...validInput, bookedAtIso: "2026-05-23T99:99:99Z" })
+    ).toThrow(expect.objectContaining({ code: "INVALID_BOOKED_AT_ISO" }));
+  });
+
   it("throws INVALID_AMOUNT_MINOR_INTEGER for a non-integer amount", () => {
     expect(() =>
       validateManualEntryInput({ ...validInput, amountMinor: 12.5 })
@@ -82,5 +94,17 @@ describe("validateManualEntryInput", () => {
     expect(() =>
       validateManualEntryInput({ ...validInput, merchantRaw: "  " })
     ).toThrow(expect.objectContaining({ code: "INVALID_MERCHANT_RAW" }));
+  });
+
+  it("throws INVALID_CATEGORY_ID for a malformed optional category", () => {
+    expect(() =>
+      validateManualEntryInput({ ...validInput, categoryId: 123 as unknown as string })
+    ).toThrow(expect.objectContaining({ code: "INVALID_CATEGORY_ID" }));
+  });
+
+  it("throws INVALID_CATEGORY_ID for a blank optional category", () => {
+    expect(() =>
+      validateManualEntryInput({ ...validInput, categoryId: "  " })
+    ).toThrow(expect.objectContaining({ code: "INVALID_CATEGORY_ID" }));
   });
 });

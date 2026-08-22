@@ -639,13 +639,15 @@ section[aria-label="Target vs Actual"] table {
 }
 
 section[aria-label="Category Target Entry"] form,
-section[aria-label="Restore Snapshot"] form {
+section[aria-label="Restore Snapshot"] form,
+section[aria-label="Manual Entry"] form {
   display: grid;
   gap: 0.55rem;
   margin-top: 1.4rem;
 }
 
 section[aria-label="Category Target Entry"] label,
+section[aria-label="Manual Entry"] label,
 section[aria-label="CSV Import"] label,
 section[aria-label="PDF Import"] label,
 section[aria-label="Backup"] label,
@@ -656,6 +658,7 @@ section[aria-label="Restore Snapshot"] label {
 }
 
 section[aria-label="Category Target Entry"] button,
+section[aria-label="Manual Entry"] button,
 section[aria-label="CSV Import"] button,
 section[aria-label="PDF Import"] button,
 section[aria-label="Backup"] button,
@@ -665,6 +668,7 @@ section[aria-label="Restore Snapshot"] button {
 }
 
 section[aria-label="CSV Import"] input,
+section[aria-label="Manual Entry"] input,
 section[aria-label="PDF Import"] input,
 section[aria-label="Backup"] input,
 section[aria-label="Restore Snapshot"] input {
@@ -672,6 +676,7 @@ section[aria-label="Restore Snapshot"] input {
 }
 
 section[aria-label="CSV Import"] [role="alert"],
+section[aria-label="Manual Entry"] [role="alert"],
 section[aria-label="PDF Import"] [role="alert"],
 section[aria-label="Backup"] [role="alert"],
 section[aria-label="Restore Snapshot"] [role="alert"],
@@ -682,6 +687,7 @@ section[aria-label="Category Target Entry"] [role="alert"] {
 }
 
 section[aria-label="CSV Import"] [role="status"],
+section[aria-label="Manual Entry"] [role="status"],
 section[aria-label="PDF Import"] [role="status"],
 section[aria-label="Backup"] [role="status"],
 section[aria-label="Restore Snapshot"] [role="status"],

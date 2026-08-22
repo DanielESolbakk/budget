@@ -335,13 +335,23 @@ app.whenReady().then(async () => {
         typeof (input as Record<string, unknown>).accountId !== "string" ||
         typeof (input as Record<string, unknown>).bookedAtIso !== "string" ||
         typeof (input as Record<string, unknown>).amountMinor !== "number" ||
-        typeof (input as Record<string, unknown>).merchantRaw !== "string"
+        typeof (input as Record<string, unknown>).merchantRaw !== "string" ||
+        ((input as Record<string, unknown>).categoryId !== undefined &&
+          typeof (input as Record<string, unknown>).categoryId !== "string")
       ) {
         return {
           ok: false,
           reason: "validation",
-          code: "INVALID_HOUSEHOLD_ID",
-          message: "Manual entry input is missing required fields or has invalid types.",
+          code:
+            typeof (input as Record<string, unknown>).categoryId !== "undefined" &&
+            typeof (input as Record<string, unknown>).categoryId !== "string"
+              ? "INVALID_CATEGORY_ID"
+              : "INVALID_HOUSEHOLD_ID",
+          message:
+            typeof (input as Record<string, unknown>).categoryId !== "undefined" &&
+            typeof (input as Record<string, unknown>).categoryId !== "string"
+              ? "categoryId must be a string when provided."
+              : "Manual entry input is missing required fields or has invalid types.",
         };
       }
       const response = submitManualEntry(input as ManualEntryInput, liveTransactions, localLedgerDatabase);

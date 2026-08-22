@@ -9,6 +9,7 @@ import { CsvImportPage } from "../pom/CsvImportPage.js";
 import { DashboardPage } from "../pom/DashboardPage.js";
 import { DashboardTargetPage } from "../pom/DashboardTargetPage.js";
 import { ForecastPage } from "../pom/ForecastPage.js";
+import { ManualEntryPage } from "../pom/ManualEntryPage.js";
 import { PdfImportPage } from "../pom/PdfImportPage.js";
 import { PreloadBridgePage } from "../pom/PreloadBridgePage.js";
 
@@ -23,6 +24,7 @@ interface ElectronFixtures {
   dashboard: DashboardPage;
   dashboardTarget: DashboardTargetPage;
   forecast: ForecastPage;
+  manualEntry: ManualEntryPage;
   pdfImport: PdfImportPage;
   preloadBridge: PreloadBridgePage;
 }
@@ -76,6 +78,9 @@ export const test = base.extend<ElectronFixtures>({
   },
   forecast: async ({ window }, use) => {
     await use(new ForecastPage(window));
+  },
+  manualEntry: async ({ window }, use) => {
+    await use(new ManualEntryPage(window));
   },
   pdfImport: async ({ window }, use) => {
     await use(new PdfImportPage(window));
