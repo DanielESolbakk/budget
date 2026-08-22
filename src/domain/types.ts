@@ -18,9 +18,115 @@ export interface Transaction {
   bookedAtIso: string;
   amountMinor: number;
   merchantRaw: string;
+  currencyCode?: string;
+  sourceType?: "csv" | "pdf" | "manual";
   merchantAlias?: string;
   categoryId?: string;
   importJobId?: string;
+}
+
+/**
+ * Raw input provided by a household user when manually entering a transaction.
+ * All fields are strings at the boundary; validation converts them to canonical types.
+ */
+export interface ManualEntryInput {
+  householdId: string;
+  accountId: string;
+  /** ISO 8601 date string, e.g. "2026-05-23" or "2026-05-23T00:00:00Z". */
+  bookedAtIso: string;
+  /** Transaction amount in minor units (integer, may be negative for expenses). */
+  amountMinor: number;
+  /** Raw merchant or description text as entered by the user. */
+  merchantRaw: string;
+  /** Optional category identifier. */
+  categoryId?: string;
+}
+
+export type ManualEntryValidationErrorCode =
+  | "INVALID_HOUSEHOLD_ID"
+  | "INVALID_ACCOUNT_ID"
+  | "INVALID_BOOKED_AT_ISO"
+  | "INVALID_AMOUNT_MINOR_INTEGER"
+  | "INVALID_MERCHANT_RAW"
+  | "INVALID_CATEGORY_ID";
+
+export interface ManualEntryValidationError {
+  code: ManualEntryValidationErrorCode;
+  message: string;
+}
+
+export class ManualEntryValidationException extends Error {
+  readonly code: ManualEntryValidationErrorCode;
+
+  constructor(error: ManualEntryValidationError) {
+    super(error.message);
+    this.name = "ManualEntryValidationException";
+    this.code = error.code;
+  }
+}
+
+const ISO_DATE_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(?:T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)Z)?$/;
+
+function isValidIsoDate(value: string): boolean {
+  const match = ISO_DATE_PATTERN.exec(value.trim());
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(0, month - 1, day));
+  parsed.setUTCFullYear(year);
+
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+}
+
+/**
+ * Validates a manual entry input.
+ * Throws ManualEntryValidationException when any field is invalid;
+ * otherwise returns the input unchanged.
+ */
+export function validateManualEntryInput(input: ManualEntryInput): ManualEntryInput {
+  if (!input.householdId.trim()) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_HOUSEHOLD_ID",
+      message: "householdId must be a non-empty string.",
+    });
+  }
+  if (!input.accountId.trim()) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_ACCOUNT_ID",
+      message: "accountId must be a non-empty string.",
+    });
+  }
+  if (!isValidIsoDate(input.bookedAtIso)) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_BOOKED_AT_ISO",
+      message: `bookedAtIso must be a valid ISO 8601 date: ${input.bookedAtIso}`,
+    });
+  }
+  if (!Number.isSafeInteger(input.amountMinor)) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_AMOUNT_MINOR_INTEGER",
+      message: `amountMinor must be an integer: ${input.amountMinor}`,
+    });
+  }
+  if (!input.merchantRaw.trim()) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_MERCHANT_RAW",
+      message: "merchantRaw must be a non-empty string.",
+    });
+  }
+  if (input.categoryId !== undefined && (typeof input.categoryId !== "string" || !input.categoryId.trim())) {
+    throw new ManualEntryValidationException({
+      code: "INVALID_CATEGORY_ID",
+      message: "categoryId must be a non-empty string when provided.",
+    });
+  }
+  return input;
 }
 
 export interface ImportJob {
@@ -28,11 +134,26 @@ export interface ImportJob {
   householdId: string;
   sourceType: "csv" | "pdf" | "manual";
   sourceName: string;
+  /** Stable adapter identifier, e.g. "rogaland-sparebank-text-v1". Absent for manual imports. */
   adapterId?: string;
+  /** Number of transaction candidates produced by the parser. */
   candidateCount?: number;
+  /** Number of explicit validation failures recorded during parsing. */
   validationFailureCount?: number;
   startedAtIso: string;
   finishedAtIso?: string;
+  provenance?: ImportJobProvenance;
+}
+
+export interface ImportJobStoryAnchor {
+  enablerIssueId: string;
+  featureIssueId: string;
+}
+
+export interface ImportJobProvenance {
+  sourceIdentity: string;
+  adapterId?: string;
+  storyAnchor?: ImportJobStoryAnchor;
 }
 
 export interface MonthlyTotal {

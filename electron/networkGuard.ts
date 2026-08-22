@@ -9,12 +9,23 @@ import type { Session } from "electron";
  * posture of the application.
  */
 const ALLOWED_URL_PATTERNS: RegExp[] = [
-  /^file:/,
   /^devtools:/,
   /^chrome-extension:/,
   /^https?:\/\/localhost(:\d+)?(\/|$)/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?(\/|$)/,
 ];
+
+function isLocalFileUrl(url: string): boolean {
+  if (!url.toLowerCase().startsWith("file://")) return false;
+
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === "file:" &&
+      (parsedUrl.hostname === "" || parsedUrl.hostname.toLowerCase() === "localhost");
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Returns `true` when the given URL is permitted through the outbound network
@@ -24,7 +35,7 @@ const ALLOWED_URL_PATTERNS: RegExp[] = [
  * session.
  */
 export function isUrlPermitted(url: string): boolean {
-  return ALLOWED_URL_PATTERNS.some((pattern) => pattern.test(url));
+  return isLocalFileUrl(url) || ALLOWED_URL_PATTERNS.some((pattern) => pattern.test(url));
 }
 
 /**
@@ -33,7 +44,7 @@ export function isUrlPermitted(url: string): boolean {
  * cancelled before it is sent.
  *
  * Permitted request targets:
- *   - `file://`              — renderer HTML and bundled static assets
+ *   - local `file://`        — renderer HTML and bundled static assets
  *   - `devtools://`          — Chrome DevTools internal frames
  *   - `chrome-extension://`  — extension runtime URLs
  *   - `localhost` / `127.0.0.1` — local development renderer (Vite dev server)

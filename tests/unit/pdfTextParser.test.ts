@@ -11,6 +11,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  buildRogalandImportJobId,
   isRogalandStatementText,
   parseRogalandStatementText,
   ROGALAND_ADAPTER_ID,
@@ -30,6 +31,13 @@ function loadFixture(): string {
 }
 
 describe("pdfTextParser unit tests", () => {
+  it("builds the same import job ID for identical content and context", () => {
+    const text = loadFixture();
+
+    expect(buildRogalandImportJobId(text, BASE_OPTIONS)).toBe(
+      buildRogalandImportJobId(text, BASE_OPTIONS)
+    );
+  });
   describe("isRogalandStatementText", () => {
     it("returns true for text containing ROGALAND SPAREBANK header token", () => {
       expect(isRogalandStatementText("ROGALAND SPAREBANK\nKontonummer: 1234")).toBe(true);
@@ -115,6 +123,8 @@ describe("pdfTextParser unit tests", () => {
         expect(Number.isInteger(tx.amountMinor)).toBe(true);
         expect(typeof tx.merchantRaw).toBe("string");
         expect(tx.merchantRaw.length).toBeGreaterThan(0);
+        expect(tx.currencyCode).toBe("NOK");
+        expect(tx.sourceType).toBe("pdf");
       }
     });
 

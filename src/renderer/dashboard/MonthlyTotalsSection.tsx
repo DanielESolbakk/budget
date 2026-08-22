@@ -42,12 +42,18 @@ export function MonthlyTotalsSection({ viewContract }: MonthlyTotalsSectionProps
     <section aria-label="Monthly Totals">
       <h2>Monthly Totals</h2>
       <dl>
-        <dt>Income</dt>
-        <dd aria-label="Income">{formatMinor(monthlyTotals.incomeMinor)}</dd>
-        <dt>Expenses</dt>
-        <dd aria-label="Expenses">{formatMinor(monthlyTotals.expenseMinor)}</dd>
-        <dt>Net</dt>
-        <dd aria-label="Net">{formatMinor(monthlyTotals.netMinor)}</dd>
+        <div className="monthly-total" role="group" aria-label="Income total">
+          <dt>Income</dt>
+          <dd aria-label="Income">{formatMinor(monthlyTotals.incomeMinor)}</dd>
+        </div>
+        <div className="monthly-total" role="group" aria-label="Expenses total">
+          <dt>Expenses</dt>
+          <dd aria-label="Expenses">{formatMinor(monthlyTotals.expenseMinor)}</dd>
+        </div>
+        <div className="monthly-total" role="group" aria-label="Net total">
+          <dt>Net</dt>
+          <dd aria-label="Net">{formatMinor(monthlyTotals.netMinor)}</dd>
+        </div>
       </dl>
     </section>
   );

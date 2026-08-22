@@ -6,6 +6,7 @@ import type {
   Account,
   Household,
   ImportJob,
+  ImportJobProvenance,
   MonthlyCategoryTarget,
   Transaction,
 } from "../../domain/types.js";
@@ -20,9 +21,11 @@ interface LocalLedgerSeedData {
 
 export interface LocalLedgerDatabase {
   loadLedgerSnapshotData: () => LedgerSnapshotData;
+  getAccountsForHousehold: (householdId: string) => Account[];
   upsertMonthlyCategoryTarget: (target: MonthlyCategoryTarget) => void;
   appendImportJob: (importJob: ImportJob) => void;
   appendTransactions: (transactions: Transaction[]) => void;
+  appendManualEntry: (importJob: ImportJob, transaction: Transaction) => void;
   close: () => void;
 }
 
@@ -57,6 +60,8 @@ function ensureSchema(db: DatabaseSync): void {
       booked_at_iso TEXT NOT NULL,
       amount_minor INTEGER NOT NULL,
       merchant_raw TEXT NOT NULL,
+      currency_code TEXT,
+      source_type TEXT,
       category_id TEXT,
       import_job_id TEXT
     );
@@ -70,7 +75,8 @@ function ensureSchema(db: DatabaseSync): void {
       candidate_count INTEGER,
       validation_failure_count INTEGER,
       started_at_iso TEXT NOT NULL,
-      finished_at_iso TEXT
+      finished_at_iso TEXT,
+      provenance_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS monthly_category_targets (
@@ -81,20 +87,23 @@ function ensureSchema(db: DatabaseSync): void {
     );
   `);
 
-  const existingImportJobColumns = new Set(
-    (db.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>).map(
-      (column) => column.name
-    )
-  );
+  const transactionColumns = db.prepare("PRAGMA table_info(transactions)").all() as Array<{ name: string }>;
+  if (!transactionColumns.some((column) => column.name === "currency_code")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN currency_code TEXT");
+  }
+  if (!transactionColumns.some((column) => column.name === "source_type")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN source_type TEXT");
+  }
 
-  const importJobColumns = [
+  const importJobColumns = db.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>;
+  const importJobColumnsToAdd = [
     ["adapter_id", "TEXT"],
     ["candidate_count", "INTEGER"],
     ["validation_failure_count", "INTEGER"],
+    ["provenance_json", "TEXT"],
   ] as const;
-
-  for (const [columnName, columnType] of importJobColumns) {
-    if (!existingImportJobColumns.has(columnName)) {
+  for (const [columnName, columnType] of importJobColumnsToAdd) {
+    if (!importJobColumns.some((column) => column.name === columnName)) {
       db.exec(`ALTER TABLE import_jobs ADD COLUMN ${columnName} ${columnType}`);
     }
   }
@@ -124,7 +133,7 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
     }
 
     const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     for (const transaction of seedData.transactions) {
       insertTransaction.run(
@@ -134,13 +143,15 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
         transaction.bookedAtIso,
         transaction.amountMinor,
         transaction.merchantRaw,
+        transaction.currencyCode ?? null,
+        transaction.sourceType ?? null,
         transaction.categoryId ?? null,
         transaction.importJobId ?? null
       );
     }
 
     const insertImportJob = db.prepare(
-      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     for (const importJob of seedData.importJobs) {
       insertImportJob.run(
@@ -152,7 +163,8 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
         importJob.candidateCount ?? null,
         importJob.validationFailureCount ?? null,
         importJob.startedAtIso,
-        importJob.finishedAtIso ?? null
+        importJob.finishedAtIso ?? null,
+        importJob.provenance ? JSON.stringify(importJob.provenance) : null
       );
     }
 
@@ -210,7 +222,7 @@ export function createLocalLedgerDatabase(
 
     const transactions = db
       .prepare(
-        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id FROM transactions ORDER BY id"
+        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id FROM transactions ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -219,13 +231,15 @@ export function createLocalLedgerDatabase(
       booked_at_iso: string;
       amount_minor: number;
       merchant_raw: string;
+      currency_code: string | null;
+      source_type: NonNullable<Transaction["sourceType"]> | null;
       category_id: string | null;
       import_job_id: string | null;
     }>;
 
     const importJobs = db
       .prepare(
-        "SELECT id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso FROM import_jobs ORDER BY id"
+        "SELECT id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json FROM import_jobs ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -237,6 +251,7 @@ export function createLocalLedgerDatabase(
       validation_failure_count: number | null;
       started_at_iso: string;
       finished_at_iso: string | null;
+      provenance_json: string | null;
     }>;
 
     const monthlyCategoryTargets = db
@@ -254,6 +269,13 @@ export function createLocalLedgerDatabase(
         amountMinor: transaction.amount_minor,
         merchantRaw: transaction.merchant_raw,
       };
+
+      if (transaction.currency_code !== null) {
+        mapped.currencyCode = transaction.currency_code;
+      }
+      if (transaction.source_type !== null) {
+        mapped.sourceType = transaction.source_type;
+      }
 
       if (transaction.category_id !== null) {
         mapped.categoryId = transaction.category_id;
@@ -291,6 +313,10 @@ export function createLocalLedgerDatabase(
         mapped.finishedAtIso = importJob.finished_at_iso;
       }
 
+      if (importJob.provenance_json !== null) {
+        mapped.provenance = JSON.parse(importJob.provenance_json) as ImportJobProvenance;
+      }
+
       return mapped;
     });
 
@@ -322,9 +348,29 @@ export function createLocalLedgerDatabase(
     ).run(target.yearMonth, target.categoryId, target.targetMinor);
   }
 
+  function getAccountsForHousehold(householdId: string): Account[] {
+    const accounts = db
+      .prepare(
+        "SELECT id, household_id, name, currency_code FROM accounts WHERE household_id = ? ORDER BY id"
+      )
+      .all(householdId) as Array<{
+      id: string;
+      household_id: string;
+      name: string;
+      currency_code: string;
+    }>;
+
+    return accounts.map((account) => ({
+      id: account.id,
+      householdId: account.household_id,
+      name: account.name,
+      currencyCode: "NOK",
+    }));
+  }
+
   function appendImportJob(importJob: ImportJob): void {
     db.prepare(
-      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       importJob.id,
       importJob.householdId,
@@ -334,13 +380,14 @@ export function createLocalLedgerDatabase(
       importJob.candidateCount ?? null,
       importJob.validationFailureCount ?? null,
       importJob.startedAtIso,
-      importJob.finishedAtIso ?? null
+      importJob.finishedAtIso ?? null,
+      importJob.provenance ? JSON.stringify(importJob.provenance) : null
     );
   }
 
   function appendTransactions(transactions: Transaction[]): void {
     const insertTransaction = db.prepare(
-      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     db.exec("BEGIN");
     try {
@@ -352,6 +399,8 @@ export function createLocalLedgerDatabase(
           transaction.bookedAtIso,
           transaction.amountMinor,
           transaction.merchantRaw,
+          transaction.currencyCode ?? null,
+          transaction.sourceType ?? null,
           transaction.categoryId ?? null,
           transaction.importJobId ?? null
         );
@@ -363,11 +412,54 @@ export function createLocalLedgerDatabase(
     }
   }
 
+  function appendManualEntry(importJob: ImportJob, transaction: Transaction): void {
+    const insertImportJob = db.prepare(
+      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    const insertTransaction = db.prepare(
+      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+
+    db.exec("BEGIN");
+    try {
+      insertImportJob.run(
+        importJob.id,
+        importJob.householdId,
+        importJob.sourceType,
+        importJob.sourceName,
+        importJob.adapterId ?? null,
+        importJob.candidateCount ?? null,
+        importJob.validationFailureCount ?? null,
+        importJob.startedAtIso,
+        importJob.finishedAtIso ?? null,
+        importJob.provenance ? JSON.stringify(importJob.provenance) : null
+      );
+      insertTransaction.run(
+        transaction.id,
+        transaction.householdId,
+        transaction.accountId,
+        transaction.bookedAtIso,
+        transaction.amountMinor,
+        transaction.merchantRaw,
+        transaction.currencyCode ?? null,
+        transaction.sourceType ?? null,
+        transaction.categoryId ?? null,
+        transaction.importJobId ?? null
+      );
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   return {
     loadLedgerSnapshotData,
+    getAccountsForHousehold,
     upsertMonthlyCategoryTarget,
     appendImportJob,
     appendTransactions,
+    appendManualEntry,
     close: () => db.close(),
   };
 }

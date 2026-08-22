@@ -1,7 +1,7 @@
 import type { PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
-import { parseRogalandStatementText } from "../../domain/import/pdfTextParser.js";
 import { buildTransactionFingerprint } from "../../domain/import/buildTransactionFingerprint.js";
-import type { ImportJob, Transaction } from "../../domain/types.js";
+import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
+import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
 export interface PdfImportRequest {
@@ -38,10 +38,16 @@ export interface PdfImportWorkflowInput extends PdfImportRequest {
 }
 
 export interface PdfImportWorkflowDependencies {
+  parserRegistry: Pick<ParserAdapterRegistry, "parse">;
   appendImportJob: (importJob: ImportJob) => void;
   appendTransactions: (transactions: Transaction[]) => void;
   onTransactionsPersisted?: (transactions: Transaction[]) => void;
 }
+
+const PDF_IMPORT_STORY_ANCHOR: ImportJobStoryAnchor = {
+  enablerIssueId: "32",
+  featureIssueId: "15",
+};
 
 /**
  * Builds a normalized PdfImportRequest from a raw file path and household/account context.
@@ -105,7 +111,7 @@ export function runPdfImportWorkflow(
   input: PdfImportWorkflowInput,
   dependencies: PdfImportWorkflowDependencies
 ): PdfImportResponse {
-  const parseResult = parseRogalandStatementText(input.pdfText, {
+  const parseResult = dependencies.parserRegistry.parse(input.pdfText, {
     householdId: input.householdId,
     accountId: input.accountId,
     importJobId: input.importJobId,
@@ -115,7 +121,7 @@ export function runPdfImportWorkflow(
     return normalizePdfImportErrors(parseResult.errors);
   }
 
-  const transactions = parseResult.transactions.map((transaction) => ({
+  const transactions = parseResult.candidates.map((transaction) => ({
     ...transaction,
     id: buildTransactionFingerprint({
       accountId: transaction.accountId,
@@ -125,7 +131,7 @@ export function runPdfImportWorkflow(
     }),
   }));
 
-  dependencies.appendImportJob({
+  const importJob: ImportJob = {
     id: input.importJobId,
     householdId: input.householdId,
     sourceType: "pdf",
@@ -135,7 +141,14 @@ export function runPdfImportWorkflow(
     validationFailureCount: 0,
     startedAtIso: input.startedAtIso,
     finishedAtIso: input.finishedAtIso,
-  });
+    provenance: {
+      sourceIdentity: parseResult.sourceIdentity,
+      adapterId: parseResult.adapterId,
+      storyAnchor: PDF_IMPORT_STORY_ANCHOR,
+    },
+  };
+
+  dependencies.appendImportJob(importJob);
   dependencies.appendTransactions(transactions);
   dependencies.onTransactionsPersisted?.(transactions);
 
