@@ -15,39 +15,18 @@
  * pretest script. To run manually first: `npm run build && npm run test:e2e:playwright`.
  */
 
-import { test, expect, _electron as electron } from "@playwright/test";
-import type { ElectronApplication, Page } from "@playwright/test";
-import { join } from "node:path";
-import { DashboardPage } from "./pom/DashboardPage.js";
-
-const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
+import { test, expect } from "./fixtures/electron.js";
 
 test.describe("Dashboard renderer smoke", () => {
-  let app: ElectronApplication;
-  let window: Page;
-  let dashboard: DashboardPage;
-  let initialMonth: string;
-
-  test.beforeEach(async () => {
-    app = await electron.launch({
-      args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
-    });
-    window = await app.firstWindow();
-    await window.waitForLoadState("domcontentloaded");
-    dashboard = new DashboardPage(window);
-    initialMonth = await dashboard.monthSelector.inputValue();
+  test.beforeEach(async ({ dashboard }) => {
+    const initialMonth = await dashboard.monthSelector.inputValue();
     // Keep each test isolated from month selection side effects.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
     await expect(dashboard.monthSelector).toHaveValue(initialMonth);
   });
 
-  test.afterEach(async () => {
-    await app.close();
-  });
-
-  test("Scenario 1: monthly totals section renders with income, expense, and net values visible", async () => {
+  test("Scenario 1: monthly totals section renders with income, expense, and net values visible", async ({ dashboard }) => {
     // AC-3: renderer path shows monthly totals section without runtime errors.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.monthlyTotalsHeading).toBeVisible();
@@ -56,14 +35,14 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.netValue).toBeVisible();
   });
 
-  test("Scenario 2: category breakdown section renders with at least one category row visible", async () => {
+  test("Scenario 2: category breakdown section renders with at least one category row visible", async ({ dashboard }) => {
     // AC-3: renderer path shows category breakdown section without runtime errors.
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
     await expect(dashboard.categoryBreakdownHeading).toBeVisible();
     await expect(dashboard.categoryEntries.first()).toBeVisible();
   });
 
-  test("Scenario 3: month-switch control updates selected month and refreshes at least one value", async () => {
+  test("Scenario 3: month-switch control updates selected month and refreshes at least one value", async ({ dashboard }) => {
     // AC-4: changing the selected month refreshes totals and categories.
     // Wait for initial data to render before capturing baseline.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
@@ -90,5 +69,49 @@ test.describe("Dashboard renderer smoke", () => {
     // Assert both sections remain visible after the switch.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
+  });
+
+  test("Scenario 4: each monthly total keeps its label paired with its value", async ({ dashboard }) => {
+    await expect(dashboard.monthlyTotal("Income")).toContainText("Income");
+    await expect(dashboard.monthlyTotal("Income").getByLabel("Income", { exact: true })).toBeVisible();
+    await expect(dashboard.monthlyTotal("Expenses")).toContainText("Expenses");
+    await expect(dashboard.monthlyTotal("Expenses").getByLabel("Expenses", { exact: true })).toBeVisible();
+    await expect(dashboard.monthlyTotal("Net")).toContainText("Net");
+    await expect(dashboard.monthlyTotal("Net").getByLabel("Net", { exact: true })).toBeVisible();
+  });
+
+  test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) => {
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-03";
+      process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
+    });
+
+    await dashboard.monthFrame("2026-03").click();
+    await dashboard.monthFrame("2026-04").click();
+
+    await expect(dashboard.monthSelector).toHaveValue("2026-04", { timeout: 10_000 });
+    await expect(dashboard.incomeValue).toContainText("510");
+  });
+
+  test("Visual: desktop dashboard preserves the monthly review layout", async ({ window, electronApp }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
+    });
+
+    await expect(window).toHaveScreenshot("dashboard-desktop.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+  });
+
+  test("Visual: mobile dashboard preserves the horizontal month rail", async ({ window, electronApp }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    await expect(window).toHaveScreenshot("dashboard-mobile.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
   });
 });

@@ -16,119 +16,121 @@
  * pretest script. To run manually first: `npm run build && npm run test:e2e:playwright`.
  */
 
-import { test, expect, _electron as electron } from "@playwright/test";
-import type { ElectronApplication, Page } from "@playwright/test";
+import { test, expect } from "./fixtures/electron.js";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
-import { CsvImportPage } from "./pom/CsvImportPage.js";
-import { DashboardPage } from "./pom/DashboardPage.js";
 
-const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 
 /** Writes a minimal invalid CSV to a temp file and returns the absolute path. */
 function writeInvalidCsvFixture(): string {
   const dir = join(tmpdir(), "budget-playwright-csv");
   mkdirSync(dir, { recursive: true });
-  const path = join(dir, `invalid-${Date.now()}.csv`);
+  const path = join(dir, `invalid-${randomUUID()}.csv`);
   writeFileSync(path, "Wrong;Headers;Only\nval1;val2;val3\n", "utf8");
   return path;
 }
 
 test.describe("CSV import renderer workflow", () => {
-  let app: ElectronApplication;
-  let window: Page;
-  let csvImportPage: CsvImportPage;
-  let dashboardPage: DashboardPage;
-
-  test.beforeEach(async () => {
-    app = await electron.launch({
-      args: [MAIN_ENTRY],
-      env: { ...process.env, NODE_ENV: "test" },
-    });
-    window = await app.firstWindow();
-    await window.waitForLoadState("domcontentloaded");
-    csvImportPage = new CsvImportPage(window);
-    dashboardPage = new DashboardPage(window);
-  });
-
-  test.afterEach(async () => {
-    await app.close();
-  });
-
-  test("Scenario 1: importing the supported synthetic CSV reports success and updates dashboard totals", async () => {
+  test("Scenario 1: importing the supported synthetic CSV reports success and updates dashboard totals", async ({ csvImport, dashboard }) => {
     // AC-1: import section is visible with file path input and button.
-    await expect(csvImportPage.importSection).toBeVisible();
-    await expect(csvImportPage.importHeading).toBeVisible();
-    await expect(csvImportPage.filePathInput).toBeVisible();
-    await expect(csvImportPage.importButton).toBeVisible();
+    await expect(csvImport.importSection).toBeVisible();
+    await expect(csvImport.importHeading).toBeVisible();
+    await expect(csvImport.filePathInput).toBeVisible();
+    await expect(csvImport.importButton).toBeVisible();
 
     // Capture baseline dashboard income value before import.
-    const monthSelector = dashboardPage.monthSelector;
+    const monthSelector = dashboard.monthSelector;
     await monthSelector.selectOption("2026-05");
-    await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
-    const beforeIncomeText = ((await dashboardPage.incomeValue.textContent()) ?? "").trim();
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    const beforeIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
 
     // AC-1, AC-2: submit the fixture CSV path via the renderer input.
-    await csvImportPage.submitImport(FIXTURE_PATH);
+    await csvImport.submitImport(FIXTURE_PATH);
 
     // AC-1: success status is shown after import.
-    await expect(csvImportPage.successStatus).toBeVisible({ timeout: 10_000 });
-    const statusText = await csvImportPage.successStatus.textContent();
+    await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+    const statusText = await csvImport.successStatus.textContent();
     expect(statusText).toMatch(/transactions imported/i);
 
     // The app reloads dashboard state after successful import and remounts the import section.
     // Wait for the remounted input to clear as a stable completion signal.
-    await expect(csvImportPage.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(csvImport.filePathInput).toHaveValue("", { timeout: 10_000 });
 
     // AC-4: dashboard automatically reloads after import success;
     // wait for the monthly totals section to re-render and values to change.
-    await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
-    await expect(dashboardPage.categoryEntries.first()).toBeVisible();
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    await expect(dashboard.categoryEntries.first()).toBeVisible();
     await expect
-      .poll(async () => ((await dashboardPage.incomeValue.textContent()) ?? "").trim(), {
+      .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), {
         timeout: 10_000,
       })
       .not.toBe(beforeIncomeText);
   });
 
-  test("Regression: successful import keeps success feedback visible before and after dashboard refresh", async () => {
-    await expect(csvImportPage.importSection).toBeVisible();
+  test("Regression: successful import keeps success feedback visible before and after dashboard refresh", async ({ csvImport }) => {
+    await expect(csvImport.importSection).toBeVisible();
 
-    await csvImportPage.submitImport(FIXTURE_PATH);
+    await csvImport.submitImport(FIXTURE_PATH);
 
     // Regression guard for the previous refresh race: success feedback must be observable.
-    await expect(csvImportPage.successStatus).toBeVisible({ timeout: 10_000 });
-    await expect(csvImportPage.successStatus).toContainText(/transactions imported/i);
+    await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+    await expect(csvImport.successStatus).toContainText(/transactions imported/i);
 
     // Refresh now runs without tearing down the section and clears the input for next import.
-    await expect(csvImportPage.filePathInput).toHaveValue("", { timeout: 10_000 });
-    await expect(csvImportPage.importSection).toBeVisible();
+    await expect(csvImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(csvImport.importSection).toBeVisible();
   });
 
-  test("Scenario 2: importing an unsupported CSV shape reports validation errors and leaves dashboard unchanged", async () => {
+  test("Regression: refresh failure preserves the loaded dashboard and shows recovery feedback", async ({ csvImport, dashboard, electronApp, window }) => {
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+    });
+
+    await csvImport.submitImport(FIXTURE_PATH);
+    await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+    await expect(dashboard.monthlyTotalsSection).toBeVisible({ timeout: 10_000 });
+    await expect(csvImport.importSection).toBeVisible();
+    await expect(window.getByRole("alert")).toContainText("Review refresh failed");
+    await expect(window.getByRole("alert")).toContainText("Synthetic dashboard refresh failure.");
+  });
+
+  test("Regression: successful import preserves the currently selected month", async ({ csvImport, dashboard }) => {
+    const selectedMonth = await dashboard.selectDifferentMonth("2026-05");
+
+    await csvImport.submitImport(FIXTURE_PATH);
+    await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+    await expect(csvImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(dashboard.monthSelector).toHaveValue(selectedMonth, { timeout: 10_000 });
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+  });
+
+  test("Scenario 2: importing an unsupported CSV shape reports validation errors and leaves dashboard unchanged", async ({ csvImport, dashboard }) => {
     // Ensure dashboard is in a known state before the invalid import.
-    await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
-    const beforeIncomeText = (await dashboardPage.incomeValue.textContent()) ?? "";
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
 
     const invalidPath = writeInvalidCsvFixture();
 
     // AC-1, AC-3: submit invalid CSV path via renderer input.
-    await csvImportPage.submitImport(invalidPath);
+    await csvImport.submitImport(invalidPath);
 
     // AC-3: alert with validation failure is shown.
-    await expect(csvImportPage.errorAlert).toBeVisible({ timeout: 10_000 });
-    const alertText = await csvImportPage.errorAlert.textContent();
+    await expect(csvImport.errorAlert).toBeVisible({ timeout: 10_000 });
+    const alertText = await csvImport.errorAlert.textContent();
     expect(alertText).toMatch(/failed/i);
 
     // AC-4: dashboard totals remain unchanged after a failed import.
-    await expect(dashboardPage.monthlyTotalsSection).toBeVisible();
-    const afterIncomeText = (await dashboardPage.incomeValue.textContent()) ?? "";
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    const afterIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     expect(afterIncomeText).toBe(beforeIncomeText);
   });
 
-  test("Scenario 3: import workflow runs under network guard with no outbound network calls", async () => {
+  test("Scenario 3: import workflow runs under network guard with no outbound network calls", async ({ csvImport, window }) => {
     // AC-2: verify the network guard is active — import:csv must not trigger network.
     // The network guard blocks outbound connections; a successful or failed import
     // must complete without throwing a network-guard error.
@@ -143,14 +145,14 @@ test.describe("CSV import renderer workflow", () => {
 
     // Use a deterministic invalid shape so completion feedback remains visible in this view.
     const invalidPath = writeInvalidCsvFixture();
-    await csvImportPage.filePathInput.fill(invalidPath);
+    await csvImport.filePathInput.fill(invalidPath);
 
     // Trigger the import flow while network guard is active.
-    await csvImportPage.importButton.click();
+    await csvImport.importButton.click();
 
     // Wait for explicit completion feedback and assert network-guard silence.
-    await expect(csvImportPage.errorAlert).toBeVisible({ timeout: 10_000 });
-    await expect(csvImportPage.errorAlert).toContainText(/failed/i);
+    await expect(csvImport.errorAlert).toBeVisible({ timeout: 10_000 });
+    await expect(csvImport.errorAlert).toContainText(/failed/i);
 
     window.off("console", onConsole);
     expect(networkErrorMessages).toHaveLength(0);

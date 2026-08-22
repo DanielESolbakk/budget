@@ -1,9 +1,5 @@
-import { test, expect, _electron as electron } from "@playwright/test";
-import type { ElectronApplication, Page } from "@playwright/test";
-import { fileURLToPath } from "node:url";
-import { DashboardTargetPage } from "./pom/DashboardTargetPage.js";
+import { test, expect } from "./fixtures/electron.js";
 
-const MAIN_ENTRY = fileURLToPath(new URL("../../out/main/index.js", import.meta.url));
 const DEFAULT_YEAR_MONTH = "2026-05";
 const GROCERIES_ACTUAL_MINOR = 8500;
 const GROCERIES_BASELINE_TARGET_MINOR = 9000;
@@ -20,101 +16,8 @@ function formatMinor(minor: number): string {
   return nokCurrencyFormatter.format(minor / 100);
 }
 
-async function launchDashboardTargetWindow(): Promise<{
-  app: ElectronApplication;
-  window: Page;
-  targetPage: DashboardTargetPage;
-}> {
-  const app = await electron.launch({
-    args: [MAIN_ENTRY],
-    env: { ...process.env, NODE_ENV: "test" },
-  });
-  const window = await app.firstWindow();
-  await window.waitForLoadState("domcontentloaded");
-
-  return {
-    app,
-    window,
-    targetPage: new DashboardTargetPage(window),
-  };
-}
-
-async function setDashboardTargetViewHandler(
-  app: ElectronApplication,
-  targetMinor: number
-): Promise<void> {
-  await app.evaluate(
-    async ({ ipcMain }, targetData) => {
-      ipcMain.removeHandler("dashboard:getViewData");
-      ipcMain.handle("dashboard:getViewData", async (_event, yearMonth: string) => ({
-        state: "ready",
-        snapshot: {
-          selectedYearMonth: yearMonth,
-          monthlyTotals: {
-            yearMonth,
-            incomeMinor: 54000,
-            expenseMinor: 8500,
-            netMinor: 45500,
-          },
-          categoryBreakdown: {
-            yearMonth,
-            entries: [
-              {
-                categoryId: "salary",
-                label: "Salary",
-                totalMinor: targetData.salaryActualMinor,
-                transactionCount: 1,
-              },
-              {
-                categoryId: "groceries",
-                label: "Groceries",
-                totalMinor: targetData.groceriesActualMinor,
-                transactionCount: 1,
-              },
-            ],
-          },
-          targetVsActualCategoryRows: {
-            yearMonth,
-            rows: [
-              {
-                categoryId: "groceries",
-                targetMinor: targetData.nextTargetMinor,
-                actualMinor: targetData.groceriesActualMinor,
-                deltaMinor: targetData.groceriesActualMinor - targetData.nextTargetMinor,
-              },
-              {
-                categoryId: "salary",
-                targetMinor: null,
-                actualMinor: targetData.salaryActualMinor,
-                deltaMinor: null,
-              },
-            ],
-          },
-        },
-      }));
-    },
-    {
-      nextTargetMinor: targetMinor,
-      groceriesActualMinor: GROCERIES_ACTUAL_MINOR,
-      salaryActualMinor: SALARY_ACTUAL_MINOR,
-    }
-  );
-}
-
 test.describe("Dashboard target-vs-actual renderer smoke", () => {
-  let app: ElectronApplication;
-  let _window: Page;
-  let targetPage: DashboardTargetPage;
-
-  test.beforeEach(async () => {
-    ({ app, window: _window, targetPage } = await launchDashboardTargetWindow());
-  });
-
-  test.afterEach(async () => {
-    await app.close();
-  });
-
-  test("renders target-vs-actual section with visible target, actual, and delta values", async () => {
+  test("renders target-vs-actual section with visible target, actual, and delta values", async ({ dashboardTarget: targetPage }) => {
     await expect(targetPage.section).toBeVisible();
     await expect(targetPage.heading).toBeVisible();
     await expect(targetPage.table).toBeVisible();
@@ -130,7 +33,7 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
     );
   });
 
-  test("shows the explicit no-target policy for categories without configured targets", async () => {
+  test("shows the explicit no-target policy for categories without configured targets", async ({ dashboardTarget: targetPage }) => {
     await expect(targetPage.categoryRow("salary")).toBeVisible();
     await expect(targetPage.actualCell("salary")).toHaveText(formatMinor(SALARY_ACTUAL_MINOR));
     await expect(targetPage.targetCell("salary")).toHaveText("No target");
@@ -140,30 +43,17 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
 });
 
 test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () => {
-  let app: ElectronApplication;
-  let window: Page;
-  let targetPage: DashboardTargetPage;
-
-  test.beforeEach(async () => {
-    ({ app, window, targetPage } = await launchDashboardTargetWindow());
-  });
-
-  test.afterEach(async () => {
-    await app.close();
-  });
-
-  test("reflects the latest saved target values after a refresh", async () => {
-    await setDashboardTargetViewHandler(app, GROCERIES_BASELINE_TARGET_MINOR);
-    await window.reload();
-    await window.waitForLoadState("domcontentloaded");
-
+  test("reflects the latest saved target values after a refresh", async ({ window, dashboardTarget: targetPage, categoryTarget }) => {
     await expect(targetPage.section).toBeVisible();
     await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_BASELINE_TARGET_MINOR));
     await expect(targetPage.deltaCell("groceries")).toHaveText(
       formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_BASELINE_TARGET_MINOR)
     );
 
-    await setDashboardTargetViewHandler(app, GROCERIES_UPDATED_TARGET_MINOR);
+    await categoryTarget.categoryIdInput.fill("groceries");
+    await categoryTarget.targetAmountInput.fill("95");
+    await categoryTarget.saveButton.click();
+    await expect(categoryTarget.savedConfirmation).toContainText("Target saved.");
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
 

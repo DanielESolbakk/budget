@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
+import { createDashboardProvider } from "./dashboardProvider.js";
 import { join } from "path";
 import { readFileSync } from "node:fs";
 import {
@@ -184,16 +185,26 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   installNetworkGuard(session.defaultSession);
 
-  ipcMain.handle("dashboard:getData", () => {
-    return getDashboardData();
+  const dashboardTestOverrides =
+    process.env["NODE_ENV"] === "test"
+      ? (await import("./testDashboardOverrides.js")).createTestDashboardOverrides()
+      : undefined;
+  const dashboardProvider = createDashboardProvider({
+    getData: getDashboardData,
+    getViewData,
+    ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
 
-  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) => {
-    return getViewData(yearMonth);
+  ipcMain.handle("dashboard:getData", () => {
+    return dashboardProvider.getData();
   });
+
+  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) =>
+    dashboardProvider.getViewData(yearMonth)
+  );
 
   ipcMain.handle("forecast:getEntries", () => {
     return getDashboardData().forecast.entries;
