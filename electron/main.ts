@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
+import { createDashboardProvider } from "./dashboardProvider.js";
 import { join } from "path";
 import { readFileSync } from "node:fs";
 import {
@@ -23,8 +24,16 @@ import {
   submitManualEntry,
   type ManualEntryResponse,
 } from "../src/app/import/manualEntry.js";
+import {
+  buildPdfImportRequest,
+  normalizePdfImportErrors,
+  runPdfImportWorkflow,
+  type PdfImportResponse,
+} from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
+import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
+import { buildRogalandImportJobId } from "../src/domain/import/pdfTextParser.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -181,16 +190,26 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   installNetworkGuard(session.defaultSession);
 
-  ipcMain.handle("dashboard:getData", () => {
-    return getDashboardData();
+  const dashboardTestOverrides =
+    process.env["NODE_ENV"] === "test"
+      ? (await import("./testDashboardOverrides.js")).createTestDashboardOverrides()
+      : undefined;
+  const dashboardProvider = createDashboardProvider({
+    getData: getDashboardData,
+    getViewData,
+    ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
 
-  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) => {
-    return getViewData(yearMonth);
+  ipcMain.handle("dashboard:getData", () => {
+    return dashboardProvider.getData();
   });
+
+  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) =>
+    dashboardProvider.getViewData(yearMonth)
+  );
 
   ipcMain.handle("forecast:getEntries", () => {
     return getDashboardData().forecast.entries;
@@ -330,6 +349,60 @@ app.whenReady().then(() => {
         liveTransactions.push(response.transaction);
       }
       return response;
+      }
+      );
+
+      ipcMain.handle(
+    "import:pdf",
+    (
+      _event,
+      input: { filePath: string; accountId?: string }
+    ): PdfImportResponse => {
+      const householdId = sampleHousehold.id;
+      const accountId = input.accountId ?? resolveDefaultAccountId(householdId);
+
+      const request = buildPdfImportRequest(input.filePath, { householdId, accountId });
+
+      let pdfText: string;
+      try {
+        pdfText = readFileSync(request.filePath, "utf8");
+      } catch (fileError) {
+        const message =
+          fileError instanceof Error ? fileError.message : "Could not read PDF text file.";
+        return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
+      }
+
+      const importJobId = buildRogalandImportJobId(pdfText, {
+        householdId: request.householdId,
+        accountId: request.accountId,
+      });
+      const now = new Date().toISOString();
+
+      return runPdfImportWorkflow(
+        {
+          pdfText,
+          filePath: request.filePath,
+          householdId: request.householdId,
+          accountId: request.accountId,
+          importJobId,
+          startedAtIso: now,
+          finishedAtIso: now,
+        },
+        {
+          parserRegistry: defaultParserAdapterRegistry,
+          appendImportJob: localLedgerDatabase.appendImportJob,
+          appendTransactions: localLedgerDatabase.appendTransactions,
+          onTransactionsPersisted: (transactions) => {
+            const existingIds = new Set(liveTransactions.map((transaction) => transaction.id));
+            for (const transaction of transactions) {
+              if (!existingIds.has(transaction.id)) {
+                liveTransactions.push(transaction);
+                existingIds.add(transaction.id);
+              }
+            }
+          },
+        }
+      );
     }
   );
 

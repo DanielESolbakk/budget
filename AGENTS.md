@@ -29,6 +29,32 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Harness eval (determinism + baseline drift): `npm run eval:skill`
 - Fixture verification: `npm run verify-fixture -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv`
 
+## Frontend Design Governance (Opt-In)
+
+Impeccable is an opt-in design governance tool for frontend-relevant issues. Non-frontend issues (import, persistence, categorization, IPC, backup, export) do not require it.
+
+### Prerequisite Check
+
+```sh
+node --version   # must be v22.12.0 or newer
+```
+
+### Installation
+
+```sh
+npx impeccable install   # run once from repository root
+```
+
+Alternative: enable the GitHub Copilot built-in Experimental setting for Impeccable (no installation required).
+
+### Usage For Frontend Issues
+
+1. Run `/impeccable init` before starting implementation on a frontend planning issue.
+2. Run `npx impeccable check` to validate design governance after changes.
+3. Do NOT commit generated files: `PRODUCT.md`, `DESIGN.md`, skill caches, credentials, or private financial artifacts.
+
+**Privacy constraint:** Impeccable must not be used for cloud processing, telemetry, analytics, or network access to transaction content.
+
 ## Architecture Map
 
 - `src/domain/types.ts`: shared domain types.

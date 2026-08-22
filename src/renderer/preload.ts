@@ -3,6 +3,7 @@ import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.j
 import type { ExportCsvFileOutput, ExportCsvOutput } from "../app/exportCsv.js";
 import type { CsvImportResponse } from "../app/import/importCsv.js";
 import type { ManualEntryResponse } from "../app/import/manualEntry.js";
+import type { PdfImportResponse } from "../app/import/importPdf.js";
 import type {
   ForecastEntry,
   ManualEntryInput,
@@ -38,6 +39,7 @@ export interface ExportApi {
 export interface ImportApi {
   importCsv: (input: { filePath: string; accountId?: string }) => Promise<CsvImportResponse>;
   addManualTransaction: (input: ManualEntryInput) => Promise<ManualEntryResponse>;
+  importPdf: (input: { filePath: string; accountId?: string }) => Promise<PdfImportResponse>;
 }
 
 export interface BackupApi {
@@ -81,6 +83,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("import:csv", input),
     addManualTransaction: (input: ManualEntryInput): Promise<ManualEntryResponse> =>
       ipcRenderer.invoke("transaction:addManual", input),
+    importPdf: (input: { filePath: string; accountId?: string }): Promise<PdfImportResponse> =>
+      ipcRenderer.invoke("import:pdf", input),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

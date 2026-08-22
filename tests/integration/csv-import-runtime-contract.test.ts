@@ -143,6 +143,34 @@ describe("csv-import-runtime-contract", () => {
   });
 
   describe("AC-3: Invalid CSV import returns explicit validation failures and zero transaction writes", () => {
+    it("rejects empty and header-only CSV input without creating an import job", () => {
+      for (const csvText of ["", "Utført dato;Beskrivelse;Beløp ut;Valuta\n"]) {
+        const ledger = makeTestLedger(randomUUID());
+
+        const response = runImportOrchestration(csvText, ledger, {
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+        });
+
+        expect(response).toEqual({
+          ok: false,
+          errors: [
+            {
+              rowIndex: -1,
+              fields: ["file"],
+              codes: ["EMPTY_CSV"],
+              messages: ["CSV must contain at least one data row."],
+            },
+          ],
+        });
+
+        const snapshot = ledger.loadLedgerSnapshotData();
+        expect(snapshot.transactions).toHaveLength(0);
+        expect(snapshot.importJobs).toHaveLength(0);
+        ledger.close();
+      }
+    });
+
     it("returns ok=false with explicit errors and writes zero transactions for missing headers", () => {
       const ledger = makeTestLedger(randomUUID());
       // CSV with wrong column names (no matching Norwegian bank headers).

@@ -1,18 +1,18 @@
 import React from "react";
-import type { CsvImportResponse } from "../../app/import/importCsv.js";
+import type { PdfImportResponse } from "../../app/import/importPdf.js";
 
 type ImportState =
   | { status: "idle" }
   | { status: "pending" }
-  | { status: "success"; importJobId: string; transactionCount: number }
+  | { status: "success"; importJobId: string; transactionCount: number; adapterId: string }
   | { status: "error"; message: string }
-  | { status: "validation"; errors: CsvImportResponse & { ok: false } };
+  | { status: "validation"; errors: PdfImportResponse & { ok: false } };
 
-interface CsvImportSectionProps {
+interface PdfImportSectionProps {
   onImportSuccess: () => void;
 }
 
-export function CsvImportSection({ onImportSuccess }: CsvImportSectionProps): React.JSX.Element {
+export function PdfImportSection({ onImportSuccess }: PdfImportSectionProps): React.JSX.Element {
   const [filePath, setFilePath] = React.useState("");
   const [importState, setImportState] = React.useState<ImportState>({ status: "idle" });
 
@@ -23,13 +23,14 @@ export function CsvImportSection({ onImportSuccess }: CsvImportSectionProps): Re
     setImportState({ status: "pending" });
 
     window.budgetApi.import
-      .importCsv({ filePath: trimmedPath })
+      .importPdf({ filePath: trimmedPath })
       .then((response) => {
         if (response.ok) {
           setImportState({
             status: "success",
             importJobId: response.importJobId,
             transactionCount: response.transactionCount,
+            adapterId: response.adapterId,
           });
           setFilePath("");
           setTimeout(() => {
@@ -46,28 +47,28 @@ export function CsvImportSection({ onImportSuccess }: CsvImportSectionProps): Re
   }
 
   return (
-    <section aria-label="CSV Import">
-      <h2>Import CSV</h2>
-      <label htmlFor="csv-file-path">CSV file path</label>
+    <section aria-label="PDF Import">
+      <h2>Import PDF Statement</h2>
+      <label htmlFor="pdf-file-path">PDF text file path</label>
       <input
-        id="csv-file-path"
+        id="pdf-file-path"
         type="text"
         value={filePath}
         onChange={(e) => setFilePath(e.target.value)}
-        placeholder="/path/to/statement.csv"
+        placeholder="/path/to/statement.txt"
         disabled={importState.status === "pending"}
       />
       <button
         onClick={handleImport}
         disabled={importState.status === "pending" || !filePath.trim()}
       >
-        Import CSV
+        Import PDF
       </button>
       {importState.status === "pending" && <p>Importing...</p>}
       {importState.status === "success" && (
         <p role="status">
           Import complete: {importState.transactionCount} transactions imported (job{" "}
-          {importState.importJobId}).
+          {importState.importJobId}, adapter {importState.adapterId}).
         </p>
       )}
       {importState.status === "error" && (
@@ -77,9 +78,9 @@ export function CsvImportSection({ onImportSuccess }: CsvImportSectionProps): Re
         <div role="alert">
           <p>Import validation failed:</p>
           <ul>
-            {importState.errors.errors.map((e) => (
-              <li key={e.rowIndex}>
-                {e.rowIndex < 0 ? "File" : `Row ${e.rowIndex + 1}`}: {e.messages.join("; ")}
+            {importState.errors.errors.map((e, i) => (
+              <li key={i}>
+                {e.code}: {e.message}
               </li>
             ))}
           </ul>
