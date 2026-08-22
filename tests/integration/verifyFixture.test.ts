@@ -9,6 +9,14 @@ function readRepositoryFile(relativePath: string): string {
   return readFileSync(new URL(relativePath, `file://${repositoryRoot}/`), "utf8");
 }
 
+function readMarkdownSection(markdown: string, heading: string): string {
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = markdown.match(
+    new RegExp(`^${escapedHeading}\\r?\\n([\\s\\S]*?)(?=^#{1,2}\\s|(?![\\s\\S]))`, "im"),
+  );
+  return match?.[1] ?? "";
+}
+
 describe("verifyFixture", () => {
   it("accepts the committed synthetic fixture", () => {
     const report = verifyFixture({
@@ -40,29 +48,38 @@ describe("verifyFixture", () => {
     );
     const planMd = readRepositoryFile("plan.md");
 
-    expect(adr).toMatch(/^## Status\s+Accepted$/m);
-    expect(adr).toMatch(
-      /### Import and Parser Layer[\s\S]*source-aware parser adapters[\s\S]*parser-specific logic isolated/m,
-    );
-    expect(adr).toMatch(
-      /## Privacy and Data Handling Constraints[\s\S]*Transaction content remains local by default[\s\S]*No background network calls for transaction workflows/m,
-    );
-    expect(planMd).toContain("adr-001-stack-and-runtime-boundaries.md");
-    expect(planMd).toContain("domain-glossary.md");
+    expect(adr).toMatch(/^## Status\\s+Accepted$/m);
+    const parserSection = readMarkdownSection(adr, "### Import and Parser Layer");
+    expect(parserSection).toContain("source-aware parser adapters");
+    expect(parserSection).toContain("parser-specific logic isolated");
 
-    for (const term of [
-      "household",
-      "account",
-      "transaction",
-      "category",
-      "merchant alias",
-      "categorization rule",
-      "import job",
-      "budget target",
-      "forecast assumption",
-      "backup snapshot",
-    ]) {
-      expect(glossary).toMatch(new RegExp(`^\\| ${term} \\| \\S[^|]* \\|`, "m"));
+    const privacySection = readMarkdownSection(adr, "## Privacy and Data Handling Constraints");
+    expect(privacySection).toContain("Transaction content remains local by default");
+    expect(privacySection).toContain("No background network calls for transaction workflows");
+    expect(planMd).toContain(
+      "[ADR-001: Stack and Runtime Boundaries](docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md)",
+    );
+    expect(planMd).toContain(
+      "[Budget Planner Domain Glossary](docs/ways-of-work/plan/budget-planner/domain-glossary.md)",
+    );
+
+    const definitionFragments: Record<string, string> = {
+      household: "The local budgeting context managed by one user",
+      account: "A source or destination ledger account",
+      transaction: "A dated financial record with amount",
+      category: "A user-visible spending or income classification",
+      "merchant alias": "A normalized merchant representation",
+      "categorization rule": "A deterministic rule that maps transaction signals",
+      "import job": "A tracked import execution",
+      "budget target": "A planned amount for a category",
+      "forecast assumption": "An explicit input used by forecasting logic",
+      "backup snapshot": "A user-initiated exportable backup",
+    };
+    const glossaryRows = glossary.split(/\r?\n/);
+    for (const [term, fragment] of Object.entries(definitionFragments)) {
+      const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
+      expect(row, `Glossary must define "${term}"`).not.toBe("");
+      expect(row).toContain(`| ${term} | ${fragment}`);
     }
   });
 });
