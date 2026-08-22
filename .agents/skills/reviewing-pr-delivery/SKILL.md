@@ -5,7 +5,7 @@ compatibility: Requires GitHub issue/PR read tools, local repository file access
 metadata:
   owner: budget-repo
   workflow: pr-review
-  version: "1.0"
+  version: "1.2"
 ---
 
 # Reviewing PR Delivery
@@ -23,7 +23,7 @@ In scope:
 
 Out of scope:
 - Implementing code fixes
-- Broad issue-body rewrites or label changes
+- Broad issue-body rewrites or label changes; the only structural exception is the one-to-one narrative story conversion explicitly defined in Story-Line Handling
 - Merge decisions
 
 ## Required Inputs
@@ -61,6 +61,25 @@ If the source issue cannot be determined, stop and ask for exactly one issue num
    - re-read the issue body and verify post-sync state matches the report
 8. Deliver a findings-first review using the required output template.
 
+## Review State And Post-Fix Gate
+
+Record these values before validation:
+
+```text
+REVIEWED_PR_SHA: [PR head SHA read from GitHub]
+WORKSPACE_SHA: [local HEAD SHA]
+WORKTREE_STATE: [clean|dirty]
+VALIDATION_PROVENANCE: [reviewed-PR-SHA|local-worktree|CI-reviewed-SHA|environment-setup]
+```
+
+Apply these rules throughout the review:
+
+- A command run with uncommitted changes or a workspace SHA different from `REVIEWED_PR_SHA` is `local-worktree` evidence. It may guide diagnosis, but it cannot prove PR-head acceptance criteria or test-issue pass criteria.
+- If code or tests are edited after findings are produced, mark the review state `stale` immediately. Do not sync any additional acceptance-criteria or story checkboxes from those edits.
+- A stale review requires a new review pass after the changed PR head is available: re-read the PR metadata and diff, capture the new SHA, rerun the issue validation commands, and rebuild the coverage and sync matrix.
+- Never describe local post-fix results as fixes delivered by the PR until the changed files are present in the reviewed PR diff or equivalent reviewed-SHA CI artifact.
+- A review is complete only after `REVIEWED_PR_SHA`, validation provenance, the per-issue sync matrix, and post-sync issue reads are recorded in the working notes and reflected in the final report.
+
 ## Core Rules
 
 - Operate on one PR at a time.
@@ -78,8 +97,26 @@ If the source issue cannot be determined, stop and ask for exactly one issue num
 - Allowed sections: `Technical Requirements`, `Technical Tasks`, `Stories Enabled`, `User Stories In This Feature`, `Acceptance Criteria`.
 - Feature user stories may be synced when the review has hard proof for the story text itself.
 - Test issues may also sync `Playwright Implementation Standards`, `Acceptance Criteria Mapping`, `Test Scenarios`, `Pass Criteria`, and `Regression Guard`.
-- Preserve all non-checkbox text exactly.
+- Preserve all non-checkbox text exactly, except for the one-to-one narrative story conversion explicitly permitted in Story-Line Handling.
 - Do not edit the PR body or post sync comments.
+
+### Per-Issue Sync Matrix
+
+Build one sync matrix covering the primary source issue and every directly related planning issue in scope:
+
+```text
+Issue | Section | Checkbox item | Pre-state | Target state | Proof artifact | Post-state
+```
+
+- Enumerate every allowed checkbox item considered, including unchanged checked items and unresolved unchecked items.
+- Sync each issue whose target differs from its pre-state. Do not sync only the primary issue when a related issue has proved, contradicted, or deferred scope.
+- Re-read every mutated issue body after writes. A mutation is not complete until the post-state matches the matrix; otherwise stop with the post-sync stop condition.
+- Do not infer a related test issue's completion from a parent issue checkbox. Test issue evidence must match that test issue's own scope and assertions.
+
+### PR Body Guard
+
+- The PR body is read-only during this workflow. Never call a PR update tool to change checklist state, claims, summaries, or test evidence.
+- Report PR-body mismatches as delivery-hygiene findings. Correcting them belongs to the PR author or a separate explicitly requested PR-edit workflow.
 
 ### Conditional Regression Guards
 
@@ -90,6 +127,7 @@ If the source issue cannot be determined, stop and ask for exactly one issue num
 
 ## Story-Line Handling
 
+- This is the only allowed structural mutation to an issue body. It is an exception to the non-checkbox preservation rule and does not authorize any other rewrite.
 - If `User Stories In This Feature` uses narrative lines (not checkboxes), convert each line into an unchecked checkbox item before sync decisions.
 - Conversion rule: preserve each original story sentence verbatim as the checkbox label; do not rewrite wording.
 - After conversion, reconcile each story line to the proved target state.
@@ -148,6 +186,13 @@ Before finalizing output, enforce these gates:
 - Every applicable unchecked or failed-to-reconcile item must appear in `Not Checked — How To Fix` exactly once.
 - `Not applicable` conditional regression guards must not be listed as unchecked gaps; they may be summarized once as an applicability note when useful.
 
+5. Review-state gate:
+- The final report names `REVIEWED_PR_SHA` and validation provenance for every positive acceptance-criteria claim.
+- If the workspace is dirty or differs from the reviewed PR SHA, local results are labeled `observed local-worktree evidence` and cannot produce `satisfied` for proof-gated items.
+- If the review became stale after an edit, the final report must say so and must not claim that the edit resolved the PR findings.
+- Every issue mutation appears in the per-issue sync matrix with matching post-read evidence.
+- No PR body mutation occurred during the review.
+
 If any gate fails, revise before final output.
 
 ## Severity Model
@@ -188,6 +233,8 @@ Stop and escalate when any apply:
 9. Required implementation entry-point path from the anchor issue does not exist and no documented exception applies
 10. Post-sync issue body state does not match the reported checkbox outcome
 11. Validation is blocked by unresolved local environment/setup failure and no reviewed-SHA CI artifact is available
+12. Review state is stale because code or tests changed after findings and no new reviewed PR SHA is available
+13. Any issue mutation was not verified by a matching post-sync issue read
 
 Escalation message format:
 - Blocked reason: [short reason]
@@ -203,7 +250,7 @@ Escalation message format:
 - Keep terminology consistent with repository domain language.
 - Use forward slashes in all skill file paths.
 - For semantic-intent findings, include quote-level evidence from the cited issue.
-- For checkbox sync, preserve all non-checkbox text exactly.
+- For checkbox sync, preserve all non-checkbox text exactly, except for the one-to-one narrative story conversion explicitly permitted in Story-Line Handling.
 - Never mutate the PR body or post PR comments as part of checkbox sync.
 - Never post issue comments just to summarize checkbox sync results.
 - Keep output compact: one evidence line and one fix per finding/gap; do not repeat narrative across sections.

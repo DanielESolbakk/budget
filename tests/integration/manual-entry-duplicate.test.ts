@@ -2,47 +2,39 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
-import type { LocalLedgerDatabase, ManualTransactionInput } from "../../src/app/backup/localLedgerSqlite.js";
-import type { Household, Account } from "../../src/domain/types.js";
+import { createLocalLedgerDatabase, type LocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { submitManualEntry } from "../../src/app/import/manualEntry.js";
+import type { Account, Household, ImportJob, ManualEntryInput, Transaction } from "../../src/domain/types.js";
 
-const SAMPLE_HOUSEHOLD: Household = {
+const sampleHousehold: Household = {
   id: "hh-test",
   name: "Test Household",
   createdAtIso: "2026-01-01T00:00:00Z",
 };
 
-const SAMPLE_ACCOUNTS: Account[] = [
-  { id: "acc-test", householdId: "hh-test", name: "Brukskonto", currencyCode: "NOK" },
+const sampleAccounts: Account[] = [
+  { id: "acc-test", householdId: sampleHousehold.id, name: "Brukskonto", currencyCode: "NOK" },
 ];
 
-const MANUAL_TX: ManualTransactionInput = {
-  id: "tx-manual-001",
-  householdId: "hh-test",
-  accountId: "acc-test",
-  bookedAtIso: "2026-05-15T00:00:00Z",
-  amountMinor: -15000,
-  merchantRaw: "Meny Stavanger",
+const validInput: ManualEntryInput = {
+  householdId: sampleHousehold.id,
+  accountId: sampleAccounts[0]!.id,
+  bookedAtIso: "2026-05-23",
+  amountMinor: -1250,
+  merchantRaw: "Kiwi Stavanger",
   categoryId: "groceries",
-  importJobId: "job-manual-01",
 };
 
-/** An equivalent transaction: same identity fields, different id. */
-const DUPLICATE_TX: ManualTransactionInput = {
-  ...MANUAL_TX,
-  id: "tx-manual-002",
-};
-
-let tmpDir: string;
+let temporaryDirectory: string;
 let ledger: LocalLedgerDatabase;
 
 beforeEach(() => {
-  tmpDir = mkdtempSync(join(tmpdir(), "manual-entry-test-"));
+  temporaryDirectory = mkdtempSync(join(tmpdir(), "manual-entry-test-"));
   ledger = createLocalLedgerDatabase({
-    dbPath: join(tmpDir, "test.sqlite"),
+    dbPath: join(temporaryDirectory, "budget.sqlite"),
     seedData: {
-      household: SAMPLE_HOUSEHOLD,
-      accounts: SAMPLE_ACCOUNTS,
+      household: sampleHousehold,
+      accounts: sampleAccounts,
       transactions: [],
       importJobs: [],
       monthlyCategoryTargets: [],
@@ -52,88 +44,131 @@ beforeEach(() => {
 
 afterEach(() => {
   ledger.close();
-  rmSync(tmpDir, { recursive: true, force: true });
+  rmSync(temporaryDirectory, { recursive: true, force: true });
 });
 
-describe("manual entry and duplicate detection integration", () => {
-  describe("AC-1: a valid manually entered transaction is persisted once", () => {
-    it("accepts a manual transaction and returns ok: true with its id and fingerprint", () => {
-      const result = ledger.submitManualTransaction(MANUAL_TX);
+describe("manual-entry-duplicate integration", () => {
+  describe("AC-1: valid manual transaction is persisted with correct fields", () => {
+    it("persists the transaction and manual import job in SQLite", () => {
+      const result = submitManualEntry(validInput, ledger.loadLedgerSnapshotData().transactions, ledger);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.transactionId).toBe(MANUAL_TX.id);
-      expect(typeof result.fingerprint).toBe("string");
-      expect(result.fingerprint.length).toBeGreaterThan(0);
-    });
-
-    it("persists the transaction so it appears in the ledger snapshot", () => {
-      ledger.submitManualTransaction(MANUAL_TX);
 
       const snapshot = ledger.loadLedgerSnapshotData();
-      const persisted = snapshot.transactions.find((t) => t.id === MANUAL_TX.id);
-
-      expect(persisted).toBeDefined();
-      expect(persisted?.accountId).toBe(MANUAL_TX.accountId);
-      expect(persisted?.bookedAtIso).toBe(MANUAL_TX.bookedAtIso);
-      expect(persisted?.amountMinor).toBe(MANUAL_TX.amountMinor);
-      expect(persisted?.merchantRaw).toBe(MANUAL_TX.merchantRaw);
-      expect(persisted?.categoryId).toBe(MANUAL_TX.categoryId);
-      expect(persisted?.importJobId).toBe(MANUAL_TX.importJobId);
+      expect(snapshot.transactions).toHaveLength(1);
+      expect(snapshot.transactions[0]).toMatchObject({
+        householdId: validInput.householdId,
+        accountId: validInput.accountId,
+        bookedAtIso: validInput.bookedAtIso,
+        amountMinor: validInput.amountMinor,
+        merchantRaw: validInput.merchantRaw,
+        categoryId: validInput.categoryId,
+        importJobId: result.importJobId,
+      });
+      expect(snapshot.importJobs).toHaveLength(1);
+      expect(snapshot.importJobs[0]).toMatchObject({
+        id: result.importJobId,
+        householdId: validInput.householdId,
+        sourceType: "manual",
+        sourceName: "manual-entry",
+      });
     });
   });
 
-  describe("AC-2: re-submitting an equivalent transaction is rejected as a duplicate", () => {
-    it("returns ok: false with duplicate: true when the same identity fields are submitted again", () => {
-      ledger.submitManualTransaction(MANUAL_TX);
-      const result = ledger.submitManualTransaction(DUPLICATE_TX);
-
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.duplicate).toBe(true);
-    });
-
-    it("leaves the ledger row count unchanged after a duplicate submission", () => {
-      ledger.submitManualTransaction(MANUAL_TX);
-
-      const countBefore = ledger.loadLedgerSnapshotData().transactions.length;
-      ledger.submitManualTransaction(DUPLICATE_TX);
-      const countAfter = ledger.loadLedgerSnapshotData().transactions.length;
-
-      expect(countAfter).toBe(countBefore);
-    });
-  });
-
-  describe("AC-3: duplicate detection records expected provenance for the submitted transaction", () => {
-    it("returns the fingerprint and the existing transaction id in the duplicate result", () => {
-      const first = ledger.submitManualTransaction(MANUAL_TX);
+  describe("AC-2: duplicate submission leaves ledger row count unchanged", () => {
+    it("returns duplicate result and does not persist a second SQLite row", () => {
+      const first = submitManualEntry(validInput, ledger.loadLedgerSnapshotData().transactions, ledger);
       expect(first.ok).toBe(true);
-      if (!first.ok) return;
 
-      const second = ledger.submitManualTransaction(DUPLICATE_TX);
+      const beforeDuplicate = ledger.loadLedgerSnapshotData();
+      const second = submitManualEntry(validInput, beforeDuplicate.transactions, ledger);
+
       expect(second.ok).toBe(false);
       if (second.ok) return;
-
-      expect(second.fingerprint).toBe(first.fingerprint);
-      expect(second.existingTransactionId).toBe(MANUAL_TX.id);
+      expect(second.reason).toBe("duplicate");
+      const afterDuplicate = ledger.loadLedgerSnapshotData();
+      expect(afterDuplicate.transactions).toHaveLength(beforeDuplicate.transactions.length);
+      expect(afterDuplicate.importJobs).toHaveLength(beforeDuplicate.importJobs.length);
     });
+  });
 
-    it("returns a stable fingerprint for equivalent merchant name variants", () => {
-      // buildTransactionFingerprint normalizes casing and whitespace so these are equivalent.
-      const withExtraSpaces: ManualTransactionInput = {
-        ...MANUAL_TX,
-        id: "tx-manual-003",
-        merchantRaw: "  meny  stavanger  ",
-      };
+  describe("AC-3: provenance is recorded for accepted and duplicate entries", () => {
+    it("returns explainable duplicate data for normalized merchant variants", () => {
+      const first = submitManualEntry(validInput, ledger.loadLedgerSnapshotData().transactions, ledger);
+      expect(first.ok).toBe(true);
 
-      const original = ledger.submitManualTransaction(MANUAL_TX);
-      expect(original.ok).toBe(true);
-      if (!original.ok) return;
-
-      const duplicate = ledger.submitManualTransaction(withExtraSpaces);
+      const duplicate = submitManualEntry(
+        { ...validInput, merchantRaw: "  kiwi   stavanger  " },
+        ledger.loadLedgerSnapshotData().transactions,
+        ledger
+      );
       expect(duplicate.ok).toBe(false);
       if (duplicate.ok) return;
-      expect(duplicate.fingerprint).toBe(original.fingerprint);
+      expect(duplicate.reason).toBe("duplicate");
+      if (duplicate.reason !== "duplicate" || !first.ok) return;
+      expect(duplicate.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+      expect(duplicate.matchingTransactionId).toBe(first.transaction.id);
     });
+  });
+
+  it("rejects invalid input without changing the SQLite ledger", () => {
+    const result = submitManualEntry(
+      { ...validInput, merchantRaw: "" },
+      ledger.loadLedgerSnapshotData().transactions,
+      ledger
+    );
+
+    expect(result.ok).toBe(false);
+    expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(0);
+    expect(ledger.loadLedgerSnapshotData().importJobs).toHaveLength(0);
+  });
+
+  it("rejects an account that does not belong to the household", () => {
+    const result = submitManualEntry(
+      { ...validInput, accountId: "unknown-account" },
+      ledger.loadLedgerSnapshotData().transactions,
+      ledger
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "validation",
+      code: "INVALID_ACCOUNT_ID",
+    });
+    expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(0);
+    expect(ledger.loadLedgerSnapshotData().importJobs).toHaveLength(0);
+  });
+
+  it("rolls back the import job when transaction persistence fails", () => {
+    const importJob: ImportJob = {
+      id: "job-atomicity",
+      householdId: sampleHousehold.id,
+      sourceType: "manual",
+      sourceName: "manual-entry",
+      startedAtIso: "2026-05-23T00:00:00Z",
+    };
+    const transaction: Transaction = {
+      id: "tx-atomicity",
+      householdId: sampleHousehold.id,
+      accountId: sampleAccounts[0]!.id,
+      bookedAtIso: "2026-05-23T00:00:00Z",
+      amountMinor: -1,
+      merchantRaw: "Atomicity probe",
+      importJobId: importJob.id,
+    };
+
+    ledger.appendManualEntry(importJob, transaction);
+
+    expect(() =>
+      ledger.appendManualEntry(
+        { ...importJob, id: "job-atomicity-2" },
+        transaction
+      )
+    ).toThrow();
+    const snapshot = ledger.loadLedgerSnapshotData();
+    expect(snapshot.importJobs).toHaveLength(1);
+    expect(snapshot.transactions).toHaveLength(1);
+    expect(snapshot.transactions[0]?.id).toBe("tx-atomicity");
   });
 });

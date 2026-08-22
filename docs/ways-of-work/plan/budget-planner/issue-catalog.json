@@ -61,15 +61,57 @@
       "parentKeys": ["E2"]
     },
     {
+      "key": "F2.4",
+      "type": "feature",
+      "title": "Cross-format import review and correction",
+      "parentKeys": ["E2"]
+    },
+    {
       "key": "EN2.1",
       "type": "enabler",
       "title": "Import job schema and parser adapter framework",
       "parentKeys": ["E2"]
     },
     {
+      "key": "EN2.2",
+      "type": "enabler",
+      "title": "Binary document extraction and extensible bank adapters",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "EN2.3",
+      "type": "enabler",
+      "title": "Import review persistence and dismissal audit",
+      "parentKeys": ["E2"]
+    },
+    {
       "key": "T2.1",
       "type": "test",
       "title": "Sanitized fixture coverage for PDF and CSV import",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "T2.1.1",
+      "type": "test",
+      "title": "Deterministic CSV sanitization coverage",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "T2.1.2",
+      "type": "test",
+      "title": "Fixture validator and CI check",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "T2.2",
+      "type": "test",
+      "title": "Binary PDF and parser adapter coverage",
+      "parentKeys": ["E2"]
+    },
+    {
+      "key": "T2.3",
+      "type": "test",
+      "title": "Cross-format import review coverage",
       "parentKeys": ["E2"]
     },
     {

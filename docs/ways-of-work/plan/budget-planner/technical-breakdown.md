@@ -19,7 +19,8 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - IPC handlers
 - SQLite access and migrations
 - Import orchestration
-- PDF and CSV parser adapters
+- Local document extraction
+- Text, CSV, and PDF parser adapters
 - Merchant normalization
 - Categorization rules and confidence logic
 - Forecast calculations
@@ -37,12 +38,14 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 
 ### Import Pipeline
 
-- Import coordinator creates an import job and routes to the correct parser adapter.
-- PDF parser adapter handles digital text PDF extraction.
+- Import coordinator creates an import job and routes text, CSV, and PDF input to the correct parser adapter.
+- Local document extraction converts binary PDFs to text while preserving page and source-row metadata.
+- Standalone text files enter the same parser boundary without requiring PDF extraction.
 - CSV parser adapter handles delimiter, encoding, and field mapping.
 - Manual entry uses shared validation and persistence contracts.
 - Duplicate detection compares imported candidates against persisted transactions.
-- Import preview provides parsed rows, warnings, duplicates, and failures before commit.
+- Import review records parsed rows, unresolved rows, warnings, duplicates, corrections, and dismissals.
+- Valid rows may persist immediately; unresolved rows never become transactions until corrected, and dismissed rows retain an audit record.
 
 ### Categorization Pipeline
 
@@ -54,8 +57,9 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 ### Ledger And Review
 
 - Ledger queries expose filtering by account, date, merchant, amount, category, and confidence.
-- Review queue isolates low-confidence and uncategorized transactions.
-- Correction actions update the transaction record and rule set with provenance.
+- Import review isolates unresolved rows from text, CSV, and PDF imports.
+- Categorization review isolates low-confidence and uncategorized transactions.
+- Correction actions update the transaction record and retain provenance.
 
 ### Budgeting And Forecasting
 
@@ -78,6 +82,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - merchant alias
 - categorization rule
 - import job
+- import review item
 - budget target
 - forecast assumption
 - backup snapshot
@@ -92,6 +97,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - `categorization_rules`
 - `import_jobs`
 - `import_job_rows`
+- `import_review_items`
 - `budget_targets`
 - `forecast_assumptions`
 - `backup_snapshots`
@@ -99,16 +105,19 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 ## Persistence Notes
 
 - Use additive schema evolution with explicit migrations.
-- Store import provenance for each transaction.
-- Preserve enough raw source metadata to explain parser results and category assignment.
+- Store import provenance for each transaction and review item.
+- Preserve source file identity, page number, raw row text, and parser diagnostics for review and audit.
+- Keep valid transaction persistence separate from unresolved-row and dismissal state.
 - Maintain clear correction history or auditable rule provenance.
 
-## PDF Import Strategy
+## Multi-Format Import Strategy
 
-- Assume digital text PDFs first.
-- Validate with real sanitized bank statement samples before finalizing parser shape.
-- Prefer bank-specific parser adapters if layouts diverge.
-- Keep scanned-image OCR as a deferred adapter behind the same import interface.
+- Accept standalone text files, CSV files, and binary PDFs through one local import boundary.
+- Extract text from binary PDFs locally before adapter selection; scanned-image OCR remains out of scope.
+- Support multi-page PDFs, repeated page headers and footers, and descriptions wrapped across continuation lines.
+- Select adapters by source capabilities rather than hard-coding one bank in the import coordinator.
+- Add bank-specific adapters when layouts diverge, while keeping the shared transaction and review contracts stable.
+- Unknown layouts produce explicit diagnostics and reviewable unresolved rows instead of silently producing incomplete transactions.
 
 ## SQLite Binding Note
 
@@ -120,8 +129,9 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 
 ### Unit
 
-- PDF parsing helpers
-- CSV mapping and validation
+- PDF extraction and text normalization helpers
+- Text, CSV, and PDF adapter selection and row classification
+- Import review state transitions and correction validation
 - Duplicate detection
 - Merchant normalization
 - Categorization rules and confidence logic
@@ -130,7 +140,8 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 
 ### Integration
 
-- Import-to-ledger flow
+- Import-to-ledger flow for text, CSV, and binary PDF inputs
+- Import review persistence, correction, and dismissal audit behavior
 - Correction updates rule behavior
 - Budget target persistence and aggregation
 - Backup restore integrity
@@ -138,8 +149,8 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 
 ### End-to-End
 
-- Import PDF
-- Import CSV
+- Select and import text, CSV, and PDF files
+- Review, correct, and dismiss unresolved import rows
 - Review and correct categories
 - Search ledger
 - Update budget targets
@@ -150,13 +161,16 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 ## Open Technical Risks
 
 - PDF layout variance across Norwegian banks
+- Binary PDF extraction quality for wrapped and multi-page rows
 - Native SQLite packaging on Windows with Electron
+- Review-state complexity across three input formats
 - Drift between seeded categories and user-corrected rules
 - Ensuring no-network verification remains meaningful in development and packaged builds
 
 ## Decisions To Lock In ADRs
 
 - Final SQLite binding and packaging guidance
-- PDF extraction library or adapter strategy
+- PDF extraction library and extensible adapter strategy
+- Import review row states and correction audit schema
 - Shared validation library choice
 - Desktop test harness split for Vitest e2e smoke and Playwright runtime e2e

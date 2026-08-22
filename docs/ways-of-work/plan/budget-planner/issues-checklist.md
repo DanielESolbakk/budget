@@ -41,13 +41,13 @@
 - [ ] Feature: Digital text PDF import
 - [ ] Feature: CSV import and field mapping
 - [ ] Feature: Manual entry and duplicate detection
+- [ ] Feature: Cross-format import review and correction
 - [ ] Enabler: Import job schema and parser adapter framework
-- [ ] Test: Sanitized fixture coverage for PDF and CSV import
+- [ ] Enabler: Local document extraction and import review persistence
+- [ ] Test: Sanitized fixture, extraction, and import review coverage
 
 ### Categorization and correction workflow
 
-- [ ] Feature: Merchant normalization
-- [ ] Feature: Rule evaluation and confidence scoring
 - [ ] Feature: Review queue and correction workflow
 - [ ] Enabler: Categorization rule persistence and provenance
 - [ ] Test: Merchant fixture and regression coverage
@@ -80,8 +80,9 @@
 
 - [ ] Each test issue declares whether it is story/enabler, feature, or epic-wide/cross-cutting scope
 - [ ] Cross-cutting test issues anchor to a parent epic and explain related planning items
-- [ ] Parser fixture issue covers sanitized digital text PDFs
+- [ ] Parser fixture issue covers sanitized text files and extracted binary PDFs
 - [ ] CSV fixture issue covers encoding, delimiter, and field mapping cases
+- [ ] Import review test issue covers unresolved rows, correction, dismissal audit, and dashboard refresh
 - [ ] Categorization fixture issue covers common Norwegian merchants
 - [ ] End-to-end test issue covers import, review, correction, dashboard, forecast, export, and backup flows
 - [ ] No-network verification issue covers development and packaged builds

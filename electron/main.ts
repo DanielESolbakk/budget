@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
+import { createDashboardProvider } from "./dashboardProvider.js";
 import { join } from "path";
 import { readFileSync } from "node:fs";
 import {
@@ -19,8 +20,21 @@ import {
   normalizeCsvImportErrors,
   type CsvImportResponse,
 } from "../src/app/import/importCsv.js";
+import {
+  submitManualEntry,
+  type ManualEntryResponse,
+} from "../src/app/import/manualEntry.js";
+import {
+  buildPdfImportRequest,
+  normalizePdfImportErrors,
+  appendUniqueTransactions,
+  runPdfImportWorkflow,
+  type PdfImportResponse,
+} from "../src/app/import/importPdf.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
+import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
+import { buildRogalandImportJobId } from "../src/domain/import/pdfTextParser.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -31,6 +45,7 @@ import {
   type Household,
   type Account,
   type ImportJob,
+  type ManualEntryInput,
   type MonthlyCategoryTargetInput,
   type MonthlyTotal,
   type Transaction,
@@ -176,16 +191,26 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   installNetworkGuard(session.defaultSession);
 
-  ipcMain.handle("dashboard:getData", () => {
-    return getDashboardData();
+  const dashboardTestOverrides =
+    process.env["NODE_ENV"] === "test"
+      ? (await import("./testDashboardOverrides.js")).createTestDashboardOverrides()
+      : undefined;
+  const dashboardProvider = createDashboardProvider({
+    getData: getDashboardData,
+    getViewData,
+    ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
 
-  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) => {
-    return getViewData(yearMonth);
+  ipcMain.handle("dashboard:getData", () => {
+    return dashboardProvider.getData();
   });
+
+  ipcMain.handle("dashboard:getViewData", (_event, yearMonth: string) =>
+    dashboardProvider.getViewData(yearMonth)
+  );
 
   ipcMain.handle("forecast:getEntries", () => {
     return getDashboardData().forecast.entries;
@@ -209,6 +234,13 @@ app.whenReady().then(() => {
 
   ipcMain.handle("categoryTarget:listByMonth", (_event, yearMonth: string) => {
     return reloadMonthlyCategoryTargets(sampleTargetStore, yearMonth);
+  });
+
+  ipcMain.handle("account:list", (_event, householdId: unknown): Account[] => {
+    if (typeof householdId !== "string" || householdId.trim().length === 0) {
+      return [];
+    }
+    return localLedgerDatabase.getAccountsForHousehold(householdId.trim());
   });
 
   ipcMain.handle("export:toCsv", (_event, transactions: Transaction[]) => {
@@ -298,6 +330,128 @@ app.whenReady().then(() => {
         importJobId,
         transactionCount: result.transactions.length,
       };
+    }
+  );
+
+  ipcMain.handle(
+    "transaction:addManual",
+    (_event, input: unknown): ManualEntryResponse => {
+      const inputRecord =
+        typeof input === "object" && input !== null
+          ? (input as Record<string, unknown>)
+          : undefined;
+
+      if (inputRecord === undefined || typeof inputRecord.householdId !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_HOUSEHOLD_ID",
+          message: "householdId must be a string.",
+        };
+      }
+
+      if (typeof inputRecord.accountId !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_ACCOUNT_ID",
+          message: "accountId must be a string.",
+        };
+      }
+
+      if (typeof inputRecord.bookedAtIso !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_BOOKED_AT_ISO",
+          message: "bookedAtIso must be a string.",
+        };
+      }
+
+      if (typeof inputRecord.amountMinor !== "number") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_AMOUNT_MINOR_INTEGER",
+          message: "amountMinor must be a number.",
+        };
+      }
+
+      if (typeof inputRecord.merchantRaw !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_MERCHANT_RAW",
+          message: "merchantRaw must be a string.",
+        };
+      }
+
+      if (inputRecord.categoryId !== undefined && typeof inputRecord.categoryId !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_CATEGORY_ID",
+          message: "categoryId must be a string when provided.",
+        };
+      }
+
+      const response = submitManualEntry(
+        inputRecord as unknown as ManualEntryInput,
+        liveTransactions,
+        localLedgerDatabase
+      );
+      if (response.ok) {
+        liveTransactions.push(response.transaction);
+      }
+      return response;
+    }
+  );
+
+  ipcMain.handle(
+    "import:pdf",
+    (
+      _event,
+      input: { filePath: string; accountId?: string }
+    ): PdfImportResponse => {
+      const householdId = sampleHousehold.id;
+      const accountId = input.accountId ?? resolveDefaultAccountId(householdId);
+
+      const request = buildPdfImportRequest(input.filePath, { householdId, accountId });
+
+      let pdfText: string;
+      try {
+        pdfText = readFileSync(request.filePath, "utf8");
+      } catch (fileError) {
+        const message =
+          fileError instanceof Error ? fileError.message : "Could not read PDF text file.";
+        return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
+      }
+
+      const importJobId = buildRogalandImportJobId(pdfText, {
+        householdId: request.householdId,
+        accountId: request.accountId,
+      });
+      const now = new Date().toISOString();
+
+      return runPdfImportWorkflow(
+        {
+          pdfText,
+          filePath: request.filePath,
+          householdId: request.householdId,
+          accountId: request.accountId,
+          importJobId,
+          startedAtIso: now,
+          finishedAtIso: now,
+        },
+        {
+          parserRegistry: defaultParserAdapterRegistry,
+          appendImportJob: localLedgerDatabase.appendImportJob,
+          appendTransactions: localLedgerDatabase.appendTransactions,
+          onTransactionsPersisted: (transactions) => {
+            appendUniqueTransactions(liveTransactions, transactions);
+          },
+        }
+      );
     }
   );
 

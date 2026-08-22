@@ -15,11 +15,21 @@ export class AppShellPage {
 
   /** Heading rendered by App.tsx at the root of the application. */
   get heading() {
-    return this.page.getByRole("heading", { name: "Budget Planner", level: 1 });
+    return this.page.getByRole("banner").getByRole("heading", { level: 1 });
   }
 
-  /** Introductory paragraph rendered below the main heading. */
-  get introText() {
-    return this.page.getByText("Local-first budget planning for your household.");
+  /** Top-level application banner rendered by the root shell. */
+  get banner() {
+    return this.page.getByRole("banner");
+  }
+
+  /** Product copy identifying the local household ledger. */
+  get localLedgerLabel() {
+    return this.page.getByText("Local household ledger", { exact: true });
+  }
+
+  /** Product copy identifying that the workflow stays on the device. */
+  get onDeviceLabel() {
+    return this.page.getByText("On device", { exact: true });
   }
 }

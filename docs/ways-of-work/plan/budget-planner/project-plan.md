@@ -6,7 +6,7 @@ Budget Planner is a local-first desktop budget application for one household use
 
 ## Feature Summary
 
-- Reliable statement import from digital text PDFs, CSVs, and manual entry
+- Reliable statement import from text files, binary PDFs, CSVs, and manual entry
 - Deterministic merchant normalization and categorization rules
 - Review queue for low-confidence outcomes
 - Monthly dashboards, budget targets, and simple forecasting
@@ -46,8 +46,9 @@ graph TD
     A[Epic: Foundations and LLM Delivery Scaffolding] --> A1[Feature: Planning and Governance Artifacts]
     A --> A2[Feature: Core Architecture Decisions]
 
-    B[Epic: Transaction Ingestion and Normalization] --> B1[Feature: CSV and PDF Import]
-    B --> B2[Feature: Duplicate Detection and Provenance]
+    B[Epic: Transaction Ingestion and Normalization] --> B1[Feature: Text, CSV, and PDF Import]
+    B --> B2[Feature: Import Review and Correction]
+    B --> B3[Feature: Duplicate Detection and Provenance]
 
     C[Epic: Categorization and Correction Workflow] --> C1[Feature: Merchant Normalization]
     C --> C2[Feature: Review Queue and Corrections]
@@ -73,8 +74,10 @@ graph TD
 - Feature: Digital text PDF import
 - Feature: CSV import and field mapping
 - Feature: Manual entry and duplicate detection
+- Feature: Cross-format import review and correction
 - Enabler: Import job schema and parser adapters
-- Test: Parser fixtures and import integration coverage
+- Enabler: Local document extraction and import review persistence
+- Test: Parser fixtures, extraction, and import review coverage
 
 ### Epic: Categorization and Correction Workflow
 

@@ -6,9 +6,15 @@ describe("network guard — isUrlPermitted", () => {
   // Permitted URLs
   // -------------------------------------------------------------------------
 
-  it("permits file:// URLs used by the renderer for bundled assets", () => {
+  it("permits local file:// URLs used by the renderer for bundled assets", () => {
     expect(isUrlPermitted("file:///app/out/renderer/index.html")).toBe(true);
     expect(isUrlPermitted("file:///C:/app/out/renderer/index.html")).toBe(true);
+    expect(isUrlPermitted("file://localhost/C:/app/out/renderer/index.html")).toBe(true);
+  });
+
+  it("blocks file:// URLs that target Windows UNC network shares", () => {
+    expect(isUrlPermitted("file://server/share/out/renderer/index.html")).toBe(false);
+    expect(isUrlPermitted("file://192.168.1.20/share/out/renderer/index.html")).toBe(false);
   });
 
   it("permits devtools:// URLs for Chrome DevTools internal frames", () => {
