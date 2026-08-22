@@ -38,6 +38,18 @@ export interface ImportJob {
   validationFailureCount?: number;
   startedAtIso: string;
   finishedAtIso?: string;
+  provenance?: ImportJobProvenance;
+}
+
+export interface ImportJobStoryAnchor {
+  enablerIssueId: string;
+  featureIssueId: string;
+}
+
+export interface ImportJobProvenance {
+  sourceIdentity: string;
+  adapterId?: string;
+  storyAnchor?: ImportJobStoryAnchor;
 }
 
 export interface MonthlyTotal {

@@ -46,7 +46,7 @@ test.describe("No-network guard smoke", () => {
   test("Scenario 1: app shell renders correctly with the network guard active", async () => {
     // F5.3 AC-1: the guard does not break the local renderer startup path.
     await expect(shell.heading).toBeVisible();
-    await expect(shell.introText).toBeVisible();
+    await expect(shell.banner).toBeVisible();
   });
 
   test("Scenario 2: dashboard IPC flow works under the network guard", async () => {

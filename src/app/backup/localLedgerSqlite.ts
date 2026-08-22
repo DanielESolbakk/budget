@@ -6,6 +6,7 @@ import type {
   Account,
   Household,
   ImportJob,
+  ImportJobProvenance,
   MonthlyCategoryTarget,
   Transaction,
 } from "../../domain/types.js";
@@ -72,7 +73,8 @@ function ensureSchema(db: DatabaseSync): void {
       candidate_count INTEGER,
       validation_failure_count INTEGER,
       started_at_iso TEXT NOT NULL,
-      finished_at_iso TEXT
+      finished_at_iso TEXT,
+      provenance_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS monthly_category_targets (
@@ -96,6 +98,7 @@ function ensureSchema(db: DatabaseSync): void {
     ["adapter_id", "TEXT"],
     ["candidate_count", "INTEGER"],
     ["validation_failure_count", "INTEGER"],
+    ["provenance_json", "TEXT"],
   ] as const;
   for (const [columnName, columnType] of importJobColumnsToAdd) {
     if (!importJobColumns.some((column) => column.name === columnName)) {
@@ -146,7 +149,7 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
     }
 
     const insertImportJob = db.prepare(
-      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     for (const importJob of seedData.importJobs) {
       insertImportJob.run(
@@ -158,7 +161,8 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
         importJob.candidateCount ?? null,
         importJob.validationFailureCount ?? null,
         importJob.startedAtIso,
-        importJob.finishedAtIso ?? null
+        importJob.finishedAtIso ?? null,
+        importJob.provenance ? JSON.stringify(importJob.provenance) : null
       );
     }
 
@@ -233,7 +237,7 @@ export function createLocalLedgerDatabase(
 
     const importJobs = db
       .prepare(
-        "SELECT id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso FROM import_jobs ORDER BY id"
+        "SELECT id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json FROM import_jobs ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -245,6 +249,7 @@ export function createLocalLedgerDatabase(
       validation_failure_count: number | null;
       started_at_iso: string;
       finished_at_iso: string | null;
+      provenance_json: string | null;
     }>;
 
     const monthlyCategoryTargets = db
@@ -306,6 +311,10 @@ export function createLocalLedgerDatabase(
         mapped.finishedAtIso = importJob.finished_at_iso;
       }
 
+      if (importJob.provenance_json !== null) {
+        mapped.provenance = JSON.parse(importJob.provenance_json) as ImportJobProvenance;
+      }
+
       return mapped;
     });
 
@@ -339,7 +348,7 @@ export function createLocalLedgerDatabase(
 
   function appendImportJob(importJob: ImportJob): void {
     db.prepare(
-    "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       importJob.id,
       importJob.householdId,
@@ -349,7 +358,8 @@ export function createLocalLedgerDatabase(
       importJob.candidateCount ?? null,
       importJob.validationFailureCount ?? null,
       importJob.startedAtIso,
-      importJob.finishedAtIso ?? null
+      importJob.finishedAtIso ?? null,
+      importJob.provenance ? JSON.stringify(importJob.provenance) : null
     );
   }
 

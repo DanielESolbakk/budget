@@ -224,3 +224,33 @@ Use this checklist when generating or auto-updating planning issues so `planning
 6. Label discipline
 - Apply planning labels before lint runs (`epic`, `feature`, `user-story`, `enabler`, `test`).
 - Treat `planning-invalid` as a blocking signal; fix body/links first, then add the `validate-planning` label to re-validate.
+
+## Frontend Design Governance (Opt-In)
+
+Frontend planning issues that include renderer entry points or visible UI changes may use the Impeccable design governance skill.
+Impeccable is opt-in and applies only to frontend-relevant work; non-frontend issues do not require it.
+
+**Privacy constraint:** Impeccable must not be used for cloud processing, telemetry, analytics, or any network access to transaction content. Financial data stays local by default.
+
+### Prerequisites
+
+- Node 22.12 or newer: `node --version`
+- Impeccable installation: `npx impeccable install` (run from the repository root, one-time setup)
+- Alternative: enable GitHub Copilot's built-in Experimental setting for Impeccable without installation
+
+### Usage
+
+1. Run `/impeccable init` before starting frontend implementation work on a planning issue.
+2. Run `npx impeccable check` to validate design governance after changes.
+3. Generated output files (`PRODUCT.md`, `DESIGN.md`, skill caches) must not be committed.
+
+### Frontend Planning Requirements
+
+Frontend-relevant planning issues must explicitly document:
+- Design direction: intended visual style and interaction pattern
+- Design-system preservation: which existing tokens, components, and patterns are reused
+- Responsive behavior: breakpoints and layout expectations
+- Accessibility: keyboard navigation, focus management, contrast, and ARIA requirements
+- Visual-validation intent: how Impeccable or equivalent deterministic checks verify the result
+
+Non-frontend issues (import, persistence, categorization, IPC, export, backup, forecasting) are exempt from these requirements.

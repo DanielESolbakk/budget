@@ -102,6 +102,14 @@ describe("import job / parser adapter contract", () => {
             adapterId: ROGALAND_ADAPTER_ID,
             candidateCount: result.transactionCount,
             validationFailureCount: 0,
+            provenance: {
+              sourceIdentity: "no.rogaland-sparebank.statement-text",
+              adapterId: ROGALAND_ADAPTER_ID,
+              storyAnchor: {
+                enablerIssueId: "32",
+                featureIssueId: "15",
+              },
+            },
           }),
         ]);
         expect(snapshot.transactions).toHaveLength(result.transactionCount);
