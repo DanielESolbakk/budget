@@ -21,9 +21,11 @@ interface LocalLedgerSeedData {
 
 export interface LocalLedgerDatabase {
   loadLedgerSnapshotData: () => LedgerSnapshotData;
+  getAccountsForHousehold: (householdId: string) => Account[];
   upsertMonthlyCategoryTarget: (target: MonthlyCategoryTarget) => void;
   appendImportJob: (importJob: ImportJob) => void;
   appendTransactions: (transactions: Transaction[]) => void;
+  appendManualEntry: (importJob: ImportJob, transaction: Transaction) => void;
   close: () => void;
 }
 
@@ -346,6 +348,26 @@ export function createLocalLedgerDatabase(
     ).run(target.yearMonth, target.categoryId, target.targetMinor);
   }
 
+  function getAccountsForHousehold(householdId: string): Account[] {
+    const accounts = db
+      .prepare(
+        "SELECT id, household_id, name, currency_code FROM accounts WHERE household_id = ? ORDER BY id"
+      )
+      .all(householdId) as Array<{
+      id: string;
+      household_id: string;
+      name: string;
+      currency_code: string;
+    }>;
+
+    return accounts.map((account) => ({
+      id: account.id,
+      householdId: account.household_id,
+      name: account.name,
+      currencyCode: "NOK",
+    }));
+  }
+
   function appendImportJob(importJob: ImportJob): void {
     db.prepare(
       "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -390,11 +412,54 @@ export function createLocalLedgerDatabase(
     }
   }
 
+  function appendManualEntry(importJob: ImportJob, transaction: Transaction): void {
+    const insertImportJob = db.prepare(
+      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    const insertTransaction = db.prepare(
+      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+
+    db.exec("BEGIN");
+    try {
+      insertImportJob.run(
+        importJob.id,
+        importJob.householdId,
+        importJob.sourceType,
+        importJob.sourceName,
+        importJob.adapterId ?? null,
+        importJob.candidateCount ?? null,
+        importJob.validationFailureCount ?? null,
+        importJob.startedAtIso,
+        importJob.finishedAtIso ?? null,
+        importJob.provenance ? JSON.stringify(importJob.provenance) : null
+      );
+      insertTransaction.run(
+        transaction.id,
+        transaction.householdId,
+        transaction.accountId,
+        transaction.bookedAtIso,
+        transaction.amountMinor,
+        transaction.merchantRaw,
+        transaction.currencyCode ?? null,
+        transaction.sourceType ?? null,
+        transaction.categoryId ?? null,
+        transaction.importJobId ?? null
+      );
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   return {
     loadLedgerSnapshotData,
+    getAccountsForHousehold,
     upsertMonthlyCategoryTarget,
     appendImportJob,
     appendTransactions,
+    appendManualEntry,
     close: () => db.close(),
   };
 }

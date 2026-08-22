@@ -27,7 +27,7 @@ export class CategoryTargetPage {
 
   /** The category ID text input field. */
   get categoryIdInput() {
-    return this.page.getByRole("textbox", { name: "Category ID" });
+    return this.page.getByRole("textbox", { name: "Category ID", exact: true });
   }
 
   /** The target amount number input field (spinbutton role for type="number"). */

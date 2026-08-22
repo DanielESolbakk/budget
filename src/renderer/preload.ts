@@ -2,9 +2,12 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
 import type { ExportCsvFileOutput, ExportCsvOutput } from "../app/exportCsv.js";
 import type { CsvImportResponse } from "../app/import/importCsv.js";
+import type { ManualEntryResponse } from "../app/import/manualEntry.js";
 import type { PdfImportResponse } from "../app/import/importPdf.js";
 import type {
+  Account,
   ForecastEntry,
+  ManualEntryInput,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
   Transaction,
@@ -29,6 +32,10 @@ export interface CategoryTargetsApi {
   listByMonth: (yearMonth: string) => Promise<MonthlyCategoryTarget[]>;
 }
 
+export interface AccountsApi {
+  list: (householdId: string) => Promise<Account[]>;
+}
+
 export interface ExportApi {
   toCsv: (transactions: Transaction[]) => Promise<ExportCsvOutput>;
   writeCsv: (transactions: Transaction[], outputPath: string) => Promise<ExportCsvFileOutput>;
@@ -36,6 +43,7 @@ export interface ExportApi {
 
 export interface ImportApi {
   importCsv: (input: { filePath: string; accountId?: string }) => Promise<CsvImportResponse>;
+  addManualTransaction: (input: ManualEntryInput) => Promise<ManualEntryResponse>;
   importPdf: (input: { filePath: string; accountId?: string }) => Promise<PdfImportResponse>;
 }
 
@@ -46,6 +54,7 @@ export interface BackupApi {
 
 export interface BudgetApi {
   dashboard: DashboardApi;
+  accounts: AccountsApi;
   forecast: ForecastApi;
   categoryTargets: CategoryTargetsApi;
   export: ExportApi;
@@ -54,6 +63,10 @@ export interface BudgetApi {
 }
 
 const budgetApi: BudgetApi = {
+  accounts: {
+    list: (householdId: string): Promise<Account[]> =>
+      ipcRenderer.invoke("account:list", householdId),
+  },
   dashboard: {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),
     getViewData: (yearMonth: string): Promise<DashboardViewContract> =>
@@ -78,6 +91,8 @@ const budgetApi: BudgetApi = {
   import: {
     importCsv: (input: { filePath: string; accountId?: string }): Promise<CsvImportResponse> =>
       ipcRenderer.invoke("import:csv", input),
+    addManualTransaction: (input: ManualEntryInput): Promise<ManualEntryResponse> =>
+      ipcRenderer.invoke("transaction:addManual", input),
     importPdf: (input: { filePath: string; accountId?: string }): Promise<PdfImportResponse> =>
       ipcRenderer.invoke("import:pdf", input),
   },
