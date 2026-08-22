@@ -41,8 +41,12 @@ describe("verifyFixture", () => {
     const planMd = readRepositoryFile("plan.md");
 
     expect(adr).toMatch(/^## Status\s+Accepted$/m);
-    expect(adr).toContain("### Import and Parser Layer");
-    expect(adr).toContain("## Privacy and Data Handling Constraints");
+    expect(adr).toMatch(
+      /### Import and Parser Layer[\s\S]*source-aware parser adapters[\s\S]*parser-specific logic isolated/m,
+    );
+    expect(adr).toMatch(
+      /## Privacy and Data Handling Constraints[\s\S]*Transaction content remains local by default[\s\S]*No background network calls for transaction workflows/m,
+    );
     expect(planMd).toContain("adr-001-stack-and-runtime-boundaries.md");
     expect(planMd).toContain("domain-glossary.md");
 
