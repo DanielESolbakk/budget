@@ -108,7 +108,7 @@ export function validateManualEntryInput(input: ManualEntryInput): ManualEntryIn
       message: `bookedAtIso must be a valid ISO 8601 date: ${input.bookedAtIso}`,
     });
   }
-  if (!Number.isInteger(input.amountMinor)) {
+  if (!Number.isSafeInteger(input.amountMinor)) {
     throw new ManualEntryValidationException({
       code: "INVALID_AMOUNT_MINOR_INTEGER",
       message: `amountMinor must be an integer: ${input.amountMinor}`,

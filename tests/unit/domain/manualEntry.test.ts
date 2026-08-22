@@ -90,6 +90,15 @@ describe("validateManualEntryInput", () => {
     ).toThrow(expect.objectContaining({ code: "INVALID_AMOUNT_MINOR_INTEGER" }));
   });
 
+  it("throws INVALID_AMOUNT_MINOR_INTEGER for an unsafe integer amount", () => {
+    expect(() =>
+      validateManualEntryInput({
+        ...validInput,
+        amountMinor: Number.MAX_SAFE_INTEGER + 1,
+      })
+    ).toThrow(expect.objectContaining({ code: "INVALID_AMOUNT_MINOR_INTEGER" }));
+  });
+
   it("throws INVALID_MERCHANT_RAW for empty merchantRaw", () => {
     expect(() =>
       validateManualEntryInput({ ...validInput, merchantRaw: "  " })

@@ -340,19 +340,48 @@ app.whenReady().then(async () => {
           ? (input as Record<string, unknown>)
           : undefined;
 
-      if (
-        inputRecord === undefined ||
-        typeof inputRecord.householdId !== "string" ||
-        typeof inputRecord.accountId !== "string" ||
-        typeof inputRecord.bookedAtIso !== "string" ||
-        typeof inputRecord.amountMinor !== "number" ||
-        typeof inputRecord.merchantRaw !== "string"
-      ) {
+      if (inputRecord === undefined || typeof inputRecord.householdId !== "string") {
         return {
           ok: false,
           reason: "validation",
           code: "INVALID_HOUSEHOLD_ID",
-          message: "Manual entry input is missing required fields or has invalid types.",
+          message: "householdId must be a string.",
+        };
+      }
+
+      if (typeof inputRecord.accountId !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_ACCOUNT_ID",
+          message: "accountId must be a string.",
+        };
+      }
+
+      if (typeof inputRecord.bookedAtIso !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_BOOKED_AT_ISO",
+          message: "bookedAtIso must be a string.",
+        };
+      }
+
+      if (typeof inputRecord.amountMinor !== "number") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_AMOUNT_MINOR_INTEGER",
+          message: "amountMinor must be a number.",
+        };
+      }
+
+      if (typeof inputRecord.merchantRaw !== "string") {
+        return {
+          ok: false,
+          reason: "validation",
+          code: "INVALID_MERCHANT_RAW",
+          message: "merchantRaw must be a string.",
         };
       }
 

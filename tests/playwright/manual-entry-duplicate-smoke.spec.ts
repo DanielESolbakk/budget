@@ -63,4 +63,33 @@ test.describe("Manual entry and duplicate detection", () => {
       code: "INVALID_CATEGORY_ID",
     });
   });
+
+  test("Scenario 4: malformed required fields return field-specific IPC errors", async ({ window: page }) => {
+    const responses = await page.evaluate(async () => {
+      const base = {
+        householdId: "sample-hh",
+        accountId: "sample-acc",
+        bookedAtIso: "2026-05-23",
+        amountMinor: -1250,
+        merchantRaw: "Malformed field probe",
+      };
+
+      return Promise.all([
+        window.budgetApi.import.addManualTransaction({ ...base, accountId: 123 as unknown as string }),
+        window.budgetApi.import.addManualTransaction({ ...base, bookedAtIso: 123 as unknown as string }),
+        window.budgetApi.import.addManualTransaction({ ...base, amountMinor: "-1250" as unknown as number }),
+        window.budgetApi.import.addManualTransaction({ ...base, merchantRaw: 123 as unknown as string }),
+      ]);
+    });
+
+    expect(responses.map((response) => {
+      if (response.ok) return "ok";
+      return response.reason === "validation" ? response.code : response.reason;
+    })).toEqual([
+      "INVALID_ACCOUNT_ID",
+      "INVALID_BOOKED_AT_ISO",
+      "INVALID_AMOUNT_MINOR_INTEGER",
+      "INVALID_MERCHANT_RAW",
+    ]);
+  });
 });
