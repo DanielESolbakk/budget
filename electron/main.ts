@@ -11,7 +11,7 @@ import {
   type DashboardData,
   type DashboardViewContract,
 } from "../src/app/dashboardApi.js";
-import { exportCsv, exportCsvToFile } from "../src/app/exportCsv.js";
+import { exportLedgerCsvToFile } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../src/app/backup/restoreBackupSnapshot.js";
@@ -274,17 +274,15 @@ app.whenReady().then(async () => {
     return localLedgerDatabase.getAccountsForHousehold(householdId.trim());
   });
 
-  ipcMain.handle("export:toCsv", (_event, transactions: Transaction[]) => {
-    return exportCsv({ transactions });
-  });
+  ipcMain.handle("export:writeLedgerCsv", (_event, outputPath: unknown) => {
+    if (typeof outputPath !== "string" || outputPath.trim().length === 0) {
+      throw new Error("Export output path is required.");
+    }
 
-  ipcMain.handle("export:writeCsv", (_event, transactions: Transaction[], outputPath: string) => {
-    return exportCsvToFile({ transactions, outputPath });
-  });
-
-  ipcMain.handle("export:writeLedgerCsv", (_event, outputPath: string) => {
-    const ledgerSnapshotData = localLedgerDatabase.loadLedgerSnapshotData();
-    return exportCsvToFile({ transactions: ledgerSnapshotData.transactions, outputPath });
+    return exportLedgerCsvToFile({
+      ledger: localLedgerDatabase,
+      outputPath: outputPath.trim(),
+    });
   });
 
   ipcMain.handle(

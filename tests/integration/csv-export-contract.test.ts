@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildTransactionsFromFixturePath } from "../../src/tooling/fixtures/fixtureTransactions.js";
 import { EXPORT_CSV_HEADERS, buildCsvOutput, buildCsvRow, serializeCsvRow } from "../../src/domain/export/buildCsvRows.js";
-import { exportCsv, exportCsvToFile } from "../../src/app/exportCsv.js";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { exportCsv, exportCsvToFile, exportLedgerCsvToFile } from "../../src/app/exportCsv.js";
 import type { Transaction } from "../../src/domain/types.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
@@ -119,6 +120,43 @@ describe("csv export contract", () => {
         expect(result.rowCount).toBe(3);
         expect(result.outputPath).toBe(outputPath);
       } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("exportLedgerCsvToFile reads transactions from the local ledger", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-ledger-export-"));
+      const outputPath = join(tempDir, "transactions.csv");
+      const ledger = createLocalLedgerDatabase({
+        dbPath: join(tempDir, "budget.sqlite"),
+        seedData: {
+          household: {
+            id: "hh-test",
+            name: "Test household",
+            createdAtIso: "2026-01-01T00:00:00Z",
+          },
+          accounts: [
+            {
+              id: "acc-test",
+              householdId: "hh-test",
+              name: "Test account",
+              currencyCode: "NOK",
+            },
+          ],
+          transactions: SAMPLE_TRANSACTIONS,
+          importJobs: [],
+          monthlyCategoryTargets: [],
+        },
+      });
+
+      try {
+        const result = exportLedgerCsvToFile({ ledger, outputPath });
+
+        expect(result.rowCount).toBe(SAMPLE_TRANSACTIONS.length);
+        expect(readFileSync(outputPath, "utf8")).toBe(result.csvText);
+        expect(result.csvText).toContain("tx-1");
+      } finally {
+        ledger.close();
         rmSync(tempDir, { recursive: true, force: true });
       }
     });
