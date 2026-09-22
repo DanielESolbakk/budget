@@ -86,6 +86,18 @@ test.describe("Recovery and portability renderer workflows", () => {
     }
   });
 
+  test.describe("native save-dialog cancellation", () => {
+    test.use({ csvExportDialogBehavior: "cancel" });
+
+    test("reports cancellation without reporting success", async ({ recovery }) => {
+      await expect(recovery.exportSection).toBeVisible();
+      await recovery.exportButton.click();
+
+      await expect(recovery.exportCancelled).toHaveText("Export cancelled.");
+      await expect(recovery.exportSuccess).not.toBeVisible();
+    });
+  });
+
   test("reports an invalid restore snapshot without replacing the ledger", async ({
     recovery,
     dashboard,

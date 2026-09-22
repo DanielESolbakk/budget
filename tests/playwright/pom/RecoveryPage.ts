@@ -20,7 +20,11 @@ export class RecoveryPage {
   }
 
   get exportSuccess() {
-    return this.exportSection.getByRole("status");
+    return this.exportSection.getByRole("status").filter({ hasText: "Export saved to" });
+  }
+
+  get exportCancelled() {
+    return this.exportSection.getByRole("status").filter({ hasText: "Export cancelled." });
   }
 
   get exportError() {

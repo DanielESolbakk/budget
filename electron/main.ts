@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
 import { createDashboardProvider } from "./dashboardProvider.js";
+import { createCsvExportDialog } from "./fileDialogProvider.js";
 import { join } from "path";
 import { readFileSync } from "node:fs";
 import {
@@ -210,6 +211,7 @@ app.whenReady().then(async () => {
     getViewData,
     ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
+  const csvExportDialog = createCsvExportDialog();
 
   ipcMain.handle("dashboard:getData", () => {
     return dashboardProvider.getData();
@@ -224,7 +226,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("dialog:chooseCsvExportPath", async () => {
-    const result = await dialog.showSaveDialog({
+    const result = await csvExportDialog({
       defaultPath: "budget-transactions.csv",
       filters: [{ name: "CSV files", extensions: ["csv"] }],
     });

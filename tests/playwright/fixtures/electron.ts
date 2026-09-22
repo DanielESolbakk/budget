@@ -17,6 +17,7 @@ import { RecoveryPage } from "../pom/RecoveryPage.js";
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 interface ElectronFixtures {
+  csvExportDialogBehavior: "native" | "cancel";
   databasePath: string;
   electronApp: ElectronApplication;
   window: Page;
@@ -33,6 +34,7 @@ interface ElectronFixtures {
 }
 
 export const test = base.extend<ElectronFixtures>({
+  csvExportDialogBehavior: ["native", { option: true }],
   // eslint-disable-next-line no-empty-pattern
   databasePath: async ({}, use) => {
     const databaseDirectory = mkdtempSync(join(tmpdir(), "budget-playwright-"));
@@ -44,7 +46,7 @@ export const test = base.extend<ElectronFixtures>({
       rmSync(databaseDirectory, { recursive: true, force: true });
     }
   },
-  electronApp: async ({ databasePath }, use) => {
+  electronApp: async ({ csvExportDialogBehavior, databasePath }, use) => {
     let app: ElectronApplication | undefined;
 
     try {
@@ -52,6 +54,7 @@ export const test = base.extend<ElectronFixtures>({
         args: [MAIN_ENTRY],
         env: {
           ...process.env,
+          BUDGET_TEST_CSV_EXPORT_DIALOG: csvExportDialogBehavior,
           NODE_ENV: "test",
           BUDGET_DB_PATH: databasePath,
         },
