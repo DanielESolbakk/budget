@@ -14,7 +14,9 @@ test.describe("Recovery and portability renderer workflows", () => {
       await recovery.exportPathInput.fill(outputPath);
       await recovery.exportButton.click();
 
-      await expect(recovery.exportSuccess).toContainText("transactions");
+      await expect(recovery.exportSuccess).toContainText(
+        `Export saved to ${outputPath} (4 transactions).`
+      );
       expect(readFileSync(outputPath, "utf8")).toContain("sample-tx-1");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
