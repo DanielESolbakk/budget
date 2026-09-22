@@ -1,0 +1,26 @@
+import {
+  PERFORMANCE_HARNESS_BASELINE_POLICY,
+  PERFORMANCE_HARNESS_CONTRACT_VERSION,
+  PERFORMANCE_HARNESS_FIXTURE_DIGEST_ALGORITHM,
+  PERFORMANCE_HARNESS_METRIC_KEYS,
+  PERFORMANCE_HARNESS_NAME,
+  PERFORMANCE_HARNESS_SOURCE_KIND,
+  PERFORMANCE_HARNESS_WORKFLOW,
+  type PerformanceHarnessMetadata,
+  type PerformanceHarnessMetricKey,
+  type PerformanceHarnessMetrics,
+  type PerformanceHarnessResult,
+} from "./performanceHarnessContract.js";
+
+export const BENCHMARK_OUTPUT_CONTRACT_VERSION = PERFORMANCE_HARNESS_CONTRACT_VERSION;
+export const BENCHMARK_OUTPUT_NAME = PERFORMANCE_HARNESS_NAME;
+export const BENCHMARK_OUTPUT_WORKFLOW = PERFORMANCE_HARNESS_WORKFLOW;
+export const BENCHMARK_OUTPUT_SOURCE_KIND = PERFORMANCE_HARNESS_SOURCE_KIND;
+export const BENCHMARK_OUTPUT_FIXTURE_DIGEST_ALGORITHM = PERFORMANCE_HARNESS_FIXTURE_DIGEST_ALGORITHM;
+export const BENCHMARK_OUTPUT_BASELINE_POLICY = PERFORMANCE_HARNESS_BASELINE_POLICY;
+export const BENCHMARK_OUTPUT_METRIC_KEYS = PERFORMANCE_HARNESS_METRIC_KEYS;
+
+export type BenchmarkOutputMetricKey = PerformanceHarnessMetricKey;
+export type BenchmarkOutputMetadata = PerformanceHarnessMetadata;
+export type BenchmarkOutputMetrics = PerformanceHarnessMetrics;
+export type BackupRestoreBenchmarkResult = PerformanceHarnessResult;

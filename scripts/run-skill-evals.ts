@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createPerformanceHarness } from "../src/tooling/performance/createPerformanceHarness.js";
-import type { PerformanceHarnessResult } from "../src/tooling/performance/performanceHarnessContract.js";
+import type { BackupRestoreBenchmarkResult } from "../src/tooling/performance/benchmarkOutputContract.js";
+import { runBackupRestoreBenchmark } from "../src/tooling/performance/runBackupRestoreBenchmark.js";
 
 interface SkillEvalOptions {
   inputPath: string;
@@ -48,19 +48,19 @@ function parseOptions(args: string[]): SkillEvalOptions {
   };
 }
 
-function readSnapshot(snapshotPath: string): PerformanceHarnessResult {
+function readSnapshot(snapshotPath: string): BackupRestoreBenchmarkResult {
   const resolvedSnapshotPath = resolve(snapshotPath);
-  return JSON.parse(readFileSync(resolvedSnapshotPath, "utf8")) as PerformanceHarnessResult;
+  return JSON.parse(readFileSync(resolvedSnapshotPath, "utf8")) as BackupRestoreBenchmarkResult;
 }
 
 function hasDrift(
-  current: PerformanceHarnessResult,
-  expected: PerformanceHarnessResult
+  current: BackupRestoreBenchmarkResult,
+  expected: BackupRestoreBenchmarkResult
 ): boolean {
   return JSON.stringify(current) !== JSON.stringify(expected);
 }
 
-function printSummary(result: PerformanceHarnessResult, snapshotChecked: boolean): void {
+function printSummary(result: BackupRestoreBenchmarkResult, snapshotChecked: boolean): void {
   const baselineText = snapshotChecked ? "checked" : "skipped";
   console.log("PASS eval:skill");
   console.log(`- baseline snapshot: ${baselineText}`);
@@ -74,7 +74,7 @@ function printSummary(result: PerformanceHarnessResult, snapshotChecked: boolean
 function main(): void {
   const options = parseOptions(process.argv.slice(2));
 
-  const result = createPerformanceHarness({
+  const result = runBackupRestoreBenchmark({
     fixturePath: resolve(options.inputPath),
     iterationCount: options.iterationCount,
     projectRoot: process.cwd(),

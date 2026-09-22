@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { createPerformanceHarness } from "../src/tooling/performance/createPerformanceHarness.js";
+import { runBackupRestoreBenchmark } from "../src/tooling/performance/runBackupRestoreBenchmark.js";
 
 function getOptionValue(args: string[], optionName: string): string | undefined {
   const index = args.indexOf(optionName);
@@ -23,7 +23,7 @@ if (!Number.isInteger(iterationCount) || iterationCount <= 0) {
   process.exit(1);
 }
 
-const result = createPerformanceHarness({
+const result = runBackupRestoreBenchmark({
   fixturePath: resolve(inputPath),
   iterationCount,
   projectRoot: process.cwd(),
