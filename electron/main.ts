@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
 import { createDashboardProvider } from "./dashboardProvider.js";
+import { createCsvExportDialog } from "./fileDialogProvider.js";
 import { join } from "path";
 import { readFileSync } from "node:fs";
 import {
@@ -11,7 +12,7 @@ import {
   type DashboardData,
   type DashboardViewContract,
 } from "../src/app/dashboardApi.js";
-import { exportCsv, exportCsvToFile } from "../src/app/exportCsv.js";
+import { exportLedgerCsvToFile } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../src/app/backup/restoreBackupSnapshot.js";
@@ -210,6 +211,7 @@ app.whenReady().then(async () => {
     getViewData,
     ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
+  const csvExportDialog = createCsvExportDialog();
 
   ipcMain.handle("dashboard:getData", () => {
     return dashboardProvider.getData();
@@ -224,7 +226,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("dialog:chooseCsvExportPath", async () => {
-    const result = await dialog.showSaveDialog({
+    const result = await csvExportDialog({
       defaultPath: "budget-transactions.csv",
       filters: [{ name: "CSV files", extensions: ["csv"] }],
     });
@@ -274,17 +276,15 @@ app.whenReady().then(async () => {
     return localLedgerDatabase.getAccountsForHousehold(householdId.trim());
   });
 
-  ipcMain.handle("export:toCsv", (_event, transactions: Transaction[]) => {
-    return exportCsv({ transactions });
-  });
+  ipcMain.handle("export:writeLedgerCsv", (_event, outputPath: unknown) => {
+    if (typeof outputPath !== "string" || outputPath.trim().length === 0) {
+      throw new Error("Export output path is required.");
+    }
 
-  ipcMain.handle("export:writeCsv", (_event, transactions: Transaction[], outputPath: string) => {
-    return exportCsvToFile({ transactions, outputPath });
-  });
-
-  ipcMain.handle("export:writeLedgerCsv", (_event, outputPath: string) => {
-    const ledgerSnapshotData = localLedgerDatabase.loadLedgerSnapshotData();
-    return exportCsvToFile({ transactions: ledgerSnapshotData.transactions, outputPath });
+    return exportLedgerCsvToFile({
+      ledger: localLedgerDatabase,
+      outputPath: outputPath.trim(),
+    });
   });
 
   ipcMain.handle(

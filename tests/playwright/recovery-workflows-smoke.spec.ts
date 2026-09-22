@@ -14,7 +14,9 @@ test.describe("Recovery and portability renderer workflows", () => {
       await recovery.exportPathInput.fill(outputPath);
       await recovery.exportButton.click();
 
-      await expect(recovery.exportSuccess).toContainText("transactions");
+      await expect(recovery.exportSuccess).toContainText(
+        `Export saved to ${outputPath} (4 transactions).`
+      );
       expect(readFileSync(outputPath, "utf8")).toContain("sample-tx-1");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -82,6 +84,18 @@ test.describe("Recovery and portability renderer workflows", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  test.describe("native save-dialog cancellation", () => {
+    test.use({ csvExportDialogBehavior: "cancel" });
+
+    test("reports cancellation without reporting success", async ({ recovery }) => {
+      await expect(recovery.exportSection).toBeVisible();
+      await recovery.exportButton.click();
+
+      await expect(recovery.exportCancelled).toHaveText("Export cancelled.");
+      await expect(recovery.exportSuccess).not.toBeVisible();
+    });
   });
 
   test("reports an invalid restore snapshot without replacing the ledger", async ({

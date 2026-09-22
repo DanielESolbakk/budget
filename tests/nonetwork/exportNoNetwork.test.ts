@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { exportCsv, exportCsvToFile } from "../../src/app/exportCsv.js";
+import { exportCsv, exportCsvToFile, exportLedgerCsvToFile } from "../../src/app/exportCsv.js";
 import { buildCsvOutput } from "../../src/domain/export/buildCsvRows.js";
 import { buildTransactionsFromFixturePath } from "../../src/tooling/fixtures/fixtureTransactions.js";
 
@@ -71,6 +71,31 @@ describe("export no-network verification", () => {
 
     try {
       const result = exportCsvToFile({ transactions, outputPath });
+      expect(result.rowCount).toBeGreaterThan(0);
+      expect(fetchCalled).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("exportLedgerCsvToFile does not invoke fetch", () => {
+    const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-ledger-export-no-network-"));
+    const outputPath = join(tempDir, "export.csv");
+    let fetchCalled = false;
+    (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
+      fetchCalled = true;
+      throw new Error("Network access is not allowed in this test.");
+    };
+
+    try {
+      const result = exportLedgerCsvToFile({
+        ledger: {
+          loadLedgerSnapshotData: () => ({ transactions }),
+        },
+        outputPath,
+      });
+
       expect(result.rowCount).toBeGreaterThan(0);
       expect(fetchCalled).toBe(false);
     } finally {

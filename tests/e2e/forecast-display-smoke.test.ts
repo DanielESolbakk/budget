@@ -36,12 +36,6 @@ function createFakeBudgetApi(): BudgetApi {
       listByMonth: async () => [],
     },
     export: {
-      toCsv: async (transactions) => ({ csvText: "", rowCount: transactions.length }),
-      writeCsv: async (transactions, outputPath) => ({
-        csvText: "",
-        rowCount: transactions.length,
-        outputPath,
-      }),
       writeLedgerCsv: async (outputPath) => ({
         csvText: "",
         rowCount: 0,

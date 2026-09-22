@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import type { LedgerSnapshotData } from "../domain/backup/snapshotContract.js";
 import type { Transaction } from "../domain/types.js";
 import { buildCsvOutput } from "../domain/export/buildCsvRows.js";
 
@@ -26,6 +27,14 @@ export interface ExportCsvFileOutput extends ExportCsvOutput {
   outputPath: string;
 }
 
+export interface LedgerExportSource {
+  loadLedgerSnapshotData: () => Pick<LedgerSnapshotData, "transactions">;
+}
+
+export type ExportLedgerCsvToFileInput = Omit<ExportCsvToFileInput, "transactions"> & {
+  ledger: LedgerExportSource;
+};
+
 /**
  * Orchestrates CSV export from a transaction list.
  * Transactions are sorted by bookedAtIso ascending to produce deterministic output
@@ -44,4 +53,21 @@ export function exportCsvToFile(input: ExportCsvToFileInput): ExportCsvFileOutpu
   const write = input.writeFile ?? ((path: string, data: string) => writeFileSync(path, data, "utf8"));
   write(input.outputPath, csvText);
   return { csvText, rowCount, outputPath: input.outputPath };
+}
+
+export function exportLedgerCsvToFile(input: ExportLedgerCsvToFileInput): ExportCsvFileOutput {
+  const transactions = input.ledger.loadLedgerSnapshotData().transactions;
+
+  if (input.writeFile === undefined) {
+    return exportCsvToFile({
+      transactions,
+      outputPath: input.outputPath,
+    });
+  }
+
+  return exportCsvToFile({
+    transactions,
+    outputPath: input.outputPath,
+    writeFile: input.writeFile,
+  });
 }
