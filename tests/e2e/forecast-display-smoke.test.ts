@@ -42,6 +42,11 @@ function createFakeBudgetApi(): BudgetApi {
         rowCount: transactions.length,
         outputPath,
       }),
+      writeLedgerCsv: async (outputPath) => ({
+        csvText: "",
+        rowCount: 0,
+        outputPath,
+      }),
     },
     backup: {
       create: async () => ({ outputPath: "", transactionCount: 0, createdAtIso: "" }),
@@ -58,6 +63,11 @@ function createFakeBudgetApi(): BudgetApi {
       importCsv: async () => ({ ok: true as const, importJobId: "", transactionCount: 0 }),
       addManualTransaction: async () => ({ ok: false as const, reason: "validation" as const, code: "INVALID_MERCHANT_RAW", message: "" }),
       importPdf: async () => ({ ok: true as const, importJobId: "", transactionCount: 0, adapterId: "" }),
+    },
+    dialogs: {
+      chooseCsvExportPath: async () => null,
+      chooseBackupOutputPath: async () => null,
+      chooseRestoreSnapshotPath: async () => null,
     },
   };
 }

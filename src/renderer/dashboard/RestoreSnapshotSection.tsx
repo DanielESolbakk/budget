@@ -19,17 +19,26 @@ export function RestoreSnapshotSection({
   function handleRestore(e: React.FormEvent): void {
     e.preventDefault();
 
-    const trimmedPath = snapshotPath.trim();
-    if (!trimmedPath) {
-      setRestoreState({ status: "error", message: "Snapshot file path is required." });
-      return;
-    }
-
     setRestoreState({ status: "pending" });
 
-    window.budgetApi.backup
-      .restore({ snapshotPath: trimmedPath })
+    const snapshotPathPromise = snapshotPath.trim()
+      ? Promise.resolve(snapshotPath.trim())
+      : window.budgetApi.dialogs.chooseRestoreSnapshotPath();
+
+    snapshotPathPromise
+      .then((selectedPath) => {
+        if (!selectedPath) return null;
+        setSnapshotPath(selectedPath);
+        if (!window.confirm("Restore this snapshot and replace the current local ledger?")) {
+          return null;
+        }
+        return window.budgetApi.backup.restore({ snapshotPath: selectedPath });
+      })
       .then((result) => {
+        if (!result) {
+          setRestoreState({ status: "idle" });
+          return;
+        }
         setRestoreState({ status: "success", transactionCount: result.transactionCount });
         setSnapshotPath("");
         onRestoreSuccess();
@@ -45,7 +54,7 @@ export function RestoreSnapshotSection({
     <section aria-label="Restore Snapshot">
       <h2>Restore Backup Snapshot</h2>
       <form aria-label="Restore snapshot form" onSubmit={handleRestore}>
-        <label htmlFor="snapshot-path">Snapshot File Path</label>
+        <label htmlFor="snapshot-path">Snapshot file path</label>
         <input
           id="snapshot-path"
           type="text"
@@ -53,12 +62,8 @@ export function RestoreSnapshotSection({
           onChange={(e) => setSnapshotPath(e.target.value)}
           disabled={restoreState.status === "pending"}
         />
-        <button
-          type="submit"
-          aria-label="Restore snapshot"
-          disabled={restoreState.status === "pending"}
-        >
-          {restoreState.status === "pending" ? "Restoring..." : "Restore"}
+        <button type="submit" aria-label="Restore snapshot" disabled={restoreState.status === "pending"}>
+          {restoreState.status === "pending" ? "Restoring..." : "Browse and Restore"}
         </button>
       </form>
       {restoreState.status === "error" && (

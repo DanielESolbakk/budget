@@ -1,0 +1,72 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test, expect } from "./fixtures/electron.js";
+import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+
+test.describe("Recovery and portability renderer workflows", () => {
+  test("exports the complete local ledger through the visible UI", async ({ recovery }) => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-export-runtime-"));
+    const outputPath = join(tempDir, "transactions.csv");
+
+    try {
+      await expect(recovery.exportSection).toBeVisible();
+      await recovery.exportPathInput.fill(outputPath);
+      await recovery.exportButton.click();
+
+      await expect(recovery.exportSuccess).toContainText("transactions");
+      expect(readFileSync(outputPath, "utf8")).toContain("sample-tx-1");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("restores a snapshot and refreshes the dashboard with restored ledger data", async ({
+    recovery,
+    dashboard,
+    window,
+  }) => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-restore-runtime-"));
+    const snapshotPath = join(tempDir, "restored.json");
+
+    try {
+      const snapshot = buildBackupSnapshot({
+        household: {
+          id: "sample-hh",
+          name: "Restored Household",
+          createdAtIso: "2026-01-01T00:00:00Z",
+        },
+        accounts: [
+          { id: "sample-acc", householdId: "sample-hh", name: "Restored account", currencyCode: "NOK" },
+        ],
+        transactions: [
+          {
+            id: "restored-tx-1",
+            householdId: "sample-hh",
+            accountId: "sample-acc",
+            bookedAtIso: "2026-05-20T10:00:00Z",
+            amountMinor: -12345,
+            merchantRaw: "Restored merchant",
+            categoryId: "restored",
+          },
+        ],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+        createdAtIso: "2026-09-22T10:00:00Z",
+      });
+      writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
+
+      await recovery.restorePathInput.fill(snapshotPath);
+      window.once("dialog", async (dialog) => {
+        expect(dialog.type()).toBe("confirm");
+        await dialog.accept();
+      });
+      await recovery.restoreButton.click();
+
+      await expect(recovery.restoreSuccess).toContainText("1 transaction restored");
+      await expect(dashboard.categoryBreakdownSection).toContainText("restored");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
