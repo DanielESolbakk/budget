@@ -33,7 +33,8 @@ interface ElectronFixtures {
 }
 
 export const test = base.extend<ElectronFixtures>({
-  databasePath: async (_fixtures, use) => {
+  // eslint-disable-next-line no-empty-pattern
+  databasePath: async ({}, use) => {
     const databaseDirectory = mkdtempSync(join(tmpdir(), "budget-playwright-"));
     const databasePath = join(databaseDirectory, "budget.sqlite");
 

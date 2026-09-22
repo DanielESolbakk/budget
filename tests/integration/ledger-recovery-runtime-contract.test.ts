@@ -82,6 +82,56 @@ describe("ledger recovery runtime contracts", () => {
     }
   });
 
+  it("rejects a transaction that references an account outside the snapshot", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-invalid-reference-"));
+    const snapshotPath = join(tempDir, "invalid-reference.json");
+
+    try {
+      const snapshot = buildBackupSnapshot({
+        ...createSnapshotData(),
+        transactions: [
+          {
+            ...createSnapshotData().transactions[0]!,
+            accountId: "missing-account",
+          },
+        ],
+        createdAtIso: "2026-09-22T10:00:00Z",
+      });
+      writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
+
+      expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+        "Invalid snapshot transactions"
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed transaction fields before replacement", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-invalid-record-"));
+    const snapshotPath = join(tempDir, "invalid-record.json");
+
+    try {
+      const snapshot = buildBackupSnapshot({
+        ...createSnapshotData(),
+        transactions: [
+          {
+            ...createSnapshotData().transactions[0]!,
+            amountMinor: Number.NaN,
+          },
+        ],
+        createdAtIso: "2026-09-22T10:00:00Z",
+      });
+      writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
+
+      expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+        "Invalid snapshot transactions"
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps the existing database unchanged when replacement insertion fails", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-rollback-restore-"));
     const dbPath = join(tempDir, "ledger.sqlite");
@@ -121,6 +171,30 @@ describe("ledger recovery runtime contracts", () => {
         { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 9500 },
       ]);
       reopenedDatabase.close();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves a non-NOK account currency through replacement and reopen", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-currency-reopen-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const currencyState: LedgerSnapshotData = {
+      ...createSnapshotData(),
+      accounts: [{ ...ACCOUNT, id: "acc-usd", currencyCode: "USD" }],
+      transactions: [],
+    };
+
+    try {
+      const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+      database.replaceLedgerSnapshotData(currencyState);
+      expect(database.loadLedgerSnapshotData().accounts[0]?.currencyCode).toBe("USD");
+      expect(database.getAccountsForHousehold(HOUSEHOLD.id)[0]?.currencyCode).toBe("USD");
+      database.close();
+
+      const reopened = createLocalLedgerDatabase({ dbPath, seedData: currencyState });
+      expect(reopened.loadLedgerSnapshotData().accounts[0]?.currencyCode).toBe("USD");
+      reopened.close();
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

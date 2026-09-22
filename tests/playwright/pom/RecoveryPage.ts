@@ -23,6 +23,10 @@ export class RecoveryPage {
     return this.exportSection.getByRole("status");
   }
 
+  get exportError() {
+    return this.exportSection.getByRole("alert");
+  }
+
   get restoreSection() {
     return this.page.getByRole("region", { name: "Restore Snapshot" });
   }
@@ -37,5 +41,9 @@ export class RecoveryPage {
 
   get restoreSuccess() {
     return this.restoreSection.getByRole("status");
+  }
+
+  get restoreError() {
+    return this.restoreSection.getByRole("alert");
   }
 }

@@ -335,7 +335,7 @@ export function createLocalLedgerDatabase(
         id: account.id,
         householdId: account.household_id,
         name: account.name,
-        currencyCode: "NOK",
+        currencyCode: account.currency_code,
       })),
       transactions: mappedTransactions,
       importJobs: mappedImportJobs,
@@ -387,7 +387,7 @@ export function createLocalLedgerDatabase(
       id: account.id,
       householdId: account.household_id,
       name: account.name,
-      currencyCode: "NOK",
+      currencyCode: account.currency_code,
     }));
   }
 

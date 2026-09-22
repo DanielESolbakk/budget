@@ -8,7 +8,14 @@ export interface Account {
   id: string;
   householdId: string;
   name: string;
-  currencyCode: "NOK";
+  currencyCode: CurrencyCode;
+}
+
+/** ISO 4217-style uppercase three-letter currency code used by an account. */
+export type CurrencyCode = string;
+
+export function isCurrencyCode(value: unknown): value is CurrencyCode {
+  return typeof value === "string" && /^[A-Z]{3}$/.test(value);
 }
 
 export interface Transaction {
