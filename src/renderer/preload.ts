@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
-import type { ExportCsvFileOutput, ExportCsvOutput } from "../app/exportCsv.js";
+import type { ExportCsvFileOutput } from "../app/exportCsv.js";
 import type { CsvImportResponse } from "../app/import/importCsv.js";
 import type { ManualEntryResponse } from "../app/import/manualEntry.js";
 import type { PdfImportResponse } from "../app/import/importPdf.js";
@@ -10,7 +10,6 @@ import type {
   ManualEntryInput,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
-  Transaction,
 } from "../domain/types.js";
 import type {
   BackupSnapshotFileOutput,
@@ -37,8 +36,6 @@ export interface AccountsApi {
 }
 
 export interface ExportApi {
-  toCsv: (transactions: Transaction[]) => Promise<ExportCsvOutput>;
-  writeCsv: (transactions: Transaction[], outputPath: string) => Promise<ExportCsvFileOutput>;
   writeLedgerCsv: (outputPath: string) => Promise<ExportCsvFileOutput>;
 }
 
@@ -91,10 +88,6 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("categoryTarget:listByMonth", yearMonth),
   },
   export: {
-    toCsv: (transactions: Transaction[]): Promise<ExportCsvOutput> =>
-      ipcRenderer.invoke("export:toCsv", transactions),
-    writeCsv: (transactions: Transaction[], outputPath: string): Promise<ExportCsvFileOutput> =>
-      ipcRenderer.invoke("export:writeCsv", transactions, outputPath),
     writeLedgerCsv: (outputPath: string): Promise<ExportCsvFileOutput> =>
       ipcRenderer.invoke("export:writeLedgerCsv", outputPath),
   },
