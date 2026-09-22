@@ -39,6 +39,13 @@ export interface AccountsApi {
 export interface ExportApi {
   toCsv: (transactions: Transaction[]) => Promise<ExportCsvOutput>;
   writeCsv: (transactions: Transaction[], outputPath: string) => Promise<ExportCsvFileOutput>;
+  writeLedgerCsv: (outputPath: string) => Promise<ExportCsvFileOutput>;
+}
+
+export interface FileDialogApi {
+  chooseCsvExportPath: () => Promise<string | null>;
+  chooseBackupOutputPath: () => Promise<string | null>;
+  chooseRestoreSnapshotPath: () => Promise<string | null>;
 }
 
 export interface ImportApi {
@@ -60,6 +67,7 @@ export interface BudgetApi {
   export: ExportApi;
   import: ImportApi;
   backup: BackupApi;
+  dialogs: FileDialogApi;
 }
 
 const budgetApi: BudgetApi = {
@@ -87,6 +95,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("export:toCsv", transactions),
     writeCsv: (transactions: Transaction[], outputPath: string): Promise<ExportCsvFileOutput> =>
       ipcRenderer.invoke("export:writeCsv", transactions, outputPath),
+    writeLedgerCsv: (outputPath: string): Promise<ExportCsvFileOutput> =>
+      ipcRenderer.invoke("export:writeLedgerCsv", outputPath),
   },
   import: {
     importCsv: (input: { filePath: string; accountId?: string }): Promise<CsvImportResponse> =>
@@ -101,6 +111,14 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("backup:create", outputPath),
     restore: (input: RestoreSnapshotInput): Promise<RestoreSnapshotOutput> =>
       ipcRenderer.invoke("backup:restore", input),
+  },
+  dialogs: {
+    chooseCsvExportPath: (): Promise<string | null> =>
+      ipcRenderer.invoke("dialog:chooseCsvExportPath"),
+    chooseBackupOutputPath: (): Promise<string | null> =>
+      ipcRenderer.invoke("dialog:chooseBackupOutputPath"),
+    chooseRestoreSnapshotPath: (): Promise<string | null> =>
+      ipcRenderer.invoke("dialog:chooseRestoreSnapshotPath"),
   },
 };
 

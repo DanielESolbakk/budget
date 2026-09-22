@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
 import { createDashboardProvider } from "./dashboardProvider.js";
 import { join } from "path";
@@ -35,6 +35,7 @@ import { parseCsvText } from "../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../src/domain/import/csvRowMapper.js";
 import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
 import { buildRogalandImportJobId } from "../src/domain/import/pdfTextParser.js";
+import { buildMonthBuckets } from "../src/domain/forecast/aggregationAdapter.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -47,18 +48,9 @@ import {
   type ImportJob,
   type ManualEntryInput,
   type MonthlyCategoryTargetInput,
-  type MonthlyTotal,
   type Transaction,
 } from "../src/domain/types.js";
 
-const sampleMonthlyTotals: MonthlyTotal[] = [
-  { yearMonth: "2026-03", totalMinor: 48000 },
-  { yearMonth: "2026-04", totalMinor: 51000 },
-  { yearMonth: "2026-05", totalMinor: 54000 },
-];
-
-// TODO: Replace with persistence-backed data when the storage layer is wired up.
-// Tracked in: https://github.com/DanielESolbakk/budget/issues/38
 const sampleHousehold: Household = {
   id: "sample-hh",
   name: "Sample Household",
@@ -71,7 +63,7 @@ const sampleAccounts: Account[] = [
 
 const sampleImportJobs: ImportJob[] = [];
 
-// Live transaction set: starts with sample data and grows with each import.
+// Runtime state mirrors the persisted ledger for dashboard and import workflows.
 const liveTransactions: Transaction[] = [
   {
     id: "sample-tx-1",
@@ -137,18 +129,33 @@ const localLedgerDatabase = createLocalLedgerDatabase({
 // Load persisted transactions from the SQLite ledger so that dashboard views include
 // data imported in previous sessions. This merges DB transactions with the seed set
 // by deduplicating on id to avoid double-counting sample rows already in the ledger.
+function applyRuntimeLedgerSnapshot(snapshot: {
+  household: Household;
+  accounts: Account[];
+  transactions: Transaction[];
+  monthlyCategoryTargets: MonthlyCategoryTargetInput[];
+}): void {
+  sampleHousehold.id = snapshot.household.id;
+  sampleHousehold.name = snapshot.household.name;
+  sampleHousehold.createdAtIso = snapshot.household.createdAtIso;
+  sampleAccounts.splice(0, sampleAccounts.length, ...snapshot.accounts);
+  liveTransactions.splice(0, liveTransactions.length, ...snapshot.transactions);
+  sampleTargetStore.targetsByMonthAndCategory.clear();
+  for (const target of snapshot.monthlyCategoryTargets) {
+    const key = `${target.yearMonth}::${target.categoryId}`;
+    sampleTargetStore.targetsByMonthAndCategory.set(key, {
+      yearMonth: target.yearMonth,
+      categoryId: target.categoryId,
+      targetMinor: target.targetMinor,
+    });
+  }
+}
+
 (function hydrateFromLedger(): void {
   try {
-    const snapshot = localLedgerDatabase.loadLedgerSnapshotData();
-    const existingIds = new Set(liveTransactions.map((tx) => tx.id));
-    for (const tx of snapshot.transactions) {
-      if (!existingIds.has(tx.id)) {
-        liveTransactions.push(tx);
-        existingIds.add(tx.id);
-      }
-    }
+    applyRuntimeLedgerSnapshot(localLedgerDatabase.loadLedgerSnapshotData());
   } catch (error) {
-    console.error("Failed to hydrate transactions from local ledger:", error);
+    console.error("Failed to hydrate runtime state from local ledger:", error);
   }
 })();
 
@@ -162,7 +169,7 @@ function resolveDefaultAccountId(householdId: string): string {
 }
 
 function getDashboardData(): DashboardData {
-  return buildDashboardData({ monthlyTotals: sampleMonthlyTotals });
+  return buildDashboardData({ monthlyTotals: buildMonthBuckets(liveTransactions) });
 }
 
 function getViewData(yearMonth: string): DashboardViewContract {
@@ -216,6 +223,30 @@ app.whenReady().then(async () => {
     return getDashboardData().forecast.entries;
   });
 
+  ipcMain.handle("dialog:chooseCsvExportPath", async () => {
+    const result = await dialog.showSaveDialog({
+      defaultPath: "budget-transactions.csv",
+      filters: [{ name: "CSV files", extensions: ["csv"] }],
+    });
+    return result.canceled ? null : result.filePath;
+  });
+
+  ipcMain.handle("dialog:chooseBackupOutputPath", async () => {
+    const result = await dialog.showSaveDialog({
+      defaultPath: "budget-backup.json",
+      filters: [{ name: "JSON files", extensions: ["json"] }],
+    });
+    return result.canceled ? null : result.filePath;
+  });
+
+  ipcMain.handle("dialog:chooseRestoreSnapshotPath", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "JSON files", extensions: ["json"] }],
+    });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
+
   ipcMain.handle("categoryTarget:upsert", (_event, input: MonthlyCategoryTargetInput) => {
     // validateMonthlyCategoryTargetInput throws MonthlyCategoryTargetValidationError on invalid
     // input; Electron IPC propagates thrown errors to the renderer as a rejected promise, which
@@ -251,6 +282,11 @@ app.whenReady().then(async () => {
     return exportCsvToFile({ transactions, outputPath });
   });
 
+  ipcMain.handle("export:writeLedgerCsv", (_event, outputPath: string) => {
+    const ledgerSnapshotData = localLedgerDatabase.loadLedgerSnapshotData();
+    return exportCsvToFile({ transactions: ledgerSnapshotData.transactions, outputPath });
+  });
+
   ipcMain.handle(
     "backup:create",
     (_event, outputPath: string): BackupSnapshotFileOutput => {
@@ -265,7 +301,10 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "backup:restore",
     (_event, input: RestoreSnapshotInput): RestoreSnapshotOutput => {
-      return restoreBackupSnapshot(input);
+      const restored = restoreBackupSnapshot(input);
+      localLedgerDatabase.replaceLedgerSnapshotData(restored);
+      applyRuntimeLedgerSnapshot(restored);
+      return restored;
     }
   );
 

@@ -5,6 +5,7 @@ import "@fontsource/barlow-condensed/700.css";
 import "@fontsource/barlow-condensed/800.css";
 import "./app.css";
 import { BackupSection } from "./backup/BackupSection.js";
+import { ExportSection } from "./backup/ExportSection.js";
 import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "./dashboard/CategoryTargetEntrySection.js";
 import { ForecastSection } from "./dashboard/ForecastSection.js";
@@ -297,6 +298,7 @@ export function App(): React.JSX.Element {
               <CsvImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
               <PdfImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
               <BackupSection />
+              <ExportSection />
               <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)} />
             </div>
           </section>

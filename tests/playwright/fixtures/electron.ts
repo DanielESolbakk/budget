@@ -12,10 +12,12 @@ import { ForecastPage } from "../pom/ForecastPage.js";
 import { ManualEntryPage } from "../pom/ManualEntryPage.js";
 import { PdfImportPage } from "../pom/PdfImportPage.js";
 import { PreloadBridgePage } from "../pom/PreloadBridgePage.js";
+import { RecoveryPage } from "../pom/RecoveryPage.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 interface ElectronFixtures {
+  databasePath: string;
   electronApp: ElectronApplication;
   window: Page;
   appShell: AppShellPage;
@@ -27,14 +29,22 @@ interface ElectronFixtures {
   manualEntry: ManualEntryPage;
   pdfImport: PdfImportPage;
   preloadBridge: PreloadBridgePage;
+  recovery: RecoveryPage;
 }
 
 export const test = base.extend<ElectronFixtures>({
-  // Playwright requires the first callback argument to be an object pattern.
   // eslint-disable-next-line no-empty-pattern
-  electronApp: async ({}, use) => {
+  databasePath: async ({}, use) => {
     const databaseDirectory = mkdtempSync(join(tmpdir(), "budget-playwright-"));
     const databasePath = join(databaseDirectory, "budget.sqlite");
+
+    try {
+      await use(databasePath);
+    } finally {
+      rmSync(databaseDirectory, { recursive: true, force: true });
+    }
+  },
+  electronApp: async ({ databasePath }, use) => {
     let app: ElectronApplication | undefined;
 
     try {
@@ -52,7 +62,7 @@ export const test = base.extend<ElectronFixtures>({
       try {
         await app?.close();
       } finally {
-        rmSync(databaseDirectory, { recursive: true, force: true });
+        app = undefined;
       }
     }
   },
@@ -87,6 +97,9 @@ export const test = base.extend<ElectronFixtures>({
   },
   preloadBridge: async ({ window }, use) => {
     await use(new PreloadBridgePage(window));
+  },
+  recovery: async ({ window }, use) => {
+    await use(new RecoveryPage(window));
   },
 });
 

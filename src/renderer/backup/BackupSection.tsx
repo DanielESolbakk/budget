@@ -11,13 +11,23 @@ export function BackupSection(): React.JSX.Element {
   const [backupState, setBackupState] = React.useState<BackupState>({ status: "idle" });
 
   function handleCreateBackup(): void {
-    if (!outputPath.trim()) return;
-
     setBackupState({ status: "pending" });
 
-    window.budgetApi.backup
-      .create(outputPath.trim())
+    const outputPathPromise = outputPath.trim()
+      ? Promise.resolve(outputPath.trim())
+      : window.budgetApi.dialogs.chooseBackupOutputPath();
+
+    outputPathPromise
+      .then((selectedPath) => {
+        if (!selectedPath) {
+          setBackupState({ status: "idle" });
+          return null;
+        }
+        setOutputPath(selectedPath);
+        return window.budgetApi.backup.create(selectedPath);
+      })
       .then((result) => {
+        if (!result) return;
         setBackupState({
           status: "success",
           outputPath: result.outputPath,
@@ -40,14 +50,15 @@ export function BackupSection(): React.JSX.Element {
         type="text"
         value={outputPath}
         onChange={(e) => setOutputPath(e.target.value)}
-        placeholder="/path/to/backup.json"
+        placeholder="Choose a JSON destination"
         disabled={backupState.status === "pending"}
       />
       <button
+        type="button"
         onClick={handleCreateBackup}
-        disabled={backupState.status === "pending" || !outputPath.trim()}
+        disabled={backupState.status === "pending"}
       >
-        Create Backup Snapshot
+        Browse and Create Backup
       </button>
       {backupState.status === "pending" && <p>Creating backup...</p>}
       {backupState.status === "success" && (

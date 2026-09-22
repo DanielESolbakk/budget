@@ -21,6 +21,7 @@ interface LocalLedgerSeedData {
 
 export interface LocalLedgerDatabase {
   loadLedgerSnapshotData: () => LedgerSnapshotData;
+  replaceLedgerSnapshotData: (snapshot: LedgerSnapshotData) => void;
   getAccountsForHousehold: (householdId: string) => Account[];
   upsertMonthlyCategoryTarget: (target: MonthlyCategoryTarget) => void;
   appendImportJob: (importJob: ImportJob) => void;
@@ -109,6 +110,62 @@ function ensureSchema(db: DatabaseSync): void {
   }
 }
 
+function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): void {
+  db.prepare(
+    "INSERT INTO households (id, name, created_at_iso) VALUES (?, ?, ?)"
+  ).run(snapshot.household.id, snapshot.household.name, snapshot.household.createdAtIso);
+
+  const insertAccount = db.prepare(
+    "INSERT INTO accounts (id, household_id, name, currency_code) VALUES (?, ?, ?, ?)"
+  );
+  for (const account of snapshot.accounts) {
+    insertAccount.run(account.id, account.householdId, account.name, account.currencyCode);
+  }
+
+  const insertTransaction = db.prepare(
+    "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  );
+  for (const transaction of snapshot.transactions) {
+    insertTransaction.run(
+      transaction.id,
+      transaction.householdId,
+      transaction.accountId,
+      transaction.bookedAtIso,
+      transaction.amountMinor,
+      transaction.merchantRaw,
+      transaction.currencyCode ?? null,
+      transaction.sourceType ?? null,
+      transaction.categoryId ?? null,
+      transaction.importJobId ?? null
+    );
+  }
+
+  const insertImportJob = db.prepare(
+    "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  );
+  for (const importJob of snapshot.importJobs) {
+    insertImportJob.run(
+      importJob.id,
+      importJob.householdId,
+      importJob.sourceType,
+      importJob.sourceName,
+      importJob.adapterId ?? null,
+      importJob.candidateCount ?? null,
+      importJob.validationFailureCount ?? null,
+      importJob.startedAtIso,
+      importJob.finishedAtIso ?? null,
+      importJob.provenance ? JSON.stringify(importJob.provenance) : null
+    );
+  }
+
+  const insertTarget = db.prepare(
+    "INSERT INTO monthly_category_targets (year_month, category_id, target_minor) VALUES (?, ?, ?)"
+  );
+  for (const target of snapshot.monthlyCategoryTargets) {
+    insertTarget.run(target.yearMonth, target.categoryId, target.targetMinor);
+  }
+}
+
 function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
   const existingCount = db
     .prepare("SELECT COUNT(*) AS count FROM households")
@@ -121,59 +178,7 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
   db.exec("BEGIN");
 
   try {
-    db.prepare(
-      "INSERT INTO households (id, name, created_at_iso) VALUES (?, ?, ?)"
-    ).run(seedData.household.id, seedData.household.name, seedData.household.createdAtIso);
-
-    const insertAccount = db.prepare(
-      "INSERT INTO accounts (id, household_id, name, currency_code) VALUES (?, ?, ?, ?)"
-    );
-    for (const account of seedData.accounts) {
-      insertAccount.run(account.id, account.householdId, account.name, account.currencyCode);
-    }
-
-    const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    );
-    for (const transaction of seedData.transactions) {
-      insertTransaction.run(
-        transaction.id,
-        transaction.householdId,
-        transaction.accountId,
-        transaction.bookedAtIso,
-        transaction.amountMinor,
-        transaction.merchantRaw,
-        transaction.currencyCode ?? null,
-        transaction.sourceType ?? null,
-        transaction.categoryId ?? null,
-        transaction.importJobId ?? null
-      );
-    }
-
-    const insertImportJob = db.prepare(
-      "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    );
-    for (const importJob of seedData.importJobs) {
-      insertImportJob.run(
-        importJob.id,
-        importJob.householdId,
-        importJob.sourceType,
-        importJob.sourceName,
-        importJob.adapterId ?? null,
-        importJob.candidateCount ?? null,
-        importJob.validationFailureCount ?? null,
-        importJob.startedAtIso,
-        importJob.finishedAtIso ?? null,
-        importJob.provenance ? JSON.stringify(importJob.provenance) : null
-      );
-    }
-
-    const insertTarget = db.prepare(
-      "INSERT INTO monthly_category_targets (year_month, category_id, target_minor) VALUES (?, ?, ?)"
-    );
-    for (const target of seedData.monthlyCategoryTargets) {
-      insertTarget.run(target.yearMonth, target.categoryId, target.targetMinor);
-    }
+    insertLedgerSnapshot(db, seedData);
 
     db.exec("COMMIT");
   } catch (error) {
@@ -330,7 +335,7 @@ export function createLocalLedgerDatabase(
         id: account.id,
         householdId: account.household_id,
         name: account.name,
-        currencyCode: "NOK",
+        currencyCode: account.currency_code,
       })),
       transactions: mappedTransactions,
       importJobs: mappedImportJobs,
@@ -340,6 +345,24 @@ export function createLocalLedgerDatabase(
         targetMinor: target.target_minor,
       })),
     };
+  }
+
+  function replaceLedgerSnapshotData(snapshot: LedgerSnapshotData): void {
+    db.exec("BEGIN");
+    try {
+      db.exec(`
+        DELETE FROM monthly_category_targets;
+        DELETE FROM transactions;
+        DELETE FROM import_jobs;
+        DELETE FROM accounts;
+        DELETE FROM households;
+      `);
+      insertLedgerSnapshot(db, snapshot);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   function upsertMonthlyCategoryTarget(target: MonthlyCategoryTarget): void {
@@ -364,7 +387,7 @@ export function createLocalLedgerDatabase(
       id: account.id,
       householdId: account.household_id,
       name: account.name,
-      currencyCode: "NOK",
+      currencyCode: account.currency_code,
     }));
   }
 
@@ -455,6 +478,7 @@ export function createLocalLedgerDatabase(
 
   return {
     loadLedgerSnapshotData,
+    replaceLedgerSnapshotData,
     getAccountsForHousehold,
     upsertMonthlyCategoryTarget,
     appendImportJob,

@@ -84,15 +84,15 @@ test.describe("Dashboard renderer smoke", () => {
 
   test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) => {
     await electronApp.evaluate(() => {
-      process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-03";
+      process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-04";
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
     });
 
-    await dashboard.monthFrame("2026-03").click();
     await dashboard.monthFrame("2026-04").click();
+    await dashboard.monthFrame("2026-05").click();
 
-    await expect(dashboard.monthSelector).toHaveValue("2026-04", { timeout: 10_000 });
-    await expect(dashboard.incomeValue).toContainText("510");
+    await expect(dashboard.monthSelector).toHaveValue("2026-05", { timeout: 10_000 });
+    await expect(dashboard.incomeValue).toContainText("540");
   });
 
   test("@visual Visual: desktop dashboard preserves the monthly review layout", async ({ window, electronApp }) => {
