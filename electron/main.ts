@@ -1,7 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
 import { createDashboardProvider } from "./dashboardProvider.js";
-import { createCsvExportDialog } from "./fileDialogProvider.js";
+import {
+  createCsvExportDialog,
+  createRestoreSnapshotDialog,
+} from "./fileDialogProvider.js";
 import { join } from "path";
 import { readFileSync } from "node:fs";
 import {
@@ -212,6 +215,7 @@ app.whenReady().then(async () => {
     ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
   const csvExportDialog = createCsvExportDialog();
+  const restoreSnapshotDialog = createRestoreSnapshotDialog();
 
   ipcMain.handle("dashboard:getData", () => {
     return dashboardProvider.getData();
@@ -242,7 +246,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("dialog:chooseRestoreSnapshotPath", async () => {
-    const result = await dialog.showOpenDialog({
+    const result = await restoreSnapshotDialog({
       properties: ["openFile"],
       filters: [{ name: "JSON files", extensions: ["json"] }],
     });

@@ -3,6 +3,7 @@ import React from "react";
 type RestoreState =
   | { status: "idle" }
   | { status: "pending" }
+  | { status: "cancelled" }
   | { status: "success"; transactionCount: number }
   | { status: "error"; message: string };
 
@@ -27,16 +28,19 @@ export function RestoreSnapshotSection({
 
     snapshotPathPromise
       .then((selectedPath) => {
-        if (!selectedPath) return null;
+        if (!selectedPath) {
+          setRestoreState({ status: "cancelled" });
+          return null;
+        }
         setSnapshotPath(selectedPath);
         if (!window.confirm("Restore this snapshot and replace the current local ledger?")) {
+          setRestoreState({ status: "cancelled" });
           return null;
         }
         return window.budgetApi.backup.restore({ snapshotPath: selectedPath });
       })
       .then((result) => {
         if (!result) {
-          setRestoreState({ status: "idle" });
           return;
         }
         setRestoreState({ status: "success", transactionCount: result.transactionCount });
@@ -74,6 +78,9 @@ export function RestoreSnapshotSection({
           Restore complete. {restoreState.transactionCount} transaction
           {restoreState.transactionCount !== 1 ? "s" : ""} restored.
         </p>
+      )}
+      {restoreState.status === "cancelled" && (
+        <p role="status">Restore cancelled.</p>
       )}
     </section>
   );
