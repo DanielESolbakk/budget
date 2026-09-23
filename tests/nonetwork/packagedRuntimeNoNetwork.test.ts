@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createPerformanceHarness } from "../../src/tooling/performance/createPerformanceHarness.js";
+import { runBackupRestoreBenchmark } from "../../src/tooling/performance/runBackupRestoreBenchmark.js";
 import { validatePackagedRuntime } from "../../src/tooling/runtime/validatePackagedRuntime.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
@@ -18,7 +18,7 @@ describe("packaged runtime and harness no-network verification", () => {
       throw new Error("Network access is not allowed in this test.");
     };
 
-    const harnessResult = createPerformanceHarness({ fixturePath: FIXTURE_PATH, iterationCount: 2 });
+    const harnessResult = runBackupRestoreBenchmark({ fixturePath: FIXTURE_PATH, iterationCount: 2 });
     const runtimeResult = validatePackagedRuntime({ projectRoot: process.cwd() });
 
     expect(harnessResult.metrics.roundTripStable).toBe(true);
