@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
-import type { ExportCsvFileOutput } from "../app/exportCsv.js";
+import type { ExportCsvSummary } from "../app/exportCsv.js";
 import type { CsvImportResponse } from "../app/import/importCsv.js";
 import type { ManualEntryResponse } from "../app/import/manualEntry.js";
 import type { PdfImportResponse } from "../app/import/importPdf.js";
@@ -36,7 +36,7 @@ export interface AccountsApi {
 }
 
 export interface ExportApi {
-  writeLedgerCsv: (outputPath: string) => Promise<ExportCsvFileOutput>;
+  writeLedgerCsv: (outputPath: string) => Promise<ExportCsvSummary>;
 }
 
 export interface FileDialogApi {
@@ -88,7 +88,7 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("categoryTarget:listByMonth", yearMonth),
   },
   export: {
-    writeLedgerCsv: (outputPath: string): Promise<ExportCsvFileOutput> =>
+    writeLedgerCsv: (outputPath: string): Promise<ExportCsvSummary> =>
       ipcRenderer.invoke("export:writeLedgerCsv", outputPath),
   },
   import: {

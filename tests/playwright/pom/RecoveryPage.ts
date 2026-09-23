@@ -15,6 +15,10 @@ export class RecoveryPage {
     return this.exportSection.getByLabel("CSV output path");
   }
 
+  get browseButton() {
+    return this.exportSection.getByRole("button", { name: "Browse", exact: true });
+  }
+
   get exportButton() {
     return this.exportSection.getByRole("button", { name: "Export CSV", exact: true });
   }

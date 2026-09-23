@@ -1,7 +1,7 @@
 import { test as base, expect, _electron as electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { AppShellPage } from "../pom/AppShellPage.js";
 import { CategoryTargetPage } from "../pom/CategoryTargetPage.js";
@@ -17,7 +17,7 @@ import { RecoveryPage } from "../pom/RecoveryPage.js";
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 interface ElectronFixtures {
-  csvExportDialogBehavior: "native" | "cancel";
+  csvExportDialogBehavior: "native" | "cancel" | "selected";
   restoreSnapshotDialogBehavior: "native" | "cancel";
   databasePath: string;
   electronApp: ElectronApplication;
@@ -57,6 +57,7 @@ export const test = base.extend<ElectronFixtures>({
         env: {
           ...process.env,
           BUDGET_TEST_CSV_EXPORT_DIALOG: csvExportDialogBehavior,
+          BUDGET_TEST_CSV_EXPORT_PATH: join(dirname(databasePath), "dialog-selected.csv"),
           BUDGET_TEST_RESTORE_DIALOG: restoreSnapshotDialogBehavior,
           NODE_ENV: "test",
           BUDGET_DB_PATH: databasePath,
