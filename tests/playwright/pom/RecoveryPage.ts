@@ -44,7 +44,11 @@ export class RecoveryPage {
   }
 
   get restoreSuccess() {
-    return this.restoreSection.getByRole("status");
+    return this.restoreSection.getByRole("status").filter({ hasText: "Restore complete." });
+  }
+
+  get restoreCancelled() {
+    return this.restoreSection.getByRole("status").filter({ hasText: "Restore cancelled." });
   }
 
   get restoreError() {
