@@ -57,7 +57,6 @@ test.describe("Recovery and portability renderer workflows", () => {
     recovery,
     dashboard,
     dashboardTarget,
-    electronApp,
     forecast,
     window,
   }) => {
@@ -93,12 +92,7 @@ test.describe("Recovery and portability renderer workflows", () => {
       });
       writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
 
-      await electronApp.evaluate(({ dialog }, selectedSnapshotPath) => {
-        dialog.showOpenDialog = async () => ({
-          canceled: false,
-          filePaths: [selectedSnapshotPath],
-        });
-      }, snapshotPath);
+      await recovery.restorePathInput.fill(snapshotPath);
       window.once("dialog", async (dialog) => {
         expect(dialog.type()).toBe("confirm");
         await dialog.accept();
@@ -110,15 +104,15 @@ test.describe("Recovery and portability renderer workflows", () => {
       await expect(dashboard.monthSelector).toHaveValue("2026-05");
       await expect(dashboard.monthFrame("2026-05")).toBeVisible();
       await expect(dashboard.incomeValue).toHaveText(/0,00/);
-      await expect(dashboard.expenseValue).toHaveText(/123,45/);
-      await expect(dashboard.netValue).toHaveText(/123,45/);
+      await expect(dashboard.expenseValue).toHaveText(/^123,45/);
+      await expect(dashboard.netValue).toHaveText(/−123,45/);
       await expect(dashboardTarget.categoryRow("restored")).toBeVisible();
-      await expect(dashboardTarget.targetCell("restored")).toHaveText(/150,00/);
-      await expect(dashboardTarget.actualCell("restored")).toHaveText(/123,45/);
+      await expect(dashboardTarget.targetCell("restored")).toHaveText(/^150,00/);
+      await expect(dashboardTarget.actualCell("restored")).toHaveText(/^123,45/);
       await expect(dashboardTarget.deltaCell("restored")).toHaveText(/−26,55/);
       await expect(forecast.projectedDescription).toBeVisible();
       await expect(forecast.section.getByRole("listitem").first()).toContainText("2026-06");
-      await expect(forecast.section.getByRole("listitem").first()).toContainText("123,45");
+      await expect(forecast.section.getByRole("listitem").first()).toContainText("−123,45");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -147,6 +141,17 @@ test.describe("Recovery and portability renderer workflows", () => {
 
       await expect(recovery.exportCancelled).toHaveText("Export cancelled.");
       await expect(recovery.exportSuccess).not.toBeVisible();
+    });
+  });
+
+  test.describe("native restore-dialog cancellation", () => {
+    test.use({ restoreSnapshotDialogBehavior: "cancel" });
+
+    test("reports cancellation when the snapshot chooser is dismissed", async ({ recovery }) => {
+      await recovery.restoreButton.click();
+
+      await expect(recovery.restoreCancelled).toHaveText("Restore cancelled.");
+      await expect(recovery.restoreSuccess).not.toBeVisible();
     });
   });
 

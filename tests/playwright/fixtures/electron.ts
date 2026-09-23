@@ -18,6 +18,7 @@ const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 interface ElectronFixtures {
   csvExportDialogBehavior: "native" | "cancel";
+  restoreSnapshotDialogBehavior: "native" | "cancel";
   databasePath: string;
   electronApp: ElectronApplication;
   window: Page;
@@ -35,6 +36,7 @@ interface ElectronFixtures {
 
 export const test = base.extend<ElectronFixtures>({
   csvExportDialogBehavior: ["native", { option: true }],
+  restoreSnapshotDialogBehavior: ["native", { option: true }],
   // eslint-disable-next-line no-empty-pattern
   databasePath: async ({}, use) => {
     const databaseDirectory = mkdtempSync(join(tmpdir(), "budget-playwright-"));
@@ -46,7 +48,7 @@ export const test = base.extend<ElectronFixtures>({
       rmSync(databaseDirectory, { recursive: true, force: true });
     }
   },
-  electronApp: async ({ csvExportDialogBehavior, databasePath }, use) => {
+  electronApp: async ({ csvExportDialogBehavior, databasePath, restoreSnapshotDialogBehavior }, use) => {
     let app: ElectronApplication | undefined;
 
     try {
@@ -55,6 +57,7 @@ export const test = base.extend<ElectronFixtures>({
         env: {
           ...process.env,
           BUDGET_TEST_CSV_EXPORT_DIALOG: csvExportDialogBehavior,
+          BUDGET_TEST_RESTORE_DIALOG: restoreSnapshotDialogBehavior,
           NODE_ENV: "test",
           BUDGET_DB_PATH: databasePath,
         },
