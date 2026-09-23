@@ -199,10 +199,10 @@ test.describe("Recovery and portability renderer workflows", () => {
       });
       await recovery.restoreButton.click();
 
+      await expect(recovery.restoreCancelled).toHaveText("Restore cancelled.");
       await expect(recovery.restoreSuccess).not.toBeVisible();
       await expect(dashboard.categoryBreakdownSection).toContainText("groceries");
       await expect(dashboard.categoryBreakdownSection).not.toContainText("cancelled");
-
       const persistedSnapshot = loadPersistedSnapshot(databasePath);
       expect(persistedSnapshot).toEqual(initialSnapshot);
       expect(persistedSnapshot.transactions).not.toContainEqual(
