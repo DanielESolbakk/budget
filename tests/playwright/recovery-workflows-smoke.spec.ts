@@ -56,6 +56,9 @@ test.describe("Recovery and portability renderer workflows", () => {
   test("restores a snapshot and refreshes the dashboard with restored ledger data", async ({
     recovery,
     dashboard,
+    dashboardTarget,
+    electronApp,
+    forecast,
     window,
   }) => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-restore-runtime-"));
@@ -83,12 +86,19 @@ test.describe("Recovery and portability renderer workflows", () => {
           },
         ],
         importJobs: [],
-        monthlyCategoryTargets: [],
+        monthlyCategoryTargets: [
+          { yearMonth: "2026-05", categoryId: "restored", targetMinor: 15000 },
+        ],
         createdAtIso: "2026-09-22T10:00:00Z",
       });
       writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
 
-      await recovery.restorePathInput.fill(snapshotPath);
+      await electronApp.evaluate(({ dialog }, selectedSnapshotPath) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [selectedSnapshotPath],
+        });
+      }, snapshotPath);
       window.once("dialog", async (dialog) => {
         expect(dialog.type()).toBe("confirm");
         await dialog.accept();
@@ -97,6 +107,18 @@ test.describe("Recovery and portability renderer workflows", () => {
 
       await expect(recovery.restoreSuccess).toContainText("1 transaction restored");
       await expect(dashboard.categoryBreakdownSection).toContainText("restored");
+      await expect(dashboard.monthSelector).toHaveValue("2026-05");
+      await expect(dashboard.monthFrame("2026-05")).toBeVisible();
+      await expect(dashboard.incomeValue).toHaveText(/0,00/);
+      await expect(dashboard.expenseValue).toHaveText(/123,45/);
+      await expect(dashboard.netValue).toHaveText(/123,45/);
+      await expect(dashboardTarget.categoryRow("restored")).toBeVisible();
+      await expect(dashboardTarget.targetCell("restored")).toHaveText(/150,00/);
+      await expect(dashboardTarget.actualCell("restored")).toHaveText(/123,45/);
+      await expect(dashboardTarget.deltaCell("restored")).toHaveText(/−26,55/);
+      await expect(forecast.projectedDescription).toBeVisible();
+      await expect(forecast.section.getByRole("listitem").first()).toContainText("2026-06");
+      await expect(forecast.section.getByRole("listitem").first()).toContainText("123,45");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
