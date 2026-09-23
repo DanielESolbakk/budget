@@ -16,7 +16,7 @@ const LEDGER_READ_SEED = {
       id: "ledger-read-acc",
       householdId: "ledger-read-hh",
       name: "Ledger Read Account",
-      currencyCode: "NOK" as const,
+      createdAtIso: "2026-01-01T00:00:00Z",
     },
   ],
   transactions: [],
@@ -144,7 +144,7 @@ test.describe("Recovery and portability renderer workflows", () => {
     });
   });
 
-  test.describe("native restore-dialog cancellation", () => {
+  test.describe("restore-dialog cancellation", () => {
     test.use({ restoreSnapshotDialogBehavior: "cancel" });
 
     test("reports cancellation when the snapshot chooser is dismissed", async ({ recovery }) => {
