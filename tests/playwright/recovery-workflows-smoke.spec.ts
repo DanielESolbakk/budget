@@ -16,7 +16,7 @@ const LEDGER_READ_SEED = {
       id: "ledger-read-acc",
       householdId: "ledger-read-hh",
       name: "Ledger Read Account",
-      createdAtIso: "2026-01-01T00:00:00Z",
+      currencyCode: "NOK" as const,
     },
   ],
   transactions: [],
