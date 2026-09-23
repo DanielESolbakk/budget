@@ -27,6 +27,13 @@ export interface ExportCsvFileOutput extends ExportCsvOutput {
   outputPath: string;
 }
 
+export interface ExportCsvSummary {
+  /** Number of data rows written (excluding the header). */
+  rowCount: number;
+  /** Destination path where the CSV output was written. */
+  outputPath: string;
+}
+
 export interface LedgerExportSource {
   loadLedgerSnapshotData: () => Pick<LedgerSnapshotData, "transactions">;
 }

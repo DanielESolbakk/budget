@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
@@ -51,6 +51,26 @@ test.describe("Recovery and portability renderer workflows", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  test.describe("native save-dialog selection", () => {
+    test.use({ csvExportDialogBehavior: "selected" });
+
+    test("uses the selected native path before writing the ledger", async ({
+      recovery,
+      databasePath,
+    }) => {
+      const outputPath = join(dirname(databasePath), "dialog-selected.csv");
+
+      await recovery.browseButton.click();
+      await expect(recovery.exportPathInput).toHaveValue(outputPath);
+      await recovery.exportButton.click();
+
+      await expect(recovery.exportSuccess).toContainText(
+        `Export saved to ${outputPath} (4 transactions).`
+      );
+      expect(readFileSync(outputPath, "utf8")).toContain("sample-tx-1");
+    });
   });
 
   test("restores a snapshot and refreshes the dashboard with restored ledger data", async ({
