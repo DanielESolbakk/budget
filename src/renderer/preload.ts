@@ -1,21 +1,30 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
 import type { ExportCsvSummary } from "../app/exportCsv.js";
-import type { CsvImportResponse } from "../app/import/importCsv.js";
+import type {
+  CsvImportPreviewResponse,
+  CsvImportResponse,
+} from "../app/import/importCsv.js";
 import type { ManualEntryResponse } from "../app/import/manualEntry.js";
-import type { PdfImportResponse } from "../app/import/importPdf.js";
+import type {
+  PdfImportPreviewResponse,
+  PdfImportResponse,
+} from "../app/import/importPdf.js";
 import type {
   Account,
   ForecastEntry,
   ManualEntryInput,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
+  Transaction,
 } from "../domain/types.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
   RestoreSnapshotOutput,
 } from "../domain/backup/snapshotContract.js";
+import type { TransactionQuery } from "../domain/ledger/filterTransactions.js";
+import type { CsvColumnMapping } from "../domain/import/csvRowMapper.js";
 
 export interface DashboardApi {
   getData: () => Promise<DashboardData>;
@@ -46,9 +55,20 @@ export interface FileDialogApi {
 }
 
 export interface ImportApi {
-  importCsv: (input: { filePath: string; accountId?: string }) => Promise<CsvImportResponse>;
+  previewCsv: (input: { filePath: string; accountId?: string; columnMapping?: CsvColumnMapping }) => Promise<CsvImportPreviewResponse>;
+  importCsv: (input: { filePath: string; previewId: string; accountId?: string; columnMapping?: CsvColumnMapping }) => Promise<CsvImportResponse>;
   addManualTransaction: (input: ManualEntryInput) => Promise<ManualEntryResponse>;
-  importPdf: (input: { filePath: string; accountId?: string }) => Promise<PdfImportResponse>;
+  previewPdf: (input: { filePath: string; accountId?: string }) => Promise<PdfImportPreviewResponse>;
+  importPdf: (input: { filePath: string; previewId: string; accountId?: string }) => Promise<PdfImportResponse>;
+}
+
+export interface ReviewApi {
+  list: () => Promise<Transaction[]>;
+  updateCategory: (input: { transactionId: string; categoryId: string }) => Promise<Transaction>;
+}
+
+export interface LedgerApi {
+  list: (query: TransactionQuery) => Promise<Transaction[]>;
 }
 
 export interface BackupApi {
@@ -63,6 +83,8 @@ export interface BudgetApi {
   categoryTargets: CategoryTargetsApi;
   export: ExportApi;
   import: ImportApi;
+  review: ReviewApi;
+  ledger: LedgerApi;
   backup: BackupApi;
   dialogs: FileDialogApi;
 }
@@ -92,12 +114,25 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("export:writeLedgerCsv", outputPath),
   },
   import: {
-    importCsv: (input: { filePath: string; accountId?: string }): Promise<CsvImportResponse> =>
+    previewCsv: (input: { filePath: string; accountId?: string; columnMapping?: CsvColumnMapping }): Promise<CsvImportPreviewResponse> =>
+      ipcRenderer.invoke("import:csvPreview", input),
+    importCsv: (input: { filePath: string; previewId: string; accountId?: string; columnMapping?: CsvColumnMapping }): Promise<CsvImportResponse> =>
       ipcRenderer.invoke("import:csv", input),
     addManualTransaction: (input: ManualEntryInput): Promise<ManualEntryResponse> =>
       ipcRenderer.invoke("transaction:addManual", input),
-    importPdf: (input: { filePath: string; accountId?: string }): Promise<PdfImportResponse> =>
+    previewPdf: (input: { filePath: string; accountId?: string }): Promise<PdfImportPreviewResponse> =>
+      ipcRenderer.invoke("import:pdfPreview", input),
+    importPdf: (input: { filePath: string; previewId: string; accountId?: string }): Promise<PdfImportResponse> =>
       ipcRenderer.invoke("import:pdf", input),
+  },
+  review: {
+    list: (): Promise<Transaction[]> => ipcRenderer.invoke("transaction:listReview"),
+    updateCategory: (input: { transactionId: string; categoryId: string }): Promise<Transaction> =>
+      ipcRenderer.invoke("transaction:updateCategory", input),
+  },
+  ledger: {
+    list: (query: TransactionQuery): Promise<Transaction[]> =>
+      ipcRenderer.invoke("transaction:list", query),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

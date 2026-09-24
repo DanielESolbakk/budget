@@ -8,6 +8,7 @@ import {
   type Account,
   type Household,
   type ImportJob,
+  type MerchantCategoryRule,
   type MonthlyCategoryTarget,
   type Transaction,
 } from "../../domain/types.js";
@@ -82,6 +83,7 @@ function validateTransactions(
         transaction.sourceType !== "pdf" &&
         transaction.sourceType !== "manual") ||
       !isOptionalString(transaction.merchantAlias) ||
+      !isOptionalString(transaction.sourceReference) ||
       !isOptionalString(transaction.categoryId) ||
       !isOptionalString(transaction.importJobId) ||
       transaction.householdId !== householdId ||
@@ -152,13 +154,35 @@ function validateTargets(value: unknown[], snapshotPath: string): asserts value 
   }
 }
 
+function validateMerchantCategoryRules(
+  value: unknown,
+  snapshotPath: string
+): asserts value is MerchantCategoryRule[] {
+  if (!Array.isArray(value)) {
+    invalidSnapshot(snapshotPath, "merchant category rules");
+  }
+
+  const aliases = new Set<string>();
+  for (const rule of value) {
+    if (
+      !isRecord(rule) ||
+      !isNonEmptyString(rule.merchantAlias) ||
+      !isNonEmptyString(rule.categoryId) ||
+      aliases.has(rule.merchantAlias)
+    ) {
+      invalidSnapshot(snapshotPath, "merchant category rules");
+    }
+    aliases.add(rule.merchantAlias);
+  }
+}
+
 function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSnapshot {
   if (!isRecord(value) || !isRecord(value.metadata)) {
     throw new Error(`Invalid snapshot structure: ${snapshotPath}`);
   }
 
   const metadata = value.metadata;
-  if (metadata.version !== SNAPSHOT_VERSION) {
+  if (metadata.version !== "1" && metadata.version !== SNAPSHOT_VERSION) {
     throw new Error(
       `Unsupported snapshot version: ${String(metadata.version ?? "unknown")}. Expected: ${SNAPSHOT_VERSION}`
     );
@@ -191,6 +215,9 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   validateImportJobs(importJobs, value.household.id, snapshotPath);
   validateAccounts(accounts, value.household.id, snapshotPath);
   validateTargets(monthlyCategoryTargets, snapshotPath);
+  if (metadata.version === SNAPSHOT_VERSION) {
+    validateMerchantCategoryRules(value.merchantCategoryRules, snapshotPath);
+  }
   validateTransactions(
     transactions,
     value.household.id,
@@ -226,6 +253,8 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     transactions: snapshot.transactions,
     importJobs: snapshot.importJobs,
     monthlyCategoryTargets: snapshot.monthlyCategoryTargets,
+    merchantCategoryRules:
+      snapshot.metadata.version === "1" ? [] : snapshot.merchantCategoryRules,
     transactionCount: snapshot.transactions.length,
   };
 }

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { normalizeMerchantName } from "../merchant/normalizeMerchantName.js";
 
 export interface TransactionFingerprintInput {
   accountId: string;
@@ -21,7 +22,7 @@ export function buildTransactionFingerprint(input: TransactionFingerprintInput):
     input.accountId.trim(),
     canonicalizeBookedAtIso(input.bookedAtIso),
     input.amountMinor.toString(10),
-    input.merchantRaw.trim().toUpperCase().replace(/\s+/g, " ")
+    normalizeMerchantName(input.merchantRaw)
   ].join("|");
 
   return createHash("sha256").update(canonical, "utf8").digest("hex");

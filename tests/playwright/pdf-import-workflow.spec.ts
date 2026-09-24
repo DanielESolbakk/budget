@@ -19,11 +19,13 @@
 import { test, expect } from "./fixtures/electron.js";
 import type { Request } from "@playwright/test";
 import { join, resolve } from "node:path";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
+const BINARY_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 
 /** Writes an unsupported text content to a temp file and returns the absolute path. */
 function writeUnsupportedFixture(): string {
@@ -34,8 +36,84 @@ function writeUnsupportedFixture(): string {
   return path;
 }
 
+function loadPersistedSnapshot(databasePath: string) {
+  const ledger = createLocalLedgerDatabase({
+    dbPath: databasePath,
+    seedData: {
+      household: {
+        id: "sample-hh",
+        name: "Sample Household",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      },
+      accounts: [
+        {
+          id: "sample-acc",
+          householdId: "sample-hh",
+          name: "Brukskonto",
+          currencyCode: "NOK" as const,
+        },
+      ],
+      transactions: [],
+      importJobs: [],
+      monthlyCategoryTargets: [],
+    },
+  });
+
+  try {
+    return ledger.loadLedgerSnapshotData();
+  } finally {
+    ledger.close();
+  }
+}
+
 test.describe("PDF import renderer workflow", () => {
-  test("Scenario 1: importing the supported synthetic text PDF fixture reports success and displays adapter identity", async ({ pdfImport, dashboard }) => {
+  test("Scenario 0: importing a binary PDF extracts and persists representative transaction fields", async ({
+    pdfImport,
+    dashboard,
+    databasePath,
+  }) => {
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    await pdfImport.submitImport(BINARY_FIXTURE_PATH);
+
+    await expect(pdfImport.successStatus).toBeVisible({ timeout: 20_000 });
+    await expect(pdfImport.successStatus).toContainText("Added 2 transactions to your ledger");
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+
+    const snapshot = loadPersistedSnapshot(databasePath);
+    const importedTransactions = snapshot.transactions.filter((transaction) => transaction.sourceType === "pdf");
+    expect(importedTransactions).toHaveLength(2);
+    expect(importedTransactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        bookedAtIso: "2026-05-27T00:00:00Z",
+        amountMinor: 5_000_000,
+        merchantRaw: "SALARY",
+        currencyCode: "NOK",
+      }),
+      expect.objectContaining({
+        bookedAtIso: "2026-05-26T00:00:00Z",
+        amountMinor: -9_770,
+        merchantRaw: "MERCHANT-005 Butikkjop",
+        currencyCode: "NOK",
+      }),
+    ]));
+
+    expect(snapshot.importJobs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sourceType: "pdf",
+        adapterId: "rogaland-sparebank-text-v1",
+        candidateCount: 2,
+        provenance: expect.objectContaining({
+          sourceIdentity: "no.rogaland-sparebank.statement-text",
+        }),
+      }),
+    ]));
+  });
+
+  test("Scenario 1: importing the supported synthetic text PDF fixture reports success and displays adapter identity", async ({
+    pdfImport,
+    dashboard,
+    databasePath,
+  }) => {
     // AC-1: PDF import section is visible with file path input and button.
     await expect(pdfImport.importSection).toBeVisible();
     await expect(pdfImport.importHeading).toBeVisible();
@@ -54,10 +132,9 @@ test.describe("PDF import renderer workflow", () => {
     // AC-1: success status is shown after import.
     await expect(pdfImport.successStatus).toBeVisible({ timeout: 10_000 });
     const statusText = await pdfImport.successStatus.textContent();
-    expect(statusText).toMatch(/transactions imported/i);
+    expect(statusText).toMatch(/Added 10 transactions to your ledger/i);
 
-    // AC-4: adapter identity is shown in the success message.
-    expect(statusText).toMatch(/rogaland-sparebank-text-v1/i);
+    // AC-4: the import completes with user-facing feedback; adapter provenance is persisted separately.
 
     // The app reloads dashboard state after successful import and remounts the import section.
     await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
@@ -70,16 +147,38 @@ test.describe("PDF import renderer workflow", () => {
       })
       .not.toBe(beforeIncomeText);
 
+    const snapshotAfterFirstImport = loadPersistedSnapshot(databasePath);
+    const firstImportJob = snapshotAfterFirstImport.importJobs.find(
+      (importJob) => importJob.adapterId === "rogaland-sparebank-text-v1"
+    );
+    expect(firstImportJob).toBeDefined();
+    expect(firstImportJob?.candidateCount).toBeGreaterThan(0);
+    expect(snapshotAfterFirstImport.transactions).toHaveLength(
+      4 + (firstImportJob?.candidateCount ?? 0)
+    );
+
     const beforeSecondImportIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
     await pdfImport.filePathInput.fill(FIXTURE_PATH);
     await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+    await pdfImport.confirmImportButton.click();
     await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
     await expect(pdfImport.successStatus).toBeVisible({ timeout: 10_000 });
+    await expect(pdfImport.successStatus).toHaveText(
+      /Added 0 transactions to your ledger\. 10 duplicates skipped\./,
+    );
     await expect
       .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), {
         timeout: 10_000,
       })
       .toBe(beforeSecondImportIncomeText);
+
+    const snapshotAfterSecondImport = loadPersistedSnapshot(databasePath);
+    expect(snapshotAfterSecondImport.transactions).toEqual(snapshotAfterFirstImport.transactions);
+    expect(snapshotAfterSecondImport.importJobs).toHaveLength(1);
+    expect(snapshotAfterSecondImport.importJobs[0]).toMatchObject({
+      adapterId: "rogaland-sparebank-text-v1",
+    });
   });
 
   test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async ({ pdfImport, dashboard }) => {
@@ -103,8 +202,49 @@ test.describe("PDF import renderer workflow", () => {
     expect(afterIncomeText).toBe(beforeIncomeText);
   });
 
+  test("Regression: a missing PDF path reports a file-read failure", async ({ pdfImport }) => {
+    const missingPath = join(tmpdir(), `missing-${randomUUID()}.txt`);
+
+    await pdfImport.submitImport(missingPath);
+
+    await expect(pdfImport.errorAlert).toBeVisible({ timeout: 10_000 });
+    await expect(pdfImport.errorAlert).toContainText(missingPath);
+  });
+
+  test("Regression: PDF confirmation rejects a file changed after preview", async ({
+    pdfImport,
+    dashboard,
+  }) => {
+    const mutablePath = join(tmpdir(), `mutable-${randomUUID()}.txt`);
+    writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
+    const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
+
+    await pdfImport.filePathInput.fill(mutablePath);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    writeFileSync(mutablePath, `${readFileSync(FIXTURE_PATH, "utf8")}changed after preview\n`, "utf8");
+    await pdfImport.confirmImportButton.click();
+
+    await expect(pdfImport.errorAlert).toBeVisible({ timeout: 10_000 });
+    await expect(pdfImport.errorAlert).toContainText("Import validation failed");
+    await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
+  });
+
+  test("Regression: PDF import rejects an account outside the household", async ({ window }) => {
+    const response = await window.evaluate(async (filePath) =>
+      (globalThis as unknown as Window).budgetApi.import.importPdf({ filePath, previewId: "unused", accountId: "other-household-account" }),
+      FIXTURE_PATH
+    );
+
+    expect(response).toMatchObject({
+      ok: false,
+      errors: [{ code: "INVALID_ACCOUNT_ID" }],
+    });
+  });
+
   test("Scenario 3: PDF import workflow runs under network guard with no outbound network calls", async ({ pdfImport, window }) => {
-    // AC-5: verify the successful import path emits no external HTTP(S) request.
+    // AC-5: verify the renderer import path emits no external HTTP(S) request.
     const outboundRequests: string[] = [];
     const onRequest = (request: Request): void => {
       const requestUrl = new URL(request.url());

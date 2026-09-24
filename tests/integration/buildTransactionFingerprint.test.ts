@@ -28,4 +28,11 @@ describe("buildTransactionFingerprint", () => {
 
     expect(fingerprintA).not.toBe(fingerprintB);
   });
+
+  it("treats normalized legal suffix variants as the same merchant", () => {
+    expect(buildTransactionFingerprint({
+      ...baseInput,
+      merchantRaw: "Rema 1000 AS",
+    })).toBe(buildTransactionFingerprint(baseInput));
+  });
 });

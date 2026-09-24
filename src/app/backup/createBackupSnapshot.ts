@@ -39,6 +39,11 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     const byMonth = a.yearMonth.localeCompare(b.yearMonth);
     return byMonth !== 0 ? byMonth : a.categoryId.localeCompare(b.categoryId);
   });
+  const merchantCategoryRules = [...(input.merchantCategoryRules ?? [])].sort(
+    (left, right) =>
+      left.merchantAlias.localeCompare(right.merchantAlias) ||
+      left.categoryId.localeCompare(right.categoryId)
+  );
 
   return {
     metadata: {
@@ -52,6 +57,7 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     transactions,
     importJobs,
     monthlyCategoryTargets,
+    merchantCategoryRules,
   };
 }
 

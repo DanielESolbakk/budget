@@ -6,6 +6,7 @@ import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.j
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import type { LedgerSnapshotData } from "../../src/domain/backup/snapshotContract.js";
+import type { Transaction } from "../../src/domain/types.js";
 
 const HOUSEHOLD = {
   id: "hh-recovery",
@@ -38,6 +39,7 @@ function createSnapshotData(): LedgerSnapshotData {
     monthlyCategoryTargets: [
       { yearMonth: "2026-05", categoryId: "restored", targetMinor: 15000 },
     ],
+    merchantCategoryRules: [],
   };
 }
 
@@ -196,6 +198,116 @@ describe("ledger recovery runtime contracts", () => {
       expect(reopened.loadLedgerSnapshotData().accounts[0]?.currencyCode).toBe("USD");
       reopened.close();
     } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces learned merchant rules atomically and preserves them after reopening", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-rules-reopen-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const restoredState: LedgerSnapshotData = {
+      ...createSnapshotData(),
+      merchantCategoryRules: [
+        { merchantAlias: "MERCHANT B", categoryId: "transport" },
+        { merchantAlias: "MERCHANT A", categoryId: "groceries" },
+      ],
+    };
+
+    try {
+      const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+      database.replaceLedgerSnapshotData(restoredState);
+      expect(database.loadLedgerSnapshotData().merchantCategoryRules).toEqual([
+        { merchantAlias: "MERCHANT A", categoryId: "groceries" },
+        { merchantAlias: "MERCHANT B", categoryId: "transport" },
+      ]);
+      database.close();
+
+      const reopened = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+      expect(reopened.loadLedgerSnapshotData().merchantCategoryRules).toEqual([
+        { merchantAlias: "MERCHANT A", categoryId: "groceries" },
+        { merchantAlias: "MERCHANT B", categoryId: "transport" },
+      ]);
+      reopened.close();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves bank source references across SQLite and backup snapshot round trips", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-source-reference-"));
+    const database = createLocalLedgerDatabase({
+      dbPath: join(tempDir, "ledger.sqlite"),
+      seedData: {
+        ...createSnapshotData(),
+        transactions: [{
+          ...createSnapshotData().transactions[0]!,
+          sourceReference: "KID-REFERENCE-42",
+        }],
+      },
+    });
+
+    try {
+      const loaded = database.loadLedgerSnapshotData();
+      expect(loaded.transactions[0]?.sourceReference).toBe("KID-REFERENCE-42");
+      const snapshot = buildBackupSnapshot(loaded);
+      expect(snapshot.transactions[0]?.sourceReference).toBe("KID-REFERENCE-42");
+      const snapshotPath = join(tempDir, "snapshot.json");
+      writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
+      database.replaceLedgerSnapshotData(restoreBackupSnapshot({ snapshotPath }));
+      expect(database.loadLedgerSnapshotData().transactions[0]?.sourceReference).toBe("KID-REFERENCE-42");
+    } finally {
+      database.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back the import job when atomic transaction insertion fails", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-import-atomic-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+
+    try {
+      const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+      const importJob = {
+        id: "job-atomic",
+        householdId: HOUSEHOLD.id,
+        sourceType: "csv" as const,
+        sourceName: "broken.csv",
+        startedAtIso: "2026-05-31T00:00:00Z",
+      };
+      const invalidTransaction = {
+        id: "tx-invalid",
+        householdId: HOUSEHOLD.id,
+        accountId: ACCOUNT.id,
+        bookedAtIso: "2026-05-31T00:00:00Z",
+        amountMinor: -100,
+        merchantRaw: undefined,
+      } as unknown as Transaction;
+
+      expect(() => database.appendImportJobAndTransactions(importJob, [invalidTransaction])).toThrow();
+      expect(database.loadLedgerSnapshotData().importJobs).toEqual([]);
+      expect(database.loadLedgerSnapshotData().transactions).toEqual(createSnapshotData().transactions);
+      database.close();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a transaction category unchanged when its learned rule cannot be saved", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-category-atomic-"));
+    const database = createLocalLedgerDatabase({
+      dbPath: join(tempDir, "ledger.sqlite"),
+      seedData: createSnapshotData(),
+    });
+
+    try {
+      expect(() => database.updateTransactionCategoryAndRule("tx-restored", {
+        merchantAlias: null as unknown as string,
+        categoryId: "groceries",
+      })).toThrow();
+      expect(database.loadLedgerSnapshotData().transactions[0]?.categoryId).toBe("restored");
+      expect(database.listMerchantCategoryRules()).toEqual([]);
+    } finally {
+      database.close();
       rmSync(tempDir, { recursive: true, force: true });
     }
   });

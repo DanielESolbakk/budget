@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import {
   buildCsvImportRequest,
+  filterPreviouslyImportedCsvTransactions,
   normalizeCsvImportErrors,
 } from "../../src/app/import/importCsv.js";
 import { parseCsvText } from "../../src/domain/import/parseCsvText.js";
@@ -89,6 +90,169 @@ function runImportOrchestration(
 }
 
 describe("csv-import-runtime-contract", () => {
+  it("does not duplicate a legacy CSV import from the same source path", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const sourceName = "legacy-export.csv";
+    const csvText = readFileSync(FIXTURE_PATH, "utf8");
+    const rows = parseCsvText(csvText);
+    const options = {
+      householdId: SAMPLE_HOUSEHOLD.id,
+      accountId: SAMPLE_ACCOUNT.id,
+      sourceIdentity: "file-digest",
+    };
+    const oldImportJob: ImportJob = {
+      id: "import-csv-old",
+      householdId: SAMPLE_HOUSEHOLD.id,
+      sourceType: "csv",
+      sourceName,
+      startedAtIso: "2026-05-31T00:00:00Z",
+    };
+
+    try {
+      const legacy = mapCsvRows(rows, { ...options, importJobId: oldImportJob.id });
+      expect(legacy.skipped).toEqual([]);
+      const oldTransactions = legacy.transactions.map((transaction, index) => {
+        const { sourceReference: _legacyReference, ...legacyTransaction } = transaction;
+        return { ...legacyTransaction, id: `${oldImportJob.id}-${index + 1}` };
+      });
+      expect(ledger.appendImportJobAndTransactions(oldImportJob, oldTransactions)).toBe(rows.length);
+
+      const candidates = mapCsvRows(rows, options).transactions;
+      const pending = filterPreviouslyImportedCsvTransactions(
+        candidates,
+        ledger.loadLedgerSnapshotData(),
+        { filePath: sourceName, accountId: SAMPLE_ACCOUNT.id, sourceIdentity: "file-digest" }
+      );
+      expect(pending).toEqual([]);
+      expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(rows.length);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("does not drop a new purchase when the same CSV path gets another bank reference", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const sourceName = "changing-export.csv";
+    const options = { householdId: SAMPLE_HOUSEHOLD.id, accountId: SAMPLE_ACCOUNT.id };
+    const header = "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Melding/KID/Fakt.nr";
+    const firstRows = parseCsvText(`${header}\n23.05.2026;;KIWI;;-12.50;NOK;KID-100`);
+    const secondRows = parseCsvText(`${header}\n23.05.2026;;KIWI;;-12.50;NOK;KID-100\n23.05.2026;;KIWI;;-12.50;NOK;KID-200`);
+
+    try {
+      const first = mapCsvRows(firstRows, { ...options, sourceIdentity: "first-digest", importJobId: "first-job" });
+      expect(ledger.appendImportJobAndTransactions({
+        id: "first-job", householdId: options.householdId, sourceType: "csv", sourceName,
+        startedAtIso: "2026-05-23T00:00:00Z", provenance: { sourceIdentity: "first-digest" },
+      }, first.transactions)).toBe(1);
+
+      const second = mapCsvRows(secondRows, { ...options, sourceIdentity: "second-digest" });
+      const pending = filterPreviouslyImportedCsvTransactions(second.transactions, ledger.loadLedgerSnapshotData(), {
+        filePath: sourceName, accountId: options.accountId, sourceIdentity: "second-digest",
+      });
+      expect(pending).toHaveLength(1);
+      expect(ledger.appendTransactions(pending)).toBe(1);
+      expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(2);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("tracks unchanged CSV content copied to another path before that copy is extended", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const header = "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Melding/KID/Fakt.nr";
+    const oneRow = parseCsvText(`${header}\n23.05.2026;;KIWI;;-12.50;NOK;KID-100`);
+    const twoRows = parseCsvText(`${header}\n23.05.2026;;KIWI;;-12.50;NOK;KID-100\n23.05.2026;;KIWI;;-12.50;NOK;KID-200`);
+    const options = { householdId: SAMPLE_HOUSEHOLD.id, accountId: SAMPLE_ACCOUNT.id };
+
+    try {
+      const original = mapCsvRows(oneRow, { ...options, sourceIdentity: "digest-one", importJobId: "path-a-job" });
+      expect(ledger.appendImportJobAndTransactions({
+        id: "path-a-job", householdId: options.householdId, sourceType: "csv", sourceName: "A.csv",
+        startedAtIso: "2026-05-23T00:00:00Z", provenance: { sourceIdentity: "digest-one" },
+      }, original.transactions)).toBe(1);
+
+      const copied = mapCsvRows(oneRow, { ...options, sourceIdentity: "digest-one", importJobId: "path-b-copy-job" });
+      expect(ledger.appendImportJobAndTransactions({
+        id: "path-b-copy-job", householdId: options.householdId, sourceType: "csv", sourceName: "B.csv",
+        startedAtIso: "2026-05-23T00:00:01Z", provenance: { sourceIdentity: "digest-one" },
+      }, copied.transactions)).toBe(0);
+
+      const expanded = mapCsvRows(twoRows, { ...options, sourceIdentity: "digest-two" });
+      const pending = filterPreviouslyImportedCsvTransactions(expanded.transactions, ledger.loadLedgerSnapshotData(), {
+        filePath: "B.csv", accountId: options.accountId, sourceIdentity: "digest-two",
+      });
+      expect(pending).toHaveLength(1);
+      expect(pending[0]?.sourceReference).toBe("KID-200");
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("matches a prior CSV source when only Windows path casing differs", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const upperPath = join(tmpdir(), "Budget-Imports", "Bank.csv");
+    const lowerPath = join(tmpdir(), "budget-imports", "bank.csv");
+    const csvText = "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Melding/KID/Fakt.nr\n23.05.2026;;KIWI;;-12.50;NOK;KID-CASE";
+    const rows = parseCsvText(csvText);
+
+    try {
+      const transactions = mapCsvRows(rows, {
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        importJobId: "case-job",
+        sourceIdentity: "same-digest",
+      }).transactions;
+      ledger.appendImportJobAndTransactions({
+        id: "case-job",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        sourceType: "csv",
+        sourceName: upperPath,
+        startedAtIso: "2026-05-23T00:00:00Z",
+        provenance: { sourceIdentity: "same-digest" },
+      }, transactions);
+
+      const candidates = mapCsvRows(rows, {
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        sourceIdentity: "same-digest",
+      }).transactions;
+      const pending = filterPreviouslyImportedCsvTransactions(candidates, ledger.loadLedgerSnapshotData(), {
+        filePath: lowerPath,
+        accountId: SAMPLE_ACCOUNT.id,
+        sourceIdentity: "same-digest",
+      });
+      expect(pending).toEqual([]);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("keeps separate purchases with the same merchant, date and amount when references differ", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const header = "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Melding/KID/Fakt.nr";
+    const first = mapCsvRows(parseCsvText(`${header}\n23.05.2026;;KIWI;;-12.50;NOK;KID-100`), {
+      householdId: SAMPLE_HOUSEHOLD.id,
+      accountId: SAMPLE_ACCOUNT.id,
+      sourceIdentity: "source-one",
+    });
+    const second = mapCsvRows(parseCsvText(`${header}\n23.05.2026;;KIWI;;-12.50;NOK;KID-200`), {
+      householdId: SAMPLE_HOUSEHOLD.id,
+      accountId: SAMPLE_ACCOUNT.id,
+      sourceIdentity: "source-two",
+    });
+
+    try {
+      expect(first.skipped).toEqual([]);
+      expect(second.skipped).toEqual([]);
+      expect(ledger.appendTransactions(first.transactions)).toBe(1);
+      expect(ledger.appendTransactions(second.transactions)).toBe(1);
+      expect(ledger.appendTransactions(first.transactions)).toBe(0);
+      expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(2);
+    } finally {
+      ledger.close();
+    }
+  });
+
   describe("AC-2: Successful CSV import writes expected import job and transaction records", () => {
     it("writes one import_jobs record and expected transaction rows for the synthetic fixture", () => {
       const ledger = makeTestLedger(randomUUID());
@@ -173,8 +337,8 @@ describe("csv-import-runtime-contract", () => {
 
     it("returns ok=false with explicit errors and writes zero transactions for missing headers", () => {
       const ledger = makeTestLedger(randomUUID());
-      // CSV with wrong column names (no matching Norwegian bank headers).
-      const invalidCsv = "Dato;Tekst;Beløp\n01.01.2026;Test;-100.00\n";
+      // CSV with headers that do not match any supported canonical or alias names.
+      const invalidCsv = "OtherDate;OtherText;OtherAmount\n01.01.2026;Test;-100.00\n";
 
       const response = runImportOrchestration(invalidCsv, ledger, {
         householdId: SAMPLE_HOUSEHOLD.id,

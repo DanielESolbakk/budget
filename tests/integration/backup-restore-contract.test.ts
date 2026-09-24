@@ -221,6 +221,50 @@ describe("backup/restore contract", () => {
     });
   });
 
+  it("includes learned merchant rules in deterministic order", () => {
+    const snapshot = buildBackupSnapshot({
+      household: SAMPLE_HOUSEHOLD,
+      accounts: SAMPLE_ACCOUNTS,
+      transactions: SAMPLE_TRANSACTIONS,
+      importJobs: SAMPLE_IMPORT_JOBS,
+      monthlyCategoryTargets: SAMPLE_TARGETS,
+      merchantCategoryRules: [
+        { merchantAlias: "MERCHANT B", categoryId: "transport" },
+        { merchantAlias: "MERCHANT A", categoryId: "groceries" },
+      ],
+      createdAtIso: "2026-06-01T12:00:00Z",
+    });
+
+    expect(snapshot.merchantCategoryRules).toEqual([
+      { merchantAlias: "MERCHANT A", categoryId: "groceries" },
+      { merchantAlias: "MERCHANT B", categoryId: "transport" },
+    ]);
+  });
+
+  it("migrates version-1 snapshots with an empty learned-rule collection", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-backup-v1-"));
+    const snapshotPath = join(tempDir, "legacy.json");
+
+    try {
+      const legacySnapshot = buildBackupSnapshot({
+        household: SAMPLE_HOUSEHOLD,
+        accounts: SAMPLE_ACCOUNTS,
+        transactions: SAMPLE_TRANSACTIONS,
+        importJobs: SAMPLE_IMPORT_JOBS,
+        monthlyCategoryTargets: SAMPLE_TARGETS,
+        merchantCategoryRules: [{ merchantAlias: "STALE", categoryId: "other" }],
+        createdAtIso: "2026-06-01T12:00:00Z",
+      });
+      legacySnapshot.metadata.version = "1";
+      delete (legacySnapshot as unknown as { merchantCategoryRules?: unknown }).merchantCategoryRules;
+      fsWriteFileSync(snapshotPath, JSON.stringify(legacySnapshot), "utf8");
+
+      expect(restoreBackupSnapshot({ snapshotPath }).merchantCategoryRules).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   describe("AC-2: restore reproduces equivalent ledger state", () => {
     it("round-trip: restore after create returns equivalent ledger state", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "budget-restore-"));

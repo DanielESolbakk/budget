@@ -13,6 +13,8 @@ import { ManualEntryPage } from "../pom/ManualEntryPage.js";
 import { PdfImportPage } from "../pom/PdfImportPage.js";
 import { PreloadBridgePage } from "../pom/PreloadBridgePage.js";
 import { RecoveryPage } from "../pom/RecoveryPage.js";
+import { ReviewQueuePage } from "../pom/ReviewQueuePage.js";
+import { LedgerPage } from "../pom/LedgerPage.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -32,6 +34,8 @@ interface ElectronFixtures {
   pdfImport: PdfImportPage;
   preloadBridge: PreloadBridgePage;
   recovery: RecoveryPage;
+  reviewQueue: ReviewQueuePage;
+  ledger: LedgerPage;
 }
 
 export const test = base.extend<ElectronFixtures>({
@@ -107,6 +111,12 @@ export const test = base.extend<ElectronFixtures>({
   },
   recovery: async ({ window }, use) => {
     await use(new RecoveryPage(window));
+  },
+  reviewQueue: async ({ window }, use) => {
+    await use(new ReviewQueuePage(window));
+  },
+  ledger: async ({ window }, use) => {
+    await use(new LedgerPage(window));
   },
 });
 

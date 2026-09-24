@@ -128,7 +128,7 @@ describe("csv import contract", () => {
       expect(result.transaction.importJobId).toBe("job-42");
     });
 
-    it("uses idPrefix and rowIndex to build the transaction id", () => {
+    it("uses a stable transaction fingerprint regardless of import row position", () => {
       const result = mapCsvRowToTransaction(makeRow(), 4, {
         ...MAPPING_OPTIONS,
         idPrefix: "test-import",
@@ -136,7 +136,15 @@ describe("csv import contract", () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.transaction.id).toBe("test-import-5");
+      const repeated = mapCsvRowToTransaction(makeRow(), 0, {
+        ...MAPPING_OPTIONS,
+        idPrefix: "different-import",
+      });
+
+      expect(repeated.ok).toBe(true);
+      if (!repeated.ok) return;
+      expect(result.transaction.id).toBe(repeated.transaction.id);
+      expect(result.transaction.id).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it("returns INVALID_DATE_FORMAT for a malformed date", () => {
@@ -210,6 +218,7 @@ describe("csv import contract", () => {
       const result = mapCsvRows([makeRow(), makeRow()], MAPPING_OPTIONS);
 
       expect(result.transactions).toHaveLength(2);
+      expect(result.transactions[0]?.id).not.toBe(result.transactions[1]?.id);
       expect(result.skipped).toEqual([]);
     });
 

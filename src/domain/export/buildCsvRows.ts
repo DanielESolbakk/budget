@@ -9,6 +9,7 @@ export const EXPORT_CSV_HEADERS = [
   "amountMinor",
   "merchantRaw",
   "merchantAlias",
+  "sourceReference",
   "categoryId",
   "importJobId",
 ] as const;
@@ -31,6 +32,7 @@ export function buildCsvRow(transaction: Transaction): ExportCsvRow {
     amountMinor: String(transaction.amountMinor),
     merchantRaw: transaction.merchantRaw,
     merchantAlias: transaction.merchantAlias ?? "",
+    sourceReference: transaction.sourceReference ?? "",
     categoryId: transaction.categoryId ?? "",
     importJobId: transaction.importJobId ?? "",
   };

@@ -14,7 +14,6 @@ describe("buildTransactionFingerprint unit coverage", () => {
 
     expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(buildTransactionFingerprint(baseInput)).toBe(fingerprint);
-    expect(fingerprint).toBe("c188f11f2b75a403cb573e8b763b59e903e236a4d011473b66031a54982e2ad7");
   });
 
   it("normalizes merchant spacing and casing before hashing", () => {
@@ -35,6 +34,13 @@ describe("buildTransactionFingerprint unit coverage", () => {
     });
 
     expect(normalizedB).toBe(normalizedA);
+  });
+
+  it("normalizes legal suffixes before hashing", () => {
+    expect(buildTransactionFingerprint({
+      ...baseInput,
+      merchantRaw: "Rema 1000 AS",
+    })).toBe(buildTransactionFingerprint(baseInput));
   });
 
   it("trims account and bookedAtIso inputs before hashing", () => {

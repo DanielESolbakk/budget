@@ -32,7 +32,7 @@ export class ManualEntryPage {
   }
 
   get amountInput() {
-    return this.entrySection.getByLabel("Amount (minor units)");
+    return this.entrySection.getByLabel("Amount (øre)");
   }
 
   get merchantInput() {
@@ -40,7 +40,7 @@ export class ManualEntryPage {
   }
 
   get categoryInput() {
-    return this.entrySection.getByLabel("Manual category ID (optional)");
+    return this.entrySection.getByLabel("Category (optional)");
   }
 
   get submitButton() {
@@ -60,7 +60,7 @@ export class ManualEntryPage {
     await this.bookedDateInput.fill(values.bookedAtIso);
     await this.amountInput.fill(values.amountMinor);
     await this.merchantInput.fill(values.merchantRaw);
-    await this.categoryInput.fill(values.categoryId);
+    await this.categoryInput.selectOption(values.categoryId);
     await this.submitButton.click();
   }
 }

@@ -116,14 +116,17 @@ describe("import job / parser adapter contract", () => {
             adapterId: ROGALAND_ADAPTER_ID,
             candidateCount: result.transactionCount,
             validationFailureCount: 0,
-            provenance: {
+            startedAtIso: expect.any(String),
+            finishedAtIso: expect.any(String),
+            provenance: expect.objectContaining({
               sourceIdentity: "no.rogaland-sparebank.statement-text",
+              contentDigest: expect.any(String),
               adapterId: ROGALAND_ADAPTER_ID,
               storyAnchor: {
                 enablerIssueId: "32",
                 featureIssueId: "15",
               },
-            },
+            }),
           }),
         ]);
         expect(snapshot.transactions).toHaveLength(result.transactionCount);
