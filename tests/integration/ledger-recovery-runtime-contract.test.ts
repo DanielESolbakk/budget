@@ -334,6 +334,36 @@ describe("ledger recovery runtime contracts", () => {
     }
   });
 
+  it("does not reseed demo targets when an existing ledger has no targets", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-target-no-reseed-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const demoSeedData: LedgerSnapshotData = {
+      ...createSnapshotData(),
+      monthlyCategoryTargets: [
+        { yearMonth: "2026-05", categoryId: "demo-seed", targetMinor: 7_000 },
+      ],
+    };
+    const existingLedgerWithoutTargets: LedgerSnapshotData = {
+      ...createSnapshotData(),
+      monthlyCategoryTargets: [],
+    };
+
+    try {
+      const firstDatabase = createLocalLedgerDatabase({ dbPath, seedData: demoSeedData });
+      expect(firstDatabase.loadLedgerSnapshotData().monthlyCategoryTargets).toEqual([
+        { yearMonth: "2026-05", categoryId: "demo-seed", targetMinor: 7_000 },
+      ]);
+      firstDatabase.replaceLedgerSnapshotData(existingLedgerWithoutTargets);
+      firstDatabase.close();
+
+      const reopenedDatabase = createLocalLedgerDatabase({ dbPath, seedData: demoSeedData });
+      expect(reopenedDatabase.loadLedgerSnapshotData().monthlyCategoryTargets).toEqual([]);
+      reopenedDatabase.close();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("preserves a non-NOK account currency through replacement and reopen", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-currency-reopen-"));
     const dbPath = join(tempDir, "ledger.sqlite");
