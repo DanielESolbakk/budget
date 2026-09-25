@@ -63,6 +63,21 @@ describe("buildTransactionFingerprint unit coverage", () => {
     expect(buildTransactionFingerprint({ ...baseInput, merchantRaw: "Kiwi" })).not.toBe(original);
   });
 
+  it("distinguishes adjacent numeric fields with the same separator-free text", () => {
+    const first = buildTransactionFingerprint({
+      ...baseInput,
+      amountMinor: 1,
+      merchantRaw: "23",
+    });
+    const second = buildTransactionFingerprint({
+      ...baseInput,
+      amountMinor: 12,
+      merchantRaw: "3",
+    });
+
+    expect(first).not.toBe(second);
+  });
+
   it("keeps same fingerprint when only extra outer whitespace changes canonical fields", () => {
     const original = buildTransactionFingerprint(baseInput);
     const padded = buildTransactionFingerprint({

@@ -19,25 +19,37 @@
 import { test, expect } from "./fixtures/electron.js";
 import type { Request } from "@playwright/test";
 import { join, resolve } from "node:path";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
+const temporaryDirectories = new Set<string>();
+
+function createTemporaryDirectory(): string {
+  const directory = mkdtempSync(join(tmpdir(), "budget-playwright-csv-"));
+  temporaryDirectories.add(directory);
+  return directory;
+}
+
+test.afterEach(() => {
+  for (const directory of temporaryDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  temporaryDirectories.clear();
+});
 
 /** Writes a minimal invalid CSV to a temp file and returns the absolute path. */
 function writeInvalidCsvFixture(): string {
-  const dir = join(tmpdir(), "budget-playwright-csv");
-  mkdirSync(dir, { recursive: true });
+  const dir = createTemporaryDirectory();
   const path = join(dir, `invalid-${randomUUID()}.csv`);
   writeFileSync(path, "Wrong;Headers;Only\nval1;val2;val3\n", "utf8");
   return path;
 }
 
 function writeAliasHeaderCsvFixture(): string {
-  const dir = join(tmpdir(), "budget-playwright-csv");
-  mkdirSync(dir, { recursive: true });
+  const dir = createTemporaryDirectory();
   const path = join(dir, `aliases-${randomUUID()}.csv`);
   writeFileSync(
     path,
@@ -48,8 +60,7 @@ function writeAliasHeaderCsvFixture(): string {
 }
 
 function writeCustomHeaderCsvFixture(): string {
-  const dir = join(tmpdir(), "budget-playwright-csv");
-  mkdirSync(dir, { recursive: true });
+  const dir = createTemporaryDirectory();
   const path = join(dir, `custom-${randomUUID()}.csv`);
   writeFileSync(
     path,
@@ -165,7 +176,7 @@ test.describe("CSV import renderer workflow", () => {
     csvImport,
     databasePath,
   }) => {
-    const filePath = join(tmpdir(), `reference-${randomUUID()}.csv`);
+    const filePath = join(createTemporaryDirectory(), `reference-${randomUUID()}.csv`);
     const header = "Date;Description;Amount Out;Currency;Transaction ID";
     writeFileSync(filePath, `${header}\n23.05.2026;KIWI;-12.50;NOK;BANK-100`, "utf8");
 
@@ -312,7 +323,7 @@ test.describe("CSV import renderer workflow", () => {
     csvImport,
     dashboard,
   }) => {
-    const mutablePath = join(tmpdir(), `mutable-${randomUUID()}.csv`);
+    const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.csv`);
     writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";

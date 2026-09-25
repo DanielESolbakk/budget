@@ -1,0 +1,41 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.mutation.config.ts",
+    "related": true
+  },
+  "mutate": [
+    "src/domain/import/csvRowMapper.ts",
+    "src/domain/import/buildTransactionFingerprint.ts",
+    "src/domain/merchant/normalizeMerchantName.ts",
+    "src/domain/forecast/simpleForecast.ts",
+    "src/domain/forecast/forecastInputAdapter.ts",
+    "src/app/import/importCsv.ts",
+    "src/app/import/importPdf.ts",
+    "src/app/import/importPreviewRegistry.ts",
+    "src/app/import/manualEntry.ts",
+    "src/app/ledgerOperationCoordinator.ts",
+    "src/app/backup/createBackupSnapshot.ts",
+    "src/app/backup/localLedgerSqlite.ts",
+    "src/app/backup/restoreBackupSnapshot.ts",
+    "src/app/dashboardApi.ts",
+    "src/app/exportCsv.ts"
+  ],
+  "reporters": [
+    "clear-text",
+    "json",
+    "html"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation-unit-integration/mutation.json"
+  },
+  "htmlReporter": {
+    "fileName": "reports/mutation-unit-integration/mutation.html"
+  },
+  "allowConsoleColors": false,
+  "timeoutMS": 60000,
+  "timeoutFactor": 1.5,
+  "concurrency": 2,
+  "tempDirName": "stryker-unit-integration-tmp"
+}

@@ -1,12 +1,26 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { parseFixtureCsv, readFixtureCsv } from "../../src/tooling/fixtures/fixtureCsv.js";
 import { sanitizeFixtureCsv, type SanitizationMapEntry } from "../../src/tooling/fixtures/sanitizeCsv.js";
 
 const syntheticFixture = join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-05-synthetic.csv");
+const temporaryDirectories = new Set<string>();
+
+function createTemporaryDirectory(prefix: string): string {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
+  temporaryDirectories.add(directory);
+  return directory;
+}
+
+afterEach(() => {
+  for (const directory of temporaryDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  temporaryDirectories.clear();
+});
 
 function tsxCliPath(): string {
   return join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
@@ -14,7 +28,7 @@ function tsxCliPath(): string {
 
 describe("sanitizeFixtureCsv", () => {
   it("is deterministic: identical input and seed produce identical output text and sorted map entries", () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "budget-sanitize-"));
+    const tempDir = createTemporaryDirectory("budget-sanitize-");
     const outputPath = join(tempDir, "sanitized.csv");
     const mapPath = join(tempDir, "sanitization-map.json");
 
@@ -42,7 +56,7 @@ describe("sanitizeFixtureCsv", () => {
   });
 
   it("repeated source values receive exactly one stable token per value and kind", () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "budget-sanitize-"));
+    const tempDir = createTemporaryDirectory("budget-sanitize-");
     const outputPath = join(tempDir, "sanitized.csv");
     const mapPath = join(tempDir, "map.json");
 
@@ -94,7 +108,7 @@ describe("sanitizeFixtureCsv", () => {
   });
 
   it("preserves header, semicolon delimiter, adjacent empty fields, UTF-8 encoding, and row count", () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "budget-sanitize-"));
+    const tempDir = createTemporaryDirectory("budget-sanitize-");
     const outputPath = join(tempDir, "sanitized.csv");
     const mapPath = join(tempDir, "sanitization-map.json");
 
@@ -124,7 +138,7 @@ describe("sanitizeFixtureCsv", () => {
   });
 
   it("dry-run emits summary counts and writes no files", () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "budget-sanitize-"));
+    const tempDir = createTemporaryDirectory("budget-sanitize-");
     const outputPath = join(tempDir, "dry-sanitized.csv");
     const mapPath = join(tempDir, "dry-map.json");
 
@@ -145,7 +159,7 @@ describe("sanitizeFixtureCsv", () => {
   });
 
   it("CLI dry-run reports counts without writing output or map files", () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "budget-sanitize-cli-"));
+    const tempDir = createTemporaryDirectory("budget-sanitize-cli-");
     const outputPath = join(tempDir, "sanitized.csv");
     const mapPath = join(tempDir, "map.json");
     const summary = JSON.parse(

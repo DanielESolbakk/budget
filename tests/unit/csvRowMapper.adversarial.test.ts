@@ -3,6 +3,7 @@ import {
   CSV_COLUMN_NAMES,
   mapCsvRowToTransaction,
   mapCsvRows,
+  previewCsvRows,
   validateCsvRow,
   type CsvRowMappingOptions,
 } from "../../src/domain/import/csvRowMapper.js";
@@ -315,5 +316,114 @@ describe("csvRowMapper adversarial edge cases", () => {
     expect(result.transactions).toHaveLength(2);
     expect(result.transactions[0]?.id).toMatch(/^[a-f0-9]{64}$/);
     expect(result.transactions[1]?.amountMinor).toBe(10_000);
+  });
+
+  it("maps user-selected source headers to canonical transaction fields", () => {
+    const row = {
+      When: "01.05.2026",
+      Payee: "Synthetic merchant",
+      "Debit amount": "12.34",
+      "Currency code": "NOK",
+      "Bank reference": "KID-123",
+    };
+
+    const mapped = mapCsvRowToTransaction(row, 0, {
+      ...mappingOptions,
+      columnMapping: {
+        executionDate: "When",
+        description: "Payee",
+        amountOut: "Debit amount",
+        currency: "Currency code",
+        reference: "Bank reference",
+      },
+    });
+
+    expect(mapped.ok).toBe(true);
+    if (!mapped.ok) return;
+    expect(mapped.transaction).toMatchObject({
+      bookedAtIso: "2026-05-01T00:00:00Z",
+      amountMinor: -1234,
+      merchantRaw: "Synthetic merchant",
+      currencyCode: "NOK",
+      sourceReference: "KID-123",
+    });
+  });
+
+  it("maps documented English CSV header aliases", () => {
+    const row = {
+      Date: "01.05.2026",
+      "Posting Date": "03.05.2026",
+      Merchant: "Alias merchant",
+      Debit: "45.55",
+      Currency: "NOK",
+      Reference: "BANK-456",
+    };
+
+    const mapped = mapCsvRowToTransaction(row, 0, mappingOptions);
+
+    expect(mapped.ok).toBe(true);
+    if (!mapped.ok) return;
+    expect(mapped.transaction).toMatchObject({
+      bookedAtIso: "2026-05-03T00:00:00Z",
+      amountMinor: -4555,
+      merchantRaw: "Alias merchant",
+      currencyCode: "NOK",
+      sourceReference: "BANK-456",
+    });
+  });
+
+  it("rejects an amount that overflows finite number parsing", () => {
+    const row = withOverrides({
+      [CSV_COLUMN_NAMES.amountIn]: "9".repeat(400),
+      [CSV_COLUMN_NAMES.amountOut]: "",
+    });
+
+    expect(validateCsvRow(row)).toContainEqual(
+      expect.objectContaining({
+        code: "INVALID_AMOUNT_FORMAT",
+        field: CSV_COLUMN_NAMES.amountIn,
+      })
+    );
+  });
+
+  it("returns empty preview collections when the CSV has no data rows", () => {
+    expect(previewCsvRows([], mappingOptions)).toEqual({ rows: [], transactions: [] });
+  });
+
+  it("keeps preview indexes and transaction references aligned across invalid rows", () => {
+    const first = withOverrides({
+      [CSV_COLUMN_NAMES.description]: "Same merchant",
+      [CSV_COLUMN_NAMES.amountOut]: "10.00",
+      [CSV_COLUMN_NAMES.reference]: "BANK-1",
+    });
+    const invalid = withOverrides({
+      [CSV_COLUMN_NAMES.description]: " ",
+      [CSV_COLUMN_NAMES.reference]: "INVALID-ROW",
+    });
+    const last = withOverrides({
+      [CSV_COLUMN_NAMES.description]: "Same merchant",
+      [CSV_COLUMN_NAMES.amountOut]: "10.00",
+      [CSV_COLUMN_NAMES.reference]: "BANK-2",
+    });
+
+    const preview = previewCsvRows([first, invalid, last], {
+      ...mappingOptions,
+      sourceScope: "synthetic.csv",
+    });
+
+    expect(preview.rows.map((row) => row.rowIndex)).toEqual([0, 1, 2]);
+    expect(preview.rows[0]?.transaction?.sourceReference).toBe("BANK-1");
+    expect(preview.rows[1]).toMatchObject({
+      rowIndex: 1,
+      errors: [expect.objectContaining({ code: "MISSING_DESCRIPTION" })],
+    });
+    expect(preview.rows[1]?.transaction).toBeUndefined();
+    expect(preview.rows[2]?.transaction?.sourceReference).toBe("BANK-2");
+    expect(preview.transactions).toHaveLength(2);
+    expect(preview.transactions.map((transaction) => transaction.sourceReference)).toEqual([
+      "BANK-1",
+      "BANK-2",
+    ]);
+    expect(preview.transactions[0]?.id).not.toBe(preview.transactions[1]?.id);
   });
 });

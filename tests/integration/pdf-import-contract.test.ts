@@ -12,7 +12,7 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -66,7 +66,7 @@ function makeTestLedger(suffix = randomUUID()) {
   mkdirSync(dir, { recursive: true });
   const dbPath = join(dir, "test.sqlite");
 
-  return createLocalLedgerDatabase({
+  const ledger = createLocalLedgerDatabase({
     dbPath,
     seedData: {
       household: SAMPLE_HOUSEHOLD,
@@ -76,6 +76,17 @@ function makeTestLedger(suffix = randomUUID()) {
       monthlyCategoryTargets: [],
     },
   });
+
+  return {
+    ...ledger,
+    close() {
+      try {
+        ledger.close();
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  };
 }
 
 function runPdfImportOrchestration(
@@ -104,6 +115,20 @@ function runPdfImportOrchestration(
   );
 }
 describe("pdf import contract", () => {
+  it("removes temporary ledger files after closing the test database", () => {
+    const suffix = randomUUID();
+    const tempDir = join(tmpdir(), `budget-pdf-integration-${suffix}`);
+    const ledger = makeTestLedger(suffix);
+
+    expect(existsSync(tempDir)).toBe(true);
+    try {
+      ledger.close();
+      expect(existsSync(tempDir)).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   describe("AC-1: fixture produces expected transaction candidates", () => {
     it("parses the synthetic fixture into transactions with all required domain fields", () => {
       const text = loadFixture();

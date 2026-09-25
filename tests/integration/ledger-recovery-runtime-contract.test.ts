@@ -110,6 +110,46 @@ describe("ledger recovery runtime contracts", () => {
     }
   });
 
+  it("round-trips more than 10,000 synthetic transactions through SQLite snapshot restore", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-large-ledger-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const snapshotPath = join(tempDir, "snapshot.json");
+    const transactions: Transaction[] = Array.from({ length: 10_001 }, (_, index) => ({
+      id: `tx-${String(index).padStart(5, "0")}`,
+      householdId: HOUSEHOLD.id,
+      accountId: ACCOUNT.id,
+      bookedAtIso: "2026-05-15T00:00:00Z",
+      amountMinor: index % 2 === 0 ? 125 : -125,
+      merchantRaw: `Synthetic merchant ${index % 100}`,
+      categoryId: index % 2 === 0 ? "income" : "groceries",
+    }));
+    const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+
+    try {
+      database.replaceLedgerSnapshotData({
+        ...createSnapshotData(),
+        transactions,
+      });
+      const ledgerState = database.loadLedgerSnapshotData();
+      expect(ledgerState.transactions).toHaveLength(10_001);
+
+      const snapshot = buildBackupSnapshot({
+        ...ledgerState,
+        createdAtIso: "2026-06-01T00:00:00Z",
+      });
+      writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
+
+      const restored = restoreBackupSnapshot({ snapshotPath });
+      database.replaceLedgerSnapshotData(restored);
+
+      expect(restored.transactionCount).toBe(10_001);
+      expect(database.loadLedgerSnapshotData().transactions).toEqual(transactions);
+    } finally {
+      database.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("finishes an earlier PDF extraction and import before a later restore", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-import-then-restore-"));
     const database = createLocalLedgerDatabase({ dbPath: join(tempDir, "ledger.sqlite"), seedData: createSnapshotData() });

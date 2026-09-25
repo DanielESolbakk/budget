@@ -8,13 +8,7 @@ export default defineConfig({
       provider: "v8",
       reportsDirectory: "coverage/unit",
       reporter: ["text-summary", "json-summary", "html"],
-      include: [
-        "src/domain/import/**/*.ts",
-        "src/domain/merchant/**/*.ts",
-        "src/domain/forecast/**/*.ts",
-        "src/domain/aggregation/**/*.ts",
-        "src/app/**/*.ts"
-      ],
+      include: ["src/domain/**/*.ts"],
       thresholds: {
         lines: 70,
         functions: 70,

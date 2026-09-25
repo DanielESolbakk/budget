@@ -56,6 +56,32 @@ const SAMPLE_TARGETS: MonthlyCategoryTarget[] = [
   { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 9000 },
 ];
 
+function buildRestoreSnapshot(
+  overrides: Partial<Parameters<typeof buildBackupSnapshot>[0]> = {}
+) {
+  return buildBackupSnapshot({
+    household: SAMPLE_HOUSEHOLD,
+    accounts: SAMPLE_ACCOUNTS,
+    transactions: SAMPLE_TRANSACTIONS,
+    importJobs: SAMPLE_IMPORT_JOBS,
+    monthlyCategoryTargets: SAMPLE_TARGETS,
+    createdAtIso: "2026-06-01T12:00:00Z",
+    ...overrides,
+  });
+}
+
+function withSnapshotFile(snapshot: unknown, assertSnapshot: (snapshotPath: string) => void): void {
+  const tempDir = mkdtempSync(join(tmpdir(), "budget-restore-validation-"));
+  const snapshotPath = join(tempDir, "snapshot.json");
+
+  try {
+    fsWriteFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
+    assertSnapshot(snapshotPath);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 describe("backup/restore contract", () => {
   describe("AC-1: snapshot creation produces deterministic artifact with expected schema and metadata", () => {
     it("buildBackupSnapshot sets correct metadata version and transaction/account counts", () => {
@@ -431,6 +457,203 @@ describe("backup/restore contract", () => {
       } finally {
         rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+
+    it("restores non-empty merchant category rules from a current snapshot", () => {
+      const merchantCategoryRules = [
+        { merchantAlias: "KIWI", categoryId: "groceries" },
+        { merchantAlias: "REMA 1000", categoryId: "groceries" },
+      ];
+      const snapshot = buildRestoreSnapshot({ merchantCategoryRules });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(restoreBackupSnapshot({ snapshotPath }).merchantCategoryRules).toEqual(
+          merchantCategoryRules
+        );
+      });
+    });
+
+    it("rejects a current snapshot without its merchant category rules collection", () => {
+      const snapshot = buildRestoreSnapshot();
+      delete (snapshot as unknown as { merchantCategoryRules?: unknown }).merchantCategoryRules;
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+          "Invalid snapshot merchant category rules"
+        );
+      });
+    });
+
+    it("rejects duplicate merchant aliases in restored rules", () => {
+      const snapshot = buildRestoreSnapshot({
+        merchantCategoryRules: [
+          { merchantAlias: "KIWI", categoryId: "groceries" },
+          { merchantAlias: "KIWI", categoryId: "transport" },
+        ],
+      });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+          "Invalid snapshot merchant category rules"
+        );
+      });
+    });
+
+    it.each([
+      {
+        name: "invalid calendar month",
+        target: { yearMonth: "2026-13", categoryId: "groceries", targetMinor: 9000 },
+      },
+      {
+        name: "blank category",
+        target: { yearMonth: "2026-05", categoryId: " ", targetMinor: 9000 },
+      },
+      {
+        name: "fractional minor-unit amount",
+        target: { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 1.5 },
+      },
+      {
+        name: "negative amount",
+        target: { yearMonth: "2026-05", categoryId: "groceries", targetMinor: -1 },
+      },
+    ])("rejects a restored target with $name", ({ target }) => {
+      const snapshot = buildRestoreSnapshot({ monthlyCategoryTargets: [target] });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+          "Invalid snapshot monthly category targets"
+        );
+      });
+    });
+
+    it("rejects duplicate account identifiers in a restored snapshot", () => {
+      const snapshot = buildRestoreSnapshot({
+        accounts: [SAMPLE_ACCOUNTS[0]!, SAMPLE_ACCOUNTS[0]!],
+      });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow("Invalid snapshot accounts");
+      });
+    });
+
+    it("rejects duplicate transaction identifiers in a restored snapshot", () => {
+      const snapshot = buildRestoreSnapshot({
+        transactions: [
+          SAMPLE_TRANSACTIONS[0]!,
+          { ...SAMPLE_TRANSACTIONS[1]!, id: SAMPLE_TRANSACTIONS[0]!.id },
+        ],
+      });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow("Invalid snapshot transactions");
+      });
+    });
+
+    it("rejects an unsupported import-job source type in a restored snapshot", () => {
+      const invalidImportJob = {
+        ...SAMPLE_IMPORT_JOBS[0]!,
+        sourceType: "network",
+      } as unknown as ImportJob;
+      const snapshot = buildRestoreSnapshot({ importJobs: [invalidImportJob] });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow("Invalid snapshot import jobs");
+      });
+    });
+
+    it.each([
+      {
+        name: "household id",
+        reason: "household",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.household.id = ""; },
+      },
+      {
+        name: "household name",
+        reason: "household",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.household.name = " "; },
+      },
+      {
+        name: "household creation time",
+        reason: "household",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.household.createdAtIso = ""; },
+      },
+      {
+        name: "account id",
+        reason: "accounts",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.accounts[0]!.id = ""; },
+      },
+      {
+        name: "account household reference",
+        reason: "accounts",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.accounts[0]!.householdId = "other-household"; },
+      },
+      {
+        name: "account name",
+        reason: "accounts",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.accounts[0]!.name = ""; },
+      },
+      {
+        name: "account currency code",
+        reason: "accounts",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.accounts[0]!.currencyCode = "NO1"; },
+      },
+      {
+        name: "transaction id",
+        reason: "transactions",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.transactions[0]!.id = ""; },
+      },
+      {
+        name: "transaction household reference",
+        reason: "transactions",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.transactions[0]!.householdId = "other-household"; },
+      },
+      {
+        name: "transaction account reference",
+        reason: "transactions",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.transactions[0]!.accountId = "missing-account"; },
+      },
+      {
+        name: "transaction booking date",
+        reason: "transactions",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.transactions[0]!.bookedAtIso = ""; },
+      },
+      {
+        name: "transaction fractional minor-unit amount",
+        reason: "transactions",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.transactions[0]!.amountMinor = 1.5; },
+      },
+      {
+        name: "transaction merchant",
+        reason: "transactions",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.transactions[0]!.merchantRaw = " "; },
+      },
+      {
+        name: "import-job id",
+        reason: "import jobs",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.importJobs[0]!.id = ""; },
+      },
+      {
+        name: "import-job household reference",
+        reason: "import jobs",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.importJobs[0]!.householdId = "other-household"; },
+      },
+      {
+        name: "import-job source name",
+        reason: "import jobs",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.importJobs[0]!.sourceName = " "; },
+      },
+      {
+        name: "import-job start time",
+        reason: "import jobs",
+        mutate: (snapshot: ReturnType<typeof buildRestoreSnapshot>) => { snapshot.importJobs[0]!.startedAtIso = ""; },
+      },
+    ])("rejects a snapshot with invalid $name", ({ mutate, reason }) => {
+      const snapshot = structuredClone(buildRestoreSnapshot());
+      mutate(snapshot);
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(`Invalid snapshot ${reason}`);
+      });
     });
   });
 

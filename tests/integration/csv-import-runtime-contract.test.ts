@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
@@ -34,7 +34,7 @@ function makeTestLedger(suffix: string) {
   mkdirSync(dir, { recursive: true });
   const dbPath = join(dir, "test.sqlite");
 
-  return createLocalLedgerDatabase({
+  const ledger = createLocalLedgerDatabase({
     dbPath,
     seedData: {
       household: SAMPLE_HOUSEHOLD,
@@ -44,6 +44,17 @@ function makeTestLedger(suffix: string) {
       monthlyCategoryTargets: [],
     },
   });
+
+  return {
+    ...ledger,
+    close() {
+      try {
+        ledger.close();
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  };
 }
 
 /**
@@ -90,6 +101,20 @@ function runImportOrchestration(
 }
 
 describe("csv-import-runtime-contract", () => {
+  it("removes temporary ledger files after closing the test database", () => {
+    const suffix = randomUUID();
+    const tempDir = join(tmpdir(), `budget-integration-${suffix}`);
+    const ledger = makeTestLedger(suffix);
+
+    expect(existsSync(tempDir)).toBe(true);
+    try {
+      ledger.close();
+      expect(existsSync(tempDir)).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not duplicate a legacy CSV import from the same source path", () => {
     const ledger = makeTestLedger(randomUUID());
     const sourceName = "legacy-export.csv";
