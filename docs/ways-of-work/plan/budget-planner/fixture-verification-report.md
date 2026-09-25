@@ -21,7 +21,7 @@ Define the machine-readable JSON contract emitted by `npm run verify-fixture` an
     "rowCount": 10,
     "nonNokRowCount": 1,
     "reservedRowCount": 1,
-    "holdRowCount": 1,
+    "holdRowCount": 0,
     "transferRowCount": 2,
     "fxRowCount": 1,
     "kidReferenceCount": 1,
@@ -40,8 +40,8 @@ Define the machine-readable JSON contract emitted by `npm run verify-fixture` an
 - `warnings`: deterministic non-fatal findings such as near-duplicate merchant variants or empty amount columns.
 - `stats.rowCount`: number of transaction rows after the header row.
 - `stats.nonNokRowCount`: rows whose `Valuta` is present and not `NOK`.
-- `stats.reservedRowCount`: rows flagged as reserved or hold-like through `Status` or `Undertype`.
-- `stats.holdRowCount`: the same hold/reserved coverage signal reported explicitly for fixture-review consumers.
+- `stats.reservedRowCount`: rows flagged as reserved through `Status`.
+- `stats.holdRowCount`: rows flagged through hold-specific `Status` or `Undertype` signals.
 - `stats.transferRowCount`: rows whose type or reference indicates a transfer or payment flow.
 - `stats.fxRowCount`: rows signalling foreign-exchange coverage through non-`NOK` currency, foreign undertype, or `FX-` reference.
 - `stats.kidReferenceCount`: rows whose reference field contains `KID` or invoice markers.

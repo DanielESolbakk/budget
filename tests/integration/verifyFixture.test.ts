@@ -216,6 +216,56 @@ describe("verifyFixture", () => {
     });
   });
 
+  it("tracks reserved and hold coverage separately", () => {
+    const fixturePath = writeTemporaryFixtureFile(
+      "reserved-and-hold.csv",
+      [
+        expectedHeaders.join(";"),
+        [
+          "29.05.2026",
+          "29.05.2026",
+          "29.05.2026",
+          "MERCHANT_001",
+          "Varekjøp",
+          "Debetkort",
+          "ACCT-001",
+          "",
+          "",
+          "USER_1",
+          "",
+          "-45.00",
+          "NOK",
+          "Reservert",
+          "TXN-001"
+        ].join(";"),
+        [
+          "28.05.2026",
+          "28.05.2026",
+          "28.05.2026",
+          "MERCHANT_002",
+          "Varekjøp",
+          "Holdt kortkjøp",
+          "ACCT-001",
+          "",
+          "",
+          "USER_1",
+          "",
+          "-15.00",
+          "GBP",
+          "Bokført",
+          "FX-001"
+        ].join(";")
+      ].join("\n")
+    );
+
+    const report = verifyFixture({
+      inputPath: fixturePath
+    });
+
+    expect(report.stats.reservedRowCount).toBe(1);
+    expect(report.stats.holdRowCount).toBe(1);
+  });
+
   it("verifies ADR and glossary artifacts are present and linked from plan.md", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",

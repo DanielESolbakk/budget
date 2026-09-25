@@ -99,6 +99,10 @@ function containsCommonMojibake(value: string): boolean {
   return /(Ã.|Â.|â.|ð.|�)/u.test(value);
 }
 
+function countOccurrences(value: string, character: string): number {
+  return [...value].filter((entry) => entry === character).length;
+}
+
 function repairCommonMojibake(value: string): string {
   if (!containsCommonMojibake(value)) {
     return value;
@@ -153,7 +157,7 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
   }
 
   const headerLine = normalizedText.split(/\r?\n/, 1)[0] ?? "";
-  if (!headerLine.includes(";")) {
+  if (countOccurrences(headerLine, ";") < expectedHeaders.length - 1) {
     errors.push("CSV must use semicolon delimiters.");
   }
 
@@ -171,7 +175,7 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
     errors.push("CSV header does not match the expected import fixture schema.");
   }
 
-  if (errors.includes("CSV header does not match the expected import fixture schema.")) {
+  if (errors.includes("CSV must use semicolon delimiters.")) {
     return createReport(errors, warnings, stats, options.reportPath);
   }
 
@@ -215,12 +219,11 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
     const transactionType = (record["Type"] ?? "").toUpperCase();
     const reference = (record["Melding/KID/Fakt.nr"] ?? "").toUpperCase();
 
-    if (
-      status.includes("RESERV") ||
-      status.includes("HOLD") ||
-      undertype.includes("HOLD")
-    ) {
+    if (status.includes("RESERV")) {
       stats.reservedRowCount += 1;
+    }
+
+    if (status.includes("HOLD") || undertype.includes("HOLD")) {
       stats.holdRowCount += 1;
     }
 

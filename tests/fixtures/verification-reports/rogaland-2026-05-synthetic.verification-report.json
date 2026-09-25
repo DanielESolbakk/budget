@@ -8,7 +8,7 @@
     "rowCount": 10,
     "nonNokRowCount": 1,
     "reservedRowCount": 1,
-    "holdRowCount": 1,
+    "holdRowCount": 0,
     "transferRowCount": 2,
     "fxRowCount": 1,
     "kidReferenceCount": 1,

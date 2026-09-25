@@ -8,6 +8,7 @@ on:
       - "src/tooling/fixtures/**"
       - "tests/fixtures/synthetic/*.csv"
       - "tests/fixtures/verification-reports/**"
+      - "docs/ways-of-work/plan/budget-planner/fixture-verification-report.md"
       - ".github/workflows/verify-fixtures.yml"
   push:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - "src/tooling/fixtures/**"
       - "tests/fixtures/synthetic/*.csv"
       - "tests/fixtures/verification-reports/**"
+      - "docs/ways-of-work/plan/budget-planner/fixture-verification-report.md"
       - ".github/workflows/verify-fixtures.yml"
 
 permissions:
@@ -53,10 +55,20 @@ jobs:
           mkdir -p reports/fixture-verification
           status=0
           shopt -s nullglob
+          fixtures=(tests/fixtures/synthetic/*.csv)
 
-          for fixture in tests/fixtures/synthetic/*.csv; do
+          if [ "${#fixtures[@]}" -eq 0 ]; then
+            echo "No synthetic CSV fixtures found under tests/fixtures/synthetic/." >&2
+            status=1
+          fi
+
+          for fixture in "${fixtures[@]}"; do
             report="reports/fixture-verification/$(basename "${fixture%.csv}").verification-report.json"
             if ! npm run verify-fixture -- --input "$fixture" --report "$report"; then
+              status=1
+            fi
+
+            if ! node --input-type=module -e "import { existsSync, readFileSync } from 'node:fs'; const reportPath = process.argv[1]; if (!existsSync(reportPath)) { process.exit(1); } const report = JSON.parse(readFileSync(reportPath, 'utf8')); process.exit(report.ok === true ? 0 : 1);" "$report"; then
               status=1
             fi
           done
@@ -69,7 +81,7 @@ jobs:
         with:
           name: fixture-verification-reports
           path: reports/fixture-verification
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Fail when fixture verification report is unsuccessful
         if: steps.verify.outputs.status != '0'
