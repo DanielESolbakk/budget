@@ -436,6 +436,7 @@ describe("ledger recovery runtime contracts", () => {
       });
       legacySnapshot.metadata.version = "1";
       delete (legacySnapshot as unknown as { merchantCategoryRules?: unknown }).merchantCategoryRules;
+      writeFileSync(snapshotPath, JSON.stringify(legacySnapshot), "utf8");
 
       const restored = restoreBackupSnapshot({ snapshotPath });
       database.replaceLedgerSnapshotData(restored);
