@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "Near-duplicate merchant variants detected: MERCHANT-005, MERCHANT_005."
+  ],
+  "stats": {
+    "rowCount": 10,
+    "nonNokRowCount": 1,
+    "reservedRowCount": 1,
+    "holdRowCount": 1,
+    "transferRowCount": 2,
+    "fxRowCount": 1,
+    "kidReferenceCount": 1,
+    "uniqueMerchantCount": 9,
+    "merchantTokenDistribution": {
+      "001": 1,
+      "002": 1,
+      "003": 1,
+      "005": 2,
+      "007": 1,
+      "008": 1,
+      "009": 1,
+      "EF": 1,
+      "MERCHANT": 8,
+      "PAYMENT": 1,
+      "SALARY": 1
+    }
+  }
+}

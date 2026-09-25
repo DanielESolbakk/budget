@@ -1,12 +1,47 @@
-import { readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { verifyFixture } from "../../src/tooling/fixtures/verifyFixture.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+const expectedFixtureReportPath =
+  "tests/fixtures/verification-reports/rogaland-2026-05-synthetic.verification-report.json";
+const expectedHeaders = [
+  "Utført dato",
+  "Bokført dato",
+  "Rentedato",
+  "Beskrivelse",
+  "Type",
+  "Undertype",
+  "Fra konto",
+  "Avsender",
+  "Til konto",
+  "Mottakernavn",
+  "Beløp inn",
+  "Beløp ut",
+  "Valuta",
+  "Status",
+  "Melding/KID/Fakt.nr"
+];
+const temporaryDirectories = new Set<string>();
 
 function readRepositoryFile(relativePath: string): string {
   return readFileSync(new URL(relativePath, `file://${repositoryRoot}/`), "utf8");
+}
+
+function writeTemporaryFixtureFile(fileName: string, content: string): string {
+  const directory = mkdtempSync(join(tmpdir(), "budget-verify-fixture-"));
+  temporaryDirectories.add(directory);
+  const filePath = join(directory, fileName);
+  writeFileSync(filePath, content, "utf8");
+  return filePath;
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {
@@ -17,26 +52,168 @@ function readMarkdownSection(markdown: string, heading: string): string {
   return match?.[1] ?? "";
 }
 
-describe("verifyFixture", () => {
-  it("accepts the committed synthetic fixture", () => {
-    const report = verifyFixture({
-      inputPath: "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv"
-    });
+afterEach(() => {
+  for (const directory of temporaryDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  temporaryDirectories.clear();
+});
 
-    expect(report.ok).toBe(true);
-    expect(report.errors).toEqual([]);
-    expect(report.stats.rowCount).toBeGreaterThan(0);
-    expect(report.stats.nonNokRowCount).toBeGreaterThan(0);
+describe("verifyFixture", () => {
+  it("emits the documented machine-readable report for the committed synthetic fixture", () => {
+    const reportPath = writeTemporaryFixtureFile("verification-report.json", "");
+    const report = verifyFixture({
+      inputPath: "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv",
+      reportPath
+    });
+    const expectedReport = JSON.parse(readRepositoryFile(expectedFixtureReportPath));
+    const writtenReport = JSON.parse(readFileSync(reportPath, "utf8"));
+
+    expect(report).toEqual(expectedReport);
+    expect(writtenReport).toEqual(expectedReport);
   });
 
-  it("flags near-duplicate merchant variants as warnings", () => {
+  it("returns deterministic structural errors for comma-delimited fixture input", () => {
+    const invalidFixturePath = writeTemporaryFixtureFile(
+      "invalid-delimiter.csv",
+      [
+        expectedHeaders.join(","),
+        [
+          "29.05.2026",
+          "",
+          "29.05.2026",
+          "MERCHANT_001",
+          "Varekjøp",
+          "Debetkort",
+          "ACCT-001",
+          "",
+          "",
+          "USER_1",
+          "",
+          "-45.00",
+          "NOK",
+          "Reservert",
+          "TXN-001"
+        ].join(",")
+      ].join("\n")
+    );
+
     const report = verifyFixture({
-      inputPath: "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv"
+      inputPath: invalidFixturePath
     });
 
+    expect(report).toEqual({
+      ok: false,
+      errors: [
+        "CSV must use semicolon delimiters.",
+        "CSV header does not match the expected import fixture schema."
+      ],
+      warnings: [],
+      stats: {
+        rowCount: 1,
+        nonNokRowCount: 0,
+        reservedRowCount: 0,
+        holdRowCount: 0,
+        transferRowCount: 0,
+        fxRowCount: 0,
+        kidReferenceCount: 0,
+        uniqueMerchantCount: 0,
+        merchantTokenDistribution: {}
+      }
+    });
+  });
+
+  it("returns deterministic data errors for mojibake, invalid dates, and non-numeric amounts", () => {
+    const invalidFixturePath = writeTemporaryFixtureFile(
+      "invalid-data.csv",
+      [
+        expectedHeaders.join(";"),
+        [
+          "32.05.2026",
+          "",
+          "29.05.2026",
+          "KJÃP UTLAND",
+          "Varekjøp",
+          "Debetkort",
+          "ACCT-001",
+          "",
+          "",
+          "USER_1",
+          "",
+          "-45,00",
+          "NOK",
+          "Bokført",
+          "TXN-001"
+        ].join(";")
+      ].join("\n")
+    );
+
+    const report = verifyFixture({
+      inputPath: invalidFixturePath
+    });
+
+    expect(report).toEqual({
+      ok: false,
+      errors: [
+        "Fixture text is not valid UTF-8 or contains replacement characters.",
+        "Fixture text contains mojibake sequences that should be re-sanitized.",
+        "Row 2: Utført dato is not a valid dd.MM.yyyy date.",
+        "Row 2: Beløp ut is not numeric.",
+        "Fixture must contain at least one non-NOK row for FX coverage."
+      ],
+      warnings: [],
+      stats: {
+        rowCount: 1,
+        nonNokRowCount: 0,
+        reservedRowCount: 0,
+        holdRowCount: 0,
+        transferRowCount: 0,
+        fxRowCount: 0,
+        kidReferenceCount: 0,
+        uniqueMerchantCount: 1,
+        merchantTokenDistribution: {
+          KJØP: 1,
+          UTLAND: 1
+        }
+      }
+    });
+  });
+
+  it("returns a non-successful report instead of throwing when a row has the wrong cell count", () => {
+    const malformedFixturePath = writeTemporaryFixtureFile(
+      "wrong-cell-count.csv",
+      [
+        expectedHeaders.join(";"),
+        "29.05.2026;;29.05.2026;MERCHANT_001;Varekjøp"
+      ].join("\n")
+    );
+
+    expect(() =>
+      verifyFixture({
+        inputPath: malformedFixturePath
+      })
+    ).not.toThrow();
+
     expect(
-      report.warnings.some((warning) => warning.includes("Near-duplicate merchant variants"))
-    ).toBe(true);
+      verifyFixture({
+        inputPath: malformedFixturePath
+      })
+    ).toEqual({
+      ok: false,
+      errors: ["Row 2 has 5 cells, expected 15."],
+      warnings: [],
+      stats: {
+        rowCount: 0,
+        nonNokRowCount: 0,
+        reservedRowCount: 0,
+        holdRowCount: 0,
+        transferRowCount: 0,
+        fxRowCount: 0,
+        kidReferenceCount: 0,
+        uniqueMerchantCount: 0,
+        merchantTokenDistribution: {}
+      }
+    });
   });
 
   it("verifies ADR and glossary artifacts are present and linked from plan.md", () => {

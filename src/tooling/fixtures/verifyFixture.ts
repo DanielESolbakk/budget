@@ -1,6 +1,6 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { readFixtureCsv, rowsToObjects } from "./fixtureCsv.js";
+import { parseFixtureCsv, rowsToObjects } from "./fixtureCsv.js";
 
 export interface VerifyFixtureOptions {
   inputPath: string;
@@ -15,10 +15,12 @@ export interface VerificationReport {
     rowCount: number;
     nonNokRowCount: number;
     reservedRowCount: number;
+    holdRowCount: number;
     transferRowCount: number;
     fxRowCount: number;
     kidReferenceCount: number;
     uniqueMerchantCount: number;
+    merchantTokenDistribution: Record<string, number>;
   };
 }
 
@@ -61,26 +63,107 @@ function isNumericAmount(value: string): boolean {
   return /^-?\d+(?:\.\d+)?$/.test(value);
 }
 
+function createEmptyStats(): VerificationReport["stats"] {
+  return {
+    rowCount: 0,
+    nonNokRowCount: 0,
+    reservedRowCount: 0,
+    holdRowCount: 0,
+    transferRowCount: 0,
+    fxRowCount: 0,
+    kidReferenceCount: 0,
+    uniqueMerchantCount: 0,
+    merchantTokenDistribution: {}
+  };
+}
+
+function containsInvalidUtf8Characters(value: string): boolean {
+  return value.includes("\uFFFD") || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/.test(value);
+}
+
+function containsCommonMojibake(value: string): boolean {
+  return /(Ã.|Â.|â.|ð.|�)/u.test(value);
+}
+
+function repairCommonMojibake(value: string): string {
+  if (!containsCommonMojibake(value)) {
+    return value;
+  }
+
+  return Buffer.from(value, "latin1").toString("utf8");
+}
+
 function normalizeMerchantKey(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  return value.toUpperCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function createReport(
+  errors: string[],
+  warnings: string[],
+  stats: VerificationReport["stats"],
+  reportPath?: string
+): VerificationReport {
+  const report: VerificationReport = {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    stats
+  };
+
+  if (reportPath) {
+    mkdirSync(dirname(resolve(reportPath)), { recursive: true });
+    writeFileSync(reportPath, JSON.stringify(report, null, 2), "utf8");
+  }
+
+  return report;
 }
 
 export function verifyFixture(options: VerifyFixtureOptions): VerificationReport {
-  const parsed = readFixtureCsv(options.inputPath);
-  const records = rowsToObjects(parsed);
+  const rawText = readFileSync(options.inputPath, "utf8");
   const errors: string[] = [];
   const warnings: string[] = [];
+  const stats = createEmptyStats();
+  const normalizedText = rawText.replace(/^\uFEFF/, "").trim();
+
+  if (normalizedText.length === 0) {
+    errors.push("CSV file is empty.");
+    return createReport(errors, warnings, stats, options.reportPath);
+  }
+
+  if (containsInvalidUtf8Characters(normalizedText)) {
+    errors.push("Fixture text is not valid UTF-8 or contains replacement characters.");
+  }
+
+  if (containsCommonMojibake(normalizedText)) {
+    errors.push("Fixture text contains mojibake sequences that should be re-sanitized.");
+  }
+
+  const headerLine = normalizedText.split(/\r?\n/, 1)[0] ?? "";
+  if (!headerLine.includes(";")) {
+    errors.push("CSV must use semicolon delimiters.");
+  }
+
+  let parsed;
+  try {
+    parsed = parseFixtureCsv(rawText);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+    return createReport(errors, warnings, stats, options.reportPath);
+  }
+
+  stats.rowCount = parsed.rows.length;
 
   if (parsed.header.join("|") !== expectedHeaders.join("|")) {
     errors.push("CSV header does not match the expected import fixture schema.");
   }
 
+  if (errors.includes("CSV header does not match the expected import fixture schema.")) {
+    return createReport(errors, warnings, stats, options.reportPath);
+  }
+
+  const records = rowsToObjects(parsed);
   const merchantVariants = new Map<string, Set<string>>();
-  let nonNokRowCount = 0;
-  let reservedRowCount = 0;
-  let transferRowCount = 0;
-  let fxRowCount = 0;
-  let kidReferenceCount = 0;
+  const merchantTokenDistribution = new Map<string, number>();
 
   records.forEach((record, index) => {
     const rowNumber = index + 2;
@@ -109,8 +192,8 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
     }
 
     const currencyCode = record["Valuta"];
-    if (currencyCode !== "NOK") {
-      nonNokRowCount += 1;
+    if (currencyCode && currencyCode !== "NOK") {
+      stats.nonNokRowCount += 1;
     }
 
     const status = (record["Status"] ?? "").toUpperCase();
@@ -118,8 +201,13 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
     const transactionType = (record["Type"] ?? "").toUpperCase();
     const reference = (record["Melding/KID/Fakt.nr"] ?? "").toUpperCase();
 
-    if (status === "RESERVENT" || status === "RESERVERT" || status === "RESERVERT" || undertype.includes("HOLDT")) {
-      reservedRowCount += 1;
+    if (
+      status.includes("RESERV") ||
+      status.includes("HOLD") ||
+      undertype.includes("HOLD")
+    ) {
+      stats.reservedRowCount += 1;
+      stats.holdRowCount += 1;
     }
 
     if (
@@ -127,7 +215,7 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
       undertype.includes("UTLANDET") ||
       reference.includes("FX-")
     ) {
-      fxRowCount += 1;
+      stats.fxRowCount += 1;
     }
 
     if (
@@ -135,25 +223,32 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
       transactionType.includes("STRAKSBETALING") ||
       reference.includes("TRANSFER")
     ) {
-      transferRowCount += 1;
+      stats.transferRowCount += 1;
     }
 
     if (reference.includes("KID") || reference.includes("FAKT")) {
-      kidReferenceCount += 1;
+      stats.kidReferenceCount += 1;
     }
 
-    const merchantName = record["Beskrivelse"] ?? "";
+    const merchantName = repairCommonMojibake(record["Beskrivelse"] ?? "");
     const merchantKey = normalizeMerchantKey(merchantName);
     const variants = merchantVariants.get(merchantKey) ?? new Set<string>();
     variants.add(merchantName);
     merchantVariants.set(merchantKey, variants);
+
+    for (const token of merchantKey.split(" ").filter((value) => value.length > 0)) {
+      merchantTokenDistribution.set(
+        token,
+        (merchantTokenDistribution.get(token) ?? 0) + 1
+      );
+    }
   });
 
   if (records.length === 0) {
     errors.push("Fixture has no transaction rows.");
   }
 
-  if (nonNokRowCount === 0) {
+  if (stats.nonNokRowCount === 0) {
     errors.push("Fixture must contain at least one non-NOK row for FX coverage.");
   }
 
@@ -165,25 +260,12 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
     }
   }
 
-  const report: VerificationReport = {
-    ok: errors.length === 0,
-    errors,
-    warnings,
-    stats: {
-      rowCount: records.length,
-      nonNokRowCount,
-      reservedRowCount,
-      transferRowCount,
-      fxRowCount,
-      kidReferenceCount,
-      uniqueMerchantCount: merchantVariants.size
-    }
-  };
+  stats.uniqueMerchantCount = merchantVariants.size;
+  stats.merchantTokenDistribution = Object.fromEntries(
+    [...merchantTokenDistribution.entries()].sort(([left], [right]) =>
+      left.localeCompare(right, "en")
+    )
+  );
 
-  if (options.reportPath) {
-    mkdirSync(dirname(resolve(options.reportPath)), { recursive: true });
-    writeFileSync(options.reportPath, JSON.stringify(report, null, 2), "utf8");
-  }
-
-  return report;
+  return createReport(errors, warnings, stats, options.reportPath);
 }
