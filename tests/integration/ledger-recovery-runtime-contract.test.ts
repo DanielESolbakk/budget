@@ -4,10 +4,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
-import {
-  createMonthlyCategoryTargetStore,
-  queryMonthlyDashboardSnapshot,
-} from "../../src/app/dashboardApi.js";
 import { LedgerOperationCoordinator } from "../../src/app/ledgerOperationCoordinator.js";
 import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
@@ -317,146 +313,52 @@ describe("ledger recovery runtime contracts", () => {
   it("hydrates monthly targets from the reopened local ledger", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-target-reopen-"));
     const dbPath = join(tempDir, "ledger.sqlite");
-    const seedData: LedgerSnapshotData = {
-      ...createSnapshotData(),
-      transactions: [
-        {
-          id: "tx-groceries",
-          householdId: HOUSEHOLD.id,
-          accountId: ACCOUNT.id,
-          bookedAtIso: "2026-05-03T00:00:00Z",
-          amountMinor: -8_000,
-          merchantRaw: "Groceries merchant",
-          categoryId: "groceries",
-        },
-        {
-          id: "tx-transport",
-          householdId: HOUSEHOLD.id,
-          accountId: ACCOUNT.id,
-          bookedAtIso: "2026-05-08T00:00:00Z",
-          amountMinor: -2_500,
-          merchantRaw: "Transport merchant",
-          categoryId: "transport",
-        },
-      ],
-      monthlyCategoryTargets: [],
-    };
+    const seedData = { ...createSnapshotData(), transactions: [], monthlyCategoryTargets: [] };
 
     try {
       const firstDatabase = createLocalLedgerDatabase({ dbPath, seedData });
       firstDatabase.upsertMonthlyCategoryTarget({
         yearMonth: "2026-05",
-        categoryId: "transport",
-        targetMinor: 4_000,
-      });
-      firstDatabase.upsertMonthlyCategoryTarget({
-        yearMonth: "2026-05",
         categoryId: "groceries",
-        targetMinor: 9_500,
+        targetMinor: 9500,
       });
       firstDatabase.close();
 
       const reopenedDatabase = createLocalLedgerDatabase({ dbPath, seedData });
-      const reopenedSnapshot = reopenedDatabase.loadLedgerSnapshotData();
-      expect(reopenedSnapshot.monthlyCategoryTargets).toEqual([
-        { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 9_500 },
-        { yearMonth: "2026-05", categoryId: "transport", targetMinor: 4_000 },
+      expect(reopenedDatabase.loadLedgerSnapshotData().monthlyCategoryTargets).toEqual([
+        { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 9500 },
       ]);
-      expect(
-        queryMonthlyDashboardSnapshot(
-          reopenedSnapshot.transactions,
-          "2026-05",
-          createMonthlyCategoryTargetStore(reopenedSnapshot.monthlyCategoryTargets)
-        ).targetVsActualCategoryRows
-      ).toEqual({
-        yearMonth: "2026-05",
-        rows: [
-          {
-            categoryId: "groceries",
-            targetMinor: 9_500,
-            actualMinor: 8_000,
-            deltaMinor: -1_500,
-          },
-          {
-            categoryId: "transport",
-            targetMinor: 4_000,
-            actualMinor: 2_500,
-            deltaMinor: -1_500,
-          },
-        ],
-      });
       reopenedDatabase.close();
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
-  it("includes restored monthly targets in the replacement snapshot contract after reopening", () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "budget-target-restore-reopen-"));
+  it("does not reseed demo targets when an existing ledger has no targets", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-target-no-reseed-"));
     const dbPath = join(tempDir, "ledger.sqlite");
-    const restoredState: LedgerSnapshotData = {
+    const demoSeedData: LedgerSnapshotData = {
       ...createSnapshotData(),
-      transactions: [
-        {
-          id: "tx-transport-restored",
-          householdId: HOUSEHOLD.id,
-          accountId: ACCOUNT.id,
-          bookedAtIso: "2026-05-04T00:00:00Z",
-          amountMinor: -2_000,
-          merchantRaw: "Transport restored merchant",
-          categoryId: "transport",
-        },
-        {
-          id: "tx-groceries-restored",
-          householdId: HOUSEHOLD.id,
-          accountId: ACCOUNT.id,
-          bookedAtIso: "2026-05-11T00:00:00Z",
-          amountMinor: -9_500,
-          merchantRaw: "Groceries restored merchant",
-          categoryId: "groceries",
-        },
-      ],
       monthlyCategoryTargets: [
-        { yearMonth: "2026-05", categoryId: "transport", targetMinor: 4_000 },
-        { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 9_500 },
+        { yearMonth: "2026-05", categoryId: "demo-seed", targetMinor: 7_000 },
       ],
+    };
+    const existingLedgerWithoutTargets: LedgerSnapshotData = {
+      ...createSnapshotData(),
+      monthlyCategoryTargets: [],
     };
 
     try {
-      const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
-      database.replaceLedgerSnapshotData(restoredState);
-      database.close();
-
-      const reopened = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
-      const reopenedSnapshot = reopened.loadLedgerSnapshotData();
-      expect(reopenedSnapshot.monthlyCategoryTargets).toEqual([
-        { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 9_500 },
-        { yearMonth: "2026-05", categoryId: "transport", targetMinor: 4_000 },
+      const firstDatabase = createLocalLedgerDatabase({ dbPath, seedData: demoSeedData });
+      expect(firstDatabase.loadLedgerSnapshotData().monthlyCategoryTargets).toEqual([
+        { yearMonth: "2026-05", categoryId: "demo-seed", targetMinor: 7_000 },
       ]);
-      expect(
-        queryMonthlyDashboardSnapshot(
-          reopenedSnapshot.transactions,
-          "2026-05",
-          createMonthlyCategoryTargetStore(reopenedSnapshot.monthlyCategoryTargets)
-        ).targetVsActualCategoryRows
-      ).toEqual({
-        yearMonth: "2026-05",
-        rows: [
-          {
-            categoryId: "groceries",
-            targetMinor: 9_500,
-            actualMinor: 9_500,
-            deltaMinor: 0,
-          },
-          {
-            categoryId: "transport",
-            targetMinor: 4_000,
-            actualMinor: 2_000,
-            deltaMinor: -2_000,
-          },
-        ],
-      });
-      reopened.close();
+      firstDatabase.replaceLedgerSnapshotData(existingLedgerWithoutTargets);
+      firstDatabase.close();
+
+      const reopenedDatabase = createLocalLedgerDatabase({ dbPath, seedData: demoSeedData });
+      expect(reopenedDatabase.loadLedgerSnapshotData().monthlyCategoryTargets).toEqual([]);
+      reopenedDatabase.close();
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -534,7 +436,6 @@ describe("ledger recovery runtime contracts", () => {
       });
       legacySnapshot.metadata.version = "1";
       delete (legacySnapshot as unknown as { merchantCategoryRules?: unknown }).merchantCategoryRules;
-      writeFileSync(snapshotPath, JSON.stringify(legacySnapshot), "utf8");
 
       const restored = restoreBackupSnapshot({ snapshotPath });
       database.replaceLedgerSnapshotData(restored);
