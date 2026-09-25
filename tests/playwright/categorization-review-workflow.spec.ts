@@ -2,7 +2,7 @@ import { _electron as electron } from "@playwright/test";
 import { test, expect } from "./fixtures/electron.js";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join, resolve } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { CsvImportPage } from "./pom/CsvImportPage.js";
@@ -11,10 +11,23 @@ import { ReviewQueuePage } from "./pom/ReviewQueuePage.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
+const temporaryDirectories = new Set<string>();
+
+function createTemporaryDirectory(): string {
+  const directory = mkdtempSync(join(tmpdir(), "budget-playwright-categorization-"));
+  temporaryDirectories.add(directory);
+  return directory;
+}
+
+test.afterEach(() => {
+  for (const directory of temporaryDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  temporaryDirectories.clear();
+});
 
 function writeFutureMerchantFixture(date = "31.05.2026", fileName = "merchant-rule-follow-up.csv"): string {
-  const directory = join(tmpdir(), "budget-playwright-categorization");
-  mkdirSync(directory, { recursive: true });
+  const directory = createTemporaryDirectory();
   const filePath = join(directory, fileName);
   writeFileSync(
     filePath,

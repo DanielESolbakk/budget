@@ -19,18 +19,31 @@
 import { test, expect } from "./fixtures/electron.js";
 import type { Request } from "@playwright/test";
 import { join, resolve } from "node:path";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
 const BINARY_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
+const temporaryDirectories = new Set<string>();
+
+function createTemporaryDirectory(): string {
+  const directory = mkdtempSync(join(tmpdir(), "budget-playwright-pdf-"));
+  temporaryDirectories.add(directory);
+  return directory;
+}
+
+test.afterEach(() => {
+  for (const directory of temporaryDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  temporaryDirectories.clear();
+});
 
 /** Writes an unsupported text content to a temp file and returns the absolute path. */
 function writeUnsupportedFixture(): string {
-  const dir = join(tmpdir(), "budget-playwright-pdf");
-  mkdirSync(dir, { recursive: true });
+  const dir = createTemporaryDirectory();
   const path = join(dir, `unsupported-${randomUUID()}.txt`);
   writeFileSync(path, "Not a supported bank statement format.\nSome other bank\n", "utf8");
   return path;
@@ -216,7 +229,7 @@ test.describe("PDF import renderer workflow", () => {
     pdfImport,
     dashboard,
   }) => {
-    const mutablePath = join(tmpdir(), `mutable-${randomUUID()}.txt`);
+    const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.txt`);
     writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";

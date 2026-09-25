@@ -53,15 +53,20 @@ test.describe("Planning artifact availability", () => {
       await expect(appShell.onDeviceLabel).toBeVisible();
       await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
-      const blocked = await window.evaluate(async (url) => {
-        try {
-          const response = await fetch(url);
-          return !response.ok;
-        } catch {
-          return true;
-        }
-      }, blockedServer.url);
+      const [blockedRequest, blocked] = await Promise.all([
+        window.waitForEvent("requestfailed", (request) => request.url() === blockedServer.url),
+        window.evaluate(async (url) => {
+          try {
+            const response = await fetch(url);
+            return !response.ok;
+          } catch {
+            return true;
+          }
+        }, blockedServer.url),
+      ]);
+
       expect(blocked).toBe(true);
+      expect(blockedRequest.failure()?.errorText).toBe("net::ERR_BLOCKED_BY_CLIENT");
     } finally {
       await closeServer(blockedServer.server);
     }

@@ -21,8 +21,11 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Install: `npm install`
 - Typecheck: `npm run typecheck`
 - Unit tests: `npm run test:unit`
-- Coverage thresholds signal: `npm run test:coverage:signal`
+- Unit coverage report: `npm run test:coverage:unit`
+- Integration coverage report: `npm run test:coverage:integration`
 - Integration tests: `npm run test:integration`
+- Unit mutation signal: `npm run test:mutation:signal`
+- Unit and integration mutation signal (advisory): `npm run test:mutation:unit-integration:signal`
 - Vitest end-to-end smoke tests: `npm run test:e2e:vitest`
 - Playwright runtime tests: `npm run test:e2e:playwright`
 - No-network verification: `npm run verify:no-network`
