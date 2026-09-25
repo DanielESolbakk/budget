@@ -78,7 +78,21 @@ function createEmptyStats(): VerificationReport["stats"] {
 }
 
 function containsInvalidUtf8Characters(value: string): boolean {
-  return value.includes("\uFFFD") || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/.test(value);
+  if (value.includes("\uFFFD")) {
+    return true;
+  }
+
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isAsciiControl = codePoint <= 0x1f && codePoint !== 0x09 && codePoint !== 0x0a && codePoint !== 0x0d;
+    const isLatin1Control = codePoint >= 0x7f && codePoint <= 0x9f;
+
+    if (isAsciiControl || isLatin1Control) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function containsCommonMojibake(value: string): boolean {

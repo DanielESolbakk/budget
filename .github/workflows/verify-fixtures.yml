@@ -1,0 +1,76 @@
+name: Verify Fixtures
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/verify-fixture.ts"
+      - "src/tooling/fixtures/**"
+      - "tests/fixtures/synthetic/*.csv"
+      - "tests/fixtures/verification-reports/**"
+      - ".github/workflows/verify-fixtures.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/verify-fixture.ts"
+      - "src/tooling/fixtures/**"
+      - "tests/fixtures/synthetic/*.csv"
+      - "tests/fixtures/verification-reports/**"
+      - ".github/workflows/verify-fixtures.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-synthetic-fixtures:
+    name: Verify synthetic CSV fixtures
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Verify synthetic CSV fixtures
+        id: verify
+        shell: bash
+        run: |
+          mkdir -p reports/fixture-verification
+          status=0
+          shopt -s nullglob
+
+          for fixture in tests/fixtures/synthetic/*.csv; do
+            report="reports/fixture-verification/$(basename "${fixture%.csv}").verification-report.json"
+            if ! npm run verify-fixture -- --input "$fixture" --report "$report"; then
+              status=1
+            fi
+          done
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Upload fixture verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-verification-reports
+          path: reports/fixture-verification
+          if-no-files-found: error
+
+      - name: Fail when fixture verification report is unsuccessful
+        if: steps.verify.outputs.status != '0'
+        run: exit 1
