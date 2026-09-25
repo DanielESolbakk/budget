@@ -163,9 +163,10 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.previewRegion).toBeVisible();
     await pdfImport.confirmImportButton.click();
     await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
-    await expect(pdfImport.successStatus).toBeVisible({ timeout: 10_000 });
+    await expect(pdfImport.pendingStatus).not.toBeVisible();
     await expect(pdfImport.successStatus).toHaveText(
-      /Added 0 transactions to your ledger\. 10 duplicates skipped\./,
+      "Added 0 transactions to your ledger. 10 duplicates skipped.",
+      { timeout: 10_000 }
     );
     await expect
       .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), {
@@ -218,6 +219,8 @@ test.describe("PDF import renderer workflow", () => {
     const mutablePath = join(tmpdir(), `mutable-${randomUUID()}.txt`);
     writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
+    const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
+    const beforeNetText = (await dashboard.netValue.textContent()) ?? "";
 
     await pdfImport.filePathInput.fill(mutablePath);
     await pdfImport.importButton.click();
@@ -228,7 +231,10 @@ test.describe("PDF import renderer workflow", () => {
 
     await expect(pdfImport.errorAlert).toBeVisible({ timeout: 10_000 });
     await expect(pdfImport.errorAlert).toContainText("Import validation failed");
+    await expect(pdfImport.errorAlert).toContainText("PREVIEW_STALE: The file changed after preview.");
     await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
+    await expect(dashboard.expenseValue).toHaveText(beforeExpenseText);
+    await expect(dashboard.netValue).toHaveText(beforeNetText);
   });
 
   test("Regression: PDF import rejects an account outside the household", async ({ window }) => {

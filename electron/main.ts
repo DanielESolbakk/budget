@@ -566,6 +566,7 @@ app.whenReady().then(async () => {
         accountId: request.accountId,
         columnMapping: request.columnMapping,
         sourceIdentity: digestImportBytes(csvBytes),
+        sourceScope: process.platform === "win32" ? resolve(request.filePath).toLowerCase() : resolve(request.filePath),
       });
       const previewId = importPreviewRegistry.create({
         format: "csv",
@@ -654,6 +655,7 @@ app.whenReady().then(async () => {
         idPrefix: importJobId,
         columnMapping: request.columnMapping,
         sourceIdentity: digestImportBytes(csvBytes),
+        sourceScope: canonicalPath,
       });
 
       if (result.skipped.length > 0) {
@@ -854,6 +856,7 @@ app.whenReady().then(async () => {
       const preview = previewPdfImportWorkflow(
         {
           pdfText,
+          filePath: request.filePath,
           householdId: request.householdId,
           accountId: request.accountId,
         },

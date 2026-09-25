@@ -315,6 +315,8 @@ test.describe("CSV import renderer workflow", () => {
     const mutablePath = join(tmpdir(), `mutable-${randomUUID()}.csv`);
     writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
+    const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
+    const beforeNetText = (await dashboard.netValue.textContent()) ?? "";
 
     await csvImport.filePathInput.fill(mutablePath);
     await csvImport.importButton.click();
@@ -325,7 +327,10 @@ test.describe("CSV import renderer workflow", () => {
 
     await expect(csvImport.errorAlert).toBeVisible({ timeout: 10_000 });
     await expect(csvImport.errorAlert).toContainText("Import validation failed");
+    await expect(csvImport.errorAlert).toContainText("The file changed after preview.");
     await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
+    await expect(dashboard.expenseValue).toHaveText(beforeExpenseText);
+    await expect(dashboard.netValue).toHaveText(beforeNetText);
   });
 
   test("Regression: CSV import rejects an account outside the household", async ({ window }) => {

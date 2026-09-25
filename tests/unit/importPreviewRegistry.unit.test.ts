@@ -43,6 +43,26 @@ describe("ImportPreviewRegistry", () => {
     registry.claim(previewId, context());
   });
 
+  it("rejects every mismatched import context without consuming the receipt", () => {
+    const mismatches = [
+      { ...context(), format: "pdf" as const },
+      { ...context(), filePath: "fixtures/other.csv" },
+      { ...context(), householdId: "other-household" },
+      { ...context(), accountId: "other-account" },
+      { ...context(), columnMapping: { description: "Merchant" } },
+    ];
+
+    for (const mismatchedContext of mismatches) {
+      const registry = new ImportPreviewRegistry();
+      const previewId = registry.create(context());
+
+      expect(() => registry.claim(previewId, mismatchedContext)).toThrowError(
+        expect.objectContaining({ code: "PREVIEW_CONTEXT_MISMATCH" })
+      );
+      registry.claim(previewId, context());
+    }
+  });
+
   it("expires receipts and evicts the oldest entry at capacity", () => {
     let now = 1000;
     const registry = new ImportPreviewRegistry({

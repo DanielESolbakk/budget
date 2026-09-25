@@ -77,6 +77,7 @@ export interface CsvRowMappingOptions {
   idPrefix?: string;
   columnMapping?: CsvColumnMapping | undefined;
   sourceIdentity?: string;
+  sourceScope?: string;
 }
 
 function normalizeHeaderName(value: string): string {
@@ -336,7 +337,7 @@ export function mapCsvRows(
 
   return {
     transactions: assignImportedTransactionIds(mappedTransactions, {
-      ...(options.sourceIdentity === undefined ? {} : { sourceIdentity: options.sourceIdentity }),
+      ...(options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope }),
       sourceReferences: mappedTransactions.map((transaction, index) =>
         normalizeCsvRow(rows[index]!, options.columnMapping)[CSV_COLUMN_NAMES.reference]
       ),
@@ -361,7 +362,7 @@ export function previewCsvRows(
       preview.transaction === undefined ? [] : [preview.transaction]
     ),
     {
-      ...(options.sourceIdentity === undefined ? {} : { sourceIdentity: options.sourceIdentity }),
+      ...(options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope }),
       sourceReferences: previews.flatMap((preview) =>
         preview.transaction === undefined
           ? []

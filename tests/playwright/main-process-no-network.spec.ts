@@ -66,6 +66,40 @@ test.describe("Main-process transaction privacy", () => {
     expect(responses[1]).toContain("Restore input must be an object.");
   });
 
+  test("rejects malformed import input before reading the supplied path", async ({ window }) => {
+    const responses = await window.evaluate(async () => {
+      const api = (globalThis as unknown as { budgetApi: unknown }).budgetApi as {
+        import: {
+          importCsv: (input: unknown) => Promise<unknown>;
+          importPdf: (input: unknown) => Promise<unknown>;
+        };
+      };
+      const results: string[] = [];
+
+      await api.import.importCsv({
+        filePath: "missing-malformed-import.csv",
+        previewId: "unused-preview",
+        columnMapping: { description: "" },
+      }).then(
+        () => results.push("csv-accepted"),
+        (error: unknown) => results.push(error instanceof Error ? error.message : String(error))
+      );
+      await api.import.importPdf({
+        filePath: "missing-malformed-import.pdf",
+        previewId: "unused-preview",
+        accountId: 42,
+      }).then(
+        () => results.push("pdf-accepted"),
+        (error: unknown) => results.push(error instanceof Error ? error.message : String(error))
+      );
+
+      return results;
+    });
+
+    expect(responses[0]).toContain("Invalid CSV column mapping: description");
+    expect(responses[1]).toContain("accountId must be a non-empty string when provided.");
+  });
+
   test("rejects privileged IPC calls from a second window at the same app URL", async ({ electronApp, window }) => {
     await expect(window.getByRole("heading", { name: "Budget Planner" })).toBeVisible();
     const response = await electronApp.evaluate(async ({ BrowserWindow }) => {

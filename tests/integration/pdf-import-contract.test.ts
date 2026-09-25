@@ -433,6 +433,62 @@ describe("pdf import contract", () => {
   });
 
   describe("Scenario 2: duplicate-safe re-import – second import of same fixture leaves ledger row count unchanged", () => {
+    it("persists identical rows in one PDF batch and reports zero inserts on unchanged re-import", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const candidate: Transaction = {
+        id: "candidate-one",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        bookedAtIso: "2026-05-23T00:00:00Z",
+        amountMinor: -1250,
+        merchantRaw: "Same merchant",
+      };
+      const parserRegistry = {
+        parse: () => ({
+          ok: true as const,
+          adapterId: "identical-row-test-adapter",
+          sourceIdentity: "identical-row-test-source",
+          candidates: [candidate, { ...candidate, id: "candidate-two" }],
+        }),
+      };
+      const input = {
+        pdfText: "stable synthetic duplicate PDF content",
+        filePath: "identical-purchases.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        importJobId: "identical-pdf-job",
+        startedAtIso: "2026-05-23T00:00:00Z",
+        finishedAtIso: "2026-05-23T00:00:00Z",
+      };
+      const dependencies = {
+        parserRegistry,
+        appendImportJob: ledger.appendImportJob,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+        appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+        appendTransactions: ledger.appendTransactions,
+      };
+
+      try {
+        const first = runPdfImportWorkflow(input, dependencies);
+        expect(first).toMatchObject({ ok: true, transactionCount: 2, duplicateCount: 0 });
+        const storedTransactions = ledger.loadLedgerSnapshotData().transactions;
+        expect(storedTransactions).toHaveLength(2);
+        expect(storedTransactions[0]).toMatchObject({
+          accountId: SAMPLE_ACCOUNT.id,
+          bookedAtIso: storedTransactions[1]?.bookedAtIso,
+          amountMinor: storedTransactions[1]?.amountMinor,
+          merchantRaw: storedTransactions[1]?.merchantRaw,
+        });
+        expect(storedTransactions[0]?.id).not.toBe(storedTransactions[1]?.id);
+
+        const retry = runPdfImportWorkflow(input, dependencies);
+        expect(retry).toMatchObject({ ok: true, transactionCount: 0, duplicateCount: 2 });
+        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(2);
+      } finally {
+        ledger.close();
+      }
+    });
+
     it("reconciles prior rows when the same PDF path is re-exported with added transactions", () => {
       const ledger = makeTestLedger(randomUUID());
       const originalText = loadFixture();

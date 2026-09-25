@@ -5,6 +5,7 @@ import { buildRogalandImportJobId } from "../../domain/import/pdfTextParser.js";
 import { categorizeTransaction } from "../../domain/categorization/categorizeTransaction.js";
 import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
 import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
+import { resolve } from "node:path";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
 export interface PdfImportRequest {
@@ -132,16 +133,21 @@ export function appendUniqueTransactions(
 
 function buildPdfImportTransactions(
   candidates: Transaction[],
-  sourceIdentity: string
+  sourceScope: string
 ): Transaction[] {
   return assignImportedTransactionIds(
     candidates.map((transaction) => categorizeTransaction(transaction)),
-    { sourceIdentity }
+    { sourceScope }
   );
 }
 
+function canonicalSourceScope(filePath: string): string {
+  const resolvedPath = resolve(filePath);
+  return process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
 export function previewPdfImportWorkflow(
-  input: Pick<PdfImportWorkflowInput, "pdfText" | "householdId" | "accountId">,
+  input: Pick<PdfImportWorkflowInput, "pdfText" | "filePath" | "householdId" | "accountId">,
   parserRegistry: Pick<ParserAdapterRegistry, "parse">
 ): PdfImportPreviewWorkflowResponse {
   const parseResult = parserRegistry.parse(input.pdfText, {
@@ -158,7 +164,7 @@ export function previewPdfImportWorkflow(
     adapterId: parseResult.adapterId,
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
-      buildRogalandImportJobId(input.pdfText, input)
+      canonicalSourceScope(input.filePath)
     ),
   };
 }
@@ -181,7 +187,7 @@ export function runPdfImportWorkflow(
     parseResult.candidates.map((transaction) =>
       categorizeTransaction(transaction, input.categoryRules)
     ),
-    { sourceIdentity: buildRogalandImportJobId(input.pdfText, input) }
+    { sourceScope: canonicalSourceScope(input.filePath) }
   );
 
   const previousTransactions = [

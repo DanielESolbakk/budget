@@ -21,42 +21,49 @@ describe("assignImportedTransactionIds", () => {
   });
 
   it("keeps an occurrence identity stable when another fingerprint group is added", () => {
-    const first = assignImportedTransactionIds([baseTransaction]);
+    const first = assignImportedTransactionIds([baseTransaction], { sourceScope: "statement.csv" });
     const withAnotherGroup = assignImportedTransactionIds([
       { ...baseTransaction, merchantRaw: "Other merchant" },
       baseTransaction,
-    ]);
+    ], { sourceScope: "statement.csv" });
 
     expect(withAnotherGroup[1]?.id).toBe(first[0]?.id);
   });
 
+  it("keeps a transaction ID stable for the same source scope", () => {
+    const firstSource = assignImportedTransactionIds([baseTransaction], { sourceScope: "statement.csv" });
+    const changedSource = assignImportedTransactionIds([baseTransaction], { sourceScope: "statement.csv" });
+
+    expect(changedSource[0]?.id).toBe(firstSource[0]?.id);
+  });
+
   it("keeps distinct source references across separate imports", () => {
     const first = assignImportedTransactionIds([baseTransaction], {
-      sourceIdentity: "first-file",
+      sourceScope: "statement.csv",
       sourceReferences: ["KID-100"],
     });
     const second = assignImportedTransactionIds([baseTransaction], {
-      sourceIdentity: "second-file",
+      sourceScope: "statement.csv",
       sourceReferences: ["KID-200"],
     });
 
     expect(first[0]?.id).not.toBe(second[0]?.id);
     expect(assignImportedTransactionIds([baseTransaction], {
-      sourceIdentity: "first-file",
+      sourceScope: "statement.csv",
       sourceReferences: ["KID-100"],
     })[0]?.id).toBe(first[0]?.id);
 
     const reusedReference = assignImportedTransactionIds([baseTransaction], {
-      sourceIdentity: "third-file",
+      sourceScope: "statement.csv",
       sourceReferences: ["KID-100"],
     });
-    expect(reusedReference[0]?.id).not.toBe(first[0]?.id);
+    expect(reusedReference[0]?.id).toBe(first[0]?.id);
   });
 
   it("keeps distinct no-reference rows from different sources", () => {
-    const first = assignImportedTransactionIds([baseTransaction], { sourceIdentity: "statement-a" });
-    const second = assignImportedTransactionIds([baseTransaction], { sourceIdentity: "statement-b" });
+    const first = assignImportedTransactionIds([baseTransaction], { sourceScope: "statement-a.csv" });
+    const second = assignImportedTransactionIds([baseTransaction], { sourceScope: "statement-b.csv" });
     expect(first[0]?.id).not.toBe(second[0]?.id);
-    expect(assignImportedTransactionIds([baseTransaction], { sourceIdentity: "statement-a" })).toEqual(first);
+    expect(assignImportedTransactionIds([baseTransaction], { sourceScope: "statement-a.csv" })).toEqual(first);
   });
 });

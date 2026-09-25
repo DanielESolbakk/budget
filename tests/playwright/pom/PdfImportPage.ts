@@ -48,6 +48,10 @@ export class PdfImportPage {
     return this.importSection.getByRole("status");
   }
 
+  get pendingStatus() {
+    return this.importSection.getByRole("status").filter({ hasText: "Checking the file..." });
+  }
+
   /** Alert shown on runtime import failure or validation failure (role="alert"). */
   get errorAlert() {
     return this.importSection.getByRole("alert").first();

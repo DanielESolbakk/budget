@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { LedgerOperationCoordinator } from "../../src/app/ledgerOperationCoordinator.js";
+import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import type { LedgerSnapshotData } from "../../src/domain/backup/snapshotContract.js";
 import type { Transaction } from "../../src/domain/types.js";
@@ -43,6 +45,50 @@ function createSnapshotData(): LedgerSnapshotData {
   };
 }
 
+function createDeferred<Result>() {
+  let resolve!: (result: Result) => void;
+  const promise = new Promise<Result>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function runDeferredPdfImport(
+  pdfText: string,
+  database: ReturnType<typeof createLocalLedgerDatabase>,
+  importJobId: string
+) {
+  const candidate: Transaction = {
+    id: "candidate-pdf",
+    householdId: HOUSEHOLD.id,
+    accountId: ACCOUNT.id,
+    bookedAtIso: "2026-06-01T00:00:00Z",
+    amountMinor: -2500,
+    merchantRaw: "Queued PDF merchant",
+  };
+  return runPdfImportWorkflow({
+    pdfText,
+    filePath: "queued-import.pdf",
+    householdId: HOUSEHOLD.id,
+    accountId: ACCOUNT.id,
+    importJobId,
+    startedAtIso: "2026-06-01T00:00:00Z",
+    finishedAtIso: "2026-06-01T00:00:01Z",
+  }, {
+    parserRegistry: {
+      parse: () => ({
+        ok: true,
+        adapterId: "deferred-test-adapter",
+        sourceIdentity: "deferred-test-source",
+        candidates: [candidate],
+      }),
+    },
+    appendImportJob: database.appendImportJob,
+    appendImportJobAndTransactions: database.appendImportJobAndTransactions,
+    appendTransactions: database.appendTransactions,
+  });
+}
+
 describe("ledger recovery runtime contracts", () => {
   it("replaces the SQLite ledger and preserves restored state after reopening", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-ledger-replace-"));
@@ -60,6 +106,76 @@ describe("ledger recovery runtime contracts", () => {
       expect(reopened.loadLedgerSnapshotData()).toEqual(restoredState);
       reopened.close();
     } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("finishes an earlier PDF extraction and import before a later restore", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-import-then-restore-"));
+    const database = createLocalLedgerDatabase({ dbPath: join(tempDir, "ledger.sqlite"), seedData: createSnapshotData() });
+    const coordinator = new LedgerOperationCoordinator();
+    const extraction = createDeferred<string>();
+    const events: string[] = [];
+
+    try {
+      const importOperation = coordinator.runExclusive(async () => {
+        events.push("import-start");
+        const response = runDeferredPdfImport(await extraction.promise, database, "queued-pdf-job");
+        events.push("import-end");
+        return response;
+      });
+      const restoreOperation = coordinator.runExclusive(() => {
+        events.push("restore-start");
+        database.replaceLedgerSnapshotData(createSnapshotData());
+        events.push("restore-end");
+      });
+
+      await Promise.resolve();
+      expect(events).toEqual(["import-start"]);
+      extraction.resolve("deferred synthetic PDF text");
+      const [importResponse] = await Promise.all([importOperation, restoreOperation]);
+
+      expect(importResponse).toMatchObject({ ok: true, transactionCount: 1 });
+      expect(events).toEqual(["import-start", "import-end", "restore-start", "restore-end"]);
+      expect(database.loadLedgerSnapshotData()).toEqual(createSnapshotData());
+    } finally {
+      database.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("completes an earlier restore before a later PDF import", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-restore-then-import-"));
+    const database = createLocalLedgerDatabase({ dbPath: join(tempDir, "ledger.sqlite"), seedData: createSnapshotData() });
+    const coordinator = new LedgerOperationCoordinator();
+    const extraction = createDeferred<string>();
+    const events: string[] = [];
+
+    try {
+      const restoreOperation = coordinator.runExclusive(() => {
+        events.push("restore-start");
+        database.replaceLedgerSnapshotData(createSnapshotData());
+        events.push("restore-end");
+      });
+      const importOperation = coordinator.runExclusive(async () => {
+        events.push("import-start");
+        const response = runDeferredPdfImport(await extraction.promise, database, "queued-pdf-after-restore");
+        events.push("import-end");
+        return response;
+      });
+
+      await restoreOperation;
+      expect(events).toEqual(["restore-start", "restore-end"]);
+      extraction.resolve("deferred synthetic PDF text");
+      const importResponse = await importOperation;
+
+      expect(importResponse).toMatchObject({ ok: true, transactionCount: 1 });
+      expect(events).toEqual(["restore-start", "restore-end", "import-start", "import-end"]);
+      expect(database.loadLedgerSnapshotData().transactions.map((transaction) => transaction.id))
+        .toEqual(expect.arrayContaining(["tx-restored", expect.any(String)]));
+      expect(database.loadLedgerSnapshotData().importJobs).toHaveLength(1);
+    } finally {
+      database.close();
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -228,6 +344,35 @@ describe("ledger recovery runtime contracts", () => {
         { merchantAlias: "MERCHANT B", categoryId: "transport" },
       ]);
       reopened.close();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("clears existing learned rules when restoring a version-1 snapshot", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-rules-v1-restore-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const snapshotPath = join(tempDir, "legacy-snapshot.json");
+    const initialState: LedgerSnapshotData = {
+      ...createSnapshotData(),
+      merchantCategoryRules: [{ merchantAlias: "OLD MERCHANT", categoryId: "groceries" }],
+    };
+
+    try {
+      const database = createLocalLedgerDatabase({ dbPath, seedData: initialState });
+      const legacySnapshot = buildBackupSnapshot({
+        ...createSnapshotData(),
+        createdAtIso: "2026-09-22T10:00:00Z",
+      });
+      legacySnapshot.metadata.version = "1";
+      delete (legacySnapshot as unknown as { merchantCategoryRules?: unknown }).merchantCategoryRules;
+      writeFileSync(snapshotPath, JSON.stringify(legacySnapshot), "utf8");
+
+      const restored = restoreBackupSnapshot({ snapshotPath });
+      database.replaceLedgerSnapshotData(restored);
+
+      expect(database.loadLedgerSnapshotData().merchantCategoryRules).toEqual([]);
+      database.close();
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
