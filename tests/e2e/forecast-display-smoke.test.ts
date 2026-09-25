@@ -35,6 +35,21 @@ function createFakeBudgetApi(): BudgetApi {
       upsert: async (input) => ({ ...input }),
       listByMonth: async () => [],
     },
+    review: {
+      list: async () => [],
+      updateCategory: async (input) => ({
+        id: input.transactionId,
+        householdId: "sample-hh",
+        accountId: "sample-acc",
+        bookedAtIso: "2026-05-01T00:00:00Z",
+        amountMinor: 0,
+        merchantRaw: "",
+        categoryId: input.categoryId,
+      }),
+    },
+    ledger: {
+      list: async () => [],
+    },
     export: {
       writeLedgerCsv: async (outputPath) => ({
         csvText: "",
@@ -50,13 +65,16 @@ function createFakeBudgetApi(): BudgetApi {
         transactions: [],
         importJobs: [],
         monthlyCategoryTargets: [],
+        merchantCategoryRules: [],
         transactionCount: 0,
       }),
     },
     import: {
-      importCsv: async () => ({ ok: true as const, importJobId: "", transactionCount: 0 }),
+      previewCsv: async () => ({ ok: true as const, previewId: "", headers: [], rows: [], transactions: [] }),
+      importCsv: async () => ({ ok: true as const, importJobId: "", transactionCount: 0, duplicateCount: 0 }),
       addManualTransaction: async () => ({ ok: false as const, reason: "validation" as const, code: "INVALID_MERCHANT_RAW", message: "" }),
-      importPdf: async () => ({ ok: true as const, importJobId: "", transactionCount: 0, adapterId: "" }),
+      previewPdf: async () => ({ ok: true as const, previewId: "", adapterId: "", transactions: [] }),
+      importPdf: async () => ({ ok: true as const, importJobId: "", transactionCount: 0, duplicateCount: 0, adapterId: "" }),
     },
     dialogs: {
       chooseCsvExportPath: async () => null,

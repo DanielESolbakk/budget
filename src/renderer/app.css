@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
-  font-family: "Barlow Condensed", "Segoe UI", sans-serif;
+  --display: "Barlow Condensed", "Segoe UI", sans-serif;
+  font-family: "Segoe UI", sans-serif;
   color: #f2eee5;
   background: #090909;
   font-synthesis: none;
@@ -10,10 +11,12 @@
   --paper-muted: #c2bdb3;
   --panel: #151515;
   --panel-raised: #1d1d1d;
+  --panel-soft: #111313;
   --line: #383632;
   --line-strong: #69645b;
   --orange: #f4772b;
   --orange-soft: #402517;
+  --info: #a7cfca;
   --error: #ff9b7b;
   --success: #b9d8a8;
   --focus: #ffd19a;
@@ -94,6 +97,7 @@ button {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+  font-family: var(--display);
 }
 
 button:hover:not(:disabled) {
@@ -212,6 +216,7 @@ li::marker {
 .work-bin-heading h2,
 .work-bin-heading p {
   margin: 0;
+  font-family: var(--display);
 }
 
 .brand-lockup h1 {
@@ -298,6 +303,7 @@ li::marker {
   font-weight: 800;
   letter-spacing: -0.035em;
   line-height: 0.95;
+  font-family: var(--display);
 }
 
 .intro-copy {
@@ -400,6 +406,7 @@ li::marker {
   font-size: 1.25rem;
   font-weight: 800;
   letter-spacing: -0.01em;
+  font-family: var(--display);
 }
 
 .rail-count {
@@ -570,6 +577,7 @@ section[aria-label] > h2 {
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  font-family: var(--display);
 }
 
 section[aria-label] p {
@@ -675,6 +683,28 @@ section[aria-label="Restore Snapshot"] input {
   margin-bottom: 0.2rem;
 }
 
+.field-help {
+  display: block;
+  margin: -0.15rem 0 0.35rem;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+fieldset[aria-label="CSV column mapping"] {
+  margin: 1rem 0 0;
+  border: 1px solid var(--line);
+  padding: 0.9rem;
+}
+
+fieldset[aria-label="CSV column mapping"] legend {
+  padding: 0 0.35rem;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
 section[aria-label="CSV Import"] [role="alert"],
 section[aria-label="Manual Entry"] [role="alert"],
 section[aria-label="PDF Import"] [role="alert"],
@@ -710,21 +740,250 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .work-bin-heading > p {
-  max-width: 44ch;
+  max-width: 52ch;
   margin: 0;
   color: var(--paper-muted);
   line-height: 1.5;
 }
 
-.work-bin-grid {
+.section-kicker,
+.group-step {
+  margin: 0 0 0.35rem;
+  color: var(--orange);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.work-bin-heading h2 {
+  font-size: 1.8rem;
+}
+
+.workflow-steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.workflow-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4.4rem;
+  border-right: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+  color: var(--paper-muted);
+}
+
+.workflow-step:last-child {
+  border-right: 0;
+}
+
+.workflow-step-number {
+  display: grid;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex: 0 0 1.7rem;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--paper-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.7rem;
+}
+
+.workflow-step.is-current {
+  color: var(--paper);
+  background: var(--panel-soft);
+}
+
+.workflow-step.is-current .workflow-step-number {
+  border-color: var(--orange);
+  color: var(--ink);
+  background: var(--orange);
+}
+
+.workflow-step strong,
+.workflow-step small {
+  display: block;
+}
+
+.workflow-step strong {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.05rem;
+}
+
+.workflow-step small {
+  margin-top: 0.15rem;
+  color: inherit;
+  font-size: 0.75rem;
+}
+
+.workflow-groups {
+  display: grid;
+  gap: 2.25rem;
+  margin-top: 2.25rem;
+}
+
+.workflow-group {
+  border-top: 1px solid var(--line-strong);
+  padding-top: 1.15rem;
+}
+
+.workflow-group-heading {
+  max-width: 58ch;
+  margin-bottom: 1rem;
+}
+
+.workflow-group-heading h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.workflow-group-heading > p:last-child {
+  margin: 0.45rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.45;
+}
+
+.workflow-import-grid,
+.workflow-recovery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
+}
+
+.workflow-import-grid section[aria-label],
+.workflow-recovery-grid section[aria-label] {
+  min-width: 0;
+}
+
+.workflow-group-review > section[aria-label="Categorization Review"] {
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+}
+
+.section-intro {
+  margin: -0.35rem 0 1.15rem;
+  color: var(--paper-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.section-intro strong {
+  color: var(--paper);
+}
+
+.preview-summary {
+  border: 1px solid var(--line-strong);
+  padding: 0.7rem 0.8rem;
+  background: var(--panel-soft);
+}
+
+.preview-summary strong {
+  color: var(--paper);
+}
+
+.preview-table-wrap {
+  overflow-x: auto;
   margin-top: 1rem;
 }
 
-.work-bin-grid section[aria-label] {
-  min-width: 0;
+.import-preview-table {
+  min-width: 34rem;
+  font-size: 0.82rem;
+}
+
+.import-preview-table caption {
+  margin-bottom: 0.5rem;
+  color: var(--paper-muted);
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.review-queue-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-queue-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 0.9fr);
+  gap: 1.25rem;
+  align-items: end;
+  border-top: 1px solid var(--line);
+  padding: 1rem 0;
+}
+
+.review-queue-item:first-child {
+  border-top-color: var(--line-strong);
+}
+
+.review-queue-details strong,
+.review-queue-details span {
+  display: block;
+}
+
+.review-queue-details strong {
+  overflow-wrap: anywhere;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.2rem;
+}
+
+.review-queue-details span {
+  margin-top: 0.3rem;
+  color: var(--paper-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.7rem;
+}
+
+.review-queue-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.review-queue-action label > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--paper-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.review-queue-action button {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.empty-state {
+  border: 1px dashed var(--line-strong);
+  padding: 1rem;
+  background: var(--panel-soft);
+}
+
+.empty-state strong {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.1rem;
+}
+
+.empty-state p {
+  margin: 0.35rem 0 0;
 }
 
 @media (max-width: 1050px) {
@@ -736,7 +995,8 @@ section[aria-label="Category Target Entry"] [role="status"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .work-bin-grid {
+  .workflow-import-grid,
+  .workflow-recovery-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -791,12 +1051,73 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   .review-support,
-  .work-bin-grid {
+  .workflow-import-grid,
+  .workflow-recovery-grid,
+  .workflow-steps {
     grid-template-columns: 1fr;
   }
 
-  section[aria-label="Monthly Totals"] dl {
+  .workflow-step {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .workflow-step:last-child {
+    border-bottom: 0;
+  }
+
+  .review-queue-item {
     grid-template-columns: 1fr;
+    gap: 0.9rem;
+  }
+
+  .preview-table-wrap {
+    overflow: visible;
+  }
+
+  .import-preview-table {
+    min-width: 0;
+  }
+
+  .import-preview-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .import-preview-table,
+  .import-preview-table tbody,
+  .import-preview-table tr,
+  .import-preview-table td {
+    display: block;
+  }
+
+  .import-preview-table tr {
+    border-top: 1px solid var(--line);
+    padding: 0.65rem 0;
+  }
+
+  .import-preview-table tr:first-child {
+    border-top-color: var(--line-strong);
+  }
+
+  .import-preview-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.25rem 0;
+    text-align: right;
+  }
+
+  .import-preview-table td::before {
+    color: var(--paper-muted);
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-align: left;
   }
 
   section[aria-label="Monthly Totals"] dt {

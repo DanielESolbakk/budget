@@ -1,7 +1,11 @@
 import type { PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
-import { buildTransactionFingerprint } from "../../domain/import/buildTransactionFingerprint.js";
+import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
+import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
+import { buildRogalandImportJobId } from "../../domain/import/pdfTextParser.js";
+import { categorizeTransaction } from "../../domain/categorization/categorizeTransaction.js";
 import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
 import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
+import { resolve } from "node:path";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
 export interface PdfImportRequest {
@@ -15,6 +19,7 @@ export interface PdfImportSuccess {
   ok: true;
   importJobId: string;
   transactionCount: number;
+  duplicateCount: number;
   adapterId: string;
 }
 
@@ -30,17 +35,36 @@ export interface PdfImportFailure {
 /** Discriminated union returned by the `import:pdf` IPC channel. */
 export type PdfImportResponse = PdfImportSuccess | PdfImportFailure;
 
+export interface PdfImportPreviewSuccess {
+  ok: true;
+  previewId: string;
+  adapterId: string;
+  transactions: Transaction[];
+}
+
+export type PdfImportPreviewResponse = PdfImportPreviewSuccess | PdfImportFailure;
+export type PdfImportPreviewWorkflowResponse =
+  | Omit<PdfImportPreviewSuccess, "previewId">
+  | PdfImportFailure;
+
 export interface PdfImportWorkflowInput extends PdfImportRequest {
   pdfText: string;
   importJobId: string;
   startedAtIso: string;
   finishedAtIso: string;
+  categoryRules?: ReadonlyMap<string, string>;
 }
 
 export interface PdfImportWorkflowDependencies {
   parserRegistry: Pick<ParserAdapterRegistry, "parse">;
   appendImportJob: (importJob: ImportJob) => void;
-  appendTransactions: (transactions: Transaction[]) => void;
+  hasImportJob?: (importJobId: string) => boolean;
+  getTransactionsForImportJob?: (importJobId: string) => Transaction[];
+  getImportedTransactionsForSource?: (
+    sourceType: ImportJob["sourceType"], sourceName: string, accountId: string, sourceIdentity?: string
+  ) => Transaction[];
+  appendImportJobAndTransactions?: (importJob: ImportJob, transactions: Transaction[]) => number;
+  appendTransactions: (transactions: Transaction[]) => number | void;
   onTransactionsPersisted?: (transactions: Transaction[]) => void;
 }
 
@@ -107,6 +131,44 @@ export function appendUniqueTransactions(
   }
 }
 
+function buildPdfImportTransactions(
+  candidates: Transaction[],
+  sourceScope: string
+): Transaction[] {
+  return assignImportedTransactionIds(
+    candidates.map((transaction) => categorizeTransaction(transaction)),
+    { sourceScope }
+  );
+}
+
+function canonicalSourceScope(filePath: string): string {
+  const resolvedPath = resolve(filePath);
+  return process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
+export function previewPdfImportWorkflow(
+  input: Pick<PdfImportWorkflowInput, "pdfText" | "filePath" | "householdId" | "accountId">,
+  parserRegistry: Pick<ParserAdapterRegistry, "parse">
+): PdfImportPreviewWorkflowResponse {
+  const parseResult = parserRegistry.parse(input.pdfText, {
+    householdId: input.householdId,
+    accountId: input.accountId,
+  });
+
+  if (!parseResult.ok) {
+    return normalizePdfImportErrors(parseResult.errors);
+  }
+
+  return {
+    ok: true,
+    adapterId: parseResult.adapterId,
+    transactions: buildPdfImportTransactions(
+      parseResult.candidates,
+      canonicalSourceScope(input.filePath)
+    ),
+  };
+}
+
 export function runPdfImportWorkflow(
   input: PdfImportWorkflowInput,
   dependencies: PdfImportWorkflowDependencies
@@ -121,15 +183,25 @@ export function runPdfImportWorkflow(
     return normalizePdfImportErrors(parseResult.errors);
   }
 
-  const transactions = parseResult.candidates.map((transaction) => ({
-    ...transaction,
-    id: buildTransactionFingerprint({
-      accountId: transaction.accountId,
-      bookedAtIso: transaction.bookedAtIso,
-      amountMinor: transaction.amountMinor,
-      merchantRaw: transaction.merchantRaw,
-    }),
-  }));
+  const transactions = assignImportedTransactionIds(
+    parseResult.candidates.map((transaction) =>
+      categorizeTransaction(transaction, input.categoryRules)
+    ),
+    { sourceScope: canonicalSourceScope(input.filePath) }
+  );
+
+  const previousTransactions = [
+    ...(dependencies.getTransactionsForImportJob?.(input.importJobId) ?? []),
+    ...(dependencies.getImportedTransactionsForSource?.(
+      "pdf",
+      input.filePath,
+      input.accountId,
+      buildRogalandImportJobId(input.pdfText, input)
+    ) ?? []),
+  ].filter((transaction, index, all) =>
+    all.findIndex((candidate) => candidate.id === transaction.id) === index
+  );
+  const pendingTransactions = filterPreviouslyImportedTransactions(transactions, previousTransactions);
 
   const importJob: ImportJob = {
     id: input.importJobId,
@@ -143,19 +215,25 @@ export function runPdfImportWorkflow(
     finishedAtIso: input.finishedAtIso,
     provenance: {
       sourceIdentity: parseResult.sourceIdentity,
+      contentDigest: buildRogalandImportJobId(input.pdfText, input),
       adapterId: parseResult.adapterId,
       storyAnchor: PDF_IMPORT_STORY_ANCHOR,
     },
   };
 
-  dependencies.appendImportJob(importJob);
-  dependencies.appendTransactions(transactions);
-  dependencies.onTransactionsPersisted?.(transactions);
+  const insertedCount = dependencies.appendImportJobAndTransactions === undefined
+    ? (() => {
+        dependencies.appendImportJob(importJob);
+        return dependencies.appendTransactions(pendingTransactions) ?? pendingTransactions.length;
+      })()
+    : dependencies.appendImportJobAndTransactions(importJob, pendingTransactions);
+  dependencies.onTransactionsPersisted?.(pendingTransactions);
 
   return {
     ok: true,
     importJobId: input.importJobId,
-    transactionCount: transactions.length,
+    transactionCount: insertedCount,
+    duplicateCount: transactions.length - insertedCount,
     adapterId: parseResult.adapterId,
   };
 }

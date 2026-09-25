@@ -17,7 +17,7 @@ export class CsvImportPage {
 
   /** The landmark region wrapping the CSV import section (aria-label="CSV Import"). */
   get importSection() {
-    return this.page.getByRole("region", { name: "CSV Import" });
+    return this.page.getByRole("region", { name: "CSV Import", exact: true });
   }
 
   /** The "Import CSV" heading inside the section. */
@@ -32,7 +32,19 @@ export class CsvImportPage {
 
   /** The Import CSV action button. */
   get importButton() {
-    return this.page.getByRole("button", { name: "Import CSV" });
+    return this.page.getByRole("button", { name: "Preview CSV" });
+  }
+
+  get confirmImportButton() {
+    return this.page.getByRole("button", { name: "Confirm CSV import" });
+  }
+
+  get previewRegion() {
+    return this.importSection.getByRole("region", { name: "CSV import preview" });
+  }
+
+  mappingSelect(label: string) {
+    return this.previewRegion.getByRole("combobox", { name: `Map ${label}` });
   }
 
   /** Status message shown on successful import (role="status"). */
@@ -42,12 +54,19 @@ export class CsvImportPage {
 
   /** Alert shown on runtime import failure (role="alert"). */
   get errorAlert() {
-    return this.importSection.getByRole("alert");
+    return this.importSection.getByRole("alert").first();
   }
 
   /** Fills the file path input and triggers the import action. */
   async submitImport(filePath: string): Promise<void> {
     await this.filePathInput.fill(filePath);
     await this.importButton.click();
+    await Promise.race([
+      this.previewRegion.waitFor({ state: "visible" }),
+      this.errorAlert.waitFor({ state: "visible" }),
+    ]);
+    if (await this.previewRegion.isVisible() && await this.confirmImportButton.isEnabled()) {
+      await this.confirmImportButton.click();
+    }
   }
 }

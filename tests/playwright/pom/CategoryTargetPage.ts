@@ -57,6 +57,6 @@ export class CategoryTargetPage {
 
   /** Success status message shown after a target is saved. */
   get savedConfirmation() {
-    return this.page.getByRole("status");
+    return this.section.getByRole("status");
   }
 }

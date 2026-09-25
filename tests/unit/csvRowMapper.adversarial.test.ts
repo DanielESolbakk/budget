@@ -216,7 +216,7 @@ describe("csvRowMapper adversarial edge cases", () => {
     expect(mapped.transaction.importJobId).toBe("job-1");
   });
 
-  it("uses default id prefix when idPrefix is omitted", () => {
+  it("uses a stable fingerprint when idPrefix is omitted", () => {
     const row = withOverrides({
       [CSV_COLUMN_NAMES.amountOut]: "20.00",
     });
@@ -231,7 +231,7 @@ describe("csvRowMapper adversarial edge cases", () => {
       return;
     }
 
-    expect(mapped.transaction.id).toBe("csv-5");
+    expect(mapped.transaction.id).toMatch(/^[a-f0-9]{64}$/);
     expect("importJobId" in mapped.transaction).toBe(false);
   });
 
@@ -313,7 +313,7 @@ describe("csvRowMapper adversarial edge cases", () => {
     const result = mapCsvRows([first, second], mappingOptions);
     expect(result.skipped).toEqual([]);
     expect(result.transactions).toHaveLength(2);
-    expect(result.transactions[0]?.id).toBe("adv-1");
+    expect(result.transactions[0]?.id).toMatch(/^[a-f0-9]{64}$/);
     expect(result.transactions[1]?.amountMinor).toBe(10_000);
   });
 });

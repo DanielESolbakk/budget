@@ -53,6 +53,7 @@ describe("csv export contract", () => {
         "amountMinor",
         "merchantRaw",
         "merchantAlias",
+        "sourceReference",
         "categoryId",
         "importJobId",
       ]);
@@ -221,6 +222,7 @@ describe("csv export contract", () => {
       };
       const row = buildCsvRow(tx);
       expect(row.merchantAlias).toBe("");
+      expect(row.sourceReference).toBe("");
       expect(row.categoryId).toBe("");
       expect(row.importJobId).toBe("");
     });
@@ -234,11 +236,13 @@ describe("csv export contract", () => {
         amountMinor: -1000,
         merchantRaw: "Rema 1000",
         merchantAlias: "REMA",
+        sourceReference: "BANK-REFERENCE-42",
         categoryId: "groceries",
         importJobId: "job-99",
       };
       const row = buildCsvRow(tx);
       expect(row.merchantAlias).toBe("REMA");
+      expect(row.sourceReference).toBe("BANK-REFERENCE-42");
       expect(row.categoryId).toBe("groceries");
       expect(row.importJobId).toBe("job-99");
     });

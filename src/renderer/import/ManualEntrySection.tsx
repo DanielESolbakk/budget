@@ -5,6 +5,7 @@ import type {
   ManualEntrySuccess,
 } from "../../app/import/manualEntry.js";
 import type { Account, ManualEntryInput } from "../../domain/types.js";
+import { CATEGORY_OPTIONS } from "./categoryOptions.js";
 
 const DEFAULT_HOUSEHOLD_ID = "sample-hh";
 
@@ -133,7 +134,7 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
           disabled={entryState.status === "pending"}
         />
 
-        <label htmlFor="manual-amount-minor">Amount (minor units)</label>
+        <label htmlFor="manual-amount-minor">Amount (øre)</label>
         <input
           id="manual-amount-minor"
           type="number"
@@ -141,10 +142,12 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
           step="1"
           value={formValues.amountMinor}
           onChange={(event) => updateField("amountMinor", event.target.value)}
+          aria-describedby="manual-amount-help"
           placeholder="-1250"
           required
           disabled={entryState.status === "pending"}
         />
+        <p id="manual-amount-help" className="field-help">1 kr = 100 øre. Use a negative number for an expense and a positive number for income.</p>
 
         <label htmlFor="manual-merchant-raw">Description or merchant</label>
         <input
@@ -156,14 +159,20 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
           disabled={entryState.status === "pending"}
         />
 
-        <label htmlFor="manual-category-id">Manual category ID (optional)</label>
-        <input
+        <label htmlFor="manual-category-id">Category (optional)</label>
+        <select
           id="manual-category-id"
-          type="text"
           value={formValues.categoryId}
           onChange={(event) => updateField("categoryId", event.target.value)}
           disabled={entryState.status === "pending"}
-        />
+        >
+          <option value="">Leave uncategorized for review</option>
+          {CATEGORY_OPTIONS.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.label}
+            </option>
+          ))}
+        </select>
 
         <button
           type="submit"
@@ -185,14 +194,13 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
       )}
       {entryState.status === "success" && (
         <p role="status">
-          Transaction added: {entryState.response.transaction.merchantRaw}; account {entryState.response.transaction.accountId}; date {entryState.response.transaction.bookedAtIso}; amount {entryState.response.transaction.amountMinor} minor units; category {entryState.response.transaction.categoryId ?? "uncategorized"}.
+          Added {entryState.response.transaction.merchantRaw} to your ledger.
         </p>
       )}
       {entryState.status === "duplicate" && (
         <div role="alert">
-          <p>Duplicate transaction detected.</p>
-          <p>Matching ledger row: {entryState.response.matchingTransactionId}.</p>
-          <p>Fingerprint: {entryState.response.fingerprint}</p>
+          <p>This transaction is already in your ledger.</p>
+          <p>Check the Ledger section to review the existing entry before adding another one.</p>
         </div>
       )}
       {entryState.status === "validation" && (

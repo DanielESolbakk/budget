@@ -28,8 +28,14 @@ export interface Transaction {
   currencyCode?: string;
   sourceType?: "csv" | "pdf" | "manual";
   merchantAlias?: string;
+  sourceReference?: string;
   categoryId?: string;
   importJobId?: string;
+}
+
+export interface MerchantCategoryRule {
+  merchantAlias: string;
+  categoryId: string;
 }
 
 /**
@@ -159,6 +165,7 @@ export interface ImportJobStoryAnchor {
 
 export interface ImportJobProvenance {
   sourceIdentity: string;
+  contentDigest?: string;
   adapterId?: string;
   storyAnchor?: ImportJobStoryAnchor;
 }

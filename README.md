@@ -21,20 +21,19 @@ npm install
 npm start
 ```
 
-This command builds the renderer and main process and opens the Electron desktop window. The app runs entirely locally — no network connection is required.
+This starts Electron in development mode and opens the desktop window. The ledger is stored locally under `data/local/`; transaction content is not sent to a server.
 
-### Import a digital text PDF statement
+### Bring in transactions
 
-Use the PDF import flow in the desktop app to load a local text-based statement exported by a supported bank. The current adapter is focused on Rogaland Sparebank digital text statements that include the `ROGALAND SPAREBANK` header and a `Dato  Beskrivelse` transaction table.
+Open **Bring in transactions** in the app, then choose CSV, PDF, or manual entry. For CSV and PDF, enter a local file path, preview the mapped rows, and confirm only after checking the dates, merchants, and amounts. A changed file must be previewed again before confirmation. Uncategorized transactions appear in **Review what needs attention**.
 
-Example local usage:
+The supported PDF adapter reads Rogaland Sparebank text-based statements (including binary digital PDFs). Scanned images and unknown bank layouts are not supported yet. For a safe trial, use the synthetic fixtures in this repository:
 
-```bash
-# Example fixture path in the repo
-# tests/fixtures/synthetic/rogaland-2026-05-statement.txt
-```
+- `tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv`
+- `tests/fixtures/synthetic/rogaland-2026-05-binary.pdf`
+- `tests/fixtures/synthetic/rogaland-2026-05-statement.txt`
 
-The app validates the file before import, rejects unsupported layouts without partial writes, and records the adapter identity in the import provenance metadata. All processing stays local by default and the no-network guard blocks outbound external requests during the import flow.
+Repeat imports of an unchanged source are skipped, and import jobs retain local provenance. When statements overlap or contain indistinguishable rows without a stable bank reference, the app cannot prove that rows from different files are the same purchase; check the ledger after importing overlapping exports. Back up locally before restoring another snapshot, since restore replaces the current ledger and learned categorization rules.
 
 ### Build for production
 
@@ -42,7 +41,7 @@ The app validates the file before import, rejects unsupported layouts without pa
 npm run build
 ```
 
-The production-ready output is placed in `dist/`.
+Electron Vite writes the build to `out/` (`out/main`, `out/preload`, and `out/renderer`). This is a build artifact, not an installer.
 
 ### Run checks
 

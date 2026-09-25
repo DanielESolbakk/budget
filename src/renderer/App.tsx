@@ -12,13 +12,15 @@ import { ForecastSection } from "./dashboard/ForecastSection.js";
 import { CsvImportSection } from "./import/CsvImportSection.js";
 import { ManualEntrySection } from "./import/ManualEntrySection.js";
 import { PdfImportSection } from "./import/PdfImportSection.js";
+import { CategoryReviewSection } from "./import/CategoryReviewSection.js";
 import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
+import { LedgerSection } from "./dashboard/LedgerSection.js";
 import { RestoreSnapshotSection } from "./dashboard/RestoreSnapshotSection.js";
 import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
 
 const DEFAULT_YEAR_MONTH = "2026-05";
-const monthFormatter = new Intl.DateTimeFormat("en-GB", {
+const monthFormatter = new Intl.DateTimeFormat("nb-NO", {
   month: "short",
   year: "numeric",
   timeZone: "UTC",
@@ -174,9 +176,9 @@ export function App(): React.JSX.Element {
       <main className="workspace" aria-labelledby="review-heading">
         <section className="review-intro" aria-labelledby="review-heading">
           <div>
-            <h2 id="review-heading">Cut the month into something clear.</h2>
+            <h2 id="review-heading">Review your household spending.</h2>
             <p className="intro-copy">
-              Read the selected month first, then pin the work that keeps the ledger useful.
+              Start with one month, then bring in or tidy the transactions that explain it.
             </p>
           </div>
           {appState.status === "ready" && (
@@ -238,10 +240,10 @@ export function App(): React.JSX.Element {
           <section className="month-rail" aria-labelledby="rail-heading">
             <div className="rail-heading-row">
               <div>
-                <h2 id="rail-heading">Choose a frame</h2>
+                <h2 id="rail-heading">Choose a month</h2>
               </div>
               <span className="rail-count">
-                {appState.availableMonths.length} available frame{appState.availableMonths.length === 1 ? "" : "s"}
+                {appState.availableMonths.length} month{appState.availableMonths.length === 1 ? "" : "s"} available
               </span>
             </div>
             <nav aria-label="Available months" className="rail-track">
@@ -260,7 +262,7 @@ export function App(): React.JSX.Element {
                         <span className="frame-index">{String(index + 1).padStart(2, "0")}</span>
                         <span className="frame-month">{formatYearMonth(month)}</span>
                         <span className="frame-code">{month}</span>
-                        <span className="frame-state">{isSelected ? "Selected" : "Frame"}</span>
+                        <span className="frame-state">{isSelected ? "Selected" : "Month"}</span>
                         {isSelected && <span className="frame-flag">Current</span>}
                       </button>
                     </li>
@@ -277,6 +279,7 @@ export function App(): React.JSX.Element {
           <div className="review-grid" aria-busy={isChangingMonth || isRefreshing}>
             <div className="review-primary">
               <MonthlyTotalsSection viewContract={appState.viewContract} />
+              <LedgerSection refreshKey={refreshCounter} />
               <TargetVsActualSection viewContract={appState.viewContract} />
               <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
             </div>
@@ -289,17 +292,61 @@ export function App(): React.JSX.Element {
           <section className="work-bin" aria-labelledby="work-bin-heading">
             <div className="work-bin-heading">
               <div>
-                <h2 id="work-bin-heading">Keep the ledger recoverable.</h2>
+                <p className="section-kicker">Your next steps</p>
+                <h2 id="work-bin-heading">Bring in transactions, then tidy them.</h2>
               </div>
-              <p>Imports, snapshots, and restores stay close without competing with the monthly read.</p>
+              <p>Start with a statement or one manual transaction. Preview it before anything is saved, then resolve anything that needs a category.</p>
             </div>
-            <div className="work-bin-grid">
-              <ManualEntrySection onEntrySuccess={() => setRefreshCounter((counter) => counter + 1)} />
-              <CsvImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
-              <PdfImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
-              <BackupSection />
-              <ExportSection />
-              <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)} />
+            <ol className="workflow-steps" aria-label="Ledger workflow">
+              <li className="workflow-step is-current">
+                <span className="workflow-step-number">1</span>
+                <span><strong>Bring in</strong><small>CSV, PDF, or one transaction</small></span>
+              </li>
+              <li className="workflow-step">
+                <span className="workflow-step-number">2</span>
+                <span><strong>Review</strong><small>Give uncategorized items a home</small></span>
+              </li>
+              <li className="workflow-step">
+                <span className="workflow-step-number">3</span>
+                <span><strong>Keep it safe</strong><small>Back up or export when ready</small></span>
+              </li>
+            </ol>
+            <div className="workflow-groups">
+              <div className="workflow-group workflow-group-import" aria-labelledby="bring-in-heading">
+                <div className="workflow-group-heading">
+                  <p className="group-step">Step 1</p>
+                  <h3 id="bring-in-heading">Bring in transactions</h3>
+                  <p>Choose the format you already have. We’ll show a preview before importing.</p>
+                </div>
+                <div className="workflow-import-grid">
+                  <ManualEntrySection onEntrySuccess={() => setRefreshCounter((counter) => counter + 1)} />
+                  <CsvImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
+                  <PdfImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
+                </div>
+              </div>
+              <div className="workflow-group workflow-group-review" aria-labelledby="review-queue-heading">
+                <div className="workflow-group-heading">
+                  <p className="group-step">Step 2</p>
+                  <h3 id="review-queue-heading">Review what needs attention</h3>
+                  <p>Unknown merchants stay here until you choose a category. Your choice helps next time.</p>
+                </div>
+                <CategoryReviewSection
+                  refreshKey={refreshCounter}
+                  onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
+                />
+              </div>
+              <div className="workflow-group workflow-group-recovery" aria-labelledby="recovery-heading">
+                <div className="workflow-group-heading">
+                  <p className="group-step">Step 3</p>
+                  <h3 id="recovery-heading">Keep your ledger safe</h3>
+                  <p>Save a local backup, export a copy, or restore an earlier snapshot.</p>
+                </div>
+                <div className="workflow-recovery-grid">
+                  <BackupSection />
+                  <ExportSection />
+                  <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)} />
+                </div>
+              </div>
             </div>
           </section>
         </>

@@ -23,6 +23,7 @@ import {
   ROGALAND_ADAPTER_ID,
   ROGALAND_SOURCE_ID,
 } from "../../src/domain/import/pdfTextParser.js";
+import { buildTransactionFingerprint } from "../../src/domain/import/buildTransactionFingerprint.js";
 import { defaultParserAdapterRegistry } from "../../src/domain/import/parserAdapterRegistry.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { buildDashboardViewContract } from "../../src/app/dashboardApi.js";
@@ -361,6 +362,7 @@ describe("pdf import contract", () => {
         validationFailureCount: 0,
         provenance: {
           sourceIdentity: ROGALAND_SOURCE_ID,
+            contentDigest: buildRogalandImportJobId(text, MAPPING_OPTIONS),
           adapterId: ROGALAND_ADAPTER_ID,
           storyAnchor: {
             enablerIssueId: "32",
@@ -431,6 +433,231 @@ describe("pdf import contract", () => {
   });
 
   describe("Scenario 2: duplicate-safe re-import – second import of same fixture leaves ledger row count unchanged", () => {
+    it("persists identical rows in one PDF batch and reports zero inserts on unchanged re-import", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const candidate: Transaction = {
+        id: "candidate-one",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        bookedAtIso: "2026-05-23T00:00:00Z",
+        amountMinor: -1250,
+        merchantRaw: "Same merchant",
+      };
+      const parserRegistry = {
+        parse: () => ({
+          ok: true as const,
+          adapterId: "identical-row-test-adapter",
+          sourceIdentity: "identical-row-test-source",
+          candidates: [candidate, { ...candidate, id: "candidate-two" }],
+        }),
+      };
+      const input = {
+        pdfText: "stable synthetic duplicate PDF content",
+        filePath: "identical-purchases.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        importJobId: "identical-pdf-job",
+        startedAtIso: "2026-05-23T00:00:00Z",
+        finishedAtIso: "2026-05-23T00:00:00Z",
+      };
+      const dependencies = {
+        parserRegistry,
+        appendImportJob: ledger.appendImportJob,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+        appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+        appendTransactions: ledger.appendTransactions,
+      };
+
+      try {
+        const first = runPdfImportWorkflow(input, dependencies);
+        expect(first).toMatchObject({ ok: true, transactionCount: 2, duplicateCount: 0 });
+        const storedTransactions = ledger.loadLedgerSnapshotData().transactions;
+        expect(storedTransactions).toHaveLength(2);
+        expect(storedTransactions[0]).toMatchObject({
+          accountId: SAMPLE_ACCOUNT.id,
+          bookedAtIso: storedTransactions[1]?.bookedAtIso,
+          amountMinor: storedTransactions[1]?.amountMinor,
+          merchantRaw: storedTransactions[1]?.merchantRaw,
+        });
+        expect(storedTransactions[0]?.id).not.toBe(storedTransactions[1]?.id);
+
+        const retry = runPdfImportWorkflow(input, dependencies);
+        expect(retry).toMatchObject({ ok: true, transactionCount: 0, duplicateCount: 2 });
+        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(2);
+      } finally {
+        ledger.close();
+      }
+    });
+
+    it("reconciles prior rows when the same PDF path is re-exported with added transactions", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const originalText = loadFixture();
+      const filePath = "same-path-statement.pdf";
+      const oldJobId = buildRogalandImportJobId(originalText, MAPPING_OPTIONS);
+      const oldParse = parseRogalandStatementText(originalText, {
+        ...MAPPING_OPTIONS,
+        importJobId: oldJobId,
+      });
+      expect(oldParse.ok).toBe(true);
+      if (!oldParse.ok) return;
+
+      try {
+        const legacyTransactions = oldParse.transactions.map((transaction) => ({
+          ...transaction,
+          id: buildTransactionFingerprint(transaction),
+        }));
+        ledger.appendImportJobAndTransactions({
+          id: oldJobId,
+          householdId: SAMPLE_HOUSEHOLD.id,
+          sourceType: "pdf",
+          sourceName: filePath,
+          adapterId: oldParse.adapterId,
+          startedAtIso: "2026-05-31T00:00:00Z",
+        }, legacyTransactions);
+
+        const expandedText = `${originalText}\n14.05.2026   NEW MERCHANT Purchase                      -10,00      32 316,60\n`;
+        const newJobId = buildRogalandImportJobId(expandedText, MAPPING_OPTIONS);
+        const response = runPdfImportWorkflow({
+          pdfText: expandedText,
+          filePath,
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          importJobId: newJobId,
+          startedAtIso: "2026-06-01T00:00:00Z",
+          finishedAtIso: "2026-06-01T00:00:00Z",
+        }, {
+          parserRegistry: defaultParserAdapterRegistry,
+          getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+          appendImportJob: ledger.appendImportJob,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          appendTransactions: ledger.appendTransactions,
+        });
+
+        expect(response).toMatchObject({ ok: true, transactionCount: 1, duplicateCount: oldParse.transactions.length });
+        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(oldParse.transactions.length + 1);
+      } finally {
+        ledger.close();
+      }
+    });
+
+    it("reconciles a PDF copied unchanged to a new path before that copy is extended", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const text = loadFixture();
+      const contentIdentity = buildRogalandImportJobId(text, MAPPING_OPTIONS);
+
+      try {
+        const originalParse = parseRogalandStatementText(text, {
+          ...MAPPING_OPTIONS,
+          importJobId: contentIdentity,
+        });
+        expect(originalParse.ok).toBe(true);
+        if (!originalParse.ok) return;
+        const legacyRows = originalParse.transactions.map((transaction) => ({
+          ...transaction,
+          id: buildTransactionFingerprint(transaction),
+        }));
+        ledger.appendImportJobAndTransactions({
+          id: contentIdentity,
+          householdId: SAMPLE_HOUSEHOLD.id,
+          sourceType: "pdf",
+          sourceName: "A.pdf",
+          adapterId: originalParse.adapterId,
+          startedAtIso: "2026-05-31T00:00:00Z",
+        }, legacyRows);
+        ledger.appendImportJob({
+          id: "copy-b-same-content",
+          householdId: SAMPLE_HOUSEHOLD.id,
+          sourceType: "pdf",
+          sourceName: "B.pdf",
+          adapterId: originalParse.adapterId,
+          startedAtIso: "2026-05-31T00:00:01Z",
+          provenance: { sourceIdentity: ROGALAND_SOURCE_ID, contentDigest: contentIdentity },
+        });
+
+        const expandedText = `${text}\n14.05.2026   NEW MERCHANT Purchase                      -10,00      32 316,60\n`;
+        expect(ledger.getImportedTransactionsForSource(
+          "pdf",
+          "B.pdf",
+          SAMPLE_ACCOUNT.id,
+          buildRogalandImportJobId(expandedText, MAPPING_OPTIONS)
+        )).toHaveLength(originalParse.transactions.length);
+        const expandedJobId = `job-path-b-${randomUUID()}`;
+        const response = runPdfImportWorkflow({
+          pdfText: expandedText,
+          filePath: "B.pdf",
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          importJobId: expandedJobId,
+          startedAtIso: "2026-06-01T00:00:00Z",
+          finishedAtIso: "2026-06-01T00:00:00Z",
+        }, {
+          parserRegistry: defaultParserAdapterRegistry,
+          getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+          appendImportJob: ledger.appendImportJob,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          appendTransactions: ledger.appendTransactions,
+        });
+
+        expect(response).toMatchObject({ ok: true, transactionCount: 1, duplicateCount: 10 });
+        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(11);
+      } finally {
+        ledger.close();
+      }
+    });
+
+    it("does not duplicate a PDF statement imported with legacy fingerprint IDs", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const text = loadFixture();
+      const importJobId = buildRogalandImportJobId(text, MAPPING_OPTIONS);
+      const parsed = parseRogalandStatementText(text, {
+        ...MAPPING_OPTIONS,
+        importJobId,
+      });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+
+      try {
+        const legacyTransactions = parsed.transactions.map((transaction) => ({
+          ...transaction,
+          id: buildTransactionFingerprint(transaction),
+        }));
+        const legacyJob: ImportJob = {
+          id: importJobId,
+          householdId: SAMPLE_HOUSEHOLD.id,
+          sourceType: "pdf",
+          sourceName: "legacy-statement.pdf",
+          startedAtIso: "2026-05-31T00:00:00Z",
+        };
+        expect(ledger.appendImportJobAndTransactions(legacyJob, legacyTransactions)).toBe(legacyTransactions.length);
+
+        const response = runPdfImportWorkflow({
+          pdfText: text,
+          filePath: "legacy-statement.pdf",
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          importJobId,
+          startedAtIso: "2026-06-01T00:00:00Z",
+          finishedAtIso: "2026-06-01T00:00:00Z",
+        }, {
+          parserRegistry: defaultParserAdapterRegistry,
+          hasImportJob: ledger.hasImportJob,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+          appendImportJob: ledger.appendImportJob,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          appendTransactions: ledger.appendTransactions,
+        });
+
+        expect(response).toMatchObject({
+          ok: true,
+          transactionCount: 0,
+          duplicateCount: parsed.transactions.length,
+        });
+        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(parsed.transactions.length);
+      } finally {
+        ledger.close();
+      }
+    });
+
     it("re-importing the same fixture does not create duplicate transaction rows", () => {
       const ledger = makeTestLedger(randomUUID());
       const text = loadFixture();
@@ -457,6 +684,8 @@ describe("pdf import contract", () => {
 
       const snapshotAfterSecond = ledger.loadLedgerSnapshotData();
       expect(snapshotAfterSecond.transactions).toHaveLength(countAfterFirst);
+      expect(second.transactionCount).toBe(0);
+      expect(second.duplicateCount).toBe(first.transactionCount);
 
       ledger.close();
     });

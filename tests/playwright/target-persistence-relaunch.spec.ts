@@ -9,11 +9,14 @@ test.describe("Category target persistence across application restart", () => {
   test("saved target remains visible after launching a new Electron process", async ({
     categoryTarget,
     databasePath,
+    electronApp,
   }) => {
     await categoryTarget.categoryIdInput.fill("restart-target");
     await categoryTarget.targetAmountInput.fill("725");
     await categoryTarget.saveButton.click();
     await expect(categoryTarget.savedTargetItem("restart-target")).toBeVisible();
+
+    await electronApp.close();
 
     const restartedApp = await electron.launch({
       args: [MAIN_ENTRY],

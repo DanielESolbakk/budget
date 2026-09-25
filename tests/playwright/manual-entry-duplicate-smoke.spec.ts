@@ -20,12 +20,7 @@ test.describe("Manual entry and duplicate detection", () => {
     const beforeExpenses = await dashboard.expenseValue.textContent();
     await entry.submitEntry(manualEntry);
 
-    await expect(entry.successStatus).toContainText("Transaction added");
-    await expect(entry.successStatus).toContainText("Manual Playwright Entry");
-    await expect(entry.successStatus).toContainText("account sample-acc");
-    await expect(entry.successStatus).toContainText("date 2026-05-23");
-    await expect(entry.successStatus).toContainText("amount -1250 minor units");
-    await expect(entry.successStatus).toContainText("category groceries");
+    await expect(entry.successStatus).toHaveText("Added Manual Playwright Entry to your ledger.");
     await expect
       .poll(async () => (await dashboard.expenseValue.textContent()) ?? "", { timeout: 10_000 })
       .not.toBe(beforeExpenses);
@@ -35,13 +30,12 @@ test.describe("Manual entry and duplicate detection", () => {
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
     await entry.submitEntry(manualEntry);
-    await expect(entry.successStatus).toContainText("Transaction added");
+    await expect(entry.successStatus).toContainText("Added Manual Playwright Entry to your ledger.");
     const afterFirstEntryExpenses = await dashboard.expenseValue.textContent();
 
     await entry.submitEntry(manualEntry);
-    await expect(entry.resultAlert).toContainText("Duplicate transaction detected");
-    await expect(entry.resultAlert).toContainText("Matching ledger row:");
-    await expect(entry.resultAlert).toContainText("Fingerprint:");
+    await expect(entry.resultAlert).toContainText("This transaction is already in your ledger.");
+    await expect(entry.resultAlert).toContainText("Check the Ledger section");
     await expect(dashboard.expenseValue).toHaveText(afterFirstEntryExpenses ?? "");
   });
 

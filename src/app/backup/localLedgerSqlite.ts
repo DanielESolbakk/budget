@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import type {
@@ -7,6 +8,7 @@ import type {
   Household,
   ImportJob,
   ImportJobProvenance,
+  MerchantCategoryRule,
   MonthlyCategoryTarget,
   Transaction,
 } from "../../domain/types.js";
@@ -17,6 +19,7 @@ interface LocalLedgerSeedData {
   transactions: Transaction[];
   importJobs: ImportJob[];
   monthlyCategoryTargets: MonthlyCategoryTarget[];
+  merchantCategoryRules?: MerchantCategoryRule[];
 }
 
 export interface LocalLedgerDatabase {
@@ -25,7 +28,15 @@ export interface LocalLedgerDatabase {
   getAccountsForHousehold: (householdId: string) => Account[];
   upsertMonthlyCategoryTarget: (target: MonthlyCategoryTarget) => void;
   appendImportJob: (importJob: ImportJob) => void;
-  appendTransactions: (transactions: Transaction[]) => void;
+  hasImportJob: (importJobId: string) => boolean;
+  getTransactionsForImportJob: (importJobId: string) => Transaction[];
+  getImportedTransactionsForSource: (sourceType: ImportJob["sourceType"], sourceName: string, accountId: string, sourceIdentity?: string) => Transaction[];
+  appendImportJobAndTransactions: (importJob: ImportJob, transactions: Transaction[]) => number;
+  appendTransactions: (transactions: Transaction[]) => number;
+  updateTransactionCategory: (transactionId: string, categoryId: string) => void;
+  updateTransactionCategoryAndRule: (transactionId: string, rule: MerchantCategoryRule) => void;
+  listMerchantCategoryRules: () => MerchantCategoryRule[];
+  upsertMerchantCategoryRule: (rule: MerchantCategoryRule) => void;
   appendManualEntry: (importJob: ImportJob, transaction: Transaction) => void;
   close: () => void;
 }
@@ -63,6 +74,7 @@ function ensureSchema(db: DatabaseSync): void {
       merchant_raw TEXT NOT NULL,
       currency_code TEXT,
       source_type TEXT,
+      source_reference TEXT,
       category_id TEXT,
       import_job_id TEXT
     );
@@ -86,6 +98,11 @@ function ensureSchema(db: DatabaseSync): void {
       target_minor INTEGER NOT NULL,
       PRIMARY KEY (year_month, category_id)
     );
+
+    CREATE TABLE IF NOT EXISTS merchant_category_rules (
+      merchant_alias TEXT PRIMARY KEY,
+      category_id TEXT NOT NULL
+    );
   `);
 
   const transactionColumns = db.prepare("PRAGMA table_info(transactions)").all() as Array<{ name: string }>;
@@ -94,6 +111,9 @@ function ensureSchema(db: DatabaseSync): void {
   }
   if (!transactionColumns.some((column) => column.name === "source_type")) {
     db.exec("ALTER TABLE transactions ADD COLUMN source_type TEXT");
+  }
+  if (!transactionColumns.some((column) => column.name === "source_reference")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN source_reference TEXT");
   }
 
   const importJobColumns = db.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>;
@@ -123,7 +143,7 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   }
 
   const insertTransaction = db.prepare(
-    "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   );
   for (const transaction of snapshot.transactions) {
     insertTransaction.run(
@@ -135,6 +155,7 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       transaction.merchantRaw,
       transaction.currencyCode ?? null,
       transaction.sourceType ?? null,
+      transaction.sourceReference ?? null,
       transaction.categoryId ?? null,
       transaction.importJobId ?? null
     );
@@ -163,6 +184,13 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   );
   for (const target of snapshot.monthlyCategoryTargets) {
     insertTarget.run(target.yearMonth, target.categoryId, target.targetMinor);
+  }
+
+  const insertMerchantCategoryRule = db.prepare(
+    "INSERT INTO merchant_category_rules (merchant_alias, category_id) VALUES (?, ?)"
+  );
+  for (const rule of snapshot.merchantCategoryRules ?? []) {
+    insertMerchantCategoryRule.run(rule.merchantAlias, rule.categoryId);
   }
 }
 
@@ -227,7 +255,7 @@ export function createLocalLedgerDatabase(
 
     const transactions = db
       .prepare(
-        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id FROM transactions ORDER BY id"
+        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -238,6 +266,7 @@ export function createLocalLedgerDatabase(
       merchant_raw: string;
       currency_code: string | null;
       source_type: NonNullable<Transaction["sourceType"]> | null;
+      source_reference: string | null;
       category_id: string | null;
       import_job_id: string | null;
     }>;
@@ -265,6 +294,12 @@ export function createLocalLedgerDatabase(
       )
       .all() as Array<{ year_month: string; category_id: string; target_minor: number }>;
 
+    const merchantCategoryRules = db
+      .prepare(
+        "SELECT merchant_alias, category_id FROM merchant_category_rules ORDER BY merchant_alias, category_id"
+      )
+      .all() as Array<{ merchant_alias: string; category_id: string }>;
+
     const mappedTransactions: Transaction[] = transactions.map((transaction) => {
       const mapped: Transaction = {
         id: transaction.id,
@@ -280,6 +315,10 @@ export function createLocalLedgerDatabase(
       }
       if (transaction.source_type !== null) {
         mapped.sourceType = transaction.source_type;
+      }
+
+      if (transaction.source_reference !== null) {
+        mapped.sourceReference = transaction.source_reference;
       }
 
       if (transaction.category_id !== null) {
@@ -344,6 +383,10 @@ export function createLocalLedgerDatabase(
         categoryId: target.category_id,
         targetMinor: target.target_minor,
       })),
+      merchantCategoryRules: merchantCategoryRules.map((rule) => ({
+        merchantAlias: rule.merchant_alias,
+        categoryId: rule.category_id,
+      })),
     };
   }
 
@@ -354,6 +397,7 @@ export function createLocalLedgerDatabase(
         DELETE FROM monthly_category_targets;
         DELETE FROM transactions;
         DELETE FROM import_jobs;
+        DELETE FROM merchant_category_rules;
         DELETE FROM accounts;
         DELETE FROM households;
       `);
@@ -408,14 +452,56 @@ export function createLocalLedgerDatabase(
     );
   }
 
-  function appendTransactions(transactions: Transaction[]): void {
-    const insertTransaction = db.prepare(
-      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  function hasImportJob(importJobId: string): boolean {
+    return db.prepare("SELECT 1 FROM import_jobs WHERE id = ?").get(importJobId) !== undefined;
+  }
+
+  function getTransactionsForImportJob(importJobId: string): Transaction[] {
+    return loadLedgerSnapshotData().transactions.filter((transaction) => transaction.importJobId === importJobId);
+  }
+
+  function getImportedTransactionsForSource(
+    sourceType: ImportJob["sourceType"],
+    sourceName: string,
+    accountId: string,
+    sourceIdentity?: string
+  ): Transaction[] {
+    const snapshot = loadLedgerSnapshotData();
+    const canonicalSourcePath = (path: string): string => {
+      const resolvedPath = resolve(path);
+      return process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
+    };
+    const directSourceJobs = snapshot.importJobs.filter(
+      (job) => job.sourceType === sourceType && canonicalSourcePath(job.sourceName) === canonicalSourcePath(sourceName)
     );
+    const knownContentDigests = new Set([
+      ...directSourceJobs.map((job) => job.provenance?.contentDigest),
+      sourceIdentity,
+    ].filter((digest): digest is string => digest !== undefined));
+    const sourceJobIds = new Set(snapshot.importJobs
+      .filter((job) => job.sourceType === sourceType &&
+        (job.id === sourceIdentity ||
+          knownContentDigests.has(job.id) ||
+          canonicalSourcePath(job.sourceName) === canonicalSourcePath(sourceName) ||
+          (job.provenance?.contentDigest !== undefined && knownContentDigests.has(job.provenance.contentDigest)) ||
+          (sourceType === "csv" && job.provenance?.sourceIdentity !== undefined && knownContentDigests.has(job.provenance.sourceIdentity))))
+      .map((job) => job.id));
+    return snapshot.transactions.filter((transaction) =>
+      transaction.accountId === accountId &&
+      transaction.importJobId !== undefined &&
+      sourceJobIds.has(transaction.importJobId)
+    );
+  }
+
+  function appendTransactions(transactions: Transaction[]): number {
+    const insertTransaction = db.prepare(
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    let insertedCount = 0;
     db.exec("BEGIN");
     try {
       for (const transaction of transactions) {
-        insertTransaction.run(
+        const result = insertTransaction.run(
           transaction.id,
           transaction.householdId,
           transaction.accountId,
@@ -424,10 +510,88 @@ export function createLocalLedgerDatabase(
           transaction.merchantRaw,
           transaction.currencyCode ?? null,
           transaction.sourceType ?? null,
+          transaction.sourceReference ?? null,
           transaction.categoryId ?? null,
           transaction.importJobId ?? null
-        );
+        ) as { changes: number | bigint };
+        insertedCount += Number(result.changes);
       }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+
+    return insertedCount;
+  }
+
+  function appendImportJobAndTransactions(
+    importJob: ImportJob,
+    transactions: Transaction[]
+  ): number {
+    const insertImportJob = db.prepare(
+      "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    const insertTransaction = db.prepare(
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+
+    db.exec("BEGIN");
+    try {
+      insertImportJob.run(
+        importJob.id,
+        importJob.householdId,
+        importJob.sourceType,
+        importJob.sourceName,
+        importJob.adapterId ?? null,
+        importJob.candidateCount ?? null,
+        importJob.validationFailureCount ?? null,
+        importJob.startedAtIso,
+        importJob.finishedAtIso ?? null,
+        importJob.provenance ? JSON.stringify(importJob.provenance) : null
+      );
+
+      let insertedCount = 0;
+      for (const transaction of transactions) {
+        const result = insertTransaction.run(
+          transaction.id,
+          transaction.householdId,
+          transaction.accountId,
+          transaction.bookedAtIso,
+          transaction.amountMinor,
+          transaction.merchantRaw,
+          transaction.currencyCode ?? null,
+          transaction.sourceType ?? null,
+          transaction.sourceReference ?? null,
+          transaction.categoryId ?? null,
+          transaction.importJobId ?? null
+        ) as { changes: number | bigint };
+        insertedCount += Number(result.changes);
+      }
+
+      db.exec("COMMIT");
+      return insertedCount;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function updateTransactionCategory(transactionId: string, categoryId: string): void {
+    const result = db
+      .prepare("UPDATE transactions SET category_id = ? WHERE id = ?")
+      .run(categoryId, transactionId) as { changes: number | bigint };
+
+    if (Number(result.changes) !== 1) {
+      throw new Error(`Transaction not found: ${transactionId}`);
+    }
+  }
+
+  function updateTransactionCategoryAndRule(transactionId: string, rule: MerchantCategoryRule): void {
+    db.exec("BEGIN");
+    try {
+      updateTransactionCategory(transactionId, rule.categoryId);
+      upsertMerchantCategoryRule(rule);
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
@@ -435,12 +599,31 @@ export function createLocalLedgerDatabase(
     }
   }
 
+  function listMerchantCategoryRules(): MerchantCategoryRule[] {
+    return db
+      .prepare("SELECT merchant_alias, category_id FROM merchant_category_rules ORDER BY merchant_alias")
+      .all()
+      .map((row) => {
+        const typedRow = row as { merchant_alias: string; category_id: string };
+        return { merchantAlias: typedRow.merchant_alias, categoryId: typedRow.category_id };
+      });
+  }
+
+  function upsertMerchantCategoryRule(rule: MerchantCategoryRule): void {
+    if (typeof rule.merchantAlias !== "string" || !rule.merchantAlias.trim()) {
+      throw new Error("merchantAlias must be a non-empty string.");
+    }
+    db.prepare(
+      "INSERT INTO merchant_category_rules (merchant_alias, category_id) VALUES (?, ?) ON CONFLICT(merchant_alias) DO UPDATE SET category_id = excluded.category_id"
+    ).run(rule.merchantAlias, rule.categoryId);
+  }
+
   function appendManualEntry(importJob: ImportJob, transaction: Transaction): void {
     const insertImportJob = db.prepare(
       "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     db.exec("BEGIN");
@@ -466,6 +649,7 @@ export function createLocalLedgerDatabase(
         transaction.merchantRaw,
         transaction.currencyCode ?? null,
         transaction.sourceType ?? null,
+        transaction.sourceReference ?? null,
         transaction.categoryId ?? null,
         transaction.importJobId ?? null
       );
@@ -482,7 +666,15 @@ export function createLocalLedgerDatabase(
     getAccountsForHousehold,
     upsertMonthlyCategoryTarget,
     appendImportJob,
+    hasImportJob,
+    getTransactionsForImportJob,
+    getImportedTransactionsForSource,
+    appendImportJobAndTransactions,
     appendTransactions,
+    updateTransactionCategory,
+    updateTransactionCategoryAndRule,
+    listMerchantCategoryRules,
+    upsertMerchantCategoryRule,
     appendManualEntry,
     close: () => db.close(),
   };

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { EXPORT_CSV_HEADERS } from "../../src/domain/export/buildCsvRows.js";
 
 const LEDGER_READ_SEED = {
   household: {
@@ -47,7 +48,13 @@ test.describe("Recovery and portability renderer workflows", () => {
       await expect(recovery.exportSuccess).toContainText(
         `Export saved to ${outputPath} (4 transactions).`
       );
-      expect(readFileSync(outputPath, "utf8")).toContain("sample-tx-1");
+      const exportedCsv = readFileSync(outputPath, "utf8");
+      const exportedRows = exportedCsv.trimEnd().split(/\r?\n/);
+      expect(exportedRows[0]).toBe(EXPORT_CSV_HEADERS.join(","));
+      expect(exportedRows).toHaveLength(5);
+      for (const transactionId of ["sample-tx-1", "sample-tx-2", "sample-tx-3", "sample-tx-4"]) {
+        expect(exportedRows.some((row) => row.startsWith(`${transactionId},`))).toBe(true);
+      }
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -69,7 +76,13 @@ test.describe("Recovery and portability renderer workflows", () => {
       await expect(recovery.exportSuccess).toContainText(
         `Export saved to ${outputPath} (4 transactions).`
       );
-      expect(readFileSync(outputPath, "utf8")).toContain("sample-tx-1");
+      const exportedCsv = readFileSync(outputPath, "utf8");
+      const exportedRows = exportedCsv.trimEnd().split(/\r?\n/);
+      expect(exportedRows[0]).toBe(EXPORT_CSV_HEADERS.join(","));
+      expect(exportedRows).toHaveLength(5);
+      for (const transactionId of ["sample-tx-1", "sample-tx-2", "sample-tx-3", "sample-tx-4"]) {
+        expect(exportedRows.some((row) => row.startsWith(`${transactionId},`))).toBe(true);
+      }
     });
   });
 

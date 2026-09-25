@@ -151,11 +151,12 @@ describe("csv-import-runtime-helpers", () => {
       expect(typed.ok).toBe(false);
     });
 
-    it("CsvImportSuccess shape has ok=true with importJobId and transactionCount", () => {
+    it("CsvImportSuccess shape has ok=true with import and duplicate counts", () => {
       const success: CsvImportSuccess = {
         ok: true,
         importJobId: "job-123",
         transactionCount: 42,
+        duplicateCount: 0,
       };
 
       expect(success.ok).toBe(true);
