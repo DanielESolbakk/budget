@@ -2,6 +2,7 @@ import { _electron as electron } from "@playwright/test";
 import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { CategoryTargetPage } from "./pom/CategoryTargetPage.js";
+import { DashboardTargetPage } from "./pom/DashboardTargetPage.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 const RESTART_TARGET_CATEGORY_ID = "restart-target";
@@ -49,7 +50,7 @@ test.describe("Category target persistence across application restart", () => {
     }
   });
 
-  test("updated target shows the latest persisted amount after restart", async ({
+  test("updated target feeds the dashboard after a new Electron process starts", async ({
     categoryTarget,
     databasePath,
     electronApp,
@@ -83,9 +84,19 @@ test.describe("Category target persistence across application restart", () => {
       const restartedWindow = await restartedApp.firstWindow();
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
+      const restartedDashboardTarget = new DashboardTargetPage(restartedWindow);
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
         persistedTargetRow(RESTART_TARGET_CATEGORY_ID, UPDATED_TARGET_NOK),
+      );
+      await expect(restartedDashboardTarget.targetCell(RESTART_TARGET_CATEGORY_ID)).toHaveText(
+        /900,00\s*kr/,
+      );
+      await expect(restartedDashboardTarget.actualCell(RESTART_TARGET_CATEGORY_ID)).toHaveText(
+        /0,00\s*kr/,
+      );
+      await expect(restartedDashboardTarget.deltaCell(RESTART_TARGET_CATEGORY_ID)).toHaveText(
+        /(?:-|\u2212)900,00\s*kr/,
       );
     } finally {
       await restartedApp.close();
