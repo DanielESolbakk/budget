@@ -8,6 +8,7 @@ Use this checklist to evaluate whether a skill run met repository planning gover
 - Primary issue number.
 - Issue type: feature, story, enabler, or test.
 - Operation type: create, rewrite, close-with-rationale, or validate-only.
+- Epic issues may be inspected for hierarchy but are not mutated by this skill.
 
 ## Input Quality Checks
 
@@ -35,8 +36,10 @@ Use this checklist to evaluate whether a skill run met repository planning gover
 ## Validation Loop Checks
 
 - `validate-planning` was applied after edits.
-- Validation labels and comments were re-read.
+- Baseline labels/comments and trigger time were recorded; only a fresh post-trigger signal was accepted.
+- Validation labels and comments were re-read after the fresh signal.
 - Any planning-invalid failure was repaired and re-validated.
+- No repair was attempted from a pre-existing label or after a validation timeout.
 - Final state has no unresolved planning-invalid label.
 
 ## Assignment-Readiness Checks
@@ -44,6 +47,7 @@ Use this checklist to evaluate whether a skill run met repository planning gover
 - Scope size is small enough for one Copilot assignment.
 - Dominant ownership layer is clear.
 - Validation commands are present and relevant.
+- G1-G9 passed, with quoted evidence; G9 is not applicable only when there is no renderer-visible work.
 - Remaining blockers are explicit and actionable.
 
 ## Output Quality Checks

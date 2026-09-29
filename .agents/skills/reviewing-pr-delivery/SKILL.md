@@ -37,6 +37,9 @@ If the source issue cannot be determined, stop and ask for exactly one issue num
 ## Workflow
 
 1. Gather PR title/body, diff, changed test files, linked issues, and Copilot completion signal.
+  - Before resolving issues or mapping ACs, apply the empty-diff gate: if `changed_files` is 0 and the retrieved diff is empty, record that the PR delivers no changed files.
+  - For every change type except composition enabler, stop before AC review and checkbox sync. Do not credit code/tests already on the base branch as PR delivery. Escalate for a non-empty diff or explicit confirmation that the work is already satisfied outside this PR and should be handled through a separate issue-lifecycle review.
+  - For a composition enabler, continue only under the existing composition-enabler checks; a zero-file diff alone does not prove blocker or scope completion.
 2. Resolve one primary source issue plus the related-issue set from the PR body and source issue.
 3. Validate planning inputs before content review:
   - source and related planning issues are not labeled `planning-invalid`
@@ -91,6 +94,15 @@ Apply these rules throughout the review:
 - Do not call a test `Playwright` unless repository evidence shows Playwright tooling; if the suite uses Vitest e2e config, name it `Vitest e2e`.
 - Do not say `fully implemented`, `all ACs covered`, or `ready for merge` unless all anchor ACs are satisfied and no open anchor task is deferred.
 
+### Acceptance-Criteria Evidence Fit
+
+- Parse each AC into its required behavior, named path, and observable result. Conjunctive requirements are complete only when every required part is proved.
+- Evidence proves only the path it actually exercises. A contract test may satisfy an AC about persisted data or a service contract; it does not prove Electron startup hydration when it manually constructs the store, or renderer behavior when it calls a service directly.
+- Match the test level to the AC, not to a fixed framework rule. An integration test may prove startup behavior if it invokes the real startup hydration entry point. An AC requiring a new Electron process or visible renderer result needs evidence through that runtime path.
+- Treat lower-layer evidence as supporting proof when it does not exercise the complete AC. Classify the AC `partially satisfied` when that evidence proves a subset; use `unproven (validation blocked)` only when the required path could not be validated.
+- Evaluate a Test issue's own scenarios and pass criteria independently from its parent issue's ACs. Passing a Test issue may close its test criteria without closing any parent AC that requires a broader or different path.
+- In the coverage map and checkbox sync matrix, record the path exercised and any missing AC path. Do not promote child-test completion to parent-AC completion by inference.
+
 ## Checkbox Sync
 
 - Default policy is bidirectional reconciliation to evidence-based target state.
@@ -117,6 +129,7 @@ Issue | Section | Checkbox item | Pre-state | Target state | Proof artifact | Po
 
 - The PR body is read-only during this workflow. Never call a PR update tool to change checklist state, claims, summaries, or test evidence.
 - Report PR-body mismatches as delivery-hygiene findings. Correcting them belongs to the PR author or a separate explicitly requested PR-edit workflow.
+- Treat PR-body test checkboxes and author-reported command results as `unverified`, never as `VALIDATION_PROOF`. Only direct command output or a CI artifact showing the relevant command/job passed on `REVIEWED_PR_SHA` proves validation; unrelated green checks do not.
 
 ### Conditional Regression Guards
 
@@ -155,10 +168,11 @@ Issue | Section | Checkbox item | Pre-state | Target state | Proof artifact | Po
 ## Checkbox Evidence Thresholds
 
 - `Technical Tasks` and equivalent implementation-task checkboxes may be `checked` from `CODE_PROOF` alone when the PR diff directly shows the task is completed.
-- Feature `Acceptance Criteria` may be `checked` only with `VALIDATION_PROOF` tied to the reviewed PR-head SHA or equivalent reviewed-SHA CI artifact.
+- Parent Story or Feature `Acceptance Criteria` may be `checked` only with `VALIDATION_PROOF` tied to the reviewed PR-head SHA or equivalent reviewed-SHA CI artifact, and only when the evidence exercises the complete behavior/path named by the AC.
+- A Test issue's `Pass Criteria` may be checked from passing evidence for that Test issue's own assertions; this does not change the parent issue's AC state unless the parent AC independently meets its evidence threshold.
 - `User Stories In This Feature` may be `checked` only with `CODE_PROOF` + `VALIDATION_PROOF` + `MUTATION_PROOF`.
-- Test-issue `Test Scenarios` may be `checked` from `CODE_PROOF` alone when the scenario is directly represented by added test cases.
-- Test-issue `Pass Criteria` may be `checked` only when the referenced assertions actually passed with PR-head or reviewed-SHA evidence.
+- Test-issue `Test Scenarios` may be checked from `CODE_PROOF` alone when the scenario is directly represented by added test cases.
+- Test-issue `Pass Criteria` may be checked only when the referenced assertions actually passed with PR-head or reviewed-SHA evidence.
 - When only baseline evidence exists, keep `Acceptance Criteria`, feature `User Stories`, and test `Pass Criteria` unchecked.
 
 ## Output
@@ -220,10 +234,10 @@ If neither exists, report a traceability ambiguity finding.
 - Do not treat dependency-resolution failures, shell-policy failures, or test-runner startup failures as product validation failures until a cheap rerun rules out environment/setup causes.
 
 ## Stop Conditions
-2
+
 Stop and escalate when any apply:
 1. Source issue cannot be resolved from PR context
-2. PR diff cannot be retrieved (excluding empty diff when changed_files is 0 for composition enablers)
+2. PR diff cannot be retrieved. An empty diff with `changed_files` equal to 0 is also a stop condition for all change types except composition enablers; the composition-enabler exception still requires blocker verification under Stop Condition 6.
 3. Required repository plan files are missing
 4. Access/permission errors prevent issue or PR reads
 5. Any target issue body format is not safely parseable for checkbox-only edits
