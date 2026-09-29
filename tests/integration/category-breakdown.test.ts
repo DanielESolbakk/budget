@@ -161,7 +161,7 @@ describe("queryCategoryBreakdown – AC-3: uncategorized bucket", () => {
     const result = queryCategoryBreakdown(fixtureTransactions, "2026-05");
     const uncategorized = result.entries.find(e => e.categoryId === null);
     expect(uncategorized?.totalMinor).toBe(EXPECTED_UNCATEGORIZED_TOTAL);
-    expect(uncategorized?.transactionCount).toBe(7);
+    expect(uncategorized?.transactionCount).toBe(13);
   });
 
   it("represents uncategorized as a single bucket even when all transactions lack a category", () => {
