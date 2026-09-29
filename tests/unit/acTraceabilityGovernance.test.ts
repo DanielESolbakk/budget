@@ -9,7 +9,7 @@ function readRepositoryFile(relativePath: string): string {
 }
 
 function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {

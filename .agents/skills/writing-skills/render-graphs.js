@@ -107,10 +107,14 @@ function main() {
     process.exit(1);
   }
 
+  // Check if dot is available. Run the binary directly rather than probing
+  // with `which`, which is not a command on Windows.
   try {
     execFileSync('dot', ['-V'], { stdio: 'ignore' });
   } catch {
-    console.error('Error: graphviz (dot) not found. Install it before rendering graphs.');
+    console.error('Error: graphviz (dot) not found. Install with:');
+    console.error('  brew install graphviz    # macOS');
+    console.error('  apt install graphviz     # Linux');
     process.exit(1);
   }
 
@@ -130,6 +134,7 @@ function main() {
   }
 
   if (combine) {
+    // Combine all graphs into one
     const combined = combineGraphs(blocks, skillName);
     const svg = renderToSvg(combined);
     if (svg) {
@@ -137,6 +142,7 @@ function main() {
       fs.writeFileSync(outputPath, svg);
       console.log(`  Rendered: ${skillName}_combined.svg`);
 
+      // Also write the dot source for debugging
       const dotPath = path.join(outputDir, `${skillName}_combined.dot`);
       fs.writeFileSync(dotPath, combined);
       console.log(`  Source: ${skillName}_combined.dot`);
@@ -144,6 +150,7 @@ function main() {
       console.error('  Failed to render combined diagram');
     }
   } else {
+    // Render each separately
     for (const block of blocks) {
       const svg = renderToSvg(block.content);
       if (svg) {

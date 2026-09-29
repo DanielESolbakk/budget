@@ -24,6 +24,8 @@ Keep these predicates distinct:
 - **Assignment status:** only `verified` governance permits `assign-now`. `governance-check-required` explicitly means do not assign until `issue-planning-governor` returns `verified`.
 - **Non-overridable gate:** repository owner approval, risk acceptance, deadlines, conditional PR requirements, or substitute labels cannot waive governance. When asked to bypass the gate, still return `governance-check-required`; do not invent an exception, offer conditional assignment, assign first, defer issue-planning-governor, self-assign, or tell Copilot to repair governance after assignment. A policy change must be made through the repository's governing-instructions process before this gate changes.
 
+Candidate-specific uncertainty is local: skip an unclear candidate and continue. Shared missing data, especially `BASE_SHA`, blocks the entire completion audit.
+
 ## Completion Audit
 
 For each plausible candidate that passes eligibility:
@@ -53,7 +55,7 @@ Apply governance after ranking:
 - `verified`: recommend `assign-now` and assign GitHub assigned cloud Copilot.
 - `unclear` or `missing`: recommend `governance-check-required`; exact next action is run `issue-planning-governor`, then assign only after `verified`.
 - `planning-invalid`: never recommend direct assignment; follow planning-governor repair/readiness workflow.
-- This gate is non-overridable. Owner authority, risk acceptance, deadlines, or conditional-assignment plans do not replace `verified` evidence. Never assign first and defer governance repair; only a change to governing repository policy can change this rule.
+- This gate is non-overridable. Owner authority, risk acceptance, deadlines, or conditional-assignment plans do not replace `verified` evidence. Never assign first and defer governance repair; only the governor's `verified` result permits assignment.
 - Never infer `verified` from an absent `planning-invalid` label, an open/unblocked issue, or existing entry-point paths. Known incomplete required markers mean `unclear` or `missing`; require the governor's verified result before assignment.
 - No owner/user request, deadline, or explicit pressure can waive these gates or authorize assignment with governance below `verified`.
 
@@ -103,7 +105,7 @@ Next step after action: [what will be done]
 ## Rationalizations to Reject
 
 | Temptation | Correction |
-|---|---|
+| --- | --- |
 | “Recent slice is done, so there is no next issue.” | Continue through the full open backlog unless the user explicitly narrowed it. |
 | “An already-assigned issue still has work, so assign it again.” | Exclude assigned/in-progress issues from a new assignment; resolve existing ownership separately. |
 | “One candidate is unclear, so stop.” | Skip it; only unavailable shared data blocks the whole audit. |
