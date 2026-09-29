@@ -13,6 +13,14 @@ function formatAmount(amountMinor: number): string {
   return nokCurrencyFormatter.format(amountMinor / 100);
 }
 
+function getCategorizationReviewReason(transaction: Transaction): string | undefined {
+  const categorization = transaction.categorization;
+  if (categorization === undefined) return undefined;
+  if (categorization.status === "unmatched") return "No matching rule";
+  if (categorization.status === "ambiguous") return "Conflicting rules";
+  return "Low confidence";
+}
+
 interface CategoryReviewSectionProps {
   refreshKey: number;
   onCategorySaved: () => void;
@@ -64,12 +72,12 @@ export function CategoryReviewSection({
   return (
     <section aria-label="Categorization Review">
       <h2>Categorization Review</h2>
-      <p className="section-intro">These transactions are in your ledger, but they do not have a category yet.</p>
+      <p className="section-intro">These transactions are uncategorized or need a low-confidence category decision reviewed.</p>
       {error !== null && <p role="alert">{error}</p>}
       {transactions.length === 0 ? (
         <div className="empty-state">
           <strong>Nothing needs your attention.</strong>
-          <p>Uncategorized transactions from CSV/PDF imports or manual entry will appear here.</p>
+          <p>Uncategorized transactions and low-confidence categorizations from CSV/PDF imports or manual entry will appear here.</p>
         </div>
       ) : (
         <ul className="review-queue-list">
@@ -78,6 +86,17 @@ export function CategoryReviewSection({
               <div className="review-queue-details">
                 <strong>{transaction.merchantRaw}</strong>
                 <span>{transaction.bookedAtIso.slice(0, 10)} · {formatAmount(transaction.amountMinor)}</span>
+                {transaction.categorization !== undefined && (
+                  <span>
+                    Confidence: {Math.round(transaction.categorization.confidence * 100)}% ·{" "}
+                    {getCategorizationReviewReason(transaction)}
+                  </span>
+                )}
+                {(transaction.categorization?.matchingRules.length ?? 0) > 0 && (
+                  <span>
+                    Matching rules: {transaction.categorization!.matchingRules.map((rule) => rule.ruleId).join(", ")}
+                  </span>
+                )}
               </div>
               <div className="review-queue-action">
                 <label htmlFor={`category-for-${transaction.id}`}>

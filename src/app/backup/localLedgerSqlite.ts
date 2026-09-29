@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import type {
   Account,
+  CategorizationDecision,
   Household,
   ImportJob,
   ImportJobProvenance,
@@ -34,7 +35,11 @@ export interface LocalLedgerDatabase {
   appendImportJobAndTransactions: (importJob: ImportJob, transactions: Transaction[]) => number;
   appendTransactions: (transactions: Transaction[]) => number;
   updateTransactionCategory: (transactionId: string, categoryId: string) => void;
-  updateTransactionCategoryAndRule: (transactionId: string, rule: MerchantCategoryRule) => void;
+  updateTransactionCategoryAndRule: (
+    transactionId: string,
+    rule: MerchantCategoryRule,
+    categorization?: CategorizationDecision
+  ) => void;
   listMerchantCategoryRules: () => MerchantCategoryRule[];
   upsertMerchantCategoryRule: (rule: MerchantCategoryRule) => void;
   appendManualEntry: (importJob: ImportJob, transaction: Transaction) => void;
@@ -76,7 +81,8 @@ function ensureSchema(db: DatabaseSync): void {
       source_type TEXT,
       source_reference TEXT,
       category_id TEXT,
-      import_job_id TEXT
+      import_job_id TEXT,
+      categorization_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS import_jobs (
@@ -115,6 +121,9 @@ function ensureSchema(db: DatabaseSync): void {
   if (!transactionColumns.some((column) => column.name === "source_reference")) {
     db.exec("ALTER TABLE transactions ADD COLUMN source_reference TEXT");
   }
+  if (!transactionColumns.some((column) => column.name === "categorization_json")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN categorization_json TEXT");
+  }
 
   const importJobColumns = db.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>;
   const importJobColumnsToAdd = [
@@ -143,7 +152,7 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   }
 
   const insertTransaction = db.prepare(
-    "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   );
   for (const transaction of snapshot.transactions) {
     insertTransaction.run(
@@ -157,7 +166,8 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       transaction.sourceType ?? null,
       transaction.sourceReference ?? null,
       transaction.categoryId ?? null,
-      transaction.importJobId ?? null
+      transaction.importJobId ?? null,
+      transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
     );
   }
 
@@ -255,7 +265,7 @@ export function createLocalLedgerDatabase(
 
     const transactions = db
       .prepare(
-        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions ORDER BY id"
+        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json FROM transactions ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -269,6 +279,7 @@ export function createLocalLedgerDatabase(
       source_reference: string | null;
       category_id: string | null;
       import_job_id: string | null;
+      categorization_json: string | null;
     }>;
 
     const importJobs = db
@@ -327,6 +338,9 @@ export function createLocalLedgerDatabase(
 
       if (transaction.import_job_id !== null) {
         mapped.importJobId = transaction.import_job_id;
+      }
+      if (transaction.categorization_json !== null) {
+        mapped.categorization = JSON.parse(transaction.categorization_json) as CategorizationDecision;
       }
 
       return mapped;
@@ -495,7 +509,7 @@ export function createLocalLedgerDatabase(
 
   function appendTransactions(transactions: Transaction[]): number {
     const insertTransaction = db.prepare(
-      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     let insertedCount = 0;
     db.exec("BEGIN");
@@ -512,7 +526,8 @@ export function createLocalLedgerDatabase(
           transaction.sourceType ?? null,
           transaction.sourceReference ?? null,
           transaction.categoryId ?? null,
-          transaction.importJobId ?? null
+          transaction.importJobId ?? null,
+          transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
         ) as { changes: number | bigint };
         insertedCount += Number(result.changes);
       }
@@ -533,7 +548,7 @@ export function createLocalLedgerDatabase(
       "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     db.exec("BEGIN");
@@ -564,7 +579,8 @@ export function createLocalLedgerDatabase(
           transaction.sourceType ?? null,
           transaction.sourceReference ?? null,
           transaction.categoryId ?? null,
-          transaction.importJobId ?? null
+          transaction.importJobId ?? null,
+          transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
         ) as { changes: number | bigint };
         insertedCount += Number(result.changes);
       }
@@ -587,10 +603,20 @@ export function createLocalLedgerDatabase(
     }
   }
 
-  function updateTransactionCategoryAndRule(transactionId: string, rule: MerchantCategoryRule): void {
+  function updateTransactionCategoryAndRule(
+    transactionId: string,
+    rule: MerchantCategoryRule,
+    categorization?: CategorizationDecision
+  ): void {
     db.exec("BEGIN");
     try {
       updateTransactionCategory(transactionId, rule.categoryId);
+      if (categorization !== undefined) {
+        db.prepare("UPDATE transactions SET categorization_json = ? WHERE id = ?").run(
+          JSON.stringify(categorization),
+          transactionId
+        );
+      }
       upsertMerchantCategoryRule(rule);
       db.exec("COMMIT");
     } catch (error) {
@@ -623,7 +649,7 @@ export function createLocalLedgerDatabase(
       "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     db.exec("BEGIN");
@@ -651,7 +677,8 @@ export function createLocalLedgerDatabase(
         transaction.sourceType ?? null,
         transaction.sourceReference ?? null,
         transaction.categoryId ?? null,
-        transaction.importJobId ?? null
+        transaction.importJobId ?? null,
+        transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
       );
       db.exec("COMMIT");
     } catch (error) {

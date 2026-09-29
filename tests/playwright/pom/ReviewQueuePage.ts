@@ -19,6 +19,10 @@ export class ReviewQueuePage {
     return this.section.getByRole("listitem", { name: `Review ${merchantRaw}` });
   }
 
+  confidenceLabel(merchantRaw: string) {
+    return this.reviewItem(merchantRaw).getByText(/Confidence:/);
+  }
+
   categorySelect(merchantRaw: string) {
     return this.reviewItem(merchantRaw).getByRole("combobox", {
       name: `Category for ${merchantRaw}`,
