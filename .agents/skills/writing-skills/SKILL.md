@@ -9,7 +9,7 @@ description: Use when creating new skills, editing existing skills, or verifying
 
 **Writing skills IS Test-Driven Development applied to process documentation.**
 
-**Personal skills live in your runtime's skills directory** (`~/.claude/skills/` on Claude Code) — see [codex-tools.md](../using-superpowers/references/codex-tools.md) or [gemini-tools.md](../using-superpowers/references/gemini-tools.md) for the path on those runtimes. Codex, Copilot CLI, and Gemini CLI all also recognize `~/.agents/skills/` as a cross-runtime alias.
+Repository skills live under `.agents/skills/` and are available to agents in this workspace. Runtime-specific personal skill paths vary.
 
 You write test cases (pressure scenarios with subagents), watch them fail (baseline behavior), write the skill (documentation), watch tests pass (agents comply), and refactor (close loopholes).
 
@@ -75,9 +75,7 @@ skills/
   skill-name/
     SKILL.md              # Main reference (required)
     supporting-file.*     # Only if needed
-```
-
-**Flat namespace** - all skills in one searchable namespace
+  ```
 
 **Separate files for:**
 1. **Heavy reference** (100+ lines) - API docs, comprehensive syntax
@@ -134,7 +132,6 @@ What goes wrong + fixes
 Concrete results
 ```
 
-
 ## Skill Discovery Optimization (SDO)
 
 **Critical for discovery:** Future agents need to FIND your skill
@@ -162,7 +159,7 @@ description: Use when executing plans - dispatches subagent per task with code r
 # ❌ BAD: Too much process detail
 description: Use for TDD - write test first, watch it fail, write minimal code, refactor
 
-# ✅ GOOD: Just triggering conditions, no workflow summary
+# ✅ GOOD: Just triggering conditions - no workflow summary
 description: Use when executing implementation plans with independent tasks in the current session
 
 # ✅ GOOD: Triggering conditions only
@@ -300,7 +297,7 @@ digraph when_flowchart {
 }
 ```
 
-**Use flowcharts ONLY for:**
+Repository skills live under `.agents/skills/` and are available to agents in this workspace. Runtime-specific personal skill paths vary.
 - Non-obvious decision points
 - Process loops where you might stop too early
 - "When to use A vs B" decisions
@@ -387,7 +384,8 @@ Edit skill without testing? Same violation.
 - Not for "just adding a section"
 - Not for "documentation updates"
 - Don't keep untested changes as "reference"
-- Don't "adapt" while running tests
+- Don't "adapt" it while running tests
+- Don't look at it
 - Delete means delete
 
 **REQUIRED BACKGROUND:** The superpowers:test-driven-development skill explains why this matters. Same principles apply to documentation.
@@ -452,7 +450,7 @@ Different skill types need different test approaches:
 | "Too tedious to test" | Testing is less tedious than debugging bad skill in production. |
 | "I'm confident it's good" | Overconfidence guarantees issues. Test anyway. |
 | "Academic review is enough" | Reading ≠ using. Test application scenarios. |
-| "No time to test" | Deploying untested skill wastes more time fixing it later. |
+| "No time to test" | Deploying untested skills wastes more time fixing them later. |
 
 **All of these mean: Test before deploying. No exceptions.**
 
@@ -566,7 +564,7 @@ This is "watch the test fail" - you must see what agents naturally do before wri
 
 Write skill that addresses those specific rationalizations. Don't add extra content for hypothetical cases.
 
-Run same scenarios WITH skill. Agent should now comply.
+Run same scenarios WITH the skill. Agent should now comply.
 
 ### REFACTOR: Close Loopholes
 
@@ -634,8 +632,8 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 - [ ] Identify patterns in rationalizations/failures
 
 **GREEN Phase - Write Minimal Skill:**
-- [ ] Name uses only letters, numbers, hyphens (no parentheses/special chars)
-- [ ] YAML frontmatter with required `name` and `description` fields (max 1024 chars; see [spec](https://agentskills.io/specification))
+- [ ] Name uses only letters, numbers, and hyphens (no parentheses, special characters)
+- [ ] YAML frontmatter with required `name` and `description` fields (max 1024 characters; see [spec](https://agentskills.io/specification))
 - [ ] Description starts with "Use when..." and includes specific triggers/symptoms
 - [ ] Description written in third person
 - [ ] Keywords throughout for search (errors, symptoms, tools)
@@ -676,4 +674,4 @@ How future agents find your skill:
 5. **Reads patterns** (quick reference table)
 6. **Loads example** (only when implementing)
 
-**Optimize for this flow** - put searchable terms early and often.
+**Optimize this discovery flow** - put searchable terms early and often.

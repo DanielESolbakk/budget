@@ -1,7 +1,7 @@
 digraph STYLE_GUIDE {
     // The style guide for our process DSL, written in the DSL itself
 
-    // Node type examples with their shapes
+    // Node type examples and their shapes
     subgraph cluster_node_types {
         label="NODE TYPES AND SHAPES";
 
@@ -25,7 +25,7 @@ digraph STYLE_GUIDE {
         "Process complete" [shape=doublecircle];
 
         // Examples of each
-        "Is test passing?" [shape=diamond];
+        "Is this a question?" [shape=diamond];
         "Write test first" [shape=box];
         "npm test" [shape=plaintext];
         "I am stuck" [shape=ellipse];

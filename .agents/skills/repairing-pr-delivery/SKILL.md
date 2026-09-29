@@ -53,7 +53,7 @@ Record a fix or reasoned deferral for each item. A deferral is unresolved work, 
 | "Only the owning issue matters." | Fix all actionable material PR findings, including linked-scope and hygiene gaps. |
 | "The feature #24 mapping is a separate outstanding PR concern and is out of this test-issue scope." | Resolve every material finding within the authorized PR repair, even when it is outside the anchor issue. |
 | "The local test passed, so the box can be checked." | Require evidence for the current PR SHA/path; let the review skill sync checkboxes. |
-| "CI is taking too long; call it done." | Pending is unresolved; wait for required checks on the pushed SHA. |
+| "CI is taking too long; call it done." | Pending is unresolved; wait for required checks on the current pushed SHA. |
 | "Stage everything so no work is lost." | Keep unrelated edits unstaged; stop if changes cannot be isolated. |
 | "A second review in this chat is independent enough." | Prefer a fresh reviewer given only current PR URL/SHA; disclose fallback. |
 | "The PR is fixed; no need to re-review." | A pushed change invalidates prior review evidence; request a fresh pass. |

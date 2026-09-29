@@ -36,7 +36,7 @@
 
 - Flag overlap when the PR adds work likely owned by a sibling issue.
 - Flag gaps when companion work is implied but not addressed or deferred.
-- If a Test issue PR needs missing runtime behavior, treat that as a boundary gap or semantic conflict.
+- If a Test issue PR needs missing runtime behavior, treat it as a boundary gap or semantic conflict.
 - Require explicit coverage mapping or explicit deferral for each additional planning issue.
 
 ## Delivery Hygiene Checks

@@ -171,8 +171,8 @@ Issue | Section | Checkbox item | Pre-state | Target state | Proof artifact | Po
 - Parent Story or Feature `Acceptance Criteria` may be `checked` only with `VALIDATION_PROOF` tied to the reviewed PR-head SHA or equivalent reviewed-SHA CI artifact, and only when the evidence exercises the complete behavior/path named by the AC.
 - A Test issue's `Pass Criteria` may be checked from passing evidence for that Test issue's own assertions; this does not change the parent issue's AC state unless the parent AC independently meets its evidence threshold.
 - `User Stories In This Feature` may be `checked` only with `CODE_PROOF` + `VALIDATION_PROOF` + `MUTATION_PROOF`.
-- Test-issue `Test Scenarios` may be `checked` from `CODE_PROOF` alone when the scenario is directly represented by added test cases.
-- Test-issue `Pass Criteria` may be `checked` only when the referenced assertions actually passed with PR-head or reviewed-SHA evidence.
+- Test-issue `Test Scenarios` may be checked from `CODE_PROOF` alone when the scenario is directly represented by added test cases.
+- Test-issue `Pass Criteria` may be checked only when the referenced assertions actually passed with PR-head or reviewed-SHA evidence.
 - When only baseline evidence exists, keep `Acceptance Criteria`, feature `User Stories`, and test `Pass Criteria` unchecked.
 
 ## Output
