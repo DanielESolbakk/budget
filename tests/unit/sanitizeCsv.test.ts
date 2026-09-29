@@ -183,8 +183,8 @@ describe("sanitizeFixtureCsv", () => {
     ) as { rowCount: number; mapEntryCount: number; outputPath: string | null; mapPath: string | null };
 
     expect(summary).toEqual({
-      rowCount: 10,
-      mapEntryCount: 26,
+      rowCount: 16,
+      mapEntryCount: 38,
       outputPath: null,
       mapPath: null
     });
