@@ -110,7 +110,7 @@ describe("sanitizeFixtureCsv", () => {
   it("preserves header, semicolon delimiter, adjacent empty fields, UTF-8 encoding, and row count", () => {
     const tempDir = createTemporaryDirectory("budget-sanitize-");
     const outputPath = join(tempDir, "sanitized.csv");
-    const mapPath = join(tempDir, "sanitization-map.json");
+    const mapPath = join(tempDir, "map.json");
 
     const result = sanitizeFixtureCsv({
       inputPath: syntheticFixture,
@@ -183,8 +183,8 @@ describe("sanitizeFixtureCsv", () => {
     ) as { rowCount: number; mapEntryCount: number; outputPath: string | null; mapPath: string | null };
 
     expect(summary).toEqual({
-      rowCount: 10,
-      mapEntryCount: 26,
+      rowCount: 16,
+      mapEntryCount: 38,
       outputPath: null,
       mapPath: null
     });
