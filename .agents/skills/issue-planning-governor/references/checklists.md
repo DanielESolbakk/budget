@@ -19,6 +19,7 @@ Run before editing any issue.
 - Confirm parent epic and parent feature alignment.
 - Confirm linked enablers/tests are same-slice unless explicitly justified by policy.
 - Confirm issue references are bullet format in structured sections.
+- Confirm an authorized human can trigger fresh validation and verify its result through GitHub UI before mutating the issue; MCP issue access does not imply Actions access.
 - Run Test Necessity Decision and capture one outcome: no test issue needed now, or test issue required.
 - If the issue is an Epic, stop before mutation; Epic lifecycle work is out of scope.
 
@@ -48,8 +49,11 @@ Issue is assignable when all are true.
 ## Validation Loop Checklist
 
 - Update issue body and labels.
-- Record labels, recent comments, and time before applying `validate-planning`.
-- Require a fresh user-originated trigger. If the label is already present, ask an authorized user to create a new event or dispatch validation; bot-triggered events may be skipped.
+- Never use GitHub CLI (`gh`) in this repository. Use GitHub MCP for issue operations; its issue-write access does not dispatch or report GitHub Actions runs.
+- Record labels, recent comments, and time before the validation trigger.
+- Require a fresh human-originated trigger. Prefer an authorized human applying `validate-planning` through GitHub UI; if that label is already present, have the human dispatch `planning-validation` through GitHub Actions UI with the target issue number. Bot-triggered label events may be skipped.
+- Do not treat an MCP issue write or label update as proof that validation ran. Verify the fresh result from issue labels/comments and, when needed, the Actions run in GitHub UI.
+- If no authorized human trigger and result-verification route is available, stop before mutation. If the route becomes unavailable after mutation, report the issue as unvalidated; do not claim readiness.
 - Count only post-trigger status changes or new validation comments. A pre-existing `planning-invalid` label is not a result.
 - If no fresh signal appears within 180 seconds, stop and escalate without repair.
 - On a fresh failure, fetch the newest marker comment. If it is missing, inspect workflow logs; apply a targeted repair and revalidate, with at most two attempts.

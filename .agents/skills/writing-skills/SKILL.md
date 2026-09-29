@@ -1,6 +1,6 @@
 ---
 name: writing-skills
-description: Use when creating new skills, editing existing skills, or verifying skills work before deployment
+description: Use when creating or editing agent skills, validating their behavior, or resolving test and terminal failures encountered during skill testing or deployment
 ---
 
 # Writing Skills
@@ -451,6 +451,11 @@ Different skill types need different test approaches:
 | "I'm confident it's good" | Overconfidence guarantees issues. Test anyway. |
 | "Academic review is enough" | Reading ≠ using. Test application scenarios. |
 | "No time to test" | Deploying untested skills wastes more time fixing them later. |
+| "Baselines take too long, so skip RED and GREEN" | Reduce redundant samples for a narrow edit; keep one no-skill baseline and the same-scenario guided run. |
+| "I answered No, so the rest of the cleanup chain is safe" | A declined prompt does not cancel later commands; stop the chain and verify shared targets before continuing. |
+| "Remove-Item without `-Recurse` only removes the junction" | Link behavior is platform-specific; verify a non-following unlink operation or leave cleanup for the owner. |
+| "Terminal cleanup is outside the skill task" | A prompt blocking skill tests or deployment is part of that workflow; apply the same safety rules. |
+| "Yes will clear the prompt faster" | Never confirm recursive deletion of a shared junction; stop and preserve the target. |
 
 **All of these mean: Test before deploying. No exceptions.**
 
@@ -570,17 +575,21 @@ Run same scenarios WITH the skill. Agent should now comply.
 
 Agent found new rationalization? Add explicit counter. Re-test until bulletproof.
 
-### Micro-Test Wording Before Full Scenarios
 
-Full pressure-scenario runs are the final gate, but they are slow and expensive per iteration. Verify the wording itself first with micro-tests:
+### Risk-Based Validation Depth
 
-1. **One fresh-context sample per call** — a raw API call, or a single-shot subagent if you don't have API access. System prompt = the realistic context the guidance will live in (the full skill or prompt template, not the guidance in isolation); user message = a task that tempts the failure.
-2. **Always include a no-guidance control.** If the control doesn't exhibit the failure, there is nothing to fix — stop, don't author the guidance.
-3. **5+ reps per variant.** Single samples lie.
-4. **Manually read every flagged match.** Score programmatically if you like, but template echoes and quoted counter-examples masquerade as hits; automated counts alone overstate both failure and success.
-5. **Variance is a metric.** When guidance lands, reps converge on the same shape. Five different interpretations across five reps means the wording isn't binding — tighten the form before adding words.
+**Deadlines reduce redundant repetitions; they do not remove RED or GREEN.** For each distinct behavior-changing failure mode:
 
-Micro-tests verify wording; they do not replace pressure scenarios for discipline skills.
+Classify each changed behavior separately; a mixed edit must meet the tier for every behavior it changes.
+
+1. Run one fresh-context no-skill scenario with three or more combined pressures. Capture the exact choice and rationalization.
+2. Make the smallest edit, then run the same scenario once with the complete skill loaded.
+3. For a localized change to an existing rule, stop after a clean guided run that follows the rule and cites the relevant section.
+4. For a new, high-impact, or irreversible rule, add one independent transfer scenario even when the baseline reproduces the failure and the first guided run passes. If any run fails or produces a new rationalization, refactor and rerun only that scenario.
+
+Use five independent samples per variant only when results vary, a failure persists, or the consequence warrants measuring consistency. Always read flagged outputs manually; quoted counter-examples are not compliance. If the no-skill control does not reproduce the failure, stop and do not write guidance for that failure.
+
+This bounded loop preserves the failure signal without repeating unchanged passing scenarios. Pressure scenarios remain the final check for discipline skills.
 
 **Testing methodology:** See [testing-skills-with-subagents.md](testing-skills-with-subagents.md) for the complete testing methodology:
 - How to write pressure scenarios
@@ -609,6 +618,18 @@ step2 [label="read file"];
 helper1, helper2, step3, pattern4
 **Why bad:** Labels should have semantic meaning
 
+## Terminal Failures and Cleanup Safety
+
+This applies to prompts and cleanup encountered during skill RED/GREEN/REFACTOR tests or deployment; terminal recovery is part of the skill workflow.
+
+- Run one-shot validation commands synchronously and record the exact command, output, and exit code. If a process fails before assertions run or waits for input, classify it as a harness or prompt failure, not a passing or failing behavior test.
+- In PowerShell, use `npm.cmd` when `npm.ps1` is blocked by execution policy. If an Electron test fails before assertions with `spawnSync npm.cmd EINVAL`, run its build prerequisite separately, then rerun the same focused test.
+- For an interactive prompt, use the returned terminal session ID to read output and send one answer at a time. If no session ID is available, do not send input through another terminal; ask the user to cancel that exact prompt in place, then wait for confirmation that the shell returned. Never guess at a default or send a shell command as prompt input.
+- Before cleanup, inspect junctions, symlinks, and other reparse points and identify their targets. Never confirm recursive deletion of a shared target. Run prompt-capable cleanup as a single command, not a chain. If a prompt appears during a running chain, interrupt the whole process with Ctrl+C before it can continue, then verify the shell has returned. For an isolated command, answer No and verify it ended before proceeding. If the session is untargetable, ask the user to cancel that exact prompt. Do not run `git worktree remove --force` while a shared dependency junction is still inside the worktree.
+- Do not assume omitting `-Recurse` makes a cleanup link-only. Use a junction-unlink operation verified not to traverse the target, then confirm the target still exists. If the safe operation is uncertain, leave temporary cleanup for the owner rather than risk shared data.
+
+Red flags: choosing Yes for recursive junction deletion; treating skill-test terminal prompts as out of scope; assuming `Remove-Item` without `-Recurse` is link-only; answering No in a multi-command cleanup and assuming later commands stopped; claiming a test result when the process never reached assertions.
+
 ## STOP: Before Moving to Next Skill
 
 **After writing ANY skill, you MUST STOP and complete the deployment process.**
@@ -624,7 +645,7 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 
 ## Skill Creation Checklist (TDD Adapted)
 
-**IMPORTANT: Create a todo for EACH checklist item below.**
+**Track the RED, GREEN, REFACTOR, and deployment phases.** Use per-item todos only when a phase has multiple scenarios, long-running validation, or a blocker; still review every applicable checklist item.
 
 **RED Phase - Write Failing Test:**
 - [ ] Create pressure scenarios (3+ combined pressures for discipline skills)
@@ -640,7 +661,7 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 - [ ] Clear overview with core principle
 - [ ] Address specific baseline failures identified in RED
 - [ ] Guidance form matches the failure type (see Match the Form to the Failure)
-- [ ] For behavior-shaping guidance: wording micro-tested against a no-guidance control (5+ reps, every flagged match read manually) — N/A for pure reference skills
+- [ ] For behavior-shaping guidance: run a no-guidance control and guided check; scale to five samples per variant when outcomes vary or consequence warrants it — N/A for pure reference skills
 - [ ] Code inline OR link to separate file
 - [ ] One excellent example (not multi-language)
 - [ ] Run scenarios WITH skill - verify agents now comply
