@@ -8,7 +8,7 @@
     "fixtureDigestAlgorithm": "sha256",
     "baselinePolicy": "strict-equality",
     "fixturePath": "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv",
-    "fixtureDigest": "28c548c5fc3965509150375b8c9ff3300bb9b27abc7c5a28a5c75091702bb236",
+    "fixtureDigest": "20fb75c45380573d014bfd17e6e78b49c5dfaa9d20705ac08b466742b7d4f65f",
     "iterationCount": 2,
     "noNetworkByDefault": true,
     "metricKeys": [
