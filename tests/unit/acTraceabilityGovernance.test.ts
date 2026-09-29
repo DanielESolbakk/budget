@@ -92,6 +92,9 @@ describe("AC traceability governance checks", () => {
     const copilotInstructions = readRepositoryFile(".github/copilot-instructions.md");
     const agentInstructions = readRepositoryFile("AGENTS.md");
     const planningSkill = readRepositoryFile(".agents/skills/issue-planning-governor/SKILL.md");
+    const planningDeepDive = readRepositoryFile(
+      ".agents/skills/issue-planning-governor/references/assignment-readiness-deep-dive.md",
+    );
 
     for (const content of [copilotInstructions, agentInstructions]) {
       expect(content).toContain("Frontend Design Governance (Opt-In)");
@@ -103,9 +106,8 @@ describe("AC traceability governance checks", () => {
     expect(agentInstructions).toContain("v22.12.0 or newer");
 
     expect(planningSkill).toContain("R16 Frontend planning completeness");
-    expect(planningSkill).toContain("G9 Frontend planning completeness");
-    expect(planningSkill).toContain("Issues without renderer entry points or UI changes are exempt from R16");
-    expect(planningSkill).toContain("If the issue has no renderer entry points or UI changes, G9 is not applicable");
+    expect(planningDeepDive).toContain("**G9:** Renderer-visible work");
+    expect(planningDeepDive).toContain("Mark G9 not applicable only when there is no renderer-visible work.");
     for (const requirement of [
       "design direction",
       "design-system preservation",
@@ -113,7 +115,7 @@ describe("AC traceability governance checks", () => {
       "accessibility",
       "visual-validation intent",
     ]) {
-      expect(planningSkill).toContain(requirement);
+      expect(planningDeepDive).toContain(requirement);
     }
   });
 
@@ -136,5 +138,24 @@ describe("AC traceability governance checks", () => {
       expect(governedFiles[0]).toContain(generatedArtifact);
     }
     expect(governedFiles[1]).toContain("Do NOT commit generated files");
+  });
+
+  it("keeps issue-planning scope and readiness gates internally consistent", () => {
+    const planningSkill = readRepositoryFile(".agents/skills/issue-planning-governor/SKILL.md");
+    const planningDeepDive = readRepositoryFile(
+      ".agents/skills/issue-planning-governor/references/assignment-readiness-deep-dive.md",
+    );
+    const planningChecklists = readRepositoryFile(
+      ".agents/skills/issue-planning-governor/references/checklists.md",
+    );
+
+    expect(planningSkill).toContain("Run G1-G9 and the deep-dive checks");
+    expect(planningSkill).toContain("Quote evidence for each pass");
+    expect(planningSkill).toContain("A pre-existing `planning-invalid` label is not a fresh processing signal.");
+    expect(planningSkill).toContain("If no fresh signal appears within 180 seconds, stop and escalate without repair.");
+    expect(planningSkill).toContain("Epic issues may be read for hierarchy checks, but do not create, rewrite, validate, or close them.");
+    expect(planningDeepDive).toContain("Test issue's \"Test Scenarios\" section has at least 2 concrete, reproducible scenarios.");
+    expect(planningChecklists).toContain("G9 [PASS/FAIL/N/A]");
+    expect((planningSkill.match(/\S+/g) ?? []).length).toBeLessThanOrEqual(500);
   });
 });

@@ -12,6 +12,9 @@
 ## Issue Coverage Checks
 
 - Every AC is classified as `satisfied`, `partially satisfied`, `unsatisfied`, or `unproven (validation blocked)`.
+- Record the behavior and execution path named by each AC; full satisfaction requires evidence that exercises that path and every conjunctive requirement.
+- Lower-layer contract evidence may satisfy a contract AC, but does not by itself satisfy a parent AC that names Electron startup, a new-process restart, or renderer-visible behavior.
+- A Test issue's own pass criteria are evaluated independently; passing them does not automatically update parent-story or feature ACs.
 - Technical tasks are mapped to changed files or marked missing.
 - Semantic mismatches include a direct quote from the issue text.
 - Cross-issue intent is not treated as anchor AC failure unless the anchor text requires it.
@@ -66,7 +69,7 @@
 - Coverage Summary includes `User-interactable readiness` with one-line reason.
 - Repeated evidence prose across findings is disallowed when evidence refers to the same artifact.
 - Shared artifacts must be defined once in `Evidence Index` and referenced by `E#` in each finding.
-- Final output includes `Checkbox Gap Closure` with one compact next-step line for every unresolved unchecked or failed-to-reconcile checkbox item.
+- Final output includes `Checkbox Gap Closure` with one compact action reference for every unresolved unchecked or failed-to-reconcile item listed in `Not Checked — How To Fix`; reference its gap ID rather than restating the item.
 
 ## Checkbox Sync Readiness
 
@@ -74,7 +77,8 @@
 - Bidirectional reconciliation to evidence-based target state is the default policy.
 - `User Stories In This Feature` is an allowed sync section when story evidence is sufficient.
 - `Technical Tasks` may be checked from direct code diff evidence alone.
-- Feature `Acceptance Criteria` stay unchecked without PR-head or reviewed-SHA validation evidence.
+- Parent Story or Feature `Acceptance Criteria` stay unchecked without PR-head or reviewed-SHA validation evidence that exercises the complete behavior/path named by each AC.
+- Test-issue `Pass Criteria` may be checked from passing reviewed-SHA evidence for that test issue's own assertions; do not infer parent-AC completion from it.
 - Feature `User Stories In This Feature` stay unchecked without CODE_PROOF + VALIDATION_PROOF + MUTATION_PROOF.
 - Test-issue `Test Scenarios` may be checked from direct test-file evidence alone.
 - Test-issue `Pass Criteria` stay unchecked without passing PR-head or reviewed-SHA validation evidence.
@@ -85,6 +89,7 @@
 - Narrative story text is only left untouched when conversion is unsafe or evidence maps elsewhere.
 - Every untouched feature user story must have an explicit reason in the final report.
 - Final report includes a per-story decision log: story text -> target checked|unchecked -> pre-state -> post-state -> reason.
+- Parent-AC decisions state the path exercised and keep lower-layer contract proof separate from startup/renderer proof.
 - Every synced item records pre-state, target state, and post-state.
 - If any story is reported `checked`, output must show it either under `Updated checkboxes` or `Already matched target state`, consistent with pre/post state.
 - If an item target state is `unchecked` and pre-state was `checked`, the sync must attempt to uncheck it.
