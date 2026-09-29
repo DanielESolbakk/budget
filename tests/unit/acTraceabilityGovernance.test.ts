@@ -9,13 +9,13 @@ function readRepositoryFile(relativePath: string): string {
 }
 
 function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {
   const escapedHeading = escapeRegularExpression(heading);
   const match = markdown.match(
-    new RegExp(`^${escapedHeading}\\r?\\n([\\s\\S]*?)(?=^#{1,2}\\s|(?![\\s\\S]))`, "im"),
+    new RegExp(`^${escapedHeading}\\\\r?\\\\n([\\\\s\\\\S]*?)(?=^#{1,2}\\\\s|(?![\\\\s\\\\S]))`, "im"),
   );
   return match?.[1] ?? "";
 }
@@ -45,7 +45,7 @@ describe("AC traceability governance checks", () => {
       "local-first",
       "no-network",
     ]) {
-      expect(adr, `ADR must contain "${term}"`).toContain(term);
+      expect(adr, `ADR must contain \"${term}\"`).toContain(term);
     }
   });
 
@@ -70,7 +70,7 @@ describe("AC traceability governance checks", () => {
     const glossaryRows = glossary.split(/\\r?\\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
-      expect(row, `Glossary must define "${term}"`).not.toBe("");
+      expect(row, `Glossary must define \"${term}\"`).not.toBe("");
       expect(row).toContain(`| ${term} | ${fragment}`);
     }
 
