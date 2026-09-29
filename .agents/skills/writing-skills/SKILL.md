@@ -59,44 +59,36 @@ The entire skill creation process follows RED-GREEN-REFACTOR.
 ## Skill Types
 
 ### Technique
-Concrete method with steps to follow (condition-based-waiting, root-cause-tracing)
+Concrete method and steps (condition-based-waiting, root-cause-tracing)
 
 ### Pattern
-Way of thinking about problems (flatten-with-flags, test-invariants)
+A way of thinking (flatten-with-flags, test-invariants)
 
 ### Reference
 API docs, syntax guides, tool documentation (office docs)
 
 ## Directory Structure
 
-
 ```
 skills/
   skill-name/
-    SKILL.md              # Main reference (required)
-    supporting-file.*     # Only if needed
-  ```
+    SKILL.md
+    supporting-file.*
+```
 
 **Separate files for:**
-1. **Heavy reference** (100+ lines) - API docs, comprehensive syntax
-2. **Reusable tools** - Scripts, utilities, templates
+1. Heavy references (100+ lines)
+2. Reusable tools, scripts, templates
 
-**Keep inline:**
-- Principles and concepts
-- Code patterns (< 50 lines)
-- Everything else
+**Keep inline:** Principles, concepts, code patterns under 50 lines, and everything else that is not a heavy reference or reusable tool.
 
 ## SKILL.md Structure
 
 **Frontmatter (YAML):**
-- Two required fields: `name` and `description` (see [agentskills.io/specification](https://agentskills.io/specification) for all supported fields)
+- Required: `name` and `description` (see [agentskills.io/specification](https://agentskills.io/specification))
 - Max 1024 characters total
-- `name`: Use letters, numbers, and hyphens only (no parentheses, special chars)
-- `description`: Third-person, describes ONLY when to use (NOT what it does)
-  - Start with "Use when..." to focus on triggering conditions
-  - Include specific symptoms, situations, and contexts
-  - **NEVER summarize the skill's process or workflow** (see SDO section for why)
-  - Keep under 500 characters if possible
+- `name`: letters, numbers, and hyphens only
+- `description`: third person, starts with "Use when...", describes triggers only, and stays under 500 characters where possible
 
 ```markdown
 ---
@@ -107,191 +99,86 @@ description: Use when [specific triggering conditions and symptoms]
 # Skill Name
 
 ## Overview
-What is this? Core principle in 1-2 sentences.
+Core principle in 1-2 sentences.
 
 ## When to Use
-[Small inline flowchart IF decision non-obvious]
+Triggers, symptoms, and when not to use.
 
-Bullet list with SYMPTOMS and use cases
-When NOT to use
-
-## Core Pattern (for techniques/patterns)
-Before/after code comparison
+## Core Pattern (techniques/patterns)
+Before/after comparison.
 
 ## Quick Reference
-Table or bullets for scanning common operations
+Table or bullets for scanning common operations.
 
 ## Implementation
-Inline code for simple patterns
-Link to file for heavy reference or reusable tools
+Inline code for simple patterns; link to heavy references or reusable tools.
 
 ## Common Mistakes
-What goes wrong + fixes
+What goes wrong and the fix.
 
 ## Real-World Impact (optional)
-Concrete results
+Concrete results.
 ```
 
 ## Skill Discovery Optimization (SDO)
 
-**Critical for discovery:** Future agents need to FIND your skill
+**Critical for discovery:** Future agents need to find the skill.
 
 ### 1. Rich Description Field
 
-**Purpose:** Your agent reads the description to decide which skills to load for a given task. Make it answer: "Should I read this skill right now?"
+The description answers: "Should I read this skill right now?" It contains triggering conditions only, never a process summary.
 
-**Format:** Start with "Use when..." to focus on triggering conditions
-
-**CRITICAL: Description = When to Use, NOT What the Skill Does**
-
-The description should ONLY describe triggering conditions. Do NOT summarize the skill's process or workflow in the description.
-
-**Why this matters:** Testing revealed that when a description summarizes the skill's workflow, an agent may follow the description instead of reading the full skill content. A description saying "code review between tasks" caused an agent to do ONE review, even though the skill's flowchart clearly showed TWO reviews (spec compliance then code quality).
-
-When the description was changed to just "Use when executing implementation plans with independent tasks" (no workflow summary), the agent correctly read the flowchart and followed the two-stage review process.
-
-**The trap:** Descriptions that summarize workflow create a shortcut agents will take. The skill body becomes documentation agents skip.
+**Why:** A process summary can become a shortcut that agents follow instead of reading the complete skill. Testing showed that "code review between tasks" led an agent to do one review despite the body requiring two stages.
 
 ```yaml
-# ❌ BAD: Summarizes workflow - agents may follow this skill instead of reading it
-description: Use when executing plans - dispatches subagent per task with code review between tasks
+# BAD: summarizes workflow
+description: Use when executing plans - dispatches a subagent per task with reviews
 
-# ❌ BAD: Too much process detail
-description: Use for TDD - write test first, watch it fail, write minimal code, refactor
-
-# ✅ GOOD: Just triggering conditions - no workflow summary
+# GOOD: describes a trigger only
 description: Use when executing implementation plans with independent tasks
-
-# ✅ GOOD: Triggering conditions only
-description: Use when implementing any feature or bugfix, before writing implementation code
-```
-
-**Content:**
-- Use concrete triggers, symptoms, and situations that signal this skill applies
-- Describe the *problem* (race conditions, inconsistent behavior) not *language-specific symptoms* (setTimeout, sleep)
-- Keep triggers technology-agnostic unless the skill itself is technology-specific
-- If skill is technology-specific, make that explicit in the trigger
-- Write in third person (injected into system prompt)
-- **NEVER summarize the skill's process or workflow**
-
-```yaml
-# ❌ BAD: Too abstract, vague, doesn't include when to use
-description: For async testing
-
-# ❌ BAD: First person
-description: I can help you with async tests when they're flaky
-
-# ❌ BAD: Mentions technology but skill isn't specific to it
-description: Use when tests use setTimeout/sleep and are flaky
-
-# ✅ GOOD: Starts with "Use when", describes problem, no workflow
-description: Use when tests have race conditions, timing dependencies, or pass/fail inconsistently
-
-# ✅ GOOD: Technology-specific skill with explicit trigger
-description: Use when using React Router and handling authentication redirects
 ```
 
 ### 2. Keyword Coverage
 
-Use words an agent would search for:
+Include concrete triggers and searchable terms:
 - Error messages: "Hook timed out", "ENOTEMPTY", "race condition"
-- Symptoms: "flaky", "hanging", "zombie", "pollution"
-- Synonyms: "timeout/hang/freeze", "cleanup/teardown/afterEach"
-- Tools: Actual commands, library names, file types
+- Symptoms: flaky, hanging, zombie, pollution
+- Synonyms: timeout/hang/freeze, cleanup/teardown/afterEach
+- Tools: actual commands, libraries, and file types
 
-### 3. Descriptive Naming
+Describe the problem rather than language-specific symptoms, unless the skill is technology-specific.
 
-Use active voice, verb-first:
-- `creating-skills` not `skill-creation`
-- `condition-based-waiting` not `async-test-helpers`
+### 3. Naming
 
-### 4. Token Efficiency (Critical)
+Use active voice and descriptive, verb-first names. Gerunds work well for processes: `creating-skills`, `testing-skills`, `debugging-with-logs`.
 
-**Problem:** getting-started and frequently-referenced skills load into EVERY conversation. Every token counts.
+### 4. Token Efficiency
 
-**Target word counts:**
-- getting-started workflows: <150 words each
-- Frequently-loaded skills: <200 words total
-- Other skills: <500 words (still be concise)
+Frequently loaded skills have a target under 200 words; other skills should stay under 500 where possible. Eliminate repetition, compress examples, refer to tool help for flags, and link to another skill instead of duplicating its workflow.
 
-**Techniques:**
-
-**Move details to tool help:**
-```bash
-# BAD: Document all flags in SKILL.md
-search-conversations supports --text, --both, --after DATE, --before DATE, --limit N
-
-# GOOD: Reference --help
-search-conversations supports multiple modes and filters. Run --help for details.
-```
-
-**Use cross-references:**
-```markdown
-# BAD: Repeat what's in another skill
-When searching, dispatch subagent with template...
-[20 lines of repeated instructions]
-
-# GOOD: Reference other skill
-Always use subagents. REQUIRED: Use test-driven-development for the workflow.
-```
-
-**Compress examples:**
-```markdown
-# BAD: Verbose example (42 words)
-Your human partner: "How did we handle authentication errors in React Router before?"
-You: I'll search past conversations for React Router authentication patterns.
-[Dispatch subagent with search query: "React Router authentication error handling 401"]
-
-# GOOD: Minimal example (20 words)
-Partner: "How did we handle auth errors in React Router?"
-You: Searching...
-[Dispatch subagent → synthesis]
-```
-
-**Eliminate redundancy:**
-- Don't repeat what's in cross-referenced skills
-- Don't explain what's obvious from command
-- Don't include multiple examples of the same pattern
-
-**Verification:**
-```bash
-wc -w skills/path/SKILL.md
-# getting-started workflows: aim for <150 each
-# Other frequently-loaded skills: aim for <200 total
-```
-
-**Name by what you DO or core insight:**
-- `condition-based-waiting` > `async-test-helpers`
-- `using-skills` > `skill-usage`
-- `flatten-with-flags` > `data-structure-refactoring`
-- `root-cause-tracing` > `debugging-techniques`
-
-**Gerunds (-ing) work well for processes:**
-- `creating-skills`, `testing-skills`, `debugging-with-logs`
-- Active, describes the action you're taking
+**Name the action or core insight:** `condition-based-waiting` over `async-test-helpers`; `flatten-with-flags` over `data-structure-refactoring`.
 
 ### 5. Cross-Referencing Other Skills
 
-When writing documentation that references other skills, use skill name only with explicit requirement markers:
+Use skill names with explicit requirement markers:
 - **REQUIRED SUB-SKILL:** Use superpowers:test-driven-development
 - **REQUIRED BACKGROUND:** You MUST understand superpowers:systematic-debugging
-- Do not use file paths to imply a required skill, and do not use force-load syntax.
+
+Do not use file paths to imply a requirement or force-load syntax.
 
 ## Flowchart Usage
 
-Use a small inline flowchart only when a decision is non-obvious. Avoid flowcharts for reference material, code examples, linear instructions, or generic labels. See `graphviz-conventions.dot` in this directory for style rules.
+Use a small inline flowchart only for a non-obvious decision. Do not use flowcharts for reference material, code examples, linear instructions, or generic labels. See `graphviz-conventions.dot` for conventions.
 
-**Visualizing for your human partner:** Use `render-graphs.js` in this directory to render a skill's flowcharts to SVG.
+For human-readable SVGs, use `node ./render-graphs.js ../some-skill` or add `--combine`.
 
 ## Code Examples
 
-Use one excellent example in the most relevant language. It should be complete, runnable, and explain why. Avoid multi-language dilution, fill-in-the-blank templates, and contrived examples.
+Use one excellent example in the most relevant language. It should be complete, runnable, and explain why. Avoid multi-language examples, fill-in-the-blank templates, and contrived examples.
 
 ## File Organization
 
-Use a self-contained SKILL.md unless content is a heavy reference or reusable tool. Supporting files are for those cases only.
-
-Invoke bundled scripts through their interpreter, never by bare path; executable bits can be stripped by harness packaging.
+Use a self-contained SKILL.md unless content is a heavy reference or reusable tool. Invoke bundled scripts through their interpreter (for example, `node scripts/tool.js`), never by bare path.
 
 ## The Iron Law (Same as TDD)
 
@@ -299,22 +186,19 @@ Invoke bundled scripts through their interpreter, never by bare path; executable
 NO SKILL WITHOUT A FAILING TEST FIRST
 ```
 
-This applies to new skills and edits to existing skills.
+This applies to new skills and edits. No exceptions for simple additions or documentation changes. Do not keep untested changes as reference or adapt guidance while writing tests.
 
-**No exceptions:**
-- Not for simple additions or documentation changes
-- Don't keep untested changes as reference
-- Don't adapt untested guidance while writing tests
+**REQUIRED BACKGROUND:** Understand superpowers:test-driven-development; it defines RED-GREEN-REFACTOR.
 
 ## Testing All Skill Types
 
 ### Discipline-Enforcing Skills
 
-Test with academic questions and pressure scenarios combining at least three pressures (time, sunk cost, authority, exhaustion, social, or pragmatic). Capture rationalizations and add counters for those observed.
+Use academic checks and pressure scenarios with at least three combined pressures (time, sunk cost, authority, exhaustion, social, or pragmatic). Capture exact choices and rationalizations, then address observed behavior.
 
 ### Technique Skills
 
-Test application, variation, and missing-information scenarios.
+Test application, variation, and missing-information cases.
 
 ### Pattern Skills
 
@@ -336,30 +220,57 @@ Test retrieval and application.
 | "I can keep working after declining a terminal prompt" | A declined prompt does not cancel a command chain. Stop and inspect state. |
 | "The prompt is outside skill scope" | Terminal prompts during skill testing or deployment are part of the workflow. |
 
+**Testing before deployment is mandatory.**
+
 ## Match the Form to the Failure
 
 | Failure observed | Form that fits |
 |------------------|----------------|
-| Rule skipped under pressure | Prohibition + observed rationalization + red flag |
+| Rule skipped under pressure | Prohibition, observed rationalization, and red flag |
 | Output has wrong shape | Positive recipe with required parts and order |
 | Required element omitted | Required field or template slot |
 | Behavior depends on a condition | Conditional based on an observable predicate |
 
 Avoid nuance clauses that reopen a loophole. State exceptions as separate observable conditions.
 
+## Bulletproofing Skills Against Rationalization
+
+For discipline failures, capture specific workarounds and add counters. For wrong-shaped output or omissions, use positive recipes or required slots rather than prohibition lists.
+
+### Close Every Loophole Explicitly
+
+Bad:
+```markdown
+Write code before test? Delete it.
+```
+
+Good:
+```markdown
+Write code before test? Delete it. Start over.
+
+No exceptions:
+- Don't keep it as reference
+- Don't adapt it while writing tests
+- Don't look at it
+```
+
+### Address Spirit-versus-Letter Arguments
+
+State early that violating the letter violates the spirit. Add exact rationalizations from baseline runs to the table and red flags.
+
 ## RED-GREEN-REFACTOR for Skills
 
 ### RED: Baseline
 
-Run a pressure scenario with a subagent that does not have the skill. Record its choice and verbatim rationale. If the control does not exhibit the failure, do not write guidance for that failure; redesign the scenario or stop.
+Run a pressure scenario with a subagent that does not have the skill. Record its choice and verbatim rationale. If the control does not exhibit the failure, redesign the scenario or stop; do not author guidance for that failure.
 
 ### GREEN: Minimal Guidance
 
-Address observed behavior only. Repeat the same scenario with the complete skill loaded.
+Address observed behavior only. Rerun the same scenario with the complete skill loaded.
 
 ### REFACTOR: Close Observed Gaps
 
-If the agent fails or introduces a new rationalization, change only the relevant guidance and rerun the failed scenario. Do not rerun scenarios that already pass unless the change affects them.
+If the agent fails or introduces a new rationalization, change only the relevant guidance and rerun that failed scenario. Do not rerun passing scenarios unless the edit affects them.
 
 ### Risk-Based Validation Depth
 
@@ -369,16 +280,16 @@ Classify each changed behavior separately; mixed edits use the tier for each beh
 - **New or high-impact rule:** add one independent transfer scenario, even after a passing baseline/guided pair.
 - **Inconsistent or repeated failures:** expand to five independent samples per variant and read every flagged result manually.
 
-Each discipline scenario combines at least three pressures. A deadline changes redundant repetition, not the RED/GREEN requirement.
+Each discipline scenario combines at least three pressures. A deadline reduces redundant repetitions, not RED/GREEN.
 
 ## Terminal Failures and Cleanup Safety
 
 This applies during skill tests and deployment.
 
-- Run one-shot commands synchronously; record command, output, and exit code. A harness failure before assertions is neither a passing nor failing behavior test.
+- Run one-shot commands synchronously and record command, output, and exit code. A harness failure before assertions is neither a passing nor failing behavior test.
 - In PowerShell, use `npm.cmd` if `npm.ps1` is blocked. If Electron setup fails with `spawnSync npm.cmd EINVAL` before assertions, run the build prerequisite separately and rerun the focused test.
 - For prompts, use the returned terminal ID and send one answer at a time. If no ID is available, do not answer through another terminal; ask the user to cancel that exact prompt and wait for the shell to return.
-- Inspect junctions/symlinks and identify their targets before cleanup. Never choose Yes for recursive deletion of a shared target; answer No and stop the chain, or ask the user to cancel in place if the session cannot be targeted.
+- Inspect junctions/symlinks and identify targets before cleanup. Never choose Yes for recursive deletion of a shared target; answer No and stop the chain, or ask the user to cancel in place if the session cannot be targeted.
 - Do not run `git worktree remove --force` while a shared junction remains. Do not assume omitting `-Recurse` makes removal link-only. Use only a verified non-following unlink operation and confirm the target remains; if uncertain, leave cleanup to the owner.
 
 Red flags: skipping RED/GREEN under deadline; choosing Yes for recursive junction deletion; continuing after declining a prompt; claiming a test passed when assertions never ran.
