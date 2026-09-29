@@ -1,15 +1,15 @@
-import type { Transaction } from "../types.js";
+import type { CategorizationRule, Transaction } from "../types.js";
 import { normalizeMerchantName } from "../merchant/normalizeMerchantName.js";
+import { evaluateCategorizationRule } from "./evaluateCategorizationRule.js";
 
-const CATEGORY_RULES: ReadonlyArray<{
-  categoryId: string;
-  merchantNames: readonly string[];
-}> = [
-  { categoryId: "salary", merchantNames: ["LØNN", "SALARY"] },
-  {
-    categoryId: "groceries",
-    merchantNames: ["KIWI", "REMA 1000", "MENY", "COOP", "DAGLIGVARE"],
-  },
+const CATEGORY_RULES: readonly CategorizationRule[] = [
+  { ruleId: "builtin-salary-lonn", merchantAlias: "LØNN", categoryId: "salary", priority: 0 },
+  { ruleId: "builtin-salary-salary", merchantAlias: "SALARY", categoryId: "salary", priority: 0 },
+  { ruleId: "builtin-groceries-kiwi", merchantAlias: "KIWI", categoryId: "groceries", priority: 0 },
+  { ruleId: "builtin-groceries-rema-1000", merchantAlias: "REMA 1000", categoryId: "groceries", priority: 0 },
+  { ruleId: "builtin-groceries-meny", merchantAlias: "MENY", categoryId: "groceries", priority: 0 },
+  { ruleId: "builtin-groceries-coop", merchantAlias: "COOP", categoryId: "groceries", priority: 0 },
+  { ruleId: "builtin-groceries-dagligvare", merchantAlias: "DAGLIGVARE", categoryId: "groceries", priority: 0 },
 ];
 
 export function categorizeTransaction(
@@ -21,17 +21,22 @@ export function categorizeTransaction(
   }
 
   const merchantAlias = normalizeMerchantName(transaction.merchantRaw);
-  const learnedCategoryId = learnedRules.get(merchantAlias);
-  const matchingRule = CATEGORY_RULES.find((rule) => rule.merchantNames.includes(merchantAlias));
+  const persistedRules: CategorizationRule[] = [...learnedRules].map(([alias, categoryId]) => ({
+    ruleId: `learned:${alias}`,
+    merchantAlias: alias,
+    categoryId,
+    priority: 100,
+  }));
+  const categorization = evaluateCategorizationRule(merchantAlias, [
+    ...CATEGORY_RULES,
+    ...persistedRules,
+  ]);
 
   return {
     ...transaction,
     merchantAlias,
-    ...(learnedCategoryId !== undefined
-      ? { categoryId: learnedCategoryId }
-      : matchingRule === undefined
-        ? {}
-        : { categoryId: matchingRule.categoryId }),
+    ...(categorization.categoryId === undefined ? {} : { categoryId: categorization.categoryId }),
+    categorization,
   };
 }
 
