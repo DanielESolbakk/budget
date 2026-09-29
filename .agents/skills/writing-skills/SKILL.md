@@ -59,7 +59,7 @@ The entire skill creation process follows RED-GREEN-REFACTOR.
 ## Skill Types
 
 ### Technique
-Concrete method and steps (condition-based-waiting, root-cause-tracing)
+Concrete method with steps to follow (condition-based-waiting, root-cause-tracing)
 
 ### Pattern
 A way of thinking (flatten-with-flags, test-invariants)
@@ -153,7 +153,7 @@ When the description was changed to just "Use when executing implementation plan
 **The trap:** Descriptions that summarize workflow create a shortcut agents will take. The skill body becomes documentation agents skip.
 
 ```yaml
-# ❌ BAD: Summarizes workflow - agents may follow this instead of reading the skill
+# ❌ BAD: Summarizes workflow - agents may follow this instead of reading skill
 description: Use when executing plans - dispatches subagent per task with code review between tasks
 
 # ❌ BAD: Too much process detail
@@ -184,8 +184,8 @@ description: I can help you with async tests when they're flaky
 # ❌ BAD: Mentions technology but skill isn't specific to it
 description: Use when tests use setTimeout/sleep and are flaky
 
-# ✅ GOOD: Starts with "Use when", describes problem, no workflow
-description: Use when tests have race conditions, timing dependencies, or pass/fail inconsistently
+# ✅ GOOD: Starts with "Use when", describes problem
+ description: Use when tests have race conditions, timing dependencies, or pass/fail inconsistently
 
 # ✅ GOOD: Technology-specific skill with explicit trigger
 description: Use when using React Router and handling authentication redirects
@@ -251,7 +251,7 @@ You: Searching...
 **Eliminate redundancy:**
 - Don't repeat what's in cross-referenced skills
 - Don't explain what's obvious from command
-- Don't include multiple examples of the same pattern
+- Don't include multiple examples of same pattern
 
 **Verification:**
 ```bash
@@ -309,17 +309,17 @@ Repository skills live under `.agents/skills/` and are available to agents in th
 
 See `graphviz-conventions.dot` in this directory for graphviz style rules.
 
-**Visualizing for your human partner:** Use `render-graphs.js` in this directory to render a skill's flowcharts to SVG:
+**Visualizing for your human partner:** Use `render-graphs.js` in this directory to render the skill's flowcharts to SVG:
 ```bash
 node ./render-graphs.js ../some-skill           # Each diagram separately
-node ./render-graphs.js ../some-skill --combine # All diagrams combined
+node ./render-graphs.js ../some-skill --combine # All diagrams in one SVG
 ```
 
 ## Code Examples
 
 **One excellent example beats many mediocre ones**
 
-Choose the most relevant language:
+Choose most relevant language:
 - Testing techniques → TypeScript/JavaScript
 - System debugging → Shell/Python
 - Data processing → Python
@@ -327,9 +327,9 @@ Choose the most relevant language:
 **Good example:**
 - Complete and runnable
 - Well-commented explaining WHY
-- From a real scenario
-- Shows the pattern clearly
-- Ready to adapt
+- From real scenario
+- Shows pattern clearly
+- Ready to adapt (not generic template)
 
 **Don't:**
 - Implement in 5+ languages
@@ -376,6 +376,7 @@ NO SKILL WITHOUT A FAILING TEST FIRST
 This applies to NEW skills AND EDITS to existing skills.
 
 Write skill before testing? Delete it. Start over.
+Edit skill without testing? Same violation.
 
 **No exceptions:**
 - Not for "simple additions"
@@ -411,7 +412,7 @@ Different skill types need different test approaches:
 **Test with:**
 - Application scenarios: Can they apply the technique correctly?
 - Variation scenarios: Do they handle edge cases?
-- Missing-information tests: Do instructions have gaps?
+- Missing information tests: Do instructions have gaps?
 
 **Success criteria:** Agent successfully applies the technique to a new scenario
 
@@ -420,20 +421,20 @@ Different skill types need different test approaches:
 **Examples:** reducing-complexity, information-hiding concepts
 
 **Test with:**
-- Recognition scenarios
-- Application scenarios
-- Counter-examples
+- Recognition scenarios: Do they recognize when pattern applies?
+- Application scenarios: Can they use the mental model.
+- Counter-examples: Do they know when NOT to apply?
 
 **Success criteria:** Agent correctly identifies when/how to apply the pattern
 
 ### Reference Skills (documentation/APIs)
 
-**Examples:** API docs, syntax guides, command references
+**Examples:** API documentation, command references
 
 **Test with:**
-- Retrieval scenarios
-- Application scenarios
-- Gap testing
+- Retrieval scenarios: Can they find the right information?
+- Application scenarios: Can they use what they found correctly?
+- Gap testing: Are common use cases covered?
 
 **Success criteria:** Agent finds and correctly applies the reference
 
@@ -445,14 +446,14 @@ Different skill types need different test approaches:
 | "It's just a reference" | References can have gaps, unclear sections. Test retrieval. |
 | "Testing is overkill" | Untested skills have issues. Always. 15 min testing saves hours. |
 | "I'll test if problems emerge" | Problems = agents can't use the skill. Test BEFORE deploying. |
-| "Too tedious to test" | Testing is less tedious than debugging bad skill in production. |
+| "Too tedious to test" | Testing is less tedious than debugging bad tests in production. |
 | "I'm confident it's good" | Overconfidence guarantees issues. |
 | "Academic review is enough" | Reading ≠ using. Test application scenarios. |
 | "No time to test" | Deploying untested skills wastes more time fixing them later. |
-| "Baselines take too long, so skip RED and GREEN" | Reduce redundant samples, not evidence order: one no-skill baseline and same-scenario guided run remain required. |
-| "I answered No, so the cleanup chain is safe" | A declined prompt does not cancel later commands; stop the chain and verify shared targets before continuing. |
-| "Remove-Item without `-Recurse` only removes the junction" | Link behavior is platform-specific; verify a non-following unlink operation or leave cleanup to the owner. |
-| "Terminal cleanup is outside the skill task" | Terminal prompts during skill tests and deployment are part of the workflow. |
+| "Baselines take too long, so skip RED and GREEN" | Reduce redundant samples for a narrow edit; keep one no-skill baseline and the same-scenario guided run. |
+| "I answered No, so the rest of the cleanup chain is safe" | A declined prompt does not cancel later commands; stop the chain and verify shared targets before continuing. |
+| "Remove-Item without `-Recurse` only removes the junction" | Link behavior is platform-specific; verify a non-following unlink operation or leave cleanup for the owner. |
+| "Terminal cleanup is outside the skill task" | A prompt blocking skill tests or deployment is part of that workflow; apply the same safety rules. |
 | "Yes will clear the prompt faster" | Never confirm recursive deletion of a shared junction; stop and preserve the target. |
 
 **All of these mean: Test before deploying. No exceptions.**
@@ -476,7 +477,7 @@ Before writing guidance, classify the baseline failure. The form that bulletproo
 
 ## Bulletproofing Skills Against Rationalization
 
-Skills that enforce discipline need to resist rationalization. For wrong-shaped output or omissions, use positive recipes or structural requirements instead of prohibitions.
+**Scope:** Use these techniques for discipline failures—an agent that knows a rule and is tempted to skip it. For wrong-shaped output or omissions, use positive recipes or structural requirements instead.
 
 ### Close Every Loophole Explicitly
 
@@ -523,7 +524,7 @@ Include triggering symptoms in the description, but keep it about when to use th
 
 ### RED: Write Failing Test (Baseline)
 
-Run a pressure scenario with a subagent WITHOUT the skill. Record the exact behavior, choices, and rationalizations. If the no-skill control does not reproduce the failure, redesign the scenario or stop; do not author guidance for that failure.
+Run a pressure scenario with a subagent WITHOUT the skill. Record exact behavior, choices, and rationalizations. If the no-skill control does not reproduce the failure, redesign the scenario or stop; do not author guidance for that failure.
 
 ### GREEN: Write Minimal Skill
 
@@ -561,7 +562,7 @@ This bounded loop preserves the failure signal without repeating unchanged passi
 **Why bad:** Too specific; not reusable.
 
 ### ❌ Multi-Language Dilution
-`example-js.js`, `example-py.py`, `example-go.go`
+example-js.js, example-py.py, example-go.go
 **Why bad:** Mediocre quality; maintenance burden.
 
 ### ❌ Code in Flowcharts
@@ -572,7 +573,7 @@ step2 [label="read file"];
 **Why bad:** Can't copy-paste, hard to read.
 
 ### ❌ Generic Labels
-`helper1`, `helper2`, `step3`, `pattern4`
+helper1, helper2, step3, pattern4
 **Why bad:** Labels should have semantic meaning.
 
 ## Terminal Failures and Cleanup Safety
@@ -596,7 +597,7 @@ Red flags: choosing Yes for recursive junction deletion; treating skill-test ter
 - Move to next skill before current one is verified
 - Skip testing because "batching is more efficient"
 
-The deployment checklist below is mandatory for each skill.
+**The deployment checklist below is MANDATORY for EACH skill.**
 
 Deploying untested skills = deploying untested code. It's a violation of quality standards.
 
@@ -624,7 +625,7 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 - [ ] Run scenarios WITH skill - verify agents now comply
 
 **REFACTOR Phase - Close Loopholes:**
-- [ ] Identify NEW rationalizations from testing
+- [ ] Identify NEW rationalizations (if any)
 - [ ] Add explicit counters (if discipline skill)
 - [ ] Build rationalization table from all test iterations
 - [ ] Create red flags list
@@ -646,7 +647,7 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 How future agents find this skill:
 
 1. Encounters problem (for example, tests are flaky)
-2. Searches skill descriptions or categories
+2. Searches skill descriptions (greps descriptions, browses categories)
 3. Finds a matching skill
 4. Scans the overview
 5. Reads the relevant pattern
