@@ -496,7 +496,7 @@ Version tags like `actions/checkout@v4` are mutable — the tag can be moved to 
 # https://github.com/<owner>/<action>/releases
 # Click the tag → copy the full commit SHA from the URL or commit details
 
-Use the GitHub release page or repository tools to locate the tagged commit and copy its full commit SHA.
+# Use the GitHub release page or repository tools to locate the tagged commit and copy its full commit SHA.
 ```
 
 **Example pinned workflow step set (verify SHAs at release pages before use):**
