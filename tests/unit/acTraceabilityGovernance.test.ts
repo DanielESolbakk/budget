@@ -9,13 +9,13 @@ function readRepositoryFile(relativePath: string): string {
 }
 
 function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {
   const escapedHeading = escapeRegularExpression(heading);
   const match = markdown.match(
-    new RegExp(`^${escapedHeading}\\r?\\n([\\s\\S]*?)(?=^#{1,2}\\s|(?![\\s\\S]))`, "im"),
+    new RegExp(`^${escapedHeading}\\\\r?\\\\n([\\\\s\\\\S]*?)(?=^#{1,2}\\\\s|(?![\\\\s\\\\S]))`, "im"),
   );
   return match?.[1] ?? "";
 }
@@ -25,7 +25,7 @@ describe("AC traceability governance checks", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
     );
-    expect(adr).toMatch(/^## Status\s+Accepted$/m);
+    expect(adr).toMatch(/^## Status\\s+Accepted$/m);
     const parserSection = readMarkdownSection(adr, "### Import and Parser Layer");
     expect(parserSection).toContain("source-aware parser adapters");
     expect(parserSection).toContain("parser-specific logic isolated");
@@ -67,7 +67,7 @@ describe("AC traceability governance checks", () => {
       "forecast assumption": "An explicit input used by forecasting logic",
       "backup snapshot": "A user-initiated exportable backup",
     };
-    const glossaryRows = glossary.split(/\r?\n/);
+    const glossaryRows = glossary.split(/\\r?\\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
       expect(row, `Glossary must define \"${term}\"`).not.toBe("");
@@ -156,6 +156,6 @@ describe("AC traceability governance checks", () => {
     expect(planningSkill).toContain("Epic issues may be read for hierarchy checks, but do not create, rewrite, validate, or close them.");
     expect(planningDeepDive).toContain("Test issue's \"Test Scenarios\" section has at least 2 concrete, reproducible scenarios.");
     expect(planningChecklists).toContain("G9 [PASS/FAIL/N/A]");
-    expect((planningSkill.match(/\S+/g) ?? []).length).toBeLessThanOrEqual(500);
+    expect((planningSkill.match(/\\S+/g) ?? []).length).toBeLessThanOrEqual(500);
   });
 });

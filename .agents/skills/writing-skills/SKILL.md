@@ -77,7 +77,7 @@ skills/
     supporting-file.*     # Only if needed
 ```
 
-**Flat namespace** - all content fits, no heavy reference needed
+**Flat namespace** - all skills in one searchable namespace
 
 **Separate files for:**
 1. **Heavy reference** (100+ lines) - API docs, comprehensive syntax
@@ -155,16 +155,16 @@ When the description was changed to just "Use when executing implementation plan
 **The trap:** Descriptions that summarize workflow create a shortcut agents will take. The skill body becomes documentation agents skip.
 
 ```yaml
-# BAD: Summarizes workflow - agents may follow this instead of reading skill
+# ❌ BAD: Summarizes workflow - agents may follow this instead of reading skill
 description: Use when executing plans - dispatches subagent per task with code review between tasks
 
-# BAD: Too much process detail
+# ❌ BAD: Too much process detail
 description: Use for TDD - write test first, watch it fail, write minimal code, refactor
 
-# GOOD: Just triggering conditions - no workflow summary
-description: Use when executing implementation plans with independent tasks
+# ✅ GOOD: Just triggering conditions - no workflow summary
+description: Use when executing implementation plans with independent tasks in the current session
 
-# GOOD: Triggering conditions only
+# ✅ GOOD: Triggering conditions only
 description: Use when implementing any feature or bugfix, before writing implementation code
 ```
 
@@ -177,19 +177,19 @@ description: Use when implementing any feature or bugfix, before writing impleme
 - **NEVER summarize the skill's process or workflow**
 
 ```yaml
-# BAD: Too abstract, vague, doesn't include when to use
+# ❌ BAD: Too abstract, vague, doesn't include when to use
 description: For async testing
 
-# BAD: First person
+# ❌ BAD: First person
 description: I can help you with async tests when they're flaky
 
-# BAD: Mentions technology but skill isn't specific to it
+# ❌ BAD: Mentions technology but skill isn't specific to it
 description: Use when tests use setTimeout/sleep and are flaky
 
-# GOOD: Starts with "Use when", describes problem, no workflow
+# ✅ GOOD: Starts with "Use when", describes problem, no workflow
 description: Use when tests have race conditions, timing dependencies, or pass/fail inconsistently
 
-# GOOD: Technology-specific skill with explicit trigger
+# ✅ GOOD: Technology-specific skill with explicit trigger
 description: Use when using React Router and handling authentication redirects
 ```
 
@@ -220,31 +220,31 @@ Use words an agent would search for:
 
 **Move details to tool help:**
 ```bash
-# BAD: Document all flags in SKILL.md
+# ❌ BAD: Document all flags in SKILL.md
 search-conversations supports --text, --both, --after DATE, --before DATE, --limit N
 
-# GOOD: Reference --help
+# ✅ GOOD: Reference --help
 search-conversations supports multiple modes and filters. Run --help for details.
 ```
 
 **Use cross-references:**
 ```markdown
-# BAD: Repeat workflow details
+# ❌ BAD: Repeat workflow details
 When searching, dispatch subagent with template...
 [20 lines of repeated instructions]
 
-# GOOD: Reference other skill
+# ✅ GOOD: Reference other skill
 Always use subagents (50-100x context savings). REQUIRED: Use [other-skill-name] for workflow.
 ```
 
 **Compress examples:**
 ```markdown
-# BAD: Verbose example (42 words)
+# ❌ BAD: Verbose example (42 words)
 your human partner: "How did we handle authentication errors in React Router before?"
 You: I'll search past conversations for React Router authentication patterns.
 [Dispatch subagent with search query: "React Router authentication error handling 401"]
 
-# GOOD: Minimal example (20 words)
+# ✅ GOOD: Minimal example (20 words)
 Partner: "How did we handle auth errors in React Router?"
 You: Searching...
 [Dispatch subagent → synthesis]
@@ -277,10 +277,10 @@ wc -w skills/path/SKILL.md
 **When writing documentation that references other skills:**
 
 Use skill name only, with explicit requirement markers:
-- GOOD: `**REQUIRED SUB-SKILL:** Use superpowers:test-driven-development`
-- GOOD: `**REQUIRED BACKGROUND:** You MUST understand superpowers:systematic-debugging`
-- BAD: `See skills/testing/test-driven-development` (unclear if required)
-- BAD: `@skills/testing/test-driven-development/SKILL.md` (force-loads, burns context)
+- ✅ Good: `**REQUIRED SUB-SKILL:** Use superpowers:test-driven-development`
+- ✅ Good: `**REQUIRED BACKGROUND:** You MUST understand superpowers:systematic-debugging`
+- ❌ Bad: `See skills/testing/test-driven-development` (unclear if required)
+- ❌ Bad: `@skills/testing/test-driven-development/SKILL.md` (force-loads, burns context)
 
 **Why no @ links:** `@` syntax force-loads files immediately, consuming 200k+ context before you need them.
 
@@ -387,6 +387,7 @@ Edit skill without testing? Same violation.
 - Not for "documentation updates"
 - Don't keep untested changes as "reference"
 - Don't "adapt" it while running tests
+- Don't look at it
 - Delete means delete
 
 **REQUIRED BACKGROUND:** The superpowers:test-driven-development skill explains why this matters. Same principles apply to documentation.
@@ -514,7 +515,7 @@ This cuts off entire class of "I'm following the spirit" rationalizations.
 
 ### Build Rationalization Table
 
-Capture rationalizations from baseline testing (see Testing section below). Every excuse agents make goes in the table:
+Capture rationalizations from baseline testing (see Testing section below). Every excuse goes in the table:
 
 ```markdown
 | Excuse | Reality |
@@ -633,8 +634,8 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 - [ ] Identify patterns in rationalizations/failures
 
 **GREEN Phase - Write Minimal Skill:**
-- [ ] Name uses only letters, numbers, hyphens (no parentheses/special chars)
-- [ ] YAML frontmatter with required `name` and `description` fields (max 1024 chars; see [spec](https://agentskills.io/specification))
+- [ ] Name uses only letters, numbers, and hyphens (no parentheses, special characters)
+- [ ] YAML frontmatter with required `name` and `description` fields (max 1024 characters; see [spec](https://agentskills.io/specification))
 - [ ] Description starts with "Use when..." and includes specific triggers/symptoms
 - [ ] Description written in third person
 - [ ] Keywords throughout for search (errors, symptoms, tools)
@@ -675,4 +676,4 @@ How future agents find your skill:
 5. **Reads patterns** (quick reference table)
 6. **Loads example** (only when implementing)
 
-**Optimize for this flow** - put searchable terms early and often.
+**Optimize this discovery flow** - put searchable terms early and often.

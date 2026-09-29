@@ -34,7 +34,7 @@ Don't test:
 | **RED** | Baseline test | Run scenario WITHOUT skill, watch agent fail |
 | **Verify RED** | Capture rationalizations | Document exact failures verbatim |
 | **GREEN** | Write skill | Address those failures |
-| **Verify GREEN** | Pressure test | Run scenario WITH skill, verify compliance |
+| **Verify GREEN** | Pressure test | Run scenario WITH skill, verify agent complies |
 | **REFACTOR** | Plug holes | Find new rationalizations, add counters |
 | **Stay GREEN** | Re-verify | Test again, ensure still compliant |
 
@@ -42,7 +42,7 @@ Same cycle as code TDD, different test format.
 
 ## RED Phase: Baseline Testing (Watch It Fail)
 
-**Goal:** Run test WITHOUT the skill - watch agent fail, document exact behavior.
+**Goal:** Run test WITHOUT the skill - watch agent fail, document exact behavior:
 
 This is identical to TDD's "write failing test first" - you MUST see what agents naturally do before writing the skill.
 
@@ -143,8 +143,8 @@ Multiple pressures: sunk cost + time + exhaustion + consequences. It forces an e
 
 1. **Concrete options** - Force A/B/C choice, not open-ended
 2. **Real constraints** - Specific times, actual consequences
-3. **Real file paths** - `/tmp/payment-system` not "a project"
-4. **Make agent act** - "What do you do?" not "What should you do?"
+3. **Real file paths** - `/tmp/payment-system`, not "a project"
+4. **Make the agent act** - "What do you do?" not "What should you do?"
 5. **No easy outs** - Can't defer to "I'd ask your human partner" without choosing
 
 ### Testing Setup
@@ -219,3 +219,57 @@ A skill is not bulletproof if agents find new rationalizations, argue it is wron
 | **REFACTOR** | Close new loopholes | Agent remains compliant when re-tested |
 
 The skill creation process is TDD: tests first, minimal guidance second, refactor only from observed failures.
+
+## Common Mistakes (Same as TDD)
+
+**❌ Writing skill before testing (skipping RED)**
+Reveals what YOU think needs preventing, not what ACTUALLY needs preventing.
+✅ Fix: Always run baseline scenarios first.
+
+**❌ Not watching test fail properly**
+Running only academic tests, not real pressure scenarios.
+✅ Fix: Use pressure scenarios that make the agent WANT to violate.
+
+**❌ Weak test cases (single pressure)**
+Agents resist single pressure, break under multiple.
+✅ Fix: Combine 3+ pressures (time + sunk cost + exhaustion).
+
+**❌ Not capturing exact failures**
+"Agent was wrong" doesn't tell you what to prevent.
+✅ Fix: Document exact rationalizations verbatim.
+
+**❌ Vague fixes (adding generic counters)**
+"Don't cheat" doesn't work. "Don't keep as reference" does.
+✅ Fix: Add explicit negations for each specific rationalization.
+
+**❌ Stopping after first pass**
+Tests pass once ≠ bulletproof.
+✅ Fix: Continue REFACTOR cycle until no new rationalizations.
+
+## Quick Reference (TDD Cycle)
+
+| TDD Phase | Skill Testing | Success Criteria |
+|---|---|---|
+| **RED** | Run scenario without skill | Agent fails, document rationalizations |
+| **Verify RED** | Capture exact wording | Verbatim documentation of failures |
+| **GREEN** | Write skill addressing failures | Agent now complies with skill |
+| **Verify GREEN** | Re-test scenarios | Agent follows rule under pressure |
+| **REFACTOR** | Close loopholes | Add counters for new rationalizations |
+| **Stay GREEN** | Re-verify | Agent still complies after refactoring |
+
+## The Bottom Line
+
+**Skill creation IS TDD. Same principles, same cycle, same benefits.**
+
+If you wouldn't write code without tests, don't write skills without them.
+
+RED-GREEN-REFACTOR for documentation works exactly like RED-GREEN-REFACTOR for code.
+
+## Real-World Impact
+
+From applying TDD to TDD skill itself (2025-10-03):
+- 6 RED-GREEN-REFACTOR iterations to bulletproof
+- Baseline testing revealed 10+ unique rationalizations
+- Each REFACTOR closed specific loopholes
+- Final VERIFY GREEN: 100% compliance under maximum pressure
+- Same process works for any skill.
