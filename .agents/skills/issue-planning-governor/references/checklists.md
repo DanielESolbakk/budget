@@ -1,5 +1,14 @@
 # Checklists
 
+## Scope And Hard Stops
+
+- Mutate Feature, Story, Enabler, and Test issues only. Read Epic issues only to verify hierarchy.
+- Never delete issues. Close only after acceptance criteria are complete or a superseding issue is linked.
+- `planning-invalid` blocks readiness. A stale label does not prove a fresh validation failure.
+- Keep financial content local by default; do not introduce cloud processing, telemetry, or analytics for transaction content.
+- Keep product implementation out of Test issues. Test issues verify existing behavior.
+- Use `- #NUMBER` for structured issue references. Avoid uncertainty terms in Technical Tasks, Acceptance Criteria, and Validation Commands.
+
 ## Preflight Checklist
 
 Run before editing any issue.
@@ -11,6 +20,7 @@ Run before editing any issue.
 - Confirm linked enablers/tests are same-slice unless explicitly justified by policy.
 - Confirm issue references are bullet format in structured sections.
 - Run Test Necessity Decision and capture one outcome: no test issue needed now, or test issue required.
+- If the issue is an Epic, stop before mutation; Epic lifecycle work is out of scope.
 
 ## Assignment-Readiness Checklist
 
@@ -38,12 +48,42 @@ Issue is assignable when all are true.
 ## Validation Loop Checklist
 
 - Update issue body and labels.
-- Apply validate-planning label.
-- Re-read labels and recent comments.
-- If planning-invalid appears, diagnose failure category.
-- If planning-invalid appears, repair body/links/sections.
-- If planning-invalid appears, re-apply validate-planning.
-- Stop only after clean validation or explicit user override.
+- Record labels, recent comments, and time before applying `validate-planning`.
+- Require a fresh user-originated trigger. If the label is already present, ask an authorized user to create a new event or dispatch validation; bot-triggered events may be skipped.
+- Count only post-trigger status changes or new validation comments. A pre-existing `planning-invalid` label is not a result.
+- If no fresh signal appears within 180 seconds, stop and escalate without repair.
+- On a fresh failure, fetch the newest marker comment. If it is missing, inspect workflow logs; apply a targeted repair and revalidate, with at most two attempts.
+- Stop only after clean validation or an explicit user override.
+
+## Gate Evidence Format
+
+Use one block after Steps 2, 3, and 4. For each PASS, include specific evidence. G9 is `N/A` only when the issue has no renderer-visible work.
+
+```text
+STEP N GATE EVIDENCE
+Issue: #[number]
+Gate: [step]
+Timestamp: [ISO 8601]
+Gate Status: [PASS|FAIL]
+Decision: [continue|stop]
+Labels Current: [list]
+planning-invalid: [PRESENT|ABSENT]
+Last 3 Comments:
+1. [author | timestamp]: [snippet or none]
+2. [author | timestamp]: [snippet or none]
+3. [author | timestamp]: [snippet or none]
+Step 3: Poll count [N]; total wait [seconds]; fresh processing signal [yes/no + detail]
+Step 4: G1 [PASS/FAIL]; G2 [PASS/FAIL]; G3 [PASS/FAIL]; G4 [PASS/FAIL]; G5 [PASS/FAIL]; G6 [PASS/FAIL]; G6a [PASS/FAIL]; G7 [PASS/FAIL]; G8 [PASS/FAIL]; G9 [PASS/FAIL/N/A]
+Step 4: Quoted proof for each passed deep-dive check [required]
+NEXT ACTION: [Step N+1 | STOP Escalate]
+```
+
+## Escalation And Final Summary
+
+- Escalate for timeout, permission failure, unverified hierarchy/blockers, readiness failure, or planning-invalid after two repairs.
+- State blocked reason, evidence, exact owner action, and next step after owner action.
+- Final summary includes changes and rationale, fresh validation evidence, Test Necessity, unit/integration/Playwright status, blockers, and follow-up links.
+- Do not proceed to another issue after escalation.
 
 ## Close-With-Rationale Checklist
 

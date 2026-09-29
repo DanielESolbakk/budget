@@ -24,11 +24,17 @@ This runbook demonstrates one complete issue rewrite cycle for a single planning
 
 ## Step 3: Validate
 
-- Apply validate-planning label.
-- Re-read labels and validation comments.
-- If planning-invalid appears, repair exactly what failed and re-run validation.
+- Record current labels/comments and trigger time, then require a fresh user-originated `validate-planning` event.
+- Treat only post-trigger status changes or new validation comments as results. A pre-existing `planning-invalid` label is stale state.
+- If no fresh signal appears within 180 seconds, stop and escalate. Do not enter repair.
+- After a fresh failure, inspect the marker, repair only reported failures, and revalidate; stop after two attempts.
 
-## Step 4: Finalize
+## Step 4: Readiness
+
+- Run G1-G9 and the assignment-readiness deep dive; include quoted proof for each pass.
+- Mark G9 not applicable only when there is no renderer-visible work.
+
+## Step 5: Finalize
 
 - Publish a short summary:
   - what changed
@@ -39,4 +45,4 @@ This runbook demonstrates one complete issue rewrite cycle for a single planning
 
 ## Example Output Snippet
 
-Updated issue #89 to match Story template, narrowed scope to renderer integration only, and moved file-creation paths into Technical Tasks while keeping existing module paths in Implementation Entry Points. Applied validate-planning and rechecked labels; no planning-invalid remains. Remaining blocker: #101.
+Updated issue #89 to match the Story template, narrowed scope to renderer integration, and moved file-creation paths into Technical Tasks. A fresh validation event completed with no planning-invalid label; G1-G9 evidence is recorded. Remaining blocker: #101.
