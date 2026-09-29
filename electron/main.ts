@@ -787,7 +787,9 @@ app.whenReady().then(async () => {
     assertTrustedRenderer(event);
     return localLedgerDatabase
       .loadLedgerSnapshotData()
-      .transactions.filter((transaction) => transaction.categoryId === undefined);
+      .transactions.filter((transaction) =>
+        transaction.categoryId === undefined || transaction.categorization?.requiresReview === true
+      );
   });
 
   ipcMain.handle("transaction:list", (event, input: unknown = {}) => {
@@ -813,9 +815,25 @@ app.whenReady().then(async () => {
       }
 
       const merchantAlias = normalizeMerchantName(transaction.merchantRaw);
-      localLedgerDatabase.updateTransactionCategoryAndRule(transactionId, { merchantAlias, categoryId });
+      const updatedLearnedCategoryRules = new Map(learnedCategoryRules);
+      updatedLearnedCategoryRules.set(merchantAlias, categoryId);
+      const uncategorizedTransaction = { ...transaction };
+      delete uncategorizedTransaction.categoryId;
+      const correctedCategorization = categorizeTransaction(
+        uncategorizedTransaction,
+        updatedLearnedCategoryRules
+      ).categorization;
+      if (correctedCategorization === undefined) {
+        throw new Error("Corrected transaction did not produce categorization metadata.");
+      }
+      localLedgerDatabase.updateTransactionCategoryAndRule(
+        transactionId,
+        { merchantAlias, categoryId },
+        correctedCategorization
+      );
       learnedCategoryRules.set(merchantAlias, categoryId);
       transaction.categoryId = categoryId;
+      transaction.categorization = correctedCategorization;
         return { ...transaction };
       });
     }
