@@ -9,9 +9,4 @@ Utført dato;Bokført dato;Rentedato;Beskrivelse;Type;Undertype;Fra konto;Avsend
 24.05.2026;24.05.2026;24.05.2026;MERCHANT_007;Varekjøp;Utlandet;ACCT-001;;;USER_1;;-78.00;GBP;Bokført;FX-001
 23.05.2026;23.05.2026;23.05.2026;MERCHANT_008;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-973.10;NOK;Bokført;TXN-006
 22.05.2026;22.05.2026;22.05.2026;MERCHANT_009;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-145.00;NOK;Bokført;TXN-007
-21.05.2026;21.05.2026;21.05.2026;  Rema   1000  AS ;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-88.50;NOK;Bokført;TXN-008
-20.05.2026;20.05.2026;20.05.2026;NorgesGruppen asa;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-32.00;NOK;Bokført;TXN-009
-19.05.2026;19.05.2026;19.05.2026;Coop  SA;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-75.00;NOK;Bokført;TXN-010
-18.05.2026;18.05.2026;18.05.2026;Stavanger   Taxi ANS;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-125.00;NOK;Bokført;TXN-011
-17.05.2026;17.05.2026;17.05.2026;Vy Gruppen;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-199.00;NOK;Bokført;TXN-012
-16.05.2026;16.05.2026;16.05.2026; ASA ;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-14.00;NOK;Bokført;TXN-013
+
