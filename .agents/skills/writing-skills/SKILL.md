@@ -19,7 +19,7 @@ You write test cases (pressure scenarios with subagents), watch them fail (basel
 
 ## What is a Skill?
 
-A **skill** is a reference guide for proven techniques, patterns, or tools. Skills help future agents find and apply effective approaches.
+A skill is a reference guide for proven techniques, patterns, or tools. Skills help future agents find and apply effective approaches.
 
 **Skills are:** Reusable techniques, patterns, tools, reference guides
 
@@ -69,7 +69,6 @@ API docs, syntax guides, tool documentation (office docs)
 
 ## Directory Structure
 
-
 ```
 skills/
   skill-name/
@@ -79,7 +78,7 @@ skills/
 
 **Separate files for:**
 1. **Heavy reference** (100+ lines) - API docs, comprehensive syntax
-2. **Reusable tools** - Scripts, utilities, templates
+2. **Reusable tools** - Scripts, utilities
 
 **Keep inline:**
 - Principles and concepts
@@ -179,7 +178,7 @@ description: Use when implementing any feature or bugfix, before writing impleme
 description: For async testing
 
 # ❌ BAD: First person
-description: I can help you with async tests when they're flaky
+description: I can help with async tests when they're flaky
 
 # ❌ BAD: Mentions technology but skill isn't specific to it
 description: Use when tests use setTimeout/sleep and are flaky
@@ -337,8 +336,6 @@ Choose most relevant language:
 - Create fill-in-the-blank templates
 - Write contrived examples
 
-You're good at porting - one great example is enough.
-
 ## File Organization
 
 ### Self-Contained Skill
@@ -366,7 +363,7 @@ pptx/
 ```
 When: Reference material too large for inline
 
-Invoke bundled scripts through their interpreter in the prose (`bash scripts/tool.sh`, `node scripts/tool.js`), never by bare path; a harness plugin packager may strip executable bits, and a bare path can fail with `Permission denied`.
+Invoke bundled scripts through their interpreter in the prose (`bash scripts/tool.sh`, `node scripts/tool.js`), never by bare path; a harness plugin packager can strip executable bits, and a bare path can fail with `Permission denied`.
 
 ## The Iron Law (Same as TDD)
 
@@ -377,7 +374,6 @@ NO SKILL WITHOUT A FAILING TEST FIRST
 This applies to NEW skills AND EDITS to existing skills.
 
 Write skill before testing? Delete it. Start over.
-Edit skill without testing? Same violation.
 
 **No exceptions:**
 - Not for "simple additions"
@@ -413,7 +409,7 @@ Different skill types need different test approaches:
 **Test with:**
 - Application scenarios: Can they apply the technique correctly?
 - Variation scenarios: Do they handle edge cases?
-- Missing-information tests: Do they know enough to apply the skill?
+- Missing-information tests: Do instructions have gaps?
 
 **Success criteria:** Agent successfully applies the technique to a new scenario
 
@@ -422,22 +418,22 @@ Different skill types need different test approaches:
 **Examples:** reducing-complexity, information-hiding concepts
 
 **Test with:**
-- Recognition scenarios: Do they recognize when the pattern applies?
-- Application scenarios: Do they use the model appropriately?
-- Counter-examples: Do they know when not to apply it?
+- Recognition scenarios: Do they recognize when pattern applies?
+- Application scenarios: Can they use the mental model?
+- Counter-examples: Do they know when NOT to apply?
 
-**Success criteria:** Agent correctly identifies when/how to apply the pattern
+**Success criteria:** Agent correctly identifies when/how to apply pattern
 
 ### Reference Skills (documentation/APIs)
 
-**Examples:** API documentation, command references
+**Examples:** API documentation, command references, library guides
 
 **Test with:**
 - Retrieval scenarios: Can they find the right information?
-- Application scenarios: Can they use what they found correctly?
+- Application scenarios: Can they use the right information correctly?
 - Gap testing: Are common use cases covered?
 
-**Success criteria:** Agent finds and correctly applies the reference
+**Success criteria:** Agent finds and correctly applies reference information
 
 ## Common Rationalizations for Skipping Testing
 
@@ -446,9 +442,9 @@ Different skill types need different test approaches:
 | "Skill is obviously clear" | Clear to you ≠ clear to other agents. Test it. |
 | "It's just a reference" | References can have gaps, unclear sections. Test retrieval. |
 | "Testing is overkill" | Untested skills have issues. Always. 15 min testing saves hours. |
-| "I'll test if problems emerge" | Problems = agents can't use the skill. Test BEFORE deploying. |
+| "I'll test if problems emerge" | Problems = agents can't use skill. Test BEFORE deploying. |
 | "Too tedious to test" | Testing is less tedious than debugging bad skill in production. |
-| "I'm confident it's good" | Overconfidence guarantees issues. Test it. |
+| "I'm confident it's good" | Overconfidence guarantees issues. Test anyway. |
 | "Academic review is enough" | Reading ≠ using. Test application scenarios. |
 | "No time to test" | Deploying untested skills wastes more time fixing them later. |
 | "Baselines take too long, so skip RED and GREEN" | Reduce redundant samples for a narrow edit; keep one no-skill baseline and the same-scenario guided run. |
@@ -466,23 +462,27 @@ Before writing guidance, classify the baseline failure. The form that bulletproo
 | Baseline failure | Right form | Wrong form |
 |---|---|---|
 | Skips/violates a rule under pressure (knows better, does it anyway) | Prohibition + rationalization table + red flags (see Bulletproofing below) | Soft guidance ("prefer...", "consider...") |
-| Complies, but output has the wrong shape (bloated prompt, buried verdict, restated spec) | Positive recipe or contract: state the output that IS expected and its order | Prohibition list ("don't restate", "never narrate") |
-| Omits a required element from something already produced | Structural: REQUIRED field or slot in the template they fill in | Prose reminders near the template |
+| Complies, but output has the wrong shape (bloated prompt, buried verdict, restated spec) | Positive recipe or contract: state what the output IS — its parts, in order | Prohibition list ("don't restate", "never narrate") |
+| Omits a required element from something they already produce | Structural: REQUIRED field or slot in the template they fill in | Prose reminders near the template |
 | Behavior should depend on a condition | Conditional keyed to an observable predicate ("if the brief exists, reference it") | Unconditional rule + exemption clauses |
 
-**Why prohibitions backfire on shaping problems:** under competing incentives, agents negotiate with "don't X". In head-to-head wording tests on dispatch-prompt guidance, the prohibition arm produced clearly more of the unwanted content than the recipe arm (fully separated distributions), and trended worse than even the no-guidance control. Micro-test wording rather than assuming; a recipe leaves less room to negotiate.
+**Why prohibitions backfire on shaping problems:** under a competing incentive ("make the prompt self-contained"), agents negotiate with "don't X". In head-to-head wording tests on dispatch-prompt guidance, the prohibition arm produced clearly more of the unwanted content than the recipe arm (fully separated distributions), and trended worse than even the no-guidance control — micro-test your own case rather than assuming, but never reach for the prohibition by default. A recipe leaves nothing to negotiate: the output matches the stated shape or it doesn't.
 
 **Rules for whichever form you pick:**
-- Avoid nuance clauses that reopen a loophole. State real exceptions as separate conditions on observable predicates.
-- Exemption clauses don't scope. If part of the output must be exempt, restructure so the rule cannot reach it.
+- **No nuance clauses.** "Don't X unless it matters" reopens the negotiation — appending a single nuance clause to a winning recipe degraded it from consistent to noisy in the same wording tests. Express a real exception as its own conditional on an observable predicate.
+- **Exemption clauses don't scope.** "This limit doesn't apply to code blocks" still suppresses code blocks. If part of the output must be exempt, restructure so the rule can't reach it.
 
 ## Bulletproofing Skills Against Rationalization
 
-Skills that enforce discipline need to resist rationalization. For wrong-shaped output or omissions, use positive recipes or structural requirements instead of prohibitions.
+Skills that enforce discipline (like TDD) need to resist rationalization. Agents are smart and will find loopholes when under pressure.
+
+**Scope:** this toolkit is for discipline failures — an agent that knows the rule and skips it under pressure. For wrong-shaped output or omitted elements, prohibition-based bulletproofing backfires; use the forms in Match the Form to the Failure instead.
+
+**Psychology note:** Understanding WHY persuasion techniques work helps you apply them systematically. See persuasion-principles.md for research foundation (Cialdini, 2021; Meincke et al., 2025) on authority, commitment, scarcity, social proof, and unity principles.
 
 ### Close Every Loophole Explicitly
 
-Don't just state the rule; forbid observed workarounds.
+Don't just state the rule - forbid specific workarounds:
 
 <Bad>
 ```markdown
@@ -496,18 +496,21 @@ Write code before test? Delete it. Start over.
 
 **No exceptions:**
 - Don't keep it as "reference"
-- Don't adapt it while writing tests
+- Don't "adapt" it while writing tests
 - Don't look at it
+- Delete means delete
 ```
 </Good>
 
-### Address Spirit vs Letter Arguments
+### Address "Spirit vs Letter" Arguments
 
-Add the foundational principle early:
+Add foundational principle early:
 
 ```markdown
 **Violating the letter of the rules is violating the spirit of the rules.**
 ```
+
+This cuts off entire class of "I'm following the spirit" rationalizations.
 
 ### Build Rationalization Table
 
@@ -551,7 +554,7 @@ Follow the TDD cycle:
 
 ### RED: Write Failing Test (Baseline)
 
-Run a pressure scenario with a subagent WITHOUT the skill. Document exact behavior:
+Run pressure scenario with subagent WITHOUT the skill. Document exact behavior:
 - What choices did they make?
 - What rationalizations did they use (verbatim)?
 - Which pressures triggered violations?
@@ -560,55 +563,34 @@ This is "watch the test fail" - you must see what agents naturally do before wri
 
 ### GREEN: Write Minimal Skill
 
-Write skill that addresses those specific rationalizations. Don't add extra content for hypothetical cases.
+Write skill addressing those specific rationalizations. Don't add extra content for hypothetical cases.
 
 Run same scenarios WITH the skill. Agent should now comply.
 
 ### REFACTOR: Close Loopholes
 
-Agent found a new rationalization? Add a specific counter and rerun the same scenario. Avoid rerunning passing scenarios unless an edit affects them.
-
-### Risk-Based Validation Depth
-
-**Deadlines reduce redundant repetitions; they do not remove RED or GREEN.** For each distinct behavior-changing failure mode:
-
-Classify each changed behavior separately; a mixed edit must meet the tier for every behavior it changes.
-
-1. Run one fresh-context no-skill scenario with three or more combined pressures. Capture the exact choice and rationalization.
-2. Make the smallest edit, then run the same scenario once with the complete skill loaded.
-3. For a localized change to an existing rule, stop after a clean guided run that follows the rule and cites the relevant section.
-4. For a new, high-impact, or irreversible rule, add one independent transfer scenario even when the baseline reproduces the failure and the first guided run passes. If any run fails or produces a new rationalization, refactor and rerun only that scenario.
-
-Use five independent samples per variant only when results vary, a failure persists, or the consequence warrants measuring consistency. Always read flagged outputs manually; quoted counter-examples are not compliance. If the no-skill control does not reproduce the failure, stop and do not write guidance for that failure.
-
-This bounded loop preserves the failure signal without repeating unchanged passing scenarios. Pressure scenarios remain the final check for discipline skills.
-
-**Testing methodology:** See [testing-skills-with-subagents.md](testing-skills-with-subagents.md) for the complete testing methodology:
-- How to write pressure scenarios
-- Pressure types (time, sunk cost, authority, exhaustion)
-- Plugging holes systematically
-- Meta-testing techniques
+Agent found new rationalization? Add explicit counter. Re-test until bulletproof.
 
 ## Anti-Patterns
 
 ### ❌ Narrative Example
 "In session 2025-10-03, we found empty projectDir caused..."
-**Why bad:** Too specific; not reusable.
+**Why bad:** Too specific, not reusable
 
 ### ❌ Multi-Language Dilution
 example-js.js, example-py.py, example-go.go
-**Why bad:** Mediocre quality; maintenance burden.
+**Why bad:** Mediocre quality, maintenance burden
 
 ### ❌ Code in Flowcharts
 ```dot
 step1 [label="import fs"];
 step2 [label="read file"];
 ```
-**Why bad:** Can't copy-paste, hard to read.
+**Why bad:** Can't copy-paste, hard to read
 
 ### ❌ Generic Labels
 helper1, helper2, step3, pattern4
-**Why bad:** Labels should have semantic meaning.
+**Why bad:** Labels should have semantic meaning
 
 ## Terminal Failures and Cleanup Safety
 
