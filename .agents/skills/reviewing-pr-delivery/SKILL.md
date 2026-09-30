@@ -59,6 +59,7 @@ Missing source issue blocks only issue-specific AC analysis and checkbox sync. I
    - distinguish test issue verification from missing production/runtime behavior
    - compare PR claims with observed evidence and flag ambiguity on zero-file composition enablers
   - determine `User-interactable readiness` for the delivered scope (`yes|partial|no`) from renderer -> preload -> IPC -> service evidence
+  - assess deliverable design against the source issue: flag scope bundling and commit-hygiene smells per Core Rules, each with a concrete root-cause fix
   In PR-only mode, omit the issue AC matrix, state `Issue/AC alignment: unverified (no source issue resolved)`, and still report technical findings with exact file/line evidence.
 6. Run validation commands from the issue when possible; if blocked, record the blocker and classify baseline vs PR-introduced failure when applicable.
   - if a command fails before executing tests or assertions, classify the failure as `environment/setup` until one disconfirming rerun is attempted
@@ -97,6 +98,7 @@ Apply these rules throughout the review:
 - Keep the related-issue set to PR-linked planning issues plus source-issue linked sections.
 - Treat test issues as verification-only unless the PR adds missing runtime behavior, which is a boundary gap.
 - For additional planning issues, require explicit coverage mapping or explicit deferral.
+- Assess the PR's deliverable shape, not only AC coverage: whenever the diff touches a file owned by an `Additional planning issues` entry for a reason other than fully resolving that issue, report it as a scope-bundling finding (Low severity unless it creates AC ambiguity) rather than neutral background, even when the touch is small. Separately flag commit-hygiene smells (committed conflict markers, debug code, commented-out blocks) as findings with a concrete root-cause fix, not just a description of the smell. Report either kind even when the PR already fixed the immediate symptom, as long as the underlying prevention (a guard, lint rule, or PR-splitting norm) is still missing.
 - Use `passed` only for direct command output or CI evidence.
 - Use `observed`, `inferred`, and `unverified` claim tiers.
 - Do not call a test `Playwright` unless repository evidence shows Playwright tooling; if the suite uses Vitest e2e config, name it `Vitest e2e`.
@@ -220,7 +222,7 @@ If any gate fails, revise before final output.
 ## Severity Model
 
 - High: anchor-issue acceptance criteria clearly violated, incorrect behavior with direct evidence, or blocking validation failure
-- Medium: cross-issue semantic conflict, contract ambiguity, missing guardrails/tests, or likely future defect
+- Medium: cross-issue semantic conflict, contract ambiguity, missing guardrails/tests, likely future defect, scope-bundling of an unrelated fix under one PR, or a commit-hygiene process gap (for example, conflict markers committed) without a corresponding prevention fix
 - Low: clarity, maintainability, or minor scope hygiene concerns
 
 Do not assign High severity to cross-issue conflicts unless anchor AC text is explicitly violated.

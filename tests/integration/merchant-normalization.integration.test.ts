@@ -77,8 +77,4 @@ describe("merchant normalization across the CSV import boundary", () => {
       expect(typeof transactionWithAlias.merchantAlias).toBe("string");
     }
   });
-<<<<<<< Updated upstream
 });
-=======
-});
->>>>>>> Stashed changes
