@@ -25,7 +25,7 @@ describe("AC traceability governance checks", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
     );
-    expect(adr).toMatch(/^## Status\\s+Accepted$/m);
+    expect(adr).toMatch(/^## Status\\\\s+Accepted$/m);
     const parserSection = readMarkdownSection(adr, "### Import and Parser Layer");
     expect(parserSection).toContain("source-aware parser adapters");
     expect(parserSection).toContain("parser-specific logic isolated");
