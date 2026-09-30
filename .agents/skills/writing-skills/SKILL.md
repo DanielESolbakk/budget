@@ -622,6 +622,18 @@ This applies to prompts and cleanup encountered during skill RED/GREEN/REFACTOR 
 
 Red flags: choosing Yes for recursive junction deletion; treating skill-test terminal prompts as out of scope; assuming `Remove-Item` without `-Recurse` is link-only; answering No in a multi-command cleanup and assuming later commands stopped; claiming a test result when the process never reached assertions.
 
+## Terminal Failures and Cleanup Safety
+
+This applies to prompts and cleanup encountered during skill RED/GREEN/REFACTOR tests or deployment; terminal recovery is part of the skill workflow.
+
+- Run one-shot validation commands synchronously and record the exact command, output, and exit code. If a process fails before assertions run or waits for input, classify it as a harness or prompt failure, not a passing or failing behavior test.
+- In PowerShell, use `npm.cmd` when `npm.ps1` is blocked by execution policy. If an Electron test fails before assertions with `spawnSync npm.cmd EINVAL`, run its build prerequisite separately, then rerun the same focused test.
+- For an interactive prompt, use the returned terminal session ID to read output and send one answer at a time. If no session ID is available, do not send input through another terminal; ask the user to cancel that exact prompt in place, then wait for confirmation that the shell returned. Never guess at a default or send a shell command as prompt input.
+- Before cleanup, inspect junctions, symlinks, and other reparse points and identify their targets. Never confirm recursive deletion of a shared target. Run prompt-capable cleanup as a single command, not a chain. If a prompt appears during a running chain, interrupt the whole process with Ctrl+C before it can continue, then verify the shell has returned. For an isolated command, answer No and verify it ended before proceeding. If the session is untargetable, ask the user to cancel that exact prompt. Do not run `git worktree remove --force` while a shared dependency junction is still inside the worktree.
+- Do not assume omitting `-Recurse` makes a cleanup link-only. Use a junction-unlink operation verified not to traverse the target, then confirm the target still exists. If the safe operation is uncertain, leave temporary cleanup for the owner rather than risk shared data.
+
+Red flags: choosing Yes for recursive junction deletion; treating skill-test terminal prompts as out of scope; assuming `Remove-Item` without `-Recurse` is link-only; answering No in a multi-command cleanup and assuming later commands stopped; claiming a test result when the process never reached assertions.
+
 ## STOP: Before Moving to Next Skill
 
 **After writing ANY skill, you MUST STOP and complete the deployment process.**

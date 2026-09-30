@@ -1,7 +1,7 @@
 ---
 name: issue-planning-governor
 description: Use when governing lifecycle changes, validation, or assignment readiness for GitHub feature, story, enabler, or test issues in the budget repository, including planning-invalid repair and hierarchy checks.
-compatibility: Requires GitHub MCP issue read/write/search tools and repository planning rules in .github/copilot-instructions.md.
+compatibility: Requires GitHub MCP issue tools and repository planning rules in .github/copilot-instructions.md. Do not use gh; Actions validation may require an authorized human through GitHub UI.
 metadata:
   owner: budget-repo
   workflow: issue-planning
@@ -22,6 +22,7 @@ Use this skill for issue-governance planning, not implementation. It governs one
 
 - Never delete issues. Close only for completed acceptance criteria or a superseding issue link.
 - `planning-invalid` blocks readiness. Repair only after a fresh failing validation, at most twice. Timeout, unresolved blockers, or permission failures stop the run.
+- Use GitHub MCP for issue operations; do not use GitHub CLI (`gh`). MCP issue access does not provide Actions dispatch or run-status access.
 - Keep financial content local by default. Do not introduce cloud processing, telemetry, or analytics for transaction content.
 - Keep product implementation and test execution separate; Test issues verify existing behavior.
 - Use `- #NUMBER` in structured reference sections. Ban uncertainty wording in Technical Tasks, Acceptance Criteria, and Validation Commands.
@@ -31,9 +32,9 @@ Use this skill for issue-governance planning, not implementation. It governs one
 
 ## Workflow
 
-1. **Preflight:** Read the issue body, labels, and recent comments. Confirm supported type, hierarchy, linked issues, blockers, Test Necessity, and test layers. Stop if type or hierarchy cannot be verified.
+1. **Preflight:** Read the issue body, labels, and recent comments. Confirm supported type, hierarchy, linked issues, blockers, Test Necessity, and test layers. Before mutation, confirm an authorized human can trigger and verify fresh planning validation through GitHub UI. Stop if type, hierarchy, or a validation route cannot be verified.
 2. **Update:** Use `references/templates.md`. Keep existing entry points real; list new files as tasks. Keep implementation and test ownership separate.
-3. **Validate:** Follow the Validation Loop Checklist. A pre-existing `planning-invalid` label is not a fresh processing signal. If no fresh signal appears within 180 seconds, stop and escalate without repair.
+3. **Validate:** Follow the Validation Loop Checklist. A pre-existing `planning-invalid` label is not a fresh processing signal. MCP issue writes are not validation signals. If no fresh signal appears within 180 seconds, stop and escalate without repair.
 4. **Readiness:** Run G1-G9 and the deep-dive checks in `references/assignment-readiness-deep-dive.md`. Quote evidence for each pass; mark G9 not applicable only when the issue has no renderer-visible work.
 5. **Finalize:** Use the evidence format in `references/checklists.md`. Report changes, validation, Test Necessity, test-layer status, blockers, and follow-ups. Do not advance after a stop condition.
 

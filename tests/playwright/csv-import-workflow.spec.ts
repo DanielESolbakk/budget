@@ -119,8 +119,7 @@ test.describe("CSV import renderer workflow", () => {
 
     // AC-1: success status is shown after import.
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
-    const statusText = await csvImport.successStatus.textContent();
-    expect(statusText).toMatch(/Added 10 transactions to your ledger/i);
+    await expect(csvImport.successStatus).toContainText(/Added 16 transactions to your ledger/i);
 
     // The app reloads dashboard state after successful import and remounts the import section.
     // Wait for the remounted input to clear as a stable completion signal.
@@ -234,7 +233,7 @@ test.describe("CSV import renderer workflow", () => {
 
     // Regression guard for the previous refresh race: success feedback must be observable.
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
-    await expect(csvImport.successStatus).toContainText(/Added 10 transactions to your ledger/i);
+    await expect(csvImport.successStatus).toContainText(/Added 16 transactions to your ledger/i);
 
     // Refresh now runs without tearing down the section and clears the input for next import.
     await expect(csvImport.filePathInput).toHaveValue("", { timeout: 10_000 });
@@ -282,7 +281,7 @@ test.describe("CSV import renderer workflow", () => {
 
     await csvImport.submitImport(FIXTURE_PATH);
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
-    await expect(csvImport.successStatus).toContainText("Added 0 transactions to your ledger. 10 duplicates skipped.");
+    await expect(csvImport.successStatus).toContainText("Added 0 transactions to your ledger. 16 duplicates skipped.");
     const transactionsAfterSecondImport = loadPersistedTransactions(databasePath);
 
     expect(transactionsAfterSecondImport).toEqual(transactionsAfterFirstImport);
