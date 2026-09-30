@@ -45,7 +45,7 @@ describe("AC traceability governance checks", () => {
       "local-first",
       "no-network",
     ]) {
-      expect(adr, `ADR must contain \"${term}\"").toContain(term);
+      expect(adr, `ADR must contain "${term}"`).toContain(term);
     }
   });
 
@@ -70,7 +70,7 @@ describe("AC traceability governance checks", () => {
     const glossaryRows = glossary.split(/\\r?\\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
-      expect(row, `Glossary must define \"${term}\"").not.toBe("");
+      expect(row, `Glossary must define "${term}"`).not.toBe("");
       expect(row).toContain(`| ${term} | ${fragment}`);
     }
 
