@@ -67,7 +67,7 @@ describe("AC traceability governance checks", () => {
       "forecast assumption": "An explicit input used by forecasting logic",
       "backup snapshot": "A user-initiated exportable backup",
     };
-    const glossaryRows = glossary.split(/\\\\r?\\\\n/);
+    const glossaryRows = glossary.split(/\\r?\\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
       expect(row, `Glossary must define \"${term}\"").not.toBe("");
@@ -156,6 +156,6 @@ describe("AC traceability governance checks", () => {
     expect(planningSkill).toContain("Epic issues may be read for hierarchy checks, but do not create, rewrite, validate, or close them.");
     expect(planningDeepDive).toContain("Test issue's \"Test Scenarios\" section has at least 2 concrete, reproducible scenarios.");
     expect(planningChecklists).toContain("G9 [PASS/FAIL/N/A]");
-    expect((planningSkill.match(/\\S+/g) ?? []).length).toBeLessThanOrEqual(500);
+    expect((planningSkill.match(/\S+/g) ?? []).length).toBeLessThanOrEqual(500);
   });
 });
