@@ -5,42 +5,39 @@ compatibility: Requires GitHub MCP issue tools and repository planning rules in 
 metadata:
   owner: budget-repo
   workflow: issue-planning
-  version: "1.3"
+  version: "1.4"
 ---
 
 # Issue Planning Governor
 
-Use for issue-governance planning, not implementation. Handle one primary issue at a time; process explicitly requested batches sequentially.
-
-## Scope
-
-- Covers lifecycle and readiness for Feature, Story, Enabler, and Test.
-- Epic issues may be read for hierarchy checks, but do not create, rewrite, validate, or close them.
-- Excludes issue deletion, coding, and pull-request implementation.
+Govern Feature, Story, Enabler, and Test planning, not implementation. Handle one issue at a time; process batches sequentially and stop on any stop condition. Epics are read-only hierarchy context.
 
 ## Rules
 
 - Never delete; close only for completed criteria or a linked successor.
-- `planning-invalid` blocks readiness. Repair only after a fresh failing validation, at most twice. Timeout, unresolved blockers, or permission failures stop the run.
-- Use GitHub MCP for issue operations; do not use GitHub CLI (`gh`). MCP issue access does not provide Actions dispatch or run-status access.
+- `planning-invalid` blocks readiness. Repair only after a fresh failure, at most twice. Timeout, unresolved blockers, or permission failures stop the run.
+- Use GitHub MCP, never `gh`; MCP cannot dispatch or inspect Actions runs.
 - Keep transaction content local; do not add cloud processing, telemetry, or analytics.
-- Keep product implementation and test execution separate; Test issues verify existing behavior.
 - Use `- #NUMBER` for structured references; ban uncertainty in tasks, criteria, and validation commands.
-- Decide Test Necessity. If tests are required, map every parent AC to a test issue and name the immediate parent as the AC source; AC IDs belong to their declaring issue.
-- Declare Unit (Vitest), Integration (Vitest), and runtime end-to-end (Playwright) coverage; link a follow-up per deferred layer and align runner and folder labels.
-- R16 Frontend planning completeness applies to visible UI. See the deep-dive for G9 requirements; issues without renderer entry points or UI changes are exempt. Impeccable is opt-in.
+- A workflow pass proves structure only. Preserve `needs-grooming` until G1-G9 pass with quoted evidence.
+- Apply R16/G9 to visible UI; non-renderer work is exempt. Impeccable is opt-in.
+
+## Issue Materialization Gate
+
+- Keep unscheduled ideas roadmap-only; never create empty delivery/Test hierarchies for visibility.
+- Create an Enabler only when a real same-Feature Story exists. Never invent a Story to satisfy validation.
+- Decide Test Necessity from changed behavior. Create Tests only after an immediate Story/Enabler owns delivered or active implementation scope. Each Test owns one layer and executable scenarios/commands.
+- Never create coverage anchors, reserved scenarios, placeholder commands, or Tests solely for traceability, triangle completeness, or validator success. Declare Unit, Integration, and Playwright intent on the parent; link concrete follow-ups only when justified.
+- If the requested hierarchy cannot pass this gate, leave it `needs-grooming`, report the missing decision/scope, and stop rather than manufacture links.
 
 ## Workflow
 
-1. **Preflight:** Read issue body, labels, comments; verify type, hierarchy, links, blockers, Test Necessity, and test layers. Before mutation, confirm an authorized human can trigger and verify fresh GitHub UI validation; stop if type, hierarchy, or validation route is unverified.
-2. **Update:** Use `references/templates.md`. Keep existing entry points real; list new files as tasks. Keep implementation and test ownership separate.
-3. **Validate:** Follow the Validation Loop Checklist. A pre-existing `planning-invalid` label is not a fresh processing signal. MCP issue writes are not validation signals. If no fresh signal appears within 180 seconds, stop and escalate without repair.
-4. **Readiness:** Run G1-G9 and the deep-dive checks in `references/assignment-readiness-deep-dive.md`. Quote evidence for each pass; mark G9 not applicable only when the issue has no renderer-visible work.
-5. **Finalize:** Use the evidence format in `references/checklists.md`. Report changes, validation, Test Necessity, test-layer status, blockers, and follow-ups. Do not advance after a stop condition.
+1. **Preflight:** Read body, labels, comments; verify type, hierarchy, blockers, gate, Test Necessity, and layers. Confirm a human can trigger and verify fresh UI validation.
+2. **Update:** Use `references/templates.md`. Existing entry points must be real; list new files as tasks. Map each parent AC to a necessary Test and name the immediate parent as AC source.
+3. **Validate:** Follow the Validation Loop Checklist. Existing labels and MCP writes are not fresh signals. After 180 seconds without one, stop without repair.
+4. **Readiness:** Run G1-G9 from the deep-dive. Quote each pass; G9 is N/A only without renderer-visible work.
+5. **Finalize:** Use the checklist evidence format. Report changes, validation, Test Necessity, layers, blockers, and follow-ups.
 
 ## References
 
-- Load `references/checklists.md` for preflight, validation, evidence, and escalation formats.
-- Load `references/assignment-readiness-deep-dive.md` for G1-G9 and assignment checks.
-- Load `references/repair-playbooks.md` only after a fresh validation failure.
-- Use `references/runbook-example.md` and `references/evaluation-checklist.md` as needed.
+Load `checklists.md` and `assignment-readiness-deep-dive.md`. Load `repair-playbooks.md` only after a fresh failure; use the runbook/evaluation references as needed.
