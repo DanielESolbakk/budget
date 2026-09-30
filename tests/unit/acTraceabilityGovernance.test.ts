@@ -9,23 +9,54 @@ function readRepositoryFile(relativePath: string): string {
 }
 
 function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
+  const escapeCharacter = "\\";
+  const specialCharacters = new Set([
+    ".",
+    "*",
+    "+",
+    "?",
+    "^",
+    "$",
+    "{",
+    "}",
+    "(",
+    ")",
+    "|",
+    "[",
+    "]",
+    escapeCharacter,
+  ]);
+
+  return [...value]
+    .map((character) =>
+      specialCharacters.has(character) ? escapeCharacter + character : character,
+    )
+    .join("");
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {
   const escapedHeading = escapeRegularExpression(heading);
   const match = markdown.match(
-    new RegExp(`^${escapedHeading}\\\\r?\\\\n([\\\\s\\\\S]*?)(?=^#{1,2}\\\\s|(?![\\\\s\\\\S]))`, "im"),
+    new RegExp(`^${escapedHeading}\\r?\\n([\\s\\S]*?)(?=^#{1,2}\\s|(?![\\s\\S]))`, "im"),
   );
   return match?.[1] ?? "";
 }
 
 describe("AC traceability governance checks", () => {
+  it("reads a Markdown section across blank lines and stops at the next heading", () => {
+    const markdown = "## Status (accepted)\n\nAccepted\n\n## Date\n\n2026-05-23\n";
+
+    const section = readMarkdownSection(markdown, "## Status (accepted)");
+
+    expect(section).toContain("Accepted");
+    expect(section).not.toContain("## Date");
+  });
+
   it("AC-1: ADR records required stack and runtime boundary decisions", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
     );
-    expect(adr).toMatch(/^## Status\\s+Accepted$/m);
+    expect(adr).toMatch(/^## Status\s+Accepted$/m);
     const parserSection = readMarkdownSection(adr, "### Import and Parser Layer");
     expect(parserSection).toContain("source-aware parser adapters");
     expect(parserSection).toContain("parser-specific logic isolated");
@@ -67,7 +98,7 @@ describe("AC traceability governance checks", () => {
       "forecast assumption": "An explicit input used by forecasting logic",
       "backup snapshot": "A user-initiated exportable backup",
     };
-    const glossaryRows = glossary.split(/\\r?\\n/);
+    const glossaryRows = glossary.split(/\r?\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
       expect(row, `Glossary must define "${term}"`).not.toBe("");
