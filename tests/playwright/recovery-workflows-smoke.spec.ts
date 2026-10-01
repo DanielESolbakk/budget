@@ -87,6 +87,7 @@ test.describe("Recovery and portability renderer workflows", () => {
   });
 
   test("restores a snapshot and refreshes the dashboard with restored ledger data", async ({
+    appShell,
     recovery,
     dashboard,
     dashboardTarget,
@@ -133,9 +134,9 @@ test.describe("Recovery and portability renderer workflows", () => {
       await recovery.restoreButton.click();
 
       await expect(recovery.restoreSuccess).toContainText("1 transaction restored");
+      await appShell.openWorkspace("Review");
       await expect(dashboard.categoryBreakdownSection).toContainText("restored");
       await expect(dashboard.monthSelector).toHaveValue("2026-05");
-      await expect(dashboard.monthFrame("2026-05")).toBeVisible();
       await expect(dashboard.incomeValue).toHaveText(/0,00/);
       await expect(dashboard.expenseValue).toHaveText(/^123,45/);
       await expect(dashboard.netValue).toHaveText(/−123,45/);
@@ -189,6 +190,7 @@ test.describe("Recovery and portability renderer workflows", () => {
   });
 
   test("reports an invalid restore snapshot without replacing the ledger", async ({
+    appShell,
     recovery,
     dashboard,
     window,
@@ -207,6 +209,7 @@ test.describe("Recovery and portability renderer workflows", () => {
 
       await expect(recovery.restoreError).toContainText("Failed to parse snapshot file");
       await expect(recovery.restoreSuccess).not.toBeVisible();
+      await appShell.openWorkspace("Review");
       await expect(dashboard.categoryBreakdownSection).toContainText("groceries");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -214,6 +217,7 @@ test.describe("Recovery and portability renderer workflows", () => {
   });
 
   test("cancelling restore confirmation leaves the current ledger visible", async ({
+    appShell,
     recovery,
     dashboard,
     databasePath,
@@ -261,6 +265,7 @@ test.describe("Recovery and portability renderer workflows", () => {
 
       await expect(recovery.restoreCancelled).toHaveText("Restore cancelled.");
       await expect(recovery.restoreSuccess).not.toBeVisible();
+      await appShell.openWorkspace("Review");
       await expect(dashboard.categoryBreakdownSection).toContainText("groceries");
       await expect(dashboard.categoryBreakdownSection).not.toContainText("cancelled");
       const persistedSnapshot = loadPersistedSnapshot(databasePath);

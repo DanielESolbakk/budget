@@ -88,8 +88,8 @@ test.describe("Dashboard renderer smoke", () => {
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
     });
 
-    await dashboard.monthFrame("2026-04").click();
-    await dashboard.monthFrame("2026-05").click();
+    await dashboard.monthSelector.selectOption("2026-04");
+    await dashboard.monthSelector.selectOption("2026-05");
 
     await expect(dashboard.monthSelector).toHaveValue("2026-05", { timeout: 10_000 });
     await expect(dashboard.incomeValue).toContainText("540");
@@ -106,7 +106,7 @@ test.describe("Dashboard renderer smoke", () => {
     });
   });
 
-  test("@visual Visual: mobile dashboard preserves the horizontal month rail", async ({ window, electronApp }) => {
+  test("@visual Visual: compact dashboard preserves primary workspace navigation", async ({ window, electronApp }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });

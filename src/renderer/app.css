@@ -172,6 +172,16 @@ li::marker {
   background: var(--ink);
 }
 
+.app-frame {
+  display: grid;
+  width: min(calc(100% - 2.4rem), 1500px);
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+  margin: 0 auto;
+  padding: 2.4rem 0 5rem;
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -281,10 +291,65 @@ li::marker {
   background: var(--error);
 }
 
+.primary-navigation {
+  position: sticky;
+  top: 1.5rem;
+  display: grid;
+  gap: 0.45rem;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 0.65rem;
+}
+
+.workspace-link {
+  display: grid;
+  gap: 0.2rem;
+  min-height: 4.1rem;
+  align-content: center;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 0.75rem 0.85rem;
+  color: var(--paper-muted);
+  background: transparent;
+  font-family: "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.workspace-link span {
+  color: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.workspace-link small {
+  color: inherit;
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.primary-navigation .workspace-link:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--paper);
+  background: var(--panel);
+}
+
+.primary-navigation .workspace-link.is-current,
+.primary-navigation .workspace-link.is-current:hover:not(:disabled) {
+  border-color: var(--paper);
+  color: var(--ink);
+  background: var(--paper);
+}
+
 .workspace {
-  width: min(calc(100% - 2.4rem), 1500px);
-  margin: 0 auto;
-  padding: 3.5rem 0 5rem;
+  min-width: 0;
+}
+
+section.destination-workspace {
+  overflow: visible;
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .review-intro {
@@ -297,12 +362,12 @@ li::marker {
 }
 
 .review-intro h2 {
-  max-width: 18ch;
+  max-width: 22ch;
   color: var(--paper);
-  font-size: 4rem;
+  font-size: 2.5rem;
   font-weight: 800;
-  letter-spacing: -0.035em;
-  line-height: 0.95;
+  letter-spacing: -0.025em;
+  line-height: 1;
   font-family: var(--display);
 }
 
@@ -329,6 +394,64 @@ li::marker {
 .month-picker-code {
   color: var(--orange);
   font-size: 0.62rem;
+}
+
+.destination-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1.3rem;
+}
+
+.destination-heading h2,
+.destination-heading p {
+  margin: 0;
+}
+
+.destination-heading h2 {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 2.5rem;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+.destination-heading p {
+  max-width: 52ch;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.transactions-workspace-grid,
+.destination-heading + .workflow-import-grid,
+.destination-heading + .workflow-recovery-grid {
+  margin-top: 1rem;
+}
+
+.transactions-workspace-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+section[aria-label="Ledger"] form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+section[aria-label="Ledger"] form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--paper-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+section[aria-label="Ledger"] form button {
+  align-self: end;
+  justify-self: start;
 }
 
 .status-panel {
@@ -987,6 +1110,16 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 @media (max-width: 1050px) {
+  .app-frame {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .primary-navigation {
+    position: static;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .review-grid {
     grid-template-columns: 1fr;
   }
@@ -999,12 +1132,17 @@ section[aria-label="Category Target Entry"] [role="status"] {
   .workflow-recovery-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  section[aria-label="Ledger"] form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 680px) {
   .app-header,
   .review-intro,
-  .work-bin-heading {
+  .work-bin-heading,
+  .destination-heading {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -1018,13 +1156,30 @@ section[aria-label="Category Target Entry"] [role="status"] {
     justify-content: space-between;
   }
 
-  .workspace {
+  .app-frame {
     width: min(calc(100% - 1.5rem), 1500px);
+    gap: 1.25rem;
     padding-top: 2.2rem;
   }
 
+  .primary-navigation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-link {
+    min-height: 3.35rem;
+  }
+
+  .workspace-link small {
+    display: none;
+  }
+
   .review-intro h2 {
-    font-size: 2.7rem;
+    font-size: 2.2rem;
+  }
+
+  .destination-heading h2 {
+    font-size: 2.2rem;
   }
 
   .month-picker {
@@ -1054,6 +1209,10 @@ section[aria-label="Category Target Entry"] [role="status"] {
   .workflow-import-grid,
   .workflow-recovery-grid,
   .workflow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  section[aria-label="Ledger"] form {
     grid-template-columns: 1fr;
   }
 

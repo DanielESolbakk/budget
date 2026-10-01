@@ -56,6 +56,30 @@ test.describe("Electron startup smoke", () => {
     const title = await window.title();
     expect(title).toBe("Budget Planner");
   });
+
+  test("Scenario 5: primary navigation exposes one focused workspace at a time", async ({ appShell }) => {
+    await expect(appShell.primaryNavigation).toBeVisible();
+    await expect(appShell.destination("Review")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Review")).toBeVisible();
+
+    await appShell.openWorkspace("Transactions");
+
+    await expect(appShell.destination("Transactions")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Transactions")).toBeVisible();
+    await expect(appShell.workspace("Review")).toHaveCount(0);
+
+    await appShell.openWorkspace("Import");
+
+    await expect(appShell.destination("Import")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Import")).toBeVisible();
+    await expect(appShell.workspace("Transactions")).toHaveCount(0);
+
+    await appShell.openWorkspace("Data safety");
+
+    await expect(appShell.destination("Data safety")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Data safety")).toBeVisible();
+    await expect(appShell.workspace("Import")).toHaveCount(0);
+  });
 });
 
 test.describe("Electron startup smoke — fallback branch", () => {
@@ -73,7 +97,7 @@ test.describe("Electron startup smoke — fallback branch", () => {
     await window.reload();
   });
 
-  test("Scenario 5: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast }) => {
+  test("Scenario 6: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast }) => {
     // AC-3: explicit fallback label renders at the Electron runtime level when
     // the IPC response signals insufficient transaction history.
     await expect(forecast.sectionHeading).toBeVisible();

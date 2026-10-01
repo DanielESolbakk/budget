@@ -61,14 +61,6 @@ export class DashboardPage {
     return this.page.getByRole("combobox", { name: "Select month" });
   }
 
-  get monthFrameButtons() {
-    return this.page.getByRole("button", { name: /^Select .+ for review$/ });
-  }
-
-  monthFrame(yearMonth: string): Locator {
-    return this.monthFrameButtons.filter({ hasText: yearMonth });
-  }
-
   monthlyTotal(label: "Income" | "Expenses" | "Net"): Locator {
     return this.monthlyTotalsSection.getByRole("group", { name: `${label} total` });
   }

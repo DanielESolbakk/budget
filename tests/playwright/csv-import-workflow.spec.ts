@@ -101,7 +101,7 @@ function loadPersistedTransactions(databasePath: string) {
 }
 
 test.describe("CSV import renderer workflow", () => {
-  test("Scenario 1: importing the supported synthetic CSV reports success and updates dashboard totals", async ({ csvImport, dashboard }) => {
+  test("Scenario 1: importing the supported synthetic CSV reports success and updates dashboard totals", async ({ appShell, csvImport, dashboard }) => {
     // AC-1: import section is visible with file path input and button.
     await expect(csvImport.importSection).toBeVisible();
     await expect(csvImport.importHeading).toBeVisible();
@@ -109,12 +109,14 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.importButton).toBeVisible();
 
     // Capture baseline dashboard income value before import.
+    await appShell.openWorkspace("Review");
     const monthSelector = dashboard.monthSelector;
     await monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
 
     // AC-1, AC-2: submit the fixture CSV path via the renderer input.
+    await appShell.openWorkspace("Import");
     await csvImport.submitImport(FIXTURE_PATH);
 
     // AC-1: success status is shown after import.
@@ -127,6 +129,7 @@ test.describe("CSV import renderer workflow", () => {
 
     // AC-4: dashboard automatically reloads after import success;
     // wait for the monthly totals section to re-render and values to change.
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.categoryEntries.first()).toBeVisible();
     await expect
@@ -240,62 +243,76 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.importSection).toBeVisible();
   });
 
-  test("Regression: refresh failure preserves the loaded dashboard and shows recovery feedback", async ({ csvImport, dashboard, electronApp, window }) => {
+  test("Regression: refresh failure preserves the loaded dashboard and shows recovery feedback", async ({ appShell, csvImport, dashboard, electronApp, window }) => {
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
     });
 
+    await appShell.openWorkspace("Import");
     await csvImport.submitImport(FIXTURE_PATH);
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
-    await expect(dashboard.monthlyTotalsSection).toBeVisible({ timeout: 10_000 });
     await expect(csvImport.importSection).toBeVisible();
     await expect(window.getByRole("alert")).toContainText("Review refresh failed");
     await expect(window.getByRole("alert")).toContainText("Synthetic dashboard refresh failure.");
+    await appShell.openWorkspace("Review");
+    await expect(dashboard.monthlyTotalsSection).toBeVisible({ timeout: 10_000 });
   });
 
-  test("Regression: successful import preserves the currently selected month", async ({ csvImport, dashboard }) => {
+  test("Regression: successful import preserves the currently selected month", async ({ appShell, csvImport, dashboard }) => {
+    await appShell.openWorkspace("Review");
     const selectedMonth = await dashboard.selectDifferentMonth("2026-05");
 
+    await appShell.openWorkspace("Import");
     await csvImport.submitImport(FIXTURE_PATH);
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
     await expect(csvImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthSelector).toHaveValue(selectedMonth, { timeout: 10_000 });
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
   });
 
   test("Regression: importing the same CSV twice does not duplicate persisted transactions", async ({
+    appShell,
     csvImport,
     dashboard,
     databasePath,
   }) => {
+    await appShell.openWorkspace("Review");
     const incomeBeforeImport = ((await dashboard.incomeValue.textContent()) ?? "").trim();
+    await appShell.openWorkspace("Import");
     await csvImport.submitImport(FIXTURE_PATH);
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
     const transactionsAfterFirstImport = loadPersistedTransactions(databasePath);
+    await appShell.openWorkspace("Review");
     await expect
       .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), { timeout: 10_000 })
       .not.toBe(incomeBeforeImport);
     const incomeAfterFirstImport = ((await dashboard.incomeValue.textContent()) ?? "").trim();
 
+    await appShell.openWorkspace("Import");
     await csvImport.submitImport(FIXTURE_PATH);
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
     await expect(csvImport.successStatus).toContainText("Added 0 transactions to your ledger. 16 duplicates skipped.");
     const transactionsAfterSecondImport = loadPersistedTransactions(databasePath);
 
     expect(transactionsAfterSecondImport).toEqual(transactionsAfterFirstImport);
+    await appShell.openWorkspace("Review");
     await expect(dashboard.incomeValue).toHaveText(incomeAfterFirstImport);
   });
 
-  test("Scenario 2: importing an unsupported CSV shape reports validation errors and leaves dashboard unchanged", async ({ csvImport, dashboard }) => {
+  test("Scenario 2: importing an unsupported CSV shape reports validation errors and leaves dashboard unchanged", async ({ appShell, csvImport, dashboard }) => {
     // Ensure dashboard is in a known state before the invalid import.
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
 
     const invalidPath = writeInvalidCsvFixture();
 
     // AC-1, AC-3: submit invalid CSV path via renderer input.
+    await appShell.openWorkspace("Import");
     await csvImport.submitImport(invalidPath);
 
     // AC-3: alert with validation failure is shown.
@@ -304,6 +321,7 @@ test.describe("CSV import renderer workflow", () => {
     expect(alertText).toMatch(/failed/i);
 
     // AC-4: dashboard totals remain unchanged after a failed import.
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const afterIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     expect(afterIncomeText).toBe(beforeIncomeText);
@@ -319,15 +337,18 @@ test.describe("CSV import renderer workflow", () => {
   });
 
   test("Regression: CSV confirmation rejects a file changed after preview", async ({
+    appShell,
     csvImport,
     dashboard,
   }) => {
     const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.csv`);
     writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
+    await appShell.openWorkspace("Review");
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
     const beforeNetText = (await dashboard.netValue.textContent()) ?? "";
 
+    await appShell.openWorkspace("Import");
     await csvImport.filePathInput.fill(mutablePath);
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
@@ -338,6 +359,7 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.errorAlert).toBeVisible({ timeout: 10_000 });
     await expect(csvImport.errorAlert).toContainText("Import validation failed");
     await expect(csvImport.errorAlert).toContainText("The file changed after preview.");
+    await appShell.openWorkspace("Review");
     await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
     await expect(dashboard.expenseValue).toHaveText(beforeExpenseText);
     await expect(dashboard.netValue).toHaveText(beforeNetText);

@@ -49,8 +49,18 @@ type AppState =
     }
   | { status: "error"; message: string };
 
+type WorkspaceId = "review" | "transactions" | "import" | "data-safety";
+
+const WORKSPACES: Array<{ id: WorkspaceId; label: string; description: string }> = [
+  { id: "review", label: "Review", description: "Monthly position" },
+  { id: "transactions", label: "Transactions", description: "Ledger and corrections" },
+  { id: "import", label: "Import", description: "Bring in activity" },
+  { id: "data-safety", label: "Data safety", description: "Backup and export" },
+];
+
 export function App(): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
+  const [activeWorkspace, setActiveWorkspace] = React.useState<WorkspaceId>("review");
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [isChangingMonth, setIsChangingMonth] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -173,185 +183,146 @@ export function App(): React.JSX.Element {
         </div>
       </header>
 
-      <main className="workspace" aria-labelledby="review-heading">
-        <section className="review-intro" aria-labelledby="review-heading">
-          <div>
-            <h2 id="review-heading">Review your household spending.</h2>
-            <p className="intro-copy">
-              Start with one month, then bring in or tidy the transactions that explain it.
-            </p>
-          </div>
-          {appState.status === "ready" && (
-            <div className="month-picker">
-              <label htmlFor="month-select">Reviewing</label>
-              <select
-                id="month-select"
-                aria-label="Select month"
-                value={appState.selectedYearMonth}
-                onChange={(event) => handleMonthChange(event.target.value)}
-              >
-                {appState.availableMonths.map((month) => (
-                  <option key={month} value={month}>
-                    {formatYearMonth(month)}
-                  </option>
-                ))}
-              </select>
-              <span className="month-picker-code">{appState.selectedYearMonth}</span>
-            </div>
-          )}
-        </section>
-
-        {appState.status === "loading" && (
-          <section className="status-panel status-loading" aria-live="polite">
-            <div className="status-heading">
-              <span className="status-marker" aria-hidden="true" />
-              <h2>Loading the review rail</h2>
-            </div>
-            <div className="skeleton-line skeleton-line-wide" />
-            <div className="skeleton-line skeleton-line-short" />
-          </section>
-        )}
-      {appState.status === "error" && (
-          <section className="status-panel status-error" role="alert">
-            <div className="status-heading">
-              <span className="status-marker" aria-hidden="true">!</span>
-              <h2>Review rail unavailable</h2>
-            </div>
-            <p>{appState.message}</p>
-            <button type="button" onClick={() => setRefreshCounter((counter) => counter + 1)}>
-              Try again
+      <div className="app-frame">
+        <nav className="primary-navigation" aria-label="Primary">
+          {WORKSPACES.map((workspace) => (
+            <button
+              key={workspace.id}
+              type="button"
+              aria-label={workspace.label}
+              aria-current={activeWorkspace === workspace.id ? "page" : undefined}
+              className={activeWorkspace === workspace.id ? "workspace-link is-current" : "workspace-link"}
+              onClick={() => setActiveWorkspace(workspace.id)}
+            >
+              <span>{workspace.label}</span>
+              <small aria-hidden="true">{workspace.description}</small>
             </button>
-          </section>
-      )}
-      {appState.status === "ready" && (
-        <>
-          {refreshError !== null && (
+          ))}
+        </nav>
+
+        <main className="workspace">
+          {appState.status === "loading" && (
+            <section className="status-panel status-loading" aria-live="polite">
+              <div className="status-heading">
+                <span className="status-marker" aria-hidden="true" />
+                <h2>Loading your household ledger</h2>
+              </div>
+              <div className="skeleton-line skeleton-line-wide" />
+              <div className="skeleton-line skeleton-line-short" />
+            </section>
+          )}
+          {appState.status === "error" && (
             <section className="status-panel status-error" role="alert">
               <div className="status-heading">
                 <span className="status-marker" aria-hidden="true">!</span>
-                <h2>Review refresh failed</h2>
+                <h2>Household ledger unavailable</h2>
               </div>
-              <p>{refreshError}</p>
+              <p>{appState.message}</p>
               <button type="button" onClick={() => setRefreshCounter((counter) => counter + 1)}>
                 Try again
               </button>
             </section>
           )}
-          <section className="month-rail" aria-labelledby="rail-heading">
-            <div className="rail-heading-row">
-              <div>
-                <h2 id="rail-heading">Choose a month</h2>
-              </div>
-              <span className="rail-count">
-                {appState.availableMonths.length} month{appState.availableMonths.length === 1 ? "" : "s"} available
-              </span>
-            </div>
-            <nav aria-label="Available months" className="rail-track">
-              <ol className="month-frames">
-                {appState.availableMonths.map((month, index) => {
-                  const isSelected = month === appState.selectedYearMonth;
-                  return (
-                    <li key={month} className={isSelected ? "month-frame is-selected" : "month-frame"}>
-                      <button
-                        type="button"
-                        className="month-frame-button"
-                        aria-current={isSelected ? "date" : undefined}
-                        aria-label={`Select ${formatYearMonth(month)} for review`}
-                        onClick={() => handleMonthChange(month)}
+          {appState.status === "ready" && (
+            <>
+              {refreshError !== null && (
+                <section className="status-panel status-error" role="alert">
+                  <div className="status-heading">
+                    <span className="status-marker" aria-hidden="true">!</span>
+                    <h2>Review refresh failed</h2>
+                  </div>
+                  <p>{refreshError}</p>
+                  <button type="button" onClick={() => setRefreshCounter((counter) => counter + 1)}>
+                    Try again
+                  </button>
+                </section>
+              )}
+
+              {activeWorkspace === "review" && (
+                <section className="destination-workspace" aria-label="Review workspace">
+                  <div className="review-intro">
+                    <div>
+                      <h2>Monthly review</h2>
+                      <p className="intro-copy">See the month clearly, then act on what needs attention.</p>
+                    </div>
+                    <div className="month-picker">
+                      <label htmlFor="month-select">Reviewing</label>
+                      <select
+                        id="month-select"
+                        aria-label="Select month"
+                        value={appState.selectedYearMonth}
+                        onChange={(event) => handleMonthChange(event.target.value)}
                       >
-                        <span className="frame-index">{String(index + 1).padStart(2, "0")}</span>
-                        <span className="frame-month">{formatYearMonth(month)}</span>
-                        <span className="frame-code">{month}</span>
-                        <span className="frame-state">{isSelected ? "Selected" : "Month"}</span>
-                        {isSelected && <span className="frame-flag">Current</span>}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            </nav>
-            {isChangingMonth && (
-              <p className="rail-status" role="status">Updating month...</p>
-            )}
-            {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
-          </section>
+                        {appState.availableMonths.map((month) => (
+                          <option key={month} value={month}>{formatYearMonth(month)}</option>
+                        ))}
+                      </select>
+                      <span className="month-picker-code">{appState.selectedYearMonth}</span>
+                    </div>
+                  </div>
+                  {isChangingMonth && <p className="rail-status" role="status">Updating month...</p>}
+                  {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
+                  <div className="review-grid" aria-busy={isChangingMonth || isRefreshing}>
+                    <div className="review-primary">
+                      <MonthlyTotalsSection viewContract={appState.viewContract} />
+                      <TargetVsActualSection viewContract={appState.viewContract} />
+                      <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
+                    </div>
+                    <aside className="review-support" aria-label="Monthly context">
+                      <CategoryBreakdownSection viewContract={appState.viewContract} />
+                      <ForecastSection dashboardData={appState.dashboardData} />
+                    </aside>
+                  </div>
+                </section>
+              )}
 
-          <div className="review-grid" aria-busy={isChangingMonth || isRefreshing}>
-            <div className="review-primary">
-              <MonthlyTotalsSection viewContract={appState.viewContract} />
-              <LedgerSection refreshKey={refreshCounter} />
-              <TargetVsActualSection viewContract={appState.viewContract} />
-              <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
-            </div>
-            <aside className="review-support" aria-label="Monthly context">
-              <CategoryBreakdownSection viewContract={appState.viewContract} />
-              <ForecastSection dashboardData={appState.dashboardData} />
-            </aside>
-          </div>
+              {activeWorkspace === "transactions" && (
+                <section className="destination-workspace" aria-label="Transactions workspace">
+                  <div className="destination-heading">
+                    <h2>Transactions</h2>
+                    <p>Search the ledger and resolve entries that still need a category.</p>
+                  </div>
+                  <div className="transactions-workspace-grid">
+                    <LedgerSection refreshKey={refreshCounter} />
+                    <CategoryReviewSection
+                      refreshKey={refreshCounter}
+                      onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
+                    />
+                  </div>
+                </section>
+              )}
 
-          <section className="work-bin" aria-labelledby="work-bin-heading">
-            <div className="work-bin-heading">
-              <div>
-                <p className="section-kicker">Your next steps</p>
-                <h2 id="work-bin-heading">Bring in transactions, then tidy them.</h2>
-              </div>
-              <p>Start with a statement or one manual transaction. Preview it before anything is saved, then resolve anything that needs a category.</p>
-            </div>
-            <ol className="workflow-steps" aria-label="Ledger workflow">
-              <li className="workflow-step is-current">
-                <span className="workflow-step-number">1</span>
-                <span><strong>Bring in</strong><small>CSV, PDF, or one transaction</small></span>
-              </li>
-              <li className="workflow-step">
-                <span className="workflow-step-number">2</span>
-                <span><strong>Review</strong><small>Give uncategorized items a home</small></span>
-              </li>
-              <li className="workflow-step">
-                <span className="workflow-step-number">3</span>
-                <span><strong>Keep it safe</strong><small>Back up or export when ready</small></span>
-              </li>
-            </ol>
-            <div className="workflow-groups">
-              <div className="workflow-group workflow-group-import" aria-labelledby="bring-in-heading">
-                <div className="workflow-group-heading">
-                  <p className="group-step">Step 1</p>
-                  <h3 id="bring-in-heading">Bring in transactions</h3>
-                  <p>Choose the format you already have. We’ll show a preview before importing.</p>
-                </div>
-                <div className="workflow-import-grid">
-                  <ManualEntrySection onEntrySuccess={() => setRefreshCounter((counter) => counter + 1)} />
-                  <CsvImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
-                  <PdfImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
-                </div>
-              </div>
-              <div className="workflow-group workflow-group-review" aria-labelledby="review-queue-heading">
-                <div className="workflow-group-heading">
-                  <p className="group-step">Step 2</p>
-                  <h3 id="review-queue-heading">Review what needs attention</h3>
-                  <p>Unknown merchants stay here until you choose a category. Your choice helps next time.</p>
-                </div>
-                <CategoryReviewSection
-                  refreshKey={refreshCounter}
-                  onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
-                />
-              </div>
-              <div className="workflow-group workflow-group-recovery" aria-labelledby="recovery-heading">
-                <div className="workflow-group-heading">
-                  <p className="group-step">Step 3</p>
-                  <h3 id="recovery-heading">Keep your ledger safe</h3>
-                  <p>Save a local backup, export a copy, or restore an earlier snapshot.</p>
-                </div>
-                <div className="workflow-recovery-grid">
-                  <BackupSection />
-                  <ExportSection />
-                  <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)} />
-                </div>
-              </div>
-            </div>
-          </section>
-        </>
-      )}
-      </main>
+              {activeWorkspace === "import" && (
+                <section className="destination-workspace" aria-label="Import workspace">
+                  <div className="destination-heading">
+                    <h2>Import</h2>
+                    <p>Add one transaction or preview a statement before anything is saved.</p>
+                  </div>
+                  <div className="workflow-import-grid">
+                    <ManualEntrySection onEntrySuccess={() => setRefreshCounter((counter) => counter + 1)} />
+                    <CsvImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
+                    <PdfImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
+                  </div>
+                </section>
+              )}
+
+              {activeWorkspace === "data-safety" && (
+                <section className="destination-workspace" aria-label="Data safety workspace">
+                  <div className="destination-heading">
+                    <h2>Data safety</h2>
+                    <p>Back up the local ledger, export a portable copy, or restore a snapshot.</p>
+                  </div>
+                  <div className="workflow-recovery-grid">
+                    <BackupSection />
+                    <ExportSection />
+                    <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)} />
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

@@ -88,7 +88,8 @@ export const test = base.extend<ElectronFixtures>({
   categoryTarget: async ({ window }, use) => {
     await use(new CategoryTargetPage(window));
   },
-  csvImport: async ({ window }, use) => {
+  csvImport: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Import");
     await use(new CsvImportPage(window));
   },
   dashboard: async ({ window }, use) => {
@@ -100,22 +101,27 @@ export const test = base.extend<ElectronFixtures>({
   forecast: async ({ window }, use) => {
     await use(new ForecastPage(window));
   },
-  manualEntry: async ({ window }, use) => {
+  manualEntry: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Import");
     await use(new ManualEntryPage(window));
   },
-  pdfImport: async ({ window }, use) => {
+  pdfImport: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Import");
     await use(new PdfImportPage(window));
   },
   preloadBridge: async ({ window }, use) => {
     await use(new PreloadBridgePage(window));
   },
-  recovery: async ({ window }, use) => {
+  recovery: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Data safety");
     await use(new RecoveryPage(window));
   },
-  reviewQueue: async ({ window }, use) => {
+  reviewQueue: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Transactions");
     await use(new ReviewQueuePage(window));
   },
-  ledger: async ({ window }, use) => {
+  ledger: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Transactions");
     await use(new LedgerPage(window));
   },
 });
