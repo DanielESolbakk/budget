@@ -81,15 +81,19 @@ function loadPersistedSnapshot(databasePath: string) {
 
 test.describe("PDF import renderer workflow", () => {
   test("Scenario 0: importing a binary PDF extracts and persists representative transaction fields", async ({
+    appShell,
     pdfImport,
     dashboard,
     databasePath,
   }) => {
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    await appShell.openWorkspace("Import");
     await pdfImport.submitImport(BINARY_FIXTURE_PATH);
 
     await expect(pdfImport.successStatus).toBeVisible({ timeout: 20_000 });
     await expect(pdfImport.successStatus).toContainText("Added 2 transactions to your ledger");
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
     const snapshot = loadPersistedSnapshot(databasePath);
@@ -123,6 +127,7 @@ test.describe("PDF import renderer workflow", () => {
   });
 
   test("Scenario 1: importing the supported synthetic text PDF fixture reports success and displays adapter identity", async ({
+    appShell,
     pdfImport,
     dashboard,
     databasePath,
@@ -134,12 +139,14 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.importButton).toBeVisible();
 
     // Capture baseline dashboard income value before import.
+    await appShell.openWorkspace("Review");
     const monthSelector = dashboard.monthSelector;
     await monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
 
     // AC-1, AC-2: submit the fixture text path via the renderer input.
+    await appShell.openWorkspace("Import");
     await pdfImport.submitImport(FIXTURE_PATH);
 
     // AC-1: success status is shown after import.
@@ -153,6 +160,7 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
 
     // AC-5: dashboard automatically reloads after import success.
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect
       .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), {
@@ -171,6 +179,7 @@ test.describe("PDF import renderer workflow", () => {
     );
 
     const beforeSecondImportIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
+    await appShell.openWorkspace("Import");
     await pdfImport.filePathInput.fill(FIXTURE_PATH);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
@@ -181,6 +190,7 @@ test.describe("PDF import renderer workflow", () => {
       "Added 0 transactions to your ledger. 10 duplicates skipped.",
       { timeout: 10_000 }
     );
+    await appShell.openWorkspace("Review");
     await expect
       .poll(async () => ((await dashboard.incomeValue.textContent()) ?? "").trim(), {
         timeout: 10_000,
@@ -195,14 +205,16 @@ test.describe("PDF import renderer workflow", () => {
     });
   });
 
-  test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async ({ pdfImport, dashboard }) => {
+  test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async ({ appShell, pdfImport, dashboard }) => {
     // Ensure dashboard is in a known state before the invalid import.
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
 
     const unsupportedPath = writeUnsupportedFixture();
 
     // AC-1, AC-3: submit unsupported layout path via renderer input.
+    await appShell.openWorkspace("Import");
     await pdfImport.submitImport(unsupportedPath);
 
     // AC-3: alert with validation failure is shown.
@@ -211,6 +223,7 @@ test.describe("PDF import renderer workflow", () => {
     expect(alertText).toMatch(/failed/i);
 
     // AC-5: dashboard totals remain unchanged after a failed import.
+    await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const afterIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     expect(afterIncomeText).toBe(beforeIncomeText);
@@ -226,15 +239,18 @@ test.describe("PDF import renderer workflow", () => {
   });
 
   test("Regression: PDF confirmation rejects a file changed after preview", async ({
+    appShell,
     pdfImport,
     dashboard,
   }) => {
     const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.txt`);
     writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
+    await appShell.openWorkspace("Review");
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
     const beforeNetText = (await dashboard.netValue.textContent()) ?? "";
 
+    await appShell.openWorkspace("Import");
     await pdfImport.filePathInput.fill(mutablePath);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
@@ -245,6 +261,7 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.errorAlert).toBeVisible({ timeout: 10_000 });
     await expect(pdfImport.errorAlert).toContainText("Import validation failed");
     await expect(pdfImport.errorAlert).toContainText("PREVIEW_STALE: The file changed after preview.");
+    await appShell.openWorkspace("Review");
     await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
     await expect(dashboard.expenseValue).toHaveText(beforeExpenseText);
     await expect(dashboard.netValue).toHaveText(beforeNetText);

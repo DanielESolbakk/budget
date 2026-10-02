@@ -25,6 +25,14 @@ export class CategoryTargetPage {
     return this.page.getByRole("heading", { name: "Set Category Budget Target", level: 2 });
   }
 
+  get addTargetButton() {
+    return this.section.getByRole("button", { name: "Add target", exact: true });
+  }
+
+  editTargetButton(categoryId: string) {
+    return this.section.getByRole("button", { name: `Edit target ${categoryId}`, exact: true });
+  }
+
   /** The category ID text input field. */
   get categoryIdInput() {
     return this.page.getByRole("textbox", { name: "Category ID", exact: true });

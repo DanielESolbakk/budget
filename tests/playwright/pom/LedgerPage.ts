@@ -47,6 +47,18 @@ export class LedgerPage {
     return this.section.getByRole("status");
   }
 
+  get loadingStatus() {
+    return this.section.getByRole("status").filter({ hasText: "Loading ledger transactions..." });
+  }
+
+  get errorAlert() {
+    return this.section.getByRole("alert");
+  }
+
+  get retryButton() {
+    return this.section.getByRole("button", { name: "Retry ledger" });
+  }
+
   transaction(merchantRaw: string) {
     return this.section.getByRole("listitem", { name: `Ledger transaction ${merchantRaw}` }).first();
   }

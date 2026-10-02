@@ -11,6 +11,7 @@ test.describe("Keyboard accessibility smoke", () => {
   }) => {
     await expect(manualEntry.entrySection).toBeVisible();
 
+    await expect(manualEntry.accountInput).toBeEnabled();
     await manualEntry.accountInput.focus();
     await expect(manualEntry.accountInput).toBeFocused();
     await window.keyboard.press("Tab");
@@ -47,11 +48,14 @@ test.describe("Keyboard accessibility smoke", () => {
   });
 
   test("category review can be completed from the keyboard", async ({
+    appShell,
     csvImport,
     reviewQueue,
     window,
   }) => {
+    await appShell.openWorkspace("Import");
     await csvImport.submitImport(CSV_FIXTURE_PATH);
+    await appShell.openWorkspace("Transactions");
     const categorySelect = reviewQueue.categorySelect("MERCHANT-005");
     await expect(categorySelect).toBeVisible();
     await categorySelect.focus();
@@ -79,11 +83,46 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(pdfImport.successStatus).toContainText("transactions to your ledger");
   });
 
-  test("month rail buttons respond to keyboard activation", async ({ dashboard, window }) => {
-    const targetMonth = dashboard.monthFrame("2026-04");
-    await targetMonth.focus();
-    await expect(targetMonth).toBeFocused();
+  test("month selector responds to keyboard selection", async ({ dashboard, window }) => {
+    const initialMonth = await dashboard.monthSelector.inputValue();
+    await dashboard.monthSelector.focus();
+    await expect(dashboard.monthSelector).toBeFocused();
+    await window.keyboard.press("ArrowUp");
     await window.keyboard.press("Enter");
-    await expect(dashboard.monthSelector).toHaveValue("2026-04");
+    await expect(dashboard.monthSelector).not.toHaveValue(initialMonth);
+  });
+
+  test("primary navigation and monthly attention actions follow a predictable tab order", async ({
+    appShell,
+    categoryTarget,
+    dashboard,
+    window,
+  }) => {
+    await appShell.destination("Review").focus();
+    await expect(appShell.destination("Review")).toBeFocused();
+
+    await window.keyboard.press("Tab");
+    await expect(appShell.destination("Transactions")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(appShell.destination("Import")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(appShell.destination("Data safety")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(dashboard.monthSelector).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(dashboard.reviewQueueAction).toBeFocused();
+    await expect(dashboard.targetVsActualSection).toHaveAttribute("tabindex", "0");
+    await window.keyboard.press("Tab");
+    await expect(dashboard.targetVsActualSection).toBeFocused();
+    const focusOutlineWidth = await dashboard.targetVsActualSection.evaluate((element) =>
+      getComputedStyle(element).outlineWidth
+    );
+    expect(focusOutlineWidth).toBe("3px");
+    await window.keyboard.press("Tab");
+    await expect(categoryTarget.editTargetButton("groceries")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(categoryTarget.addTargetButton).toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(categoryTarget.categoryIdInput).toBeFocused();
   });
 });

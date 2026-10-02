@@ -54,11 +54,15 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
   const [accountState, setAccountState] = React.useState<"loading" | "ready" | "error">("loading");
   const [formValues, setFormValues] = React.useState<ManualEntryFormValues>(initialFormValues);
   const [entryState, setEntryState] = React.useState<ManualEntryState>({ status: "idle" });
+  const [accountRetryKey, setAccountRetryKey] = React.useState(0);
 
   React.useEffect(() => {
+    let active = true;
+    setAccountState("loading");
     window.budgetApi.accounts
       .list(DEFAULT_HOUSEHOLD_ID)
       .then((loadedAccounts) => {
+        if (!active) return;
         setAccounts(loadedAccounts);
         setFormValues((current) => ({
           ...current,
@@ -66,8 +70,14 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
         }));
         setAccountState("ready");
       })
-      .catch(() => setAccountState("error"));
-  }, []);
+      .catch(() => {
+        if (active) setAccountState("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accountRetryKey]);
 
   function updateField(field: keyof ManualEntryFormValues, value: string): void {
     setFormValues((current) => ({ ...current, [field]: value }));
@@ -188,7 +198,14 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
 
       {entryState.status === "pending" && <p role="status">Saving transaction...</p>}
       {accountState === "loading" && <p role="status">Loading accounts...</p>}
-      {accountState === "error" && <p role="alert">Accounts could not be loaded.</p>}
+      {accountState === "error" && (
+        <div role="alert">
+          <p>Accounts could not be loaded.</p>
+          <button type="button" onClick={() => setAccountRetryKey((current) => current + 1)}>
+            Retry accounts
+          </button>
+        </div>
+      )}
       {accountState === "ready" && accounts.length === 0 && (
         <p role="alert">No accounts are available for this household.</p>
       )}

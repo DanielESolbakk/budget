@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDashboardData,
+  buildDashboardViewContract,
   createMonthlyCategoryTarget,
   createMonthlyCategoryTargetStore,
+  getMonthlyAttentionSummary,
   queryTargetVsActualCategoryRows,
   readMonthlyCategoryTarget,
   reloadMonthlyCategoryTargets,
@@ -196,5 +198,50 @@ describe("dashboardApi buildDashboardData", () => {
       { yearMonth: "2026-11", projectedMinor: 0, method: "fallback-zero" },
       { yearMonth: "2026-12", projectedMinor: 0, method: "fallback-zero" },
     ]);
+  });
+});
+
+describe("dashboardApi monthly attention summary", () => {
+  it("reports uncategorized activity and categories with positive target deltas", () => {
+    const viewContract = buildDashboardViewContract({
+      selectedYearMonth: "2026-05",
+      transactions: [
+        makeTx({
+          id: "over-target",
+          bookedAtIso: "2026-05-01T00:00:00Z",
+          amountMinor: -12_000,
+          categoryId: "groceries",
+        }),
+        makeTx({
+          id: "uncategorized",
+          bookedAtIso: "2026-05-02T00:00:00Z",
+          amountMinor: -500,
+        }),
+        makeTx({
+          id: "unbudgeted",
+          bookedAtIso: "2026-05-03T00:00:00Z",
+          amountMinor: -1_000,
+          categoryId: "transport",
+        }),
+      ],
+      monthlyCategoryTargetStore: createMonthlyCategoryTargetStore([
+        { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 10_000 },
+      ]),
+    });
+
+    expect(getMonthlyAttentionSummary(viewContract)).toEqual({
+      hasUncategorizedTransactions: true,
+      overTargetCategoryCount: 1,
+    });
+  });
+
+  it("does not report exceptions while dashboard data is loading", () => {
+    const viewContract = buildDashboardViewContract({
+      selectedYearMonth: "2026-05",
+      transactions: [],
+      isLoading: true,
+    });
+
+    expect(getMonthlyAttentionSummary(viewContract)).toBeNull();
   });
 });

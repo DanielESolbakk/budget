@@ -56,6 +56,62 @@ test.describe("Electron startup smoke", () => {
     const title = await window.title();
     expect(title).toBe("Budget Planner");
   });
+
+  test("Scenario 5: primary navigation exposes one focused workspace at a time", async ({ appShell }) => {
+    await expect(appShell.primaryNavigation).toBeVisible();
+    await expect(appShell.destination("Review")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Review")).toBeVisible();
+
+    await appShell.openWorkspace("Transactions");
+
+    await expect(appShell.destination("Transactions")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Transactions")).toBeVisible();
+    await expect(appShell.workspace("Review")).toHaveCount(0);
+
+    await appShell.openWorkspace("Import");
+
+    await expect(appShell.destination("Import")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Import")).toBeVisible();
+    await expect(appShell.workspace("Transactions")).toHaveCount(0);
+
+    await appShell.openWorkspace("Data safety");
+
+    await expect(appShell.destination("Data safety")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Data safety")).toBeVisible();
+    await expect(appShell.workspace("Import")).toHaveCount(0);
+  });
+
+  test("navigation preserves an unsaved import path when the user changes destinations", async ({
+    appShell,
+    csvImport,
+  }) => {
+    const pendingPath = "synthetic-unsaved-statement.csv";
+    await csvImport.filePathInput.fill(pendingPath);
+
+    await appShell.openWorkspace("Transactions");
+    await appShell.openWorkspace("Import");
+
+    await expect(csvImport.filePathInput).toHaveValue(pendingPath);
+  });
+
+  test("other destinations remain available when the initial Review load fails", async ({
+    appShell,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+    });
+    await window.reload();
+    await expect(window.getByRole("alert")).toContainText("Household ledger unavailable");
+
+    await appShell.openWorkspace("Transactions");
+    await expect(appShell.workspace("Transactions")).toBeVisible();
+    await appShell.openWorkspace("Import");
+    await expect(appShell.workspace("Import")).toBeVisible();
+    await appShell.openWorkspace("Data safety");
+    await expect(appShell.workspace("Data safety")).toBeVisible();
+  });
 });
 
 test.describe("Electron startup smoke — fallback branch", () => {
@@ -73,7 +129,7 @@ test.describe("Electron startup smoke — fallback branch", () => {
     await window.reload();
   });
 
-  test("Scenario 5: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast }) => {
+  test("Scenario 6: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast }) => {
     // AC-3: explicit fallback label renders at the Electron runtime level when
     // the IPC response signals insufficient transaction history.
     await expect(forecast.sectionHeading).toBeVisible();

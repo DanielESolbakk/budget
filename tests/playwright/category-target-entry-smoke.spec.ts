@@ -22,6 +22,10 @@ test.describe("Category target entry renderer smoke", () => {
     await expect(appShell.heading).toBeVisible();
     await expect(categoryTarget.section).toBeVisible();
     await expect(categoryTarget.heading).toBeVisible();
+    await expect(categoryTarget.addTargetButton).toBeVisible();
+    await expect(categoryTarget.categoryIdInput).not.toBeVisible();
+
+    await categoryTarget.addTargetButton.click();
     await expect(categoryTarget.categoryIdInput).toBeVisible();
     await expect(categoryTarget.targetAmountInput).toBeVisible();
     await expect(categoryTarget.saveButton).toBeVisible();
@@ -37,11 +41,20 @@ test.describe("Category target entry renderer smoke", () => {
     await categoryTarget.targetAmountInput.fill("");
   });
 
+  test("editing a saved target opens the form with its current values", async ({ categoryTarget }) => {
+    await categoryTarget.editTargetButton("groceries").click();
+
+    await expect(categoryTarget.categoryIdInput).toBeVisible();
+    await expect(categoryTarget.categoryIdInput).toHaveValue("groceries");
+    await expect(categoryTarget.targetAmountInput).toHaveValue("90.00");
+  });
+
   // Note: Scenario 2 (save + reload persistence) is intentionally placed in a
   // separate describe block below so it can use its own isolated Electron instance
   // with a clean in-memory store.  This describe block covers Scenario 1 and 3.
   test("Scenario 3: invalid input shows visible validation feedback without blank-screen failure", async ({ appShell, categoryTarget }) => {
     // AC-3: submitting an empty category ID shows an explicit validation error.
+    await categoryTarget.addTargetButton.click();
     await categoryTarget.categoryIdInput.fill("");
     await categoryTarget.targetAmountInput.fill("50");
     await categoryTarget.saveButton.click();
@@ -70,6 +83,7 @@ test.describe("Category target entry renderer smoke — save and reload persiste
   test("Scenario 2: save interaction persists target value and reload preserves displayed value", async ({ window, categoryTarget }) => {
     // AC-2: save a target for a category not in the default store, then reload.
     // The default sampleTargetStore in main.ts includes groceries/2026-05 but not transport.
+    await categoryTarget.addTargetButton.click();
     await categoryTarget.categoryIdInput.fill("transport");
     await categoryTarget.targetAmountInput.fill("500");
     await categoryTarget.saveButton.click();
@@ -89,5 +103,15 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     // After reload the saved targets list re-loads via categoryTarget:listByMonth IPC.
     await expect(categoryTarget.savedTargetsList).toBeVisible();
     await expect(categoryTarget.savedTargetItem("transport")).toBeVisible();
+  });
+
+  test("editing a saved target updates its existing value", async ({ categoryTarget }) => {
+    await categoryTarget.editTargetButton("groceries").click();
+    await categoryTarget.targetAmountInput.fill("125");
+    await categoryTarget.saveButton.click();
+
+    await expect(categoryTarget.savedConfirmation).toBeVisible();
+    await expect(categoryTarget.savedTargetItem("groceries")).toContainText("125,00");
+    await expect(categoryTarget.categoryIdInput).not.toBeVisible();
   });
 });

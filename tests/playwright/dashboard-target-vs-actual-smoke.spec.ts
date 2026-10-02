@@ -50,7 +50,7 @@ test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () =
       formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_BASELINE_TARGET_MINOR)
     );
 
-    await categoryTarget.categoryIdInput.fill("groceries");
+    await categoryTarget.editTargetButton("groceries").click();
     await categoryTarget.targetAmountInput.fill("95");
     await categoryTarget.saveButton.click();
     await expect(categoryTarget.savedConfirmation).toContainText("Target saved.");

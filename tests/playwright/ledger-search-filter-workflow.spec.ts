@@ -1,6 +1,48 @@
 import { test, expect } from "./fixtures/electron.js";
 
 test.describe("Ledger search and filter workflow", () => {
+  test("shows a loading state before the initial ledger query completes", async ({
+    appShell,
+    electronApp,
+    ledger,
+    window,
+  }) => {
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_LEDGER_LIST_DELAY_MS"] = "800";
+    });
+    await window.reload();
+    await appShell.openWorkspace("Transactions");
+
+    await expect(ledger.loadingStatus).toBeVisible();
+    await expect(ledger.transaction("Kiwi")).toBeVisible();
+    await expect(ledger.loadingStatus).not.toBeVisible();
+  });
+
+  test("preserves prior rows and offers retry after a filtered ledger query fails", async ({
+    electronApp,
+    ledger,
+  }) => {
+    await expect(ledger.transaction("Kiwi")).toBeVisible();
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_LEDGER_LIST_FAILURE"] = "1";
+    });
+
+    await ledger.merchantInput.fill("Rema 1000");
+    await ledger.apply();
+
+    await expect(ledger.errorAlert).toContainText("Synthetic ledger list failure.");
+    await expect(ledger.transaction("Kiwi")).toBeVisible();
+    await expect(ledger.retryButton).toBeVisible();
+
+    await electronApp.evaluate(() => {
+      delete process.env["BUDGET_TEST_LEDGER_LIST_FAILURE"];
+    });
+    await ledger.retryButton.click();
+
+    await expect(ledger.transaction("Rema 1000")).toBeVisible();
+    await expect(ledger.transaction("Kiwi")).not.toBeVisible();
+  });
+
   test("filters transactions by merchant and category", async ({ ledger }) => {
     await expect(ledger.section).toBeVisible();
     await expect(ledger.transaction("Kiwi")).toBeVisible();

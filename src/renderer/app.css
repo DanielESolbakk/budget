@@ -80,6 +80,11 @@ select:focus-visible {
   outline-offset: 3px;
 }
 
+section[aria-label="Target vs Actual"]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 button:disabled,
 input:disabled {
   cursor: wait;
@@ -170,6 +175,16 @@ li::marker {
 .app-shell {
   min-height: 100vh;
   background: var(--ink);
+}
+
+.app-frame {
+  display: grid;
+  width: min(calc(100% - 2.4rem), 1500px);
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+  margin: 0 auto;
+  padding: 2.4rem 0 5rem;
 }
 
 .app-header {
@@ -281,10 +296,69 @@ li::marker {
   background: var(--error);
 }
 
+.primary-navigation {
+  position: sticky;
+  top: 1.5rem;
+  display: grid;
+  gap: 0.45rem;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 0.65rem;
+}
+
+.workspace-link {
+  display: grid;
+  gap: 0.2rem;
+  min-height: 4.1rem;
+  align-content: center;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 0.75rem 0.85rem;
+  color: var(--paper-muted);
+  background: transparent;
+  font-family: "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.workspace-link span {
+  color: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.workspace-link small {
+  color: inherit;
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.primary-navigation .workspace-link:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--paper);
+  background: var(--panel);
+}
+
+.primary-navigation .workspace-link.is-current,
+.primary-navigation .workspace-link.is-current:hover:not(:disabled) {
+  border-color: var(--paper);
+  color: var(--ink);
+  background: var(--paper);
+}
+
 .workspace {
-  width: min(calc(100% - 2.4rem), 1500px);
-  margin: 0 auto;
-  padding: 3.5rem 0 5rem;
+  min-width: 0;
+}
+
+section[aria-label].destination-workspace {
+  overflow: visible;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.destination-workspace[hidden] {
+  display: none;
 }
 
 .review-intro {
@@ -297,12 +371,12 @@ li::marker {
 }
 
 .review-intro h2 {
-  max-width: 18ch;
+  max-width: 22ch;
   color: var(--paper);
-  font-size: 4rem;
+  font-size: 2.5rem;
   font-weight: 800;
-  letter-spacing: -0.035em;
-  line-height: 0.95;
+  letter-spacing: -0.025em;
+  line-height: 1;
   font-family: var(--display);
 }
 
@@ -329,6 +403,128 @@ li::marker {
 .month-picker-code {
   color: var(--orange);
   font-size: 0.62rem;
+}
+
+.monthly-attention {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  padding: 0.8rem 0;
+}
+
+.monthly-attention h3,
+.monthly-attention p {
+  margin: 0;
+}
+
+.monthly-attention h3 {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.05rem;
+}
+
+.monthly-attention-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.monthly-attention-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.monthly-attention-item p,
+.monthly-attention-item a {
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.monthly-attention-item a {
+  color: var(--orange);
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.monthly-attention button {
+  flex: 0 0 auto;
+  border-color: var(--line-strong);
+  padding: 0.5rem 0.65rem;
+  color: var(--paper);
+  background: var(--panel);
+  font-size: 0.72rem;
+}
+
+.monthly-attention button:hover:not(:disabled) {
+  border-color: var(--paper);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.destination-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1.3rem;
+}
+
+.destination-heading h2,
+.destination-heading p {
+  margin: 0;
+}
+
+.destination-heading h2 {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 2.5rem;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+.destination-heading p {
+  max-width: 52ch;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.transactions-workspace-grid,
+.destination-heading + .workflow-import-grid,
+.destination-heading + .workflow-recovery-grid {
+  margin-top: 1rem;
+}
+
+.transactions-workspace-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+section[aria-label="Ledger"] form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+section[aria-label="Ledger"] form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--paper-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+section[aria-label="Ledger"] form button {
+  align-self: end;
+  justify-self: start;
 }
 
 .status-panel {
@@ -652,6 +848,32 @@ section[aria-label="Manual Entry"] form {
   display: grid;
   gap: 0.55rem;
   margin-top: 1.4rem;
+}
+
+.target-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.target-form-actions button,
+.target-edit-button {
+  margin-top: 0;
+}
+
+.target-edit-button,
+.target-cancel-button {
+  border-color: var(--line-strong);
+  color: var(--paper);
+  background: var(--panel-raised);
+}
+
+.target-edit-button:hover:not(:disabled),
+.target-cancel-button:hover:not(:disabled) {
+  border-color: var(--paper);
+  color: var(--ink);
+  background: var(--paper);
 }
 
 section[aria-label="Category Target Entry"] label,
@@ -987,6 +1209,16 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 @media (max-width: 1050px) {
+  .app-frame {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .primary-navigation {
+    position: static;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .review-grid {
     grid-template-columns: 1fr;
   }
@@ -999,32 +1231,130 @@ section[aria-label="Category Target Entry"] [role="status"] {
   .workflow-recovery-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  section[aria-label="Ledger"] form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 680px) {
   .app-header,
   .review-intro,
-  .work-bin-heading {
+  .work-bin-heading,
+  .destination-heading {
     align-items: flex-start;
     flex-direction: column;
   }
 
   .app-header {
-    gap: 1rem;
+    align-items: center;
+    flex-direction: row;
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .brand-lockup {
+    gap: 0.55rem;
+  }
+
+  .brand-stamp {
+    width: 2.3rem;
+    height: 2.3rem;
+  }
+
+  .brand-lockup h1 {
+    font-size: 0.82rem;
+  }
+
+  .brand-lockup p {
+    font-size: 0.55rem;
   }
 
   .header-meta {
-    width: 100%;
-    justify-content: space-between;
+    display: grid;
+    width: auto;
+    justify-items: end;
+    gap: 0.2rem;
+    font-size: 0.55rem;
   }
 
-  .workspace {
+  .app-frame {
     width: min(calc(100% - 1.5rem), 1500px);
-    padding-top: 2.2rem;
+    gap: 0.75rem;
+    padding-top: 1rem;
+  }
+
+  .primary-navigation {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.2rem;
+  }
+
+  button {
+    min-height: 2.75rem;
+  }
+
+  .workspace-link {
+    min-height: 2.8rem;
+    justify-items: center;
+    padding: 0.45rem 0.2rem;
+    text-align: center;
+  }
+
+  .workspace-link span {
+    font-size: 0.68rem;
+  }
+
+  .workspace-link small {
+    display: none;
   }
 
   .review-intro h2 {
-    font-size: 2.7rem;
+    font-size: 1.8rem;
+  }
+
+  .review-intro {
+    align-items: center;
+    flex-direction: row;
+    gap: 0.6rem;
+    padding-bottom: 0.85rem;
+  }
+
+  .review-intro > div:first-child {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .review-intro .intro-copy {
+    display: none;
+  }
+
+  .month-picker {
+    width: 128px;
+    max-width: 128px;
+    min-width: 0;
+    flex: 0 0 128px;
+    gap: 0.3rem;
+  }
+
+  .month-picker label {
+    font-size: 0.72rem;
+  }
+
+  .month-picker-code {
+    display: none;
+  }
+
+  .monthly-attention,
+  .monthly-attention-content {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-attention {
+    gap: 0.6rem;
+  }
+
+  .destination-heading h2 {
+    font-size: 2.2rem;
   }
 
   .month-picker {
@@ -1054,6 +1384,10 @@ section[aria-label="Category Target Entry"] [role="status"] {
   .workflow-import-grid,
   .workflow-recovery-grid,
   .workflow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  section[aria-label="Ledger"] form {
     grid-template-columns: 1fr;
   }
 
@@ -1121,7 +1455,31 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   section[aria-label="Monthly Totals"] dt {
-    margin-bottom: 0.25rem;
+    margin: 0;
+  }
+
+  section[aria-label="Monthly Totals"] dl {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  section[aria-label="Monthly Totals"] .monthly-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.35rem;
+  }
+
+  section[aria-label="Monthly Totals"] .monthly-total:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  section[aria-label="Monthly Totals"] dd {
+    font-size: 1.15rem;
+    text-align: right;
   }
 
   section[aria-label="Category Breakdown"] li,
