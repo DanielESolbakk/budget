@@ -80,6 +80,11 @@ select:focus-visible {
   outline-offset: 3px;
 }
 
+section[aria-label="Target vs Actual"]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 button:disabled,
 input:disabled {
   cursor: wait;
@@ -345,7 +350,7 @@ li::marker {
   min-width: 0;
 }
 
-section.destination-workspace {
+section[aria-label].destination-workspace {
   overflow: visible;
   border: 0;
   padding: 0;
@@ -394,6 +399,70 @@ section.destination-workspace {
 .month-picker-code {
   color: var(--orange);
   font-size: 0.62rem;
+}
+
+.monthly-attention {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  padding: 0.8rem 0;
+}
+
+.monthly-attention h3,
+.monthly-attention p {
+  margin: 0;
+}
+
+.monthly-attention h3 {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.05rem;
+}
+
+.monthly-attention-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.monthly-attention-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.monthly-attention-item p,
+.monthly-attention-item a {
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.monthly-attention-item a {
+  color: var(--orange);
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.monthly-attention button {
+  flex: 0 0 auto;
+  border-color: var(--line-strong);
+  padding: 0.5rem 0.65rem;
+  color: var(--paper);
+  background: var(--panel);
+  font-size: 0.72rem;
+}
+
+.monthly-attention button:hover:not(:disabled) {
+  border-color: var(--paper);
+  color: var(--ink);
+  background: var(--paper);
 }
 
 .destination-heading {
@@ -1148,26 +1217,57 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   .app-header {
-    gap: 1rem;
+    align-items: center;
+    flex-direction: row;
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .brand-lockup {
+    gap: 0.55rem;
+  }
+
+  .brand-stamp {
+    width: 2.3rem;
+    height: 2.3rem;
+  }
+
+  .brand-lockup h1 {
+    font-size: 0.82rem;
+  }
+
+  .brand-lockup p {
+    font-size: 0.55rem;
   }
 
   .header-meta {
-    width: 100%;
-    justify-content: space-between;
+    display: grid;
+    width: auto;
+    justify-items: end;
+    gap: 0.2rem;
+    font-size: 0.55rem;
   }
 
   .app-frame {
     width: min(calc(100% - 1.5rem), 1500px);
-    gap: 1.25rem;
-    padding-top: 2.2rem;
+    gap: 0.75rem;
+    padding-top: 1rem;
   }
 
   .primary-navigation {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.2rem;
   }
 
   .workspace-link {
-    min-height: 3.35rem;
+    min-height: 2.8rem;
+    justify-items: center;
+    padding: 0.45rem 0.2rem;
+    text-align: center;
+  }
+
+  .workspace-link span {
+    font-size: 0.68rem;
   }
 
   .workspace-link small {
@@ -1175,7 +1275,48 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   .review-intro h2 {
-    font-size: 2.2rem;
+    font-size: 1.8rem;
+  }
+
+  .review-intro {
+    align-items: center;
+    flex-direction: row;
+    gap: 0.6rem;
+    padding-bottom: 0.85rem;
+  }
+
+  .review-intro > div:first-child {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .review-intro .intro-copy {
+    display: none;
+  }
+
+  .month-picker {
+    width: 128px;
+    max-width: 128px;
+    min-width: 0;
+    flex: 0 0 128px;
+    gap: 0.3rem;
+  }
+
+  .month-picker label {
+    font-size: 0.72rem;
+  }
+
+  .month-picker-code {
+    display: none;
+  }
+
+  .monthly-attention,
+  .monthly-attention-content {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-attention {
+    gap: 0.6rem;
   }
 
   .destination-heading h2 {
@@ -1280,7 +1421,31 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   section[aria-label="Monthly Totals"] dt {
-    margin-bottom: 0.25rem;
+    margin: 0;
+  }
+
+  section[aria-label="Monthly Totals"] dl {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  section[aria-label="Monthly Totals"] .monthly-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.35rem;
+  }
+
+  section[aria-label="Monthly Totals"] .monthly-total:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  section[aria-label="Monthly Totals"] dd {
+    font-size: 1.15rem;
+    text-align: right;
   }
 
   section[aria-label="Category Breakdown"] li,

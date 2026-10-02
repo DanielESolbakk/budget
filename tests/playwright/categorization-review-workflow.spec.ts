@@ -63,6 +63,10 @@ test.describe("Categorization review workflow", () => {
     await csvImport.submitImport(CSV_FIXTURE_PATH);
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
 
+    await appShell.openWorkspace("Review");
+    await expect(dashboard.monthlyAttention).toContainText("Uncategorized transactions need a category.");
+    await dashboard.reviewQueueAction.click();
+
     await appShell.openWorkspace("Transactions");
     await expect(reviewQueue.section).toBeVisible();
     await expect(reviewQueue.reviewItem("MERCHANT-005")).toBeVisible();

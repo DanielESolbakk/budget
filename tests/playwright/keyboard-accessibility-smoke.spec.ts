@@ -91,4 +91,33 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Enter");
     await expect(dashboard.monthSelector).not.toHaveValue(initialMonth);
   });
+
+  test("primary navigation and monthly attention actions follow a predictable tab order", async ({
+    appShell,
+    categoryTarget,
+    dashboard,
+    window,
+  }) => {
+    await appShell.destination("Review").focus();
+    await expect(appShell.destination("Review")).toBeFocused();
+
+    await window.keyboard.press("Tab");
+    await expect(appShell.destination("Transactions")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(appShell.destination("Import")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(appShell.destination("Data safety")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(dashboard.monthSelector).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(dashboard.reviewQueueAction).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(dashboard.targetVsActualSection).toBeFocused();
+    const focusOutlineWidth = await dashboard.targetVsActualSection.evaluate((element) =>
+      getComputedStyle(element).outlineWidth
+    );
+    expect(focusOutlineWidth).toBe("3px");
+    await window.keyboard.press("Tab");
+    await expect(categoryTarget.categoryIdInput).toBeFocused();
+  });
 });

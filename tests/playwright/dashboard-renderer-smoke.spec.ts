@@ -82,6 +82,63 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyTotal("Net").getByLabel("Net", { exact: true })).toBeVisible();
   });
 
+  test("Scenario 5: monthly attention status and totals fit the review viewport", async ({
+    dashboard,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
+    });
+
+    await expect(dashboard.monthlyAttention).toContainText("No uncategorized transactions this month.");
+    await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+
+    const attentionBottom = await dashboard.monthlyAttention.evaluate((element) =>
+      element.getBoundingClientRect().bottom
+    );
+    const totalsBottom = await dashboard.monthlyTotalsSection.evaluate((element) =>
+      element.getBoundingClientRect().bottom
+    );
+    const viewportHeight = await window.evaluate(() => document.documentElement.clientHeight);
+
+    expect(attentionBottom).toBeLessThanOrEqual(viewportHeight);
+    expect(totalsBottom).toBeLessThanOrEqual(viewportHeight);
+  });
+
+  test("Scenario 6: target overruns link to their monthly details", async ({ dashboard }) => {
+    await dashboard.monthSelector.selectOption("2026-04");
+
+    await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
+    await expect(dashboard.overTargetLink).toHaveAttribute("href", "#target-vs-actual");
+  });
+
+  test("Regression: failed month changes preserve review data and explain retry", async ({
+    dashboard,
+    electronApp,
+  }) => {
+    const originalIncome = await dashboard.incomeValue.textContent();
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+    });
+
+    await dashboard.monthSelector.selectOption("2026-04");
+
+    await expect(dashboard.monthChangeError).toContainText(
+      "Your current review remains visible. Select a month again to retry."
+    );
+    await expect(dashboard.monthSelector).toHaveValue("2026-05");
+    await expect(dashboard.incomeValue).toHaveText(originalIncome ?? "");
+
+    await electronApp.evaluate(() => {
+      delete process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"];
+    });
+    await dashboard.monthSelector.selectOption("2026-04");
+    await expect(dashboard.monthSelector).toHaveValue("2026-04");
+    await expect(dashboard.incomeValue).toContainText("510");
+  });
+
   test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) => {
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-04";
@@ -110,6 +167,10 @@ test.describe("Dashboard renderer smoke", () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
+
+    const documentWidth = await window.evaluate(() => document.documentElement.scrollWidth);
+    const viewportWidth = await window.evaluate(() => document.documentElement.clientWidth);
+    expect(documentWidth).toBeLessThanOrEqual(viewportWidth);
 
     await expect(window).toHaveScreenshot("dashboard-mobile.png", {
       animations: "disabled",

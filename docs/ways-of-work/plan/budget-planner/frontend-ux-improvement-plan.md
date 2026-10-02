@@ -73,12 +73,12 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Review, Transactions, Import, and Data safety are each reachable in one navigation action.
-- [ ] The current destination is conveyed visually and programmatically.
-- [ ] Only one month-selection control is exposed in Review.
-- [ ] Monthly income, expenses, net, and the presence or absence of actionable exceptions are visible without vertical scrolling at 1280 by 800.
-- [ ] Keyboard users can traverse navigation, month selection, summary actions, and main content in a predictable order.
-- [ ] Refresh and month-change failures keep the last valid data visible and explain the available recovery action.
+- [x] Review, Transactions, Import, and Data safety are each reachable in one navigation action.
+- [x] The current destination is conveyed visually and programmatically.
+- [x] Only one month-selection control is exposed in Review.
+- [x] Monthly income, expenses, net, and the presence or absence of actionable exceptions are visible without vertical scrolling at 1280 by 800.
+- [x] Keyboard users can traverse navigation, month selection, summary actions, and main content in a predictable order.
+- [x] Refresh and month-change failures keep the last valid data visible and explain the available recovery action.
 
 Dependencies:
 

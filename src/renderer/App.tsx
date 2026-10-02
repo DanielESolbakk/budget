@@ -1,5 +1,5 @@
 import React from "react";
-import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
+import { getMonthlyAttentionSummary, type DashboardData, type DashboardViewContract } from "../app/dashboardApi.js";
 import "@fontsource/barlow-condensed/400.css";
 import "@fontsource/barlow-condensed/700.css";
 import "@fontsource/barlow-condensed/800.css";
@@ -142,9 +142,15 @@ export function App(): React.JSX.Element {
       .catch(() => {
         if (requestId !== latestViewRequestRef.current) return;
         setIsChangingMonth(false);
-        setMonthChangeError("Unable to change month. The current review is still shown.");
+          setMonthChangeError(
+            "Unable to change month. Your current review remains visible. Select a month again to retry."
+          );
       });
   }
+
+    const monthlyAttention = appState.status === "ready"
+      ? getMonthlyAttentionSummary(appState.viewContract)
+      : null;
 
   const headerStatus =
     appState.status === "loading"
@@ -260,6 +266,36 @@ export function App(): React.JSX.Element {
                       <span className="month-picker-code">{appState.selectedYearMonth}</span>
                     </div>
                   </div>
+                  <aside className="monthly-attention" aria-label="Monthly attention">
+                    <h3>Needs attention</h3>
+                    {monthlyAttention === null ? (
+                      <p role="status">Calculating monthly exceptions...</p>
+                    ) : (
+                      <div className="monthly-attention-content">
+                        <div className="monthly-attention-item">
+                          <p>
+                            {monthlyAttention.hasUncategorizedTransactions
+                              ? "Uncategorized transactions need a category."
+                              : "No uncategorized transactions this month."}
+                          </p>
+                          <button type="button" onClick={() => setActiveWorkspace("transactions")}>
+                            Open categorization queue
+                          </button>
+                        </div>
+                        <div className="monthly-attention-item">
+                          {monthlyAttention.overTargetCategoryCount > 0 ? (
+                            <a href="#target-vs-actual">
+                              Review {monthlyAttention.overTargetCategoryCount} {monthlyAttention.overTargetCategoryCount === 1
+                                ? "category"
+                                : "categories"} over target
+                            </a>
+                          ) : (
+                            <p>No categories over target.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </aside>
                   {isChangingMonth && <p className="rail-status" role="status">Updating month...</p>}
                   {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
                   <div className="review-grid" aria-busy={isChangingMonth || isRefreshing}>

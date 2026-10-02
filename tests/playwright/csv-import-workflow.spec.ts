@@ -246,6 +246,7 @@ test.describe("CSV import renderer workflow", () => {
   test("Regression: refresh failure preserves the loaded dashboard and shows recovery feedback", async ({ appShell, csvImport, dashboard, electronApp, window }) => {
     await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    const incomeBeforeRefreshFailure = await dashboard.incomeValue.textContent();
 
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
@@ -257,8 +258,10 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.importSection).toBeVisible();
     await expect(window.getByRole("alert")).toContainText("Review refresh failed");
     await expect(window.getByRole("alert")).toContainText("Synthetic dashboard refresh failure.");
+    await expect(window.getByRole("button", { name: "Try again" })).toBeVisible();
     await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible({ timeout: 10_000 });
+    await expect(dashboard.incomeValue).toHaveText(incomeBeforeRefreshFailure ?? "");
   });
 
   test("Regression: successful import preserves the currently selected month", async ({ appShell, csvImport, dashboard }) => {
