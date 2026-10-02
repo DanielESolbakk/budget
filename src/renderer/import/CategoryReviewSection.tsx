@@ -24,31 +24,42 @@ export function CategoryReviewSection({
 }: CategoryReviewSectionProps): React.JSX.Element {
   const [transactions, setTransactions] = React.useState<Transaction[]>([]);
   const [selectedCategories, setSelectedCategories] = React.useState<Record<string, string>>({});
-  const [error, setError] = React.useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [retryKey, setRetryKey] = React.useState(0);
 
   React.useEffect(() => {
     let active = true;
-    setError(null);
+    setIsLoading(true);
+    setLoadError(null);
 
     window.budgetApi.review
       .list()
       .then((reviewTransactions) => {
-        if (active) setTransactions(reviewTransactions);
+        if (!active) return;
+        setTransactions(reviewTransactions);
+        setHasLoaded(true);
       })
       .catch((reviewError: unknown) => {
         if (!active) return;
-        setError(reviewError instanceof Error ? reviewError.message : "Unable to load review queue.");
+        setLoadError(reviewError instanceof Error ? reviewError.message : "Unable to load review queue.");
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, retryKey]);
 
   async function saveCategory(transaction: Transaction): Promise<void> {
     const categoryId = selectedCategories[transaction.id]?.trim() ?? "";
     if (!categoryId) return;
 
+    setSaveError(null);
     try {
       await window.budgetApi.review.updateCategory({
         transactionId: transaction.id,
@@ -57,21 +68,34 @@ export function CategoryReviewSection({
       setTransactions((current) => current.filter((item) => item.id !== transaction.id));
       onCategorySaved();
     } catch (saveError: unknown) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save category.");
+      setSaveError(saveError instanceof Error ? saveError.message : "Unable to save category.");
     }
   }
 
   return (
-    <section aria-label="Categorization Review">
+    <section aria-label="Categorization Review" aria-busy={isLoading}>
       <h2>Categorization Review</h2>
       <p className="section-intro">These transactions are in your ledger, but they do not have a category yet.</p>
-      {error !== null && <p role="alert">{error}</p>}
-      {transactions.length === 0 ? (
+      {isLoading && (
+        <p role="status">
+          {hasLoaded ? "Updating categorization queue..." : "Loading categorization queue..."}
+        </p>
+      )}
+      {loadError !== null && (
+        <div role="alert">
+          <p>{loadError}</p>
+          <button type="button" onClick={() => setRetryKey((current) => current + 1)}>
+            Retry categorization queue
+          </button>
+        </div>
+      )}
+      {saveError !== null && <p role="alert">{saveError}</p>}
+      {hasLoaded && !isLoading && loadError === null && transactions.length === 0 ? (
         <div className="empty-state">
           <strong>Nothing needs your attention.</strong>
           <p>Uncategorized transactions from CSV/PDF imports or manual entry will appear here.</p>
         </div>
-      ) : (
+      ) : transactions.length > 0 ? (
         <ul className="review-queue-list">
           {transactions.map((transaction) => (
             <li className="review-queue-item" key={transaction.id} aria-label={`Review ${transaction.merchantRaw}`}>
@@ -108,7 +132,7 @@ export function CategoryReviewSection({
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </section>
   );
 }

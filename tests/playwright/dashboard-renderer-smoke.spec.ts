@@ -95,6 +95,13 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
+    const totalsPrecedeAttention = await dashboard.monthlyTotalsSection.evaluate((totals) => {
+      const attention = document.querySelector('[aria-label="Monthly attention"]');
+      return attention !== null &&
+        (totals.compareDocumentPosition(attention) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    });
+    expect(totalsPrecedeAttention).toBe(true);
+
     const attentionBottom = await dashboard.monthlyAttention.evaluate((element) =>
       element.getBoundingClientRect().bottom
     );
@@ -161,6 +168,23 @@ test.describe("Dashboard renderer smoke", () => {
       animations: "disabled",
       maxDiffPixelRatio: 0.01,
     });
+  });
+
+  test("compact review action buttons meet 44px touch targets", async ({ window, electronApp }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    const undersizedButtons = await window.getByRole("button").evaluateAll((buttons) =>
+      buttons
+        .map((button) => ({
+          label: button.textContent?.trim() ?? "",
+          height: button.getBoundingClientRect().height,
+        }))
+        .filter((button) => button.height < 44)
+    );
+
+    expect(undersizedButtons).toEqual([]);
   });
 
   test("@visual Visual: compact dashboard preserves primary workspace navigation", async ({ window, electronApp }) => {

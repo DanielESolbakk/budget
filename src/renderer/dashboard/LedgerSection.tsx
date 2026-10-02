@@ -15,26 +15,35 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   const [categoryId, setCategoryId] = React.useState("");
   const [query, setQuery] = React.useState<TransactionQuery>({});
   const [transactions, setTransactions] = React.useState<Transaction[]>([]);
+  const [hasLoaded, setHasLoaded] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [retryKey, setRetryKey] = React.useState(0);
 
   React.useEffect(() => {
     let active = true;
+    setIsLoading(true);
     setError(null);
 
     window.budgetApi.ledger
       .list(query)
       .then((result) => {
-        if (active) setTransactions(result);
+        if (!active) return;
+        setTransactions(result);
+        setHasLoaded(true);
       })
       .catch((loadError: unknown) => {
         if (!active) return;
         setError(loadError instanceof Error ? loadError.message : "Unable to load ledger.");
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [query, refreshKey]);
+  }, [query, refreshKey, retryKey]);
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -62,7 +71,7 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   }
 
   return (
-    <section aria-label="Ledger">
+    <section aria-label="Ledger" aria-busy={isLoading}>
       <h2>Ledger</h2>
       <form aria-label="Ledger filters" onSubmit={applyFilters}>
         <label>
@@ -92,8 +101,23 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
         <button type="submit">Apply ledger filters</button>
         <button type="button" onClick={clearFilters}>Clear ledger filters</button>
       </form>
-      {error !== null && <p role="alert">{error}</p>}
-      <p role="status">{transactions.length} ledger transactions</p>
+      {isLoading && (
+        <p role="status">{hasLoaded ? "Updating ledger..." : "Loading ledger transactions..."}</p>
+      )}
+      {error !== null && (
+        <div role="alert">
+          <p>{error}</p>
+          <button type="button" onClick={() => setRetryKey((current) => current + 1)}>
+            Retry ledger
+          </button>
+        </div>
+      )}
+      {hasLoaded && <p role="status">{transactions.length} ledger transactions</p>}
+      {hasLoaded && !isLoading && error === null && transactions.length === 0 && (
+        <div className="empty-state">
+          <strong>No transactions match these filters.</strong>
+        </div>
+      )}
       <ul>
         {transactions.map((transaction) => (
           <li key={transaction.id} aria-label={`Ledger transaction ${transaction.merchantRaw}`}>

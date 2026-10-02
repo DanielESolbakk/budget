@@ -243,6 +243,17 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.importSection).toBeVisible();
   });
 
+  test("destination switching preserves successful import feedback", async ({ appShell, csvImport }) => {
+    await csvImport.submitImport(FIXTURE_PATH);
+    await expect(csvImport.successStatus).toContainText(/Added 16 transactions to your ledger/i);
+    const successMessage = (await csvImport.successStatus.innerText()).trim();
+
+    await appShell.openWorkspace("Transactions");
+    await appShell.openWorkspace("Import");
+
+    await expect(csvImport.successStatus).toHaveText(successMessage);
+  });
+
   test("Regression: refresh failure preserves the loaded dashboard and shows recovery feedback", async ({ appShell, csvImport, dashboard, electronApp, window }) => {
     await appShell.openWorkspace("Review");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();

@@ -1,53 +1,17 @@
 import React from "react";
-import { getMonthlyAttentionSummary, type DashboardData, type DashboardViewContract } from "../app/dashboardApi.js";
 import "@fontsource/barlow-condensed/400.css";
 import "@fontsource/barlow-condensed/700.css";
 import "@fontsource/barlow-condensed/800.css";
 import "./app.css";
-import { BackupSection } from "./backup/BackupSection.js";
-import { ExportSection } from "./backup/ExportSection.js";
-import { CategoryBreakdownSection } from "./dashboard/CategoryBreakdownSection.js";
-import { CategoryTargetEntrySection } from "./dashboard/CategoryTargetEntrySection.js";
-import { ForecastSection } from "./dashboard/ForecastSection.js";
-import { CsvImportSection } from "./import/CsvImportSection.js";
-import { ManualEntrySection } from "./import/ManualEntrySection.js";
-import { PdfImportSection } from "./import/PdfImportSection.js";
-import { CategoryReviewSection } from "./import/CategoryReviewSection.js";
-import { MonthlyTotalsSection } from "./dashboard/MonthlyTotalsSection.js";
-import { LedgerSection } from "./dashboard/LedgerSection.js";
-import { RestoreSnapshotSection } from "./dashboard/RestoreSnapshotSection.js";
-import { TargetVsActualSection } from "./dashboard/TargetVsActualSection.js";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
+import { DataSafetyWorkspace } from "./workspaces/DataSafetyWorkspace.js";
+import { ImportWorkspace } from "./workspaces/ImportWorkspace.js";
+import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
+import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
+import type { ReviewState } from "./workspaces/types.js";
 
 const DEFAULT_YEAR_MONTH = "2026-05";
-const monthFormatter = new Intl.DateTimeFormat("nb-NO", {
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
-
-function formatYearMonth(yearMonth: string): string {
-  const [yearPart, monthPart] = yearMonth.split("-");
-  const year = Number(yearPart);
-  const month = Number(monthPart);
-
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return yearMonth;
-  }
-
-  return monthFormatter.format(new Date(Date.UTC(year, month - 1, 1))).replace(/\.$/, "");
-}
-
-type AppState =
-  | { status: "loading" }
-  | {
-      status: "ready";
-      dashboardData: DashboardData;
-      viewContract: DashboardViewContract;
-      selectedYearMonth: string;
-      availableMonths: string[];
-    }
-  | { status: "error"; message: string };
+type AppState = ReviewState;
 
 type WorkspaceId = "review" | "transactions" | "import" | "data-safety";
 
@@ -61,6 +25,9 @@ const WORKSPACES: Array<{ id: WorkspaceId; label: string; description: string }>
 export function App(): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
   const [activeWorkspace, setActiveWorkspace] = React.useState<WorkspaceId>("review");
+  const [visitedWorkspaces, setVisitedWorkspaces] = React.useState<Set<WorkspaceId>>(
+    () => new Set(["review"])
+  );
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [isChangingMonth, setIsChangingMonth] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -148,17 +115,23 @@ export function App(): React.JSX.Element {
       });
   }
 
-    const monthlyAttention = appState.status === "ready"
-      ? getMonthlyAttentionSummary(appState.viewContract)
-      : null;
+  function openWorkspace(workspaceId: WorkspaceId): void {
+    setActiveWorkspace(workspaceId);
+    setVisitedWorkspaces((current) => {
+      if (current.has(workspaceId)) return current;
+      const next = new Set(current);
+      next.add(workspaceId);
+      return next;
+    });
+  }
 
   const headerStatus =
     appState.status === "loading"
       ? "Loading review"
       : appState.status === "error"
-        ? "Needs attention"
+        ? "Review unavailable"
         : refreshError !== null
-          ? "Needs attention"
+          ? "Review needs attention"
         : isChangingMonth || isRefreshing
           ? "Updating review"
           : "Ready for review";
@@ -198,7 +171,7 @@ export function App(): React.JSX.Element {
               aria-label={workspace.label}
               aria-current={activeWorkspace === workspace.id ? "page" : undefined}
               className={activeWorkspace === workspace.id ? "workspace-link is-current" : "workspace-link"}
-              onClick={() => setActiveWorkspace(workspace.id)}
+              onClick={() => openWorkspace(workspace.id)}
             >
               <span>{workspace.label}</span>
               <small aria-hidden="true">{workspace.description}</small>
@@ -207,21 +180,11 @@ export function App(): React.JSX.Element {
         </nav>
 
         <main className="workspace">
-          {appState.status === "loading" && (
-            <section className="status-panel status-loading" aria-live="polite">
-              <div className="status-heading">
-                <span className="status-marker" aria-hidden="true" />
-                <h2>Loading your household ledger</h2>
-              </div>
-              <div className="skeleton-line skeleton-line-wide" />
-              <div className="skeleton-line skeleton-line-short" />
-            </section>
-          )}
-          {appState.status === "error" && (
+          {activeWorkspace !== "review" && appState.status === "error" && (
             <section className="status-panel status-error" role="alert">
               <div className="status-heading">
                 <span className="status-marker" aria-hidden="true">!</span>
-                <h2>Household ledger unavailable</h2>
+                <h2>Review unavailable</h2>
               </div>
               <p>{appState.message}</p>
               <button type="button" onClick={() => setRefreshCounter((counter) => counter + 1)}>
@@ -229,133 +192,47 @@ export function App(): React.JSX.Element {
               </button>
             </section>
           )}
-          {appState.status === "ready" && (
-            <>
-              {refreshError !== null && (
-                <section className="status-panel status-error" role="alert">
-                  <div className="status-heading">
-                    <span className="status-marker" aria-hidden="true">!</span>
-                    <h2>Review refresh failed</h2>
-                  </div>
-                  <p>{refreshError}</p>
-                  <button type="button" onClick={() => setRefreshCounter((counter) => counter + 1)}>
-                    Try again
-                  </button>
-                </section>
-              )}
-
-              {activeWorkspace === "review" && (
-                <section className="destination-workspace" aria-label="Review workspace">
-                  <div className="review-intro">
-                    <div>
-                      <h2>Monthly review</h2>
-                      <p className="intro-copy">See the month clearly, then act on what needs attention.</p>
-                    </div>
-                    <div className="month-picker">
-                      <label htmlFor="month-select">Reviewing</label>
-                      <select
-                        id="month-select"
-                        aria-label="Select month"
-                        value={appState.selectedYearMonth}
-                        onChange={(event) => handleMonthChange(event.target.value)}
-                      >
-                        {appState.availableMonths.map((month) => (
-                          <option key={month} value={month}>{formatYearMonth(month)}</option>
-                        ))}
-                      </select>
-                      <span className="month-picker-code">{appState.selectedYearMonth}</span>
-                    </div>
-                  </div>
-                  <aside className="monthly-attention" aria-label="Monthly attention">
-                    <h3>Needs attention</h3>
-                    {monthlyAttention === null ? (
-                      <p role="status">Calculating monthly exceptions...</p>
-                    ) : (
-                      <div className="monthly-attention-content">
-                        <div className="monthly-attention-item">
-                          <p>
-                            {monthlyAttention.hasUncategorizedTransactions
-                              ? "Uncategorized transactions need a category."
-                              : "No uncategorized transactions this month."}
-                          </p>
-                          <button type="button" onClick={() => setActiveWorkspace("transactions")}>
-                            Open categorization queue
-                          </button>
-                        </div>
-                        <div className="monthly-attention-item">
-                          {monthlyAttention.overTargetCategoryCount > 0 ? (
-                            <a href="#target-vs-actual">
-                              Review {monthlyAttention.overTargetCategoryCount} {monthlyAttention.overTargetCategoryCount === 1
-                                ? "category"
-                                : "categories"} over target
-                            </a>
-                          ) : (
-                            <p>No categories over target.</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </aside>
-                  {isChangingMonth && <p className="rail-status" role="status">Updating month...</p>}
-                  {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
-                  <div className="review-grid" aria-busy={isChangingMonth || isRefreshing}>
-                    <div className="review-primary">
-                      <MonthlyTotalsSection viewContract={appState.viewContract} />
-                      <TargetVsActualSection viewContract={appState.viewContract} />
-                      <CategoryTargetEntrySection selectedYearMonth={appState.selectedYearMonth} />
-                    </div>
-                    <aside className="review-support" aria-label="Monthly context">
-                      <CategoryBreakdownSection viewContract={appState.viewContract} />
-                      <ForecastSection dashboardData={appState.dashboardData} />
-                    </aside>
-                  </div>
-                </section>
-              )}
-
-              {activeWorkspace === "transactions" && (
-                <section className="destination-workspace" aria-label="Transactions workspace">
-                  <div className="destination-heading">
-                    <h2>Transactions</h2>
-                    <p>Search the ledger and resolve entries that still need a category.</p>
-                  </div>
-                  <div className="transactions-workspace-grid">
-                    <LedgerSection refreshKey={refreshCounter} />
-                    <CategoryReviewSection
-                      refreshKey={refreshCounter}
-                      onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
-                    />
-                  </div>
-                </section>
-              )}
-
-              {activeWorkspace === "import" && (
-                <section className="destination-workspace" aria-label="Import workspace">
-                  <div className="destination-heading">
-                    <h2>Import</h2>
-                    <p>Add one transaction or preview a statement before anything is saved.</p>
-                  </div>
-                  <div className="workflow-import-grid">
-                    <ManualEntrySection onEntrySuccess={() => setRefreshCounter((counter) => counter + 1)} />
-                    <CsvImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
-                    <PdfImportSection onImportSuccess={() => setRefreshCounter((counter) => counter + 1)} />
-                  </div>
-                </section>
-              )}
-
-              {activeWorkspace === "data-safety" && (
-                <section className="destination-workspace" aria-label="Data safety workspace">
-                  <div className="destination-heading">
-                    <h2>Data safety</h2>
-                    <p>Back up the local ledger, export a portable copy, or restore a snapshot.</p>
-                  </div>
-                  <div className="workflow-recovery-grid">
-                    <BackupSection />
-                    <ExportSection />
-                    <RestoreSnapshotSection onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)} />
-                  </div>
-                </section>
-              )}
-            </>
+          {activeWorkspace !== "review" && refreshError !== null && (
+            <section className="status-panel status-error" role="alert">
+              <div className="status-heading">
+                <span className="status-marker" aria-hidden="true">!</span>
+                <h2>Review refresh failed</h2>
+              </div>
+              <p>{refreshError}</p>
+              <button type="button" onClick={() => setRefreshCounter((counter) => counter + 1)}>
+                Try again
+              </button>
+            </section>
+          )}
+          <ReviewWorkspace
+            state={appState}
+            isActive={activeWorkspace === "review"}
+            isChangingMonth={isChangingMonth}
+            isRefreshing={isRefreshing}
+            monthChangeError={monthChangeError}
+            refreshError={refreshError}
+            onMonthChange={handleMonthChange}
+            onOpenTransactions={() => openWorkspace("transactions")}
+            onRetry={() => setRefreshCounter((counter) => counter + 1)}
+          />
+          {visitedWorkspaces.has("transactions") && (
+            <TransactionsWorkspace
+              isActive={activeWorkspace === "transactions"}
+              refreshKey={refreshCounter}
+              onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
+            />
+          )}
+          {visitedWorkspaces.has("import") && (
+            <ImportWorkspace
+              isActive={activeWorkspace === "import"}
+              onImportSuccess={() => setRefreshCounter((counter) => counter + 1)}
+            />
+          )}
+          {visitedWorkspaces.has("data-safety") && (
+            <DataSafetyWorkspace
+              isActive={activeWorkspace === "data-safety"}
+              onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)}
+            />
           )}
         </main>
       </div>

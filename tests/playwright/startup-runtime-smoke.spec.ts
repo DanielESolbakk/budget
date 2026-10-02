@@ -80,6 +80,38 @@ test.describe("Electron startup smoke", () => {
     await expect(appShell.workspace("Data safety")).toBeVisible();
     await expect(appShell.workspace("Import")).toHaveCount(0);
   });
+
+  test("navigation preserves an unsaved import path when the user changes destinations", async ({
+    appShell,
+    csvImport,
+  }) => {
+    const pendingPath = "synthetic-unsaved-statement.csv";
+    await csvImport.filePathInput.fill(pendingPath);
+
+    await appShell.openWorkspace("Transactions");
+    await appShell.openWorkspace("Import");
+
+    await expect(csvImport.filePathInput).toHaveValue(pendingPath);
+  });
+
+  test("other destinations remain available when the initial Review load fails", async ({
+    appShell,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+    });
+    await window.reload();
+    await expect(window.getByRole("alert")).toContainText("Household ledger unavailable");
+
+    await appShell.openWorkspace("Transactions");
+    await expect(appShell.workspace("Transactions")).toBeVisible();
+    await appShell.openWorkspace("Import");
+    await expect(appShell.workspace("Import")).toBeVisible();
+    await appShell.openWorkspace("Data safety");
+    await expect(appShell.workspace("Data safety")).toBeVisible();
+  });
 });
 
 test.describe("Electron startup smoke — fallback branch", () => {

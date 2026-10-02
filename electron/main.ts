@@ -380,6 +380,25 @@ function getViewData(yearMonth: string): DashboardViewContract {
   });
 }
 
+async function applyTransactionListTestControl(queryKind: "ledger" | "review"): Promise<void> {
+  if (process.env["NODE_ENV"] !== "test") return;
+
+  const shouldFail = queryKind === "ledger"
+    ? process.env["BUDGET_TEST_LEDGER_LIST_FAILURE"] === "1"
+    : process.env["BUDGET_TEST_REVIEW_LIST_FAILURE"] === "1";
+  if (shouldFail) {
+    const label = queryKind === "ledger" ? "ledger list" : "review list";
+    throw new Error(`Synthetic ${label} failure.`);
+  }
+
+  const delayMs = Number(queryKind === "ledger"
+    ? process.env["BUDGET_TEST_LEDGER_LIST_DELAY_MS"]
+    : process.env["BUDGET_TEST_REVIEW_LIST_DELAY_MS"]);
+  if (Number.isFinite(delayMs) && delayMs > 0) {
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, delayMs));
+  }
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
@@ -783,15 +802,17 @@ app.whenReady().then(async () => {
     }
   );
 
-  ipcMain.handle("transaction:listReview", (event) => {
+  ipcMain.handle("transaction:listReview", async (event) => {
     assertTrustedRenderer(event);
+    await applyTransactionListTestControl("review");
     return localLedgerDatabase
       .loadLedgerSnapshotData()
       .transactions.filter((transaction) => transaction.categoryId === undefined);
   });
 
-  ipcMain.handle("transaction:list", (event, input: unknown = {}) => {
+  ipcMain.handle("transaction:list", async (event, input: unknown = {}) => {
     assertTrustedRenderer(event);
+    await applyTransactionListTestControl("ledger");
     return filterTransactions(liveTransactions, parseTransactionQuery(input));
   });
 

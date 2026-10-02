@@ -70,7 +70,7 @@ export class DashboardPage {
   }
 
   get reviewQueueAction() {
-    return this.monthlyAttention.getByRole("button", { name: "Open categorization queue" });
+    return this.monthlyAttention.getByRole("button", { name: "Open all-month queue" });
   }
 
   get overTargetLink() {

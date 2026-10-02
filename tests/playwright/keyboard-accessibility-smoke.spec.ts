@@ -118,6 +118,10 @@ test.describe("Keyboard accessibility smoke", () => {
     );
     expect(focusOutlineWidth).toBe("3px");
     await window.keyboard.press("Tab");
+    await expect(categoryTarget.editTargetButton("groceries")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(categoryTarget.addTargetButton).toBeFocused();
+    await window.keyboard.press("Enter");
     await expect(categoryTarget.categoryIdInput).toBeFocused();
   });
 });

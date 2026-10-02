@@ -357,6 +357,10 @@ section[aria-label].destination-workspace {
   background: transparent;
 }
 
+.destination-workspace[hidden] {
+  display: none;
+}
+
 .review-intro {
   display: flex;
   align-items: end;
@@ -846,6 +850,32 @@ section[aria-label="Manual Entry"] form {
   margin-top: 1.4rem;
 }
 
+.target-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.target-form-actions button,
+.target-edit-button {
+  margin-top: 0;
+}
+
+.target-edit-button,
+.target-cancel-button {
+  border-color: var(--line-strong);
+  color: var(--paper);
+  background: var(--panel-raised);
+}
+
+.target-edit-button:hover:not(:disabled),
+.target-cancel-button:hover:not(:disabled) {
+  border-color: var(--paper);
+  color: var(--ink);
+  background: var(--paper);
+}
+
 section[aria-label="Category Target Entry"] label,
 section[aria-label="Manual Entry"] label,
 section[aria-label="CSV Import"] label,
@@ -1257,6 +1287,10 @@ section[aria-label="Category Target Entry"] [role="status"] {
   .primary-navigation {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.2rem;
+  }
+
+  button {
+    min-height: 2.75rem;
   }
 
   .workspace-link {

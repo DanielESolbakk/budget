@@ -51,6 +51,39 @@ function readCategoryForMerchant(databasePath: string, bookedAtIso: string): str
 }
 
 test.describe("Categorization review workflow", () => {
+  test("distinguishes queue loading, empty, and retryable error states", async ({
+    appShell,
+    electronApp,
+    reviewQueue,
+    window,
+  }) => {
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_REVIEW_LIST_DELAY_MS"] = "800";
+    });
+    await window.reload();
+    await appShell.openWorkspace("Transactions");
+
+    await expect(reviewQueue.loadingStatus).toBeVisible();
+    await expect(reviewQueue.emptyState).not.toBeVisible();
+    await expect(reviewQueue.emptyState).toBeVisible();
+
+    await electronApp.evaluate(() => {
+      delete process.env["BUDGET_TEST_REVIEW_LIST_DELAY_MS"];
+      process.env["BUDGET_TEST_REVIEW_LIST_FAILURE"] = "1";
+    });
+    await window.reload();
+    await appShell.openWorkspace("Transactions");
+
+    await expect(reviewQueue.errorAlert).toContainText("Synthetic review list failure.");
+    await expect(reviewQueue.emptyState).not.toBeVisible();
+
+    await electronApp.evaluate(() => {
+      delete process.env["BUDGET_TEST_REVIEW_LIST_FAILURE"];
+    });
+    await reviewQueue.retryButton.click();
+    await expect(reviewQueue.emptyState).toBeVisible();
+  });
+
   test("known merchants are categorized and unknown imports can be corrected from the review queue", async ({
     appShell,
     csvImport,
@@ -64,7 +97,7 @@ test.describe("Categorization review workflow", () => {
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
 
     await appShell.openWorkspace("Review");
-    await expect(dashboard.monthlyAttention).toContainText("Uncategorized transactions need a category.");
+    await expect(dashboard.monthlyAttention).toContainText("Uncategorized transactions need a category this month.");
     await dashboard.reviewQueueAction.click();
 
     await appShell.openWorkspace("Transactions");

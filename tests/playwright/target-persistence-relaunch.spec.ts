@@ -19,6 +19,7 @@ test.describe("Category target persistence across application restart", () => {
     databasePath,
     electronApp,
   }) => {
+    await categoryTarget.addTargetButton.click();
     await categoryTarget.categoryIdInput.fill(RESTART_TARGET_CATEGORY_ID);
     await categoryTarget.targetAmountInput.fill(INITIAL_TARGET_NOK);
     await categoryTarget.saveButton.click();
@@ -55,6 +56,7 @@ test.describe("Category target persistence across application restart", () => {
     databasePath,
     electronApp,
   }) => {
+    await categoryTarget.addTargetButton.click();
     await categoryTarget.categoryIdInput.fill(RESTART_TARGET_CATEGORY_ID);
     await categoryTarget.targetAmountInput.fill(INITIAL_TARGET_NOK);
     await categoryTarget.saveButton.click();
@@ -62,7 +64,7 @@ test.describe("Category target persistence across application restart", () => {
       persistedTargetRow(RESTART_TARGET_CATEGORY_ID, INITIAL_TARGET_NOK),
     );
 
-    await categoryTarget.categoryIdInput.fill(RESTART_TARGET_CATEGORY_ID);
+    await categoryTarget.editTargetButton(RESTART_TARGET_CATEGORY_ID).click();
     await categoryTarget.targetAmountInput.fill(UPDATED_TARGET_NOK);
     await categoryTarget.saveButton.click();
     await expect(categoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
