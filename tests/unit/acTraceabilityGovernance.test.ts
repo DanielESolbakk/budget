@@ -136,7 +136,7 @@ describe("AC traceability governance checks", () => {
     expect(copilotInstructions).toContain("Node 22.12 or newer");
     expect(agentInstructions).toContain("v22.12.0 or newer");
 
-    expect(planningSkill).toContain("R16 Frontend planning completeness");
+    expect(planningSkill).toContain("Apply R16/G9 to visible UI");
     expect(planningDeepDive).toContain("**G9:** Renderer-visible work");
     expect(planningDeepDive).toContain("Mark G9 not applicable only when there is no renderer-visible work.");
     for (const requirement of [
@@ -180,11 +180,11 @@ describe("AC traceability governance checks", () => {
       ".agents/skills/issue-planning-governor/references/checklists.md",
     );
 
-    expect(planningSkill).toContain("Run G1-G9 and the deep-dive checks");
-    expect(planningSkill).toContain("Quote evidence for each pass");
-    expect(planningSkill).toContain("A pre-existing `planning-invalid` label is not a fresh processing signal.");
-    expect(planningSkill).toContain("If no fresh signal appears within 180 seconds, stop and escalate without repair.");
-    expect(planningSkill).toContain("Epic issues may be read for hierarchy checks, but do not create, rewrite, validate, or close them.");
+    expect(planningSkill).toContain("Run G1-G9 from the deep-dive.");
+    expect(planningSkill).toContain("Quote each pass");
+    expect(planningSkill).toContain("`planning-invalid` blocks readiness.");
+    expect(planningSkill).toContain("After 180 seconds without one, stop without repair.");
+    expect(planningSkill).toContain("Epics are read-only hierarchy context.");
     expect(planningDeepDive).toContain("Test issue's \"Test Scenarios\" section has at least 2 concrete, reproducible scenarios.");
     expect(planningChecklists).toContain("G9 [PASS/FAIL/N/A]");
     expect((planningSkill.match(/\S+/g) ?? []).length).toBeLessThanOrEqual(500);

@@ -36,7 +36,7 @@ export interface TargetVsActualSectionProps {
 export function TargetVsActualSection({ viewContract }: TargetVsActualSectionProps): React.JSX.Element {
   if (viewContract.state === "loading") {
     return (
-      <section id="target-vs-actual" aria-label="Target vs Actual">
+      <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>
         <h2>Target vs Actual</h2>
         <p>Loading...</p>
       </section>
@@ -46,7 +46,7 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
   const { rows } = viewContract.snapshot.targetVsActualCategoryRows;
   if (rows.length === 0) {
     return (
-      <section id="target-vs-actual" aria-label="Target vs Actual">
+      <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>
         <h2>Target vs Actual</h2>
         <p>No target rows for this month.</p>
       </section>
@@ -54,7 +54,7 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
   }
 
   return (
-    <section id="target-vs-actual" aria-label="Target vs Actual">
+    <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>
       <h2>Target vs Actual</h2>
       <table>
         <thead>

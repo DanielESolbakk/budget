@@ -111,6 +111,7 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(dashboard.monthSelector).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(dashboard.reviewQueueAction).toBeFocused();
+    await expect(dashboard.targetVsActualSection).toHaveAttribute("tabindex", "0");
     await window.keyboard.press("Tab");
     await expect(dashboard.targetVsActualSection).toBeFocused();
     const focusOutlineWidth = await dashboard.targetVsActualSection.evaluate((element) =>
