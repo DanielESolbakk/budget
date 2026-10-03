@@ -21,11 +21,10 @@ const MOBILE_SCREENSHOT_DIFF_RATIO = process.platform === "linux" ? 0.03 : 0.01;
 
 test.describe("Dashboard renderer smoke", () => {
   test.beforeEach(async ({ dashboard }) => {
-    const initialMonth = await dashboard.monthSelector.inputValue();
-    // Keep each test isolated from month selection side effects.
+    await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
-    await expect(dashboard.monthSelector).toHaveValue(initialMonth);
+    await expect(dashboard.monthSelector).toHaveValue("2026-05");
   });
 
   test("Scenario 1: monthly totals section renders with income, expense, and net values visible", async ({ dashboard }) => {

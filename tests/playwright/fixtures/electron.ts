@@ -19,9 +19,11 @@ import { LedgerPage } from "../pom/LedgerPage.js";
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 interface ElectronFixtures {
+  backupOutputDialogBehavior: "native" | "cancel" | "selected";
   csvExportDialogBehavior: "native" | "cancel" | "selected";
   importFileDialogBehavior: "native" | "cancel" | "csv-selected" | "pdf-selected";
-  restoreSnapshotDialogBehavior: "native" | "cancel";
+  nodeEnvironment: "test" | "production";
+  restoreSnapshotDialogBehavior: "native" | "cancel" | "selected";
   databasePath: string;
   electronApp: ElectronApplication;
   window: Page;
@@ -40,8 +42,10 @@ interface ElectronFixtures {
 }
 
 export const test = base.extend<ElectronFixtures>({
+  backupOutputDialogBehavior: ["native", { option: true }],
   csvExportDialogBehavior: ["native", { option: true }],
   importFileDialogBehavior: ["native", { option: true }],
+  nodeEnvironment: ["test", { option: true }],
   restoreSnapshotDialogBehavior: ["native", { option: true }],
   // eslint-disable-next-line no-empty-pattern
   databasePath: async ({}, use) => {
@@ -54,7 +58,7 @@ export const test = base.extend<ElectronFixtures>({
       rmSync(databaseDirectory, { recursive: true, force: true });
     }
   },
-  electronApp: async ({ csvExportDialogBehavior, databasePath, importFileDialogBehavior, restoreSnapshotDialogBehavior }, use) => {
+  electronApp: async ({ backupOutputDialogBehavior, csvExportDialogBehavior, databasePath, importFileDialogBehavior, nodeEnvironment, restoreSnapshotDialogBehavior }, use) => {
     let app: ElectronApplication | undefined;
 
     try {
@@ -62,13 +66,16 @@ export const test = base.extend<ElectronFixtures>({
         args: [MAIN_ENTRY],
         env: {
           ...process.env,
+          BUDGET_TEST_BACKUP_OUTPUT_DIALOG: backupOutputDialogBehavior,
+          BUDGET_TEST_BACKUP_OUTPUT_PATH: join(dirname(databasePath), "dialog-selected-backup.json"),
           BUDGET_TEST_CSV_EXPORT_DIALOG: csvExportDialogBehavior,
           BUDGET_TEST_CSV_EXPORT_PATH: join(dirname(databasePath), "dialog-selected.csv"),
           BUDGET_TEST_IMPORT_FILE_DIALOG: importFileDialogBehavior,
           BUDGET_TEST_CSV_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv"),
           BUDGET_TEST_PDF_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt"),
           BUDGET_TEST_RESTORE_DIALOG: restoreSnapshotDialogBehavior,
-          NODE_ENV: "test",
+          BUDGET_TEST_RESTORE_SNAPSHOT_PATH: join(dirname(databasePath), "dialog-selected-restore.json"),
+          NODE_ENV: nodeEnvironment,
           BUDGET_DB_PATH: databasePath,
         },
       });

@@ -1,8 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
+import type {
+  BackupSnapshotCatalogEntry,
+  LedgerSnapshotData,
+} from "../../domain/backup/snapshotContract.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
 import type { ImportJobHistoryEntry, UndoImportJobResult } from "../../domain/import/importJobHistory.js";
@@ -24,8 +28,10 @@ import type {
   ImportJobProvenance,
   MerchantCategoryRule,
   MonthlyCategoryTarget,
+  MonthlyTotal,
   Transaction,
 } from "../../domain/types.js";
+import { isYearMonth } from "../../domain/types.js";
 
 interface LocalLedgerSeedData {
   household: Household;
@@ -36,9 +42,30 @@ interface LocalLedgerSeedData {
   merchantCategoryRules?: MerchantCategoryRule[];
 }
 
+export interface LocalLedgerRuntimeMetadata {
+  household: Household;
+  accounts: Account[];
+  monthlyCategoryTargets: MonthlyCategoryTarget[];
+  merchantCategoryRules: MerchantCategoryRule[];
+}
+
 export interface LocalLedgerDatabase {
+  hasHousehold: () => boolean;
+  createInitialHouseholdAndAccount: (input: {
+    householdName: string;
+    accountName: string;
+    currencyCode: string;
+  }) => { household: Household; account: Account };
+  loadRuntimeMetadata: () => LocalLedgerRuntimeMetadata | null;
+  listMonthlyTotals: (householdId: string) => MonthlyTotal[];
+  getTransactionsForMonth: (householdId: string, yearMonth: string) => Transaction[];
+  getTransactionsForAccount: (accountId: string) => Transaction[];
+  getTransactionById: (transactionId: string) => Transaction | undefined;
   loadLedgerSnapshotData: () => LedgerSnapshotData;
   replaceLedgerSnapshotData: (snapshot: LedgerSnapshotData) => void;
+  saveBackupSnapshot: (entry: BackupSnapshotCatalogEntry) => void;
+  listBackupSnapshots: () => BackupSnapshotCatalogEntry[];
+  deleteBackupSnapshot: (snapshotPath: string) => boolean;
   queryTransactions: (householdId: string, query: TransactionQuery) => TransactionPage;
   listUncategorizedTransactions: (householdId: string) => Transaction[];
   saveLedgerView: (savedLedgerView: SavedLedgerView) => void;
@@ -67,7 +94,7 @@ export interface LocalLedgerDatabase {
 
 interface CreateLocalLedgerDatabaseOptions {
   dbPath?: string;
-  seedData: LocalLedgerSeedData;
+  seedData?: LocalLedgerSeedData;
 }
 
 interface TransactionRow {
@@ -88,12 +115,11 @@ const transactionSortColumns: Record<TransactionSortField, string> = {
   bookedAtIso: "t.booked_at_iso",
   merchantRaw: "t.merchant_search",
   amountMinor: "t.amount_minor",
-  categoryId: "t.category_id",
+  categoryId: `CASE WHEN t.category_id IS NULL THEN ? ELSE CASE t.category_id ${CATEGORY_OPTIONS
+    .map(() => "WHEN ? THEN ?")
+    .join(" ")} ELSE t.category_id END END`,
   accountId: "COALESCE(a.name, t.account_id)",
 };
-const categorySortExpression = `CASE WHEN t.category_id IS NULL THEN ? ELSE CASE t.category_id ${CATEGORY_OPTIONS
-  .map(() => "WHEN ? THEN ?")
-  .join(" ")} ELSE t.category_id END END`;
 const categorySortParameters = [
   "Uncategorized",
   ...CATEGORY_OPTIONS.flatMap(({ id, label }) => [id, label]),
@@ -101,6 +127,13 @@ const categorySortParameters = [
 
 function merchantSearchValue(transaction: Pick<Transaction, "merchantRaw" | "merchantAlias">): string {
   return `${transaction.merchantRaw}\n${transaction.merchantAlias ?? ""}`.toUpperCase();
+}
+
+function nextYearMonth(yearMonth: string): string {
+  const [yearText, monthText] = yearMonth.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  return month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
 }
 
 function mapTransactionRow(transaction: TransactionRow): Transaction {
@@ -112,7 +145,6 @@ function mapTransactionRow(transaction: TransactionRow): Transaction {
     amountMinor: transaction.amount_minor,
     merchantRaw: transaction.merchant_raw,
   };
-
   if (transaction.currency_code !== null) mapped.currencyCode = transaction.currency_code;
   if (transaction.source_type !== null) mapped.sourceType = transaction.source_type;
   if (transaction.source_reference !== null) mapped.sourceReference = transaction.source_reference;
@@ -140,17 +172,29 @@ function serializeTransactionForUndo(transaction: Transaction): string {
 function persistImportJobOperation(
   db: DatabaseSync,
   importJob: ImportJob,
-  importedTransactions: readonly Transaction[]
+  importedTransactions: Transaction[]
 ): void {
-  const duplicateCount = importJob.provenance?.duplicateCount ?? Math.max(
-    0,
-    (importJob.candidateCount ?? importedTransactions.length) - importedTransactions.length
-  );
-  const candidateCount = importJob.candidateCount ?? importedTransactions.length + duplicateCount;
   const accountId = importJob.provenance?.accountId ?? importedTransactions[0]?.accountId ?? null;
-  db.prepare(
-    "INSERT INTO import_job_operations (import_job_id, household_id, account_id, candidate_count, imported_count, duplicate_count) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(import_job_id) DO UPDATE SET household_id = excluded.household_id, account_id = COALESCE(excluded.account_id, import_job_operations.account_id), candidate_count = excluded.candidate_count, imported_count = excluded.imported_count, duplicate_count = excluded.duplicate_count"
-  ).run(importJob.id, importJob.householdId, accountId, candidateCount, importedTransactions.length, duplicateCount);
+  const candidateCount = importJob.candidateCount ?? importedTransactions.length;
+  const duplicateCount = importJob.provenance?.duplicateCount ?? 0;
+  db.prepare(`
+    INSERT INTO import_job_operations (
+      import_job_id, household_id, account_id, candidate_count, imported_count, duplicate_count
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(import_job_id) DO UPDATE SET
+      household_id = excluded.household_id,
+      account_id = COALESCE(excluded.account_id, import_job_operations.account_id),
+      candidate_count = excluded.candidate_count,
+      imported_count = excluded.imported_count,
+      duplicate_count = excluded.duplicate_count
+  `).run(
+    importJob.id,
+    importJob.householdId,
+    accountId,
+    candidateCount,
+    importedTransactions.length,
+    duplicateCount
+  );
 }
 
 function persistTransactionBaseline(db: DatabaseSync, importJobId: string, transaction: Transaction): void {
@@ -193,6 +237,9 @@ function ensureSchema(db: DatabaseSync): void {
       import_job_id TEXT
     );
 
+    CREATE INDEX IF NOT EXISTS transactions_by_household_booked_at
+      ON transactions (household_id, booked_at_iso);
+
     CREATE TABLE IF NOT EXISTS import_jobs (
       id TEXT PRIMARY KEY,
       household_id TEXT NOT NULL,
@@ -222,6 +269,18 @@ function ensureSchema(db: DatabaseSync): void {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL COLLATE NOCASE UNIQUE,
       filters_json TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS backup_snapshots (
+      snapshot_path TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('backup', 'pre-restore')),
+      version TEXT NOT NULL,
+      household_name TEXT NOT NULL,
+      created_at_iso TEXT NOT NULL,
+      saved_at_iso TEXT NOT NULL,
+      account_count INTEGER NOT NULL,
+      transaction_count INTEGER NOT NULL,
+      content_hash_sha256 TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS csv_import_profiles (
@@ -256,11 +315,6 @@ function ensureSchema(db: DatabaseSync): void {
     );
   `);
 
-  const importOperationColumns = db.prepare("PRAGMA table_info(import_job_operations)").all() as Array<{ name: string }>;
-  if (!importOperationColumns.some((column) => column.name === "undo_available")) {
-    db.exec("ALTER TABLE import_job_operations ADD COLUMN undo_available INTEGER NOT NULL DEFAULT 1");
-  }
-
   const transactionColumns = db.prepare("PRAGMA table_info(transactions)").all() as Array<{ name: string }>;
   if (!transactionColumns.some((column) => column.name === "currency_code")) {
     db.exec("ALTER TABLE transactions ADD COLUMN currency_code TEXT");
@@ -271,6 +325,39 @@ function ensureSchema(db: DatabaseSync): void {
   if (!transactionColumns.some((column) => column.name === "source_reference")) {
     db.exec("ALTER TABLE transactions ADD COLUMN source_reference TEXT");
   }
+  if (!transactionColumns.some((column) => column.name === "merchant_search")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN merchant_search TEXT NOT NULL DEFAULT ''");
+  }
+  const transactionsWithoutMerchantSearch = db
+    .prepare("SELECT id, merchant_raw FROM transactions WHERE merchant_search = ''")
+    .all() as Array<{ id: string; merchant_raw: string }>;
+  const updateMerchantSearch = db.prepare("UPDATE transactions SET merchant_search = ? WHERE id = ?");
+  for (const transaction of transactionsWithoutMerchantSearch) {
+    updateMerchantSearch.run(transaction.merchant_raw.toUpperCase(), transaction.id);
+  }
+
+  const importOperationColumns = db.prepare("PRAGMA table_info(import_job_operations)").all() as Array<{ name: string }>;
+  if (!importOperationColumns.some((column) => column.name === "undo_available")) {
+    db.exec("ALTER TABLE import_job_operations ADD COLUMN undo_available INTEGER NOT NULL DEFAULT 1");
+  }
+
+  const backupSnapshotColumns = db.prepare("PRAGMA table_info(backup_snapshots)").all() as Array<{ name: string }>;
+  if (!backupSnapshotColumns.some((column) => column.name === "version")) {
+    db.exec("ALTER TABLE backup_snapshots ADD COLUMN version TEXT NOT NULL DEFAULT '2'");
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_booked_id
+      ON transactions (household_id, booked_at_iso, id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_account_booked_id
+      ON transactions (household_id, account_id, booked_at_iso, id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_amount_id
+      ON transactions (household_id, amount_minor, id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_category_id
+      ON transactions (household_id, category_id, id);
+    CREATE INDEX IF NOT EXISTS idx_backup_snapshots_saved_at
+      ON backup_snapshots (saved_at_iso DESC, snapshot_path);
+  `);
 
   const importJobColumns = db.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>;
   const importJobColumnsToAdd = [
@@ -284,28 +371,6 @@ function ensureSchema(db: DatabaseSync): void {
       db.exec(`ALTER TABLE import_jobs ADD COLUMN ${columnName} ${columnType}`);
     }
   }
-
-  if (!transactionColumns.some((column) => column.name === "merchant_search")) {
-    db.exec("ALTER TABLE transactions ADD COLUMN merchant_search TEXT NOT NULL DEFAULT ''");
-  }
-  const transactionsWithoutMerchantSearch = db
-    .prepare("SELECT id, merchant_raw FROM transactions WHERE merchant_search = ''")
-    .all() as Array<{ id: string; merchant_raw: string }>;
-  const updateMerchantSearch = db.prepare("UPDATE transactions SET merchant_search = ? WHERE id = ?");
-  for (const transaction of transactionsWithoutMerchantSearch) {
-    updateMerchantSearch.run(transaction.merchant_raw.toUpperCase(), transaction.id);
-  }
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_transactions_household_booked_id
-      ON transactions (household_id, booked_at_iso, id);
-    CREATE INDEX IF NOT EXISTS idx_transactions_household_account_booked_id
-      ON transactions (household_id, account_id, booked_at_iso, id);
-    CREATE INDEX IF NOT EXISTS idx_transactions_household_amount_id
-      ON transactions (household_id, amount_minor, id);
-    CREATE INDEX IF NOT EXISTS idx_transactions_household_category_id
-      ON transactions (household_id, category_id, id);
-  `);
 }
 
 function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): void {
@@ -356,11 +421,6 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       importJob.finishedAtIso ?? null,
       importJob.provenance ? JSON.stringify(importJob.provenance) : null
     );
-    const importedTransactions = snapshot.transactions.filter((transaction) => transaction.importJobId === importJob.id);
-    persistImportJobOperation(db, importJob, importedTransactions);
-    for (const transaction of importedTransactions) {
-      persistTransactionBaseline(db, importJob.id, transaction);
-    }
   }
 
   const insertTarget = db.prepare(
@@ -399,6 +459,44 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
   }
 }
 
+function hasHousehold(db: DatabaseSync): boolean {
+  return db.prepare("SELECT id FROM households LIMIT 1").get() !== undefined;
+}
+
+function createInitialHouseholdAndAccount(
+  db: DatabaseSync,
+  input: { householdName: string; accountName: string; currencyCode: string }
+): { household: Household; account: Account } {
+  const household: Household = {
+    id: randomUUID(),
+    name: input.householdName,
+    createdAtIso: new Date().toISOString(),
+  };
+  const account: Account = {
+    id: randomUUID(),
+    householdId: household.id,
+    name: input.accountName,
+    currencyCode: input.currencyCode,
+  };
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (hasHousehold(db)) {
+      throw new Error("A household has already been set up.");
+    }
+    db.prepare("INSERT INTO households (id, name, created_at_iso) VALUES (?, ?, ?)")
+      .run(household.id, household.name, household.createdAtIso);
+    db.prepare("INSERT INTO accounts (id, household_id, name, currency_code) VALUES (?, ?, ?, ?)")
+      .run(account.id, account.householdId, account.name, account.currencyCode);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return { household, account };
+}
+
 function parseSourceType(sourceType: string): ImportJob["sourceType"] {
   if (sourceType === "csv" || sourceType === "pdf" || sourceType === "manual") {
     return sourceType;
@@ -415,7 +513,92 @@ export function createLocalLedgerDatabase(
 
   const db = new DatabaseSync(dbPath);
   ensureSchema(db);
-  seedIfEmpty(db, options.seedData);
+  if (options.seedData !== undefined) seedIfEmpty(db, options.seedData);
+
+  function loadRuntimeMetadata(): LocalLedgerRuntimeMetadata | null {
+    const householdRow = db
+      .prepare("SELECT id, name, created_at_iso FROM households ORDER BY id LIMIT 1")
+      .get() as { id: string; name: string; created_at_iso: string } | undefined;
+    if (householdRow === undefined) return null;
+
+    const targets = db.prepare(`
+      SELECT year_month, category_id, target_minor
+      FROM monthly_category_targets
+      ORDER BY year_month, category_id
+    `).all() as Array<{ year_month: string; category_id: string; target_minor: number }>;
+
+    return {
+      household: {
+        id: householdRow.id,
+        name: householdRow.name,
+        createdAtIso: householdRow.created_at_iso,
+      },
+      accounts: getAccountsForHousehold(householdRow.id),
+      monthlyCategoryTargets: targets.map((target) => ({
+        yearMonth: target.year_month,
+        categoryId: target.category_id,
+        targetMinor: target.target_minor,
+      })),
+      merchantCategoryRules: listMerchantCategoryRules(),
+    };
+  }
+
+  function listMonthlyTotals(householdId: string): MonthlyTotal[] {
+    const rows = db.prepare(`
+      SELECT substr(booked_at_iso, 1, 7) AS year_month, SUM(amount_minor) AS total_minor
+      FROM transactions
+      WHERE household_id = ?
+      GROUP BY substr(booked_at_iso, 1, 7)
+      ORDER BY year_month
+    `).all(householdId) as Array<{ year_month: string; total_minor: number | bigint }>;
+    if (rows.length === 0) return [];
+
+    const totalsByMonth = new Map(rows.map((row) => [row.year_month, Number(row.total_minor)]));
+    const lastMonth = rows[rows.length - 1]!.year_month;
+    const monthlyTotals: MonthlyTotal[] = [];
+    let currentMonth = rows[0]!.year_month;
+    while (currentMonth <= lastMonth) {
+      monthlyTotals.push({
+        yearMonth: currentMonth,
+        totalMinor: totalsByMonth.get(currentMonth) ?? 0,
+      });
+      currentMonth = nextYearMonth(currentMonth);
+    }
+    return monthlyTotals;
+  }
+
+  function getTransactionsForMonth(householdId: string, yearMonth: string): Transaction[] {
+    if (!isYearMonth(yearMonth)) throw new Error(`Invalid dashboard month: ${yearMonth}`);
+    const rows = db.prepare(`
+      SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        currency_code, source_type, source_reference, category_id, import_job_id
+      FROM transactions
+      WHERE household_id = ? AND booked_at_iso >= ? AND booked_at_iso < ?
+      ORDER BY booked_at_iso ASC, id ASC
+    `).all(householdId, `${yearMonth}-01`, `${nextYearMonth(yearMonth)}-01`) as unknown as TransactionRow[];
+    return rows.map(mapTransactionRow);
+  }
+
+  function getTransactionsForAccount(accountId: string): Transaction[] {
+    const rows = db.prepare(`
+      SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        currency_code, source_type, source_reference, category_id, import_job_id
+      FROM transactions
+      WHERE account_id = ?
+      ORDER BY booked_at_iso ASC, id ASC
+    `).all(accountId) as unknown as TransactionRow[];
+    return rows.map(mapTransactionRow);
+  }
+
+  function getTransactionById(transactionId: string): Transaction | undefined {
+    const row = db.prepare(`
+      SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        currency_code, source_type, source_reference, category_id, import_job_id
+      FROM transactions
+      WHERE id = ?
+    `).get(transactionId) as TransactionRow | undefined;
+    return row === undefined ? undefined : mapTransactionRow(row);
+  }
 
   function backfillImportJobHistory(): void {
     const legacyJobs = db.prepare(`
@@ -437,12 +620,16 @@ export function createLocalLedgerDatabase(
       finished_at_iso: string | null;
       provenance_json: string | null;
     }>;
+
     db.exec("BEGIN");
     try {
       for (const job of legacyJobs) {
-        const importedTransactions = db.prepare(
-          "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions WHERE import_job_id = ?"
-        ).all(job.id).map((row) => mapTransactionRow(row as unknown as TransactionRow));
+        const transactions = db.prepare(`
+          SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+            currency_code, source_type, source_reference, category_id, import_job_id
+          FROM transactions
+          WHERE import_job_id = ?
+        `).all(job.id) as unknown as TransactionRow[];
         const importJob: ImportJob = {
           id: job.id,
           householdId: job.household_id,
@@ -451,12 +638,17 @@ export function createLocalLedgerDatabase(
           startedAtIso: job.started_at_iso,
           ...(job.adapter_id === null ? {} : { adapterId: job.adapter_id }),
           ...(job.candidate_count === null ? {} : { candidateCount: job.candidate_count }),
-          ...(job.validation_failure_count === null ? {} : { validationFailureCount: job.validation_failure_count }),
+          ...(job.validation_failure_count === null
+            ? {}
+            : { validationFailureCount: job.validation_failure_count }),
           ...(job.finished_at_iso === null ? {} : { finishedAtIso: job.finished_at_iso }),
-          ...(job.provenance_json === null ? {} : { provenance: JSON.parse(job.provenance_json) as ImportJobProvenance }),
+          ...(job.provenance_json === null
+            ? {}
+            : { provenance: JSON.parse(job.provenance_json) as ImportJobProvenance }),
         };
-        persistImportJobOperation(db, importJob, importedTransactions);
-        db.prepare("UPDATE import_job_operations SET undo_available = 0 WHERE import_job_id = ?").run(job.id);
+        persistImportJobOperation(db, importJob, transactions.map(mapTransactionRow));
+        db.prepare("UPDATE import_job_operations SET undo_available = 0 WHERE import_job_id = ?")
+          .run(job.id);
       }
       db.exec("COMMIT");
     } catch (error) {
@@ -491,7 +683,19 @@ export function createLocalLedgerDatabase(
       .prepare(
         "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions ORDER BY id"
       )
-      .all() as unknown as TransactionRow[];
+      .all() as Array<{
+      id: string;
+      household_id: string;
+      account_id: string;
+      booked_at_iso: string;
+      amount_minor: number;
+      merchant_raw: string;
+      currency_code: string | null;
+      source_type: NonNullable<Transaction["sourceType"]> | null;
+      source_reference: string | null;
+      category_id: string | null;
+      import_job_id: string | null;
+    }>;
 
     const importJobs = db
       .prepare(
@@ -522,7 +726,37 @@ export function createLocalLedgerDatabase(
       )
       .all() as Array<{ merchant_alias: string; category_id: string }>;
 
-    const mappedTransactions = transactions.map(mapTransactionRow);
+    const mappedTransactions: Transaction[] = transactions.map((transaction) => {
+      const mapped: Transaction = {
+        id: transaction.id,
+        householdId: transaction.household_id,
+        accountId: transaction.account_id,
+        bookedAtIso: transaction.booked_at_iso,
+        amountMinor: transaction.amount_minor,
+        merchantRaw: transaction.merchant_raw,
+      };
+
+      if (transaction.currency_code !== null) {
+        mapped.currencyCode = transaction.currency_code;
+      }
+      if (transaction.source_type !== null) {
+        mapped.sourceType = transaction.source_type;
+      }
+
+      if (transaction.source_reference !== null) {
+        mapped.sourceReference = transaction.source_reference;
+      }
+
+      if (transaction.category_id !== null) {
+        mapped.categoryId = transaction.category_id;
+      }
+
+      if (transaction.import_job_id !== null) {
+        mapped.importJobId = transaction.import_job_id;
+      }
+
+      return mapped;
+    });
 
     const mappedImportJobs: ImportJob[] = importJobs.map((importJob) => {
       const mapped: ImportJob = {
@@ -582,117 +816,6 @@ export function createLocalLedgerDatabase(
     };
   }
 
-  function queryTransactions(householdId: string, query: TransactionQuery): TransactionPage {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
-    if (!Number.isSafeInteger(page) || page < 1) {
-      throw new RangeError("page must be a positive safe integer.");
-    }
-    if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > MAX_TRANSACTION_PAGE_SIZE) {
-      throw new RangeError(`pageSize must be an integer between 1 and ${MAX_TRANSACTION_PAGE_SIZE}.`);
-    }
-
-    const sortBy = query.sortBy ?? "bookedAtIso";
-    const sortColumn = sortBy === "categoryId"
-      ? `${categorySortExpression} COLLATE NOCASE`
-      : transactionSortColumns[sortBy];
-    if (sortColumn === undefined) throw new Error("sortBy must be a supported ledger field.");
-    const sortDirection: TransactionSortDirection = query.sortDirection ?? "desc";
-    if (sortDirection !== "asc" && sortDirection !== "desc") {
-      throw new Error("sortDirection must be 'asc' or 'desc'.");
-    }
-
-    const conditions = ["t.household_id = ?"];
-    const parameters: Array<string | number> = [householdId];
-    const { bookedFromIso, bookedToIso } = resolveTransactionDateBounds(query);
-    if (query.accountId !== undefined) {
-      conditions.push("t.account_id = ?");
-      parameters.push(query.accountId);
-    }
-    if (bookedFromIso !== undefined) {
-      const start = /^\d{4}-\d{2}-\d{2}$/.test(bookedFromIso)
-        ? `${bookedFromIso}T00:00:00.000Z`
-        : bookedFromIso;
-      conditions.push("julianday(t.booked_at_iso) >= julianday(?)");
-      parameters.push(start);
-    }
-    if (bookedToIso !== undefined) {
-      const end = /^\d{4}-\d{2}-\d{2}$/.test(bookedToIso)
-        ? `${bookedToIso}T23:59:59.999Z`
-        : bookedToIso;
-      conditions.push("julianday(t.booked_at_iso) <= julianday(?)");
-      parameters.push(end);
-    }
-    if (query.merchant !== undefined && query.merchant.trim() !== "") {
-      conditions.push("instr(t.merchant_search, ?) > 0");
-      parameters.push(query.merchant.trim().toUpperCase());
-    }
-    if (query.amountMinor !== undefined) {
-      conditions.push("t.amount_minor = ?");
-      parameters.push(query.amountMinor);
-    }
-    if (query.amountFromMinor !== undefined) {
-      conditions.push("t.amount_minor >= ?");
-      parameters.push(query.amountFromMinor);
-    }
-    if (query.amountToMinor !== undefined) {
-      conditions.push("t.amount_minor <= ?");
-      parameters.push(query.amountToMinor);
-    }
-    if (query.categoryId !== undefined) {
-      conditions.push("t.category_id = ?");
-      parameters.push(query.categoryId);
-    }
-    if (query.uncategorizedOnly === true) conditions.push("t.category_id IS NULL");
-    if (query.transactionType === "income") conditions.push("t.amount_minor > 0");
-    if (query.transactionType === "expenses") conditions.push("t.amount_minor < 0");
-    if (query.largeTransactionsOnly === true) {
-      conditions.push("ABS(t.amount_minor) >= ?");
-      parameters.push(LARGE_TRANSACTION_THRESHOLD_MINOR);
-    }
-
-    const whereClause = conditions.join(" AND ");
-    const countRow = db
-      .prepare(`SELECT COUNT(*) AS total_count FROM transactions AS t WHERE ${whereClause}`)
-      .get(...parameters) as { total_count: number | bigint };
-    const totalCount = Number(countRow.total_count);
-    const offset = (page - 1) * pageSize;
-    if (!Number.isSafeInteger(offset)) throw new RangeError("page offset is too large.");
-
-    const transactions = db
-      .prepare(`
-        SELECT t.id, t.household_id, t.account_id, t.booked_at_iso, t.amount_minor,
-          t.merchant_raw, t.currency_code, t.source_type, t.source_reference,
-          t.category_id, t.import_job_id
-        FROM transactions AS t
-        LEFT JOIN accounts AS a ON a.id = t.account_id
-        WHERE ${whereClause}
-        ORDER BY ${sortColumn} ${sortDirection.toUpperCase()}, t.id ASC
-        LIMIT ? OFFSET ?
-      `)
-      .all(
-        ...parameters,
-        ...(sortBy === "categoryId" ? categorySortParameters : []),
-        pageSize,
-        offset
-      ) as unknown as TransactionRow[];
-
-    return { transactions: transactions.map(mapTransactionRow), totalCount, page, pageSize };
-  }
-
-  function listUncategorizedTransactions(householdId: string): Transaction[] {
-    const transactions = db
-      .prepare(`
-        SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-          currency_code, source_type, source_reference, category_id, import_job_id
-        FROM transactions
-        WHERE household_id = ? AND category_id IS NULL
-        ORDER BY substr(booked_at_iso, 1, 10) ASC, id ASC
-      `)
-      .all(householdId) as unknown as TransactionRow[];
-    return transactions.map(mapTransactionRow);
-  }
-
   function replaceLedgerSnapshotData(snapshot: LedgerSnapshotData): void {
     db.exec("BEGIN");
     try {
@@ -747,6 +870,73 @@ export function createLocalLedgerDatabase(
     return Number(result.changes) > 0;
   }
 
+  function saveBackupSnapshot(entry: BackupSnapshotCatalogEntry): void {
+    db.prepare(`
+      INSERT INTO backup_snapshots (
+        snapshot_path, kind, version, household_name, created_at_iso, saved_at_iso,
+        account_count, transaction_count, content_hash_sha256
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(snapshot_path) DO UPDATE SET
+        kind = excluded.kind,
+        version = excluded.version,
+        household_name = excluded.household_name,
+        created_at_iso = excluded.created_at_iso,
+        saved_at_iso = excluded.saved_at_iso,
+        account_count = excluded.account_count,
+        transaction_count = excluded.transaction_count,
+        content_hash_sha256 = excluded.content_hash_sha256
+    `).run(
+      entry.snapshotPath,
+      entry.kind,
+      entry.version,
+      entry.householdName,
+      entry.createdAtIso,
+      entry.savedAtIso,
+      entry.accountCount,
+      entry.transactionCount,
+      entry.contentHashSha256
+    );
+  }
+
+  function listBackupSnapshots(): BackupSnapshotCatalogEntry[] {
+    return db.prepare(`
+      SELECT snapshot_path, kind, version, household_name, created_at_iso, saved_at_iso,
+        account_count, transaction_count, content_hash_sha256
+      FROM backup_snapshots
+      ORDER BY saved_at_iso DESC, snapshot_path ASC
+    `).all().map((row) => {
+      const snapshot = row as {
+        snapshot_path: string;
+        kind: BackupSnapshotCatalogEntry["kind"];
+        version: BackupSnapshotCatalogEntry["version"];
+        household_name: string;
+        created_at_iso: string;
+        saved_at_iso: string;
+        account_count: number;
+        transaction_count: number;
+        content_hash_sha256: string;
+      };
+      return {
+        snapshotPath: snapshot.snapshot_path,
+        kind: snapshot.kind,
+        version: snapshot.version,
+        householdName: snapshot.household_name,
+        createdAtIso: snapshot.created_at_iso,
+        savedAtIso: snapshot.saved_at_iso,
+        accountCount: snapshot.account_count,
+        transactionCount: snapshot.transaction_count,
+        contentHashSha256: snapshot.content_hash_sha256,
+      };
+    });
+  }
+
+  function deleteBackupSnapshot(snapshotPath: string): boolean {
+    const result = db.prepare(
+      "DELETE FROM backup_snapshots WHERE snapshot_path = ?"
+    ).run(snapshotPath) as { changes: number | bigint };
+    return Number(result.changes) > 0;
+  }
+
   function saveCsvImportProfile(profile: CsvImportProfile): void {
     const accountExists = db.prepare(
       "SELECT 1 FROM accounts WHERE id = ? AND household_id = ?"
@@ -755,9 +945,17 @@ export function createLocalLedgerDatabase(
       throw new Error("CSV import profile account must belong to its household.");
     }
 
-    db.prepare(
-      "INSERT INTO csv_import_profiles (id, household_id, name, account_id, column_mapping_json, created_at_iso, updated_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, account_id = excluded.account_id, column_mapping_json = excluded.column_mapping_json, updated_at_iso = excluded.updated_at_iso"
-    ).run(
+    db.prepare(`
+      INSERT INTO csv_import_profiles (
+        id, household_id, name, account_id, column_mapping_json, created_at_iso, updated_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        household_id = excluded.household_id,
+        name = excluded.name,
+        account_id = excluded.account_id,
+        column_mapping_json = excluded.column_mapping_json,
+        updated_at_iso = excluded.updated_at_iso
+    `).run(
       profile.id,
       profile.householdId,
       profile.name,
@@ -769,9 +967,12 @@ export function createLocalLedgerDatabase(
   }
 
   function listCsvImportProfiles(householdId: string): CsvImportProfile[] {
-    return db.prepare(
-      "SELECT id, household_id, name, account_id, column_mapping_json, created_at_iso, updated_at_iso FROM csv_import_profiles WHERE household_id = ? ORDER BY name COLLATE NOCASE"
-    ).all(householdId).map((row) => {
+    return db.prepare(`
+      SELECT id, household_id, name, account_id, column_mapping_json, created_at_iso, updated_at_iso
+      FROM csv_import_profiles
+      WHERE household_id = ?
+      ORDER BY name COLLATE NOCASE
+    `).all(householdId).map((row) => {
       const profile = row as {
         id: string;
         household_id: string;
@@ -800,36 +1001,163 @@ export function createLocalLedgerDatabase(
     return Number(result.changes) > 0;
   }
 
+  function queryTransactions(householdId: string, query: TransactionQuery): TransactionPage {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
+    if (!Number.isSafeInteger(page) || page < 1) {
+      throw new RangeError("page must be a positive safe integer.");
+    }
+    if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > MAX_TRANSACTION_PAGE_SIZE) {
+      throw new RangeError(`pageSize must be an integer between 1 and ${MAX_TRANSACTION_PAGE_SIZE}.`);
+    }
+
+    const predicates = ["t.household_id = ?"];
+    const parameters: Array<string | number> = [householdId];
+    const dateBounds = resolveTransactionDateBounds(query);
+    if (query.accountId !== undefined) {
+      predicates.push("t.account_id = ?");
+      parameters.push(query.accountId);
+    }
+    if (dateBounds.bookedFromIso !== undefined) {
+      const bookedFrom = dateBounds.bookedFromIso;
+      predicates.push("t.booked_at_iso >= ?");
+      parameters.push(/^\d{4}-\d{2}-\d{2}$/.test(bookedFrom) ? `${bookedFrom}T00:00:00.000Z` : bookedFrom);
+    }
+    if (dateBounds.bookedToIso !== undefined) {
+      const bookedTo = dateBounds.bookedToIso;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(bookedTo)) {
+        const nextDay = new Date(`${bookedTo}T00:00:00.000Z`);
+        nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+        predicates.push("t.booked_at_iso < ?");
+        parameters.push(nextDay.toISOString());
+      } else {
+        predicates.push("t.booked_at_iso <= ?");
+        parameters.push(bookedTo);
+      }
+    }
+    if (query.amountMinor !== undefined) {
+      predicates.push("t.amount_minor = ?");
+      parameters.push(query.amountMinor);
+    }
+    if (query.amountFromMinor !== undefined) {
+      predicates.push("t.amount_minor >= ?");
+      parameters.push(query.amountFromMinor);
+    }
+    if (query.amountToMinor !== undefined) {
+      predicates.push("t.amount_minor <= ?");
+      parameters.push(query.amountToMinor);
+    }
+    if (query.categoryId !== undefined) {
+      predicates.push("t.category_id = ?");
+      parameters.push(query.categoryId);
+    }
+    if (query.uncategorizedOnly) predicates.push("t.category_id IS NULL");
+    if (query.transactionType === "income") predicates.push("t.amount_minor > 0");
+    if (query.transactionType === "expenses") predicates.push("t.amount_minor < 0");
+    if (query.largeTransactionsOnly) {
+      predicates.push("ABS(t.amount_minor) >= ?");
+      parameters.push(LARGE_TRANSACTION_THRESHOLD_MINOR);
+    }
+    if (query.merchant?.trim()) {
+      predicates.push("t.merchant_search LIKE ? ESCAPE '\\'");
+      parameters.push(`%${query.merchant.trim().toUpperCase().replace(/[\\%_]/g, "\\$&")}%`);
+    }
+
+    const whereClause = predicates.join(" AND ");
+    const fromClause = "FROM transactions AS t LEFT JOIN accounts AS a ON a.id = t.account_id";
+    const countRow = db.prepare(
+      `SELECT COUNT(*) AS total_count ${fromClause} WHERE ${whereClause}`
+    ).get(...parameters) as { total_count: number };
+
+    const sortBy = query.sortBy ?? "bookedAtIso";
+    const sortDirection: TransactionSortDirection = query.sortDirection ?? "desc";
+    const orderParameters = sortBy === "categoryId" ? categorySortParameters : [];
+    const transactionRows = db.prepare(`
+      SELECT t.id, t.household_id, t.account_id, t.booked_at_iso, t.amount_minor,
+        t.merchant_raw, t.currency_code, t.source_type, t.source_reference,
+        t.category_id, t.import_job_id
+      ${fromClause}
+      WHERE ${whereClause}
+      ORDER BY ${transactionSortColumns[sortBy]} ${sortDirection.toUpperCase()}, t.id ASC
+      LIMIT ? OFFSET ?
+    `).all(...parameters, ...orderParameters, pageSize, (page - 1) * pageSize) as unknown as TransactionRow[];
+
+    return {
+      transactions: transactionRows.map(mapTransactionRow),
+      totalCount: countRow.total_count,
+      page,
+      pageSize,
+    };
+  }
+
+  function listUncategorizedTransactions(householdId: string): Transaction[] {
+    const transactions = db.prepare(`
+      SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        currency_code, source_type, source_reference, category_id, import_job_id
+      FROM transactions
+      WHERE household_id = ? AND category_id IS NULL
+      ORDER BY substr(booked_at_iso, 1, 10) ASC, id ASC
+    `).all(householdId) as unknown as TransactionRow[];
+    return transactions.map(mapTransactionRow);
+  }
+
+  function getAccountsForHousehold(householdId: string): Account[] {
+    const accounts = db
+      .prepare(
+        "SELECT id, household_id, name, currency_code FROM accounts WHERE household_id = ? ORDER BY id"
+      )
+      .all(householdId) as Array<{
+      id: string;
+      household_id: string;
+      name: string;
+      currency_code: string;
+    }>;
+
+    return accounts.map((account) => ({
+      id: account.id,
+      householdId: account.household_id,
+      name: account.name,
+      currencyCode: account.currency_code,
+    }));
+  }
+
+  function appendImportJob(importJob: ImportJob): void {
+    db.exec("BEGIN");
+    try {
+      db.prepare(
+      "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(
+        importJob.id,
+        importJob.householdId,
+        importJob.sourceType,
+        importJob.sourceName,
+        importJob.adapterId ?? null,
+        importJob.candidateCount ?? null,
+        importJob.validationFailureCount ?? null,
+        importJob.startedAtIso,
+        importJob.finishedAtIso ?? null,
+        importJob.provenance ? JSON.stringify(importJob.provenance) : null
+      );
+      persistImportJobOperation(db, importJob, []);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   function listImportJobHistory(householdId: string): ImportJobHistoryEntry[] {
     return db.prepare(`
-      SELECT
-        job.id,
-        job.household_id,
-        job.source_type,
-        job.source_name,
-        job.adapter_id,
-        COALESCE(operation.account_id, (
-          SELECT tx.account_id FROM transactions AS tx
-          WHERE tx.import_job_id = job.id LIMIT 1
-        )) AS account_id,
+      SELECT job.id, job.household_id, job.source_type, job.source_name, job.adapter_id,
+        job.started_at_iso, job.finished_at_iso,
+        operation.account_id,
         COALESCE(operation.candidate_count, job.candidate_count, 0) AS candidate_count,
-        COALESCE(operation.imported_count, (
-          SELECT COUNT(*) FROM transactions AS tx
-          WHERE tx.import_job_id = job.id
-        ), 0) AS imported_count,
-        COALESCE(operation.duplicate_count, MAX(
-          COALESCE(job.candidate_count, 0) - COALESCE((
-            SELECT COUNT(*) FROM transactions AS tx
-            WHERE tx.import_job_id = job.id
-          ), 0),
-          0
-        )) AS duplicate_count,
-        job.started_at_iso,
-        job.finished_at_iso,
+        COALESCE(operation.imported_count, 0) AS imported_count,
+        COALESCE(operation.duplicate_count, 0) AS duplicate_count,
         operation.undone_at_iso,
         COALESCE(operation.undo_removed_count, 0) AS undo_removed_count,
         COALESCE(operation.undo_retained_count, 0) AS undo_retained_count,
-        COALESCE(operation.undo_available, 0) AS undo_available
+        CASE WHEN operation.undo_available = 1 AND operation.undone_at_iso IS NULL THEN 1 ELSE 0 END AS undo_available
       FROM import_jobs AS job
       LEFT JOIN import_job_operations AS operation ON operation.import_job_id = job.id
       WHERE job.household_id = ?
@@ -868,23 +1196,24 @@ export function createLocalLedgerDatabase(
         undoneAtIso: history.undone_at_iso,
         undoRemovedCount: history.undo_removed_count,
         undoRetainedCount: history.undo_retained_count,
-      };
+      } satisfies ImportJobHistoryEntry;
     });
   }
 
   function undoImportJob(importJobId: string): UndoImportJobResult {
-    const jobExists = db.prepare("SELECT 1 FROM import_jobs WHERE id = ?").get(importJobId);
-    if (jobExists === undefined) throw new Error(`Import job not found: ${importJobId}`);
-    const operation = db.prepare(
-      "SELECT undone_at_iso, undo_removed_count, undo_retained_count, imported_count, undo_available FROM import_job_operations WHERE import_job_id = ?"
-    ).get(importJobId) as {
+    const operation = db.prepare(`
+      SELECT imported_count, undone_at_iso, undo_removed_count, undo_retained_count, undo_available
+      FROM import_job_operations
+      WHERE import_job_id = ?
+    `).get(importJobId) as {
+      imported_count: number;
       undone_at_iso: string | null;
       undo_removed_count: number;
       undo_retained_count: number;
-      imported_count: number;
       undo_available: number;
     } | undefined;
-    if (operation?.undone_at_iso !== null && operation?.undone_at_iso !== undefined) {
+    if (operation === undefined) throw new Error(`Import job not found: ${importJobId}`);
+    if (operation.undone_at_iso !== null) {
       return {
         importJobId,
         removedCount: operation.undo_removed_count,
@@ -892,43 +1221,51 @@ export function createLocalLedgerDatabase(
         alreadyUndone: true,
       };
     }
-    if (operation === undefined) throw new Error(`Import job history not found: ${importJobId}`);
 
-    const baselines = db.prepare(
-      "SELECT transaction_id, baseline_json FROM import_job_transaction_baselines WHERE import_job_id = ? ORDER BY transaction_id"
-    ).all(importJobId) as Array<{ transaction_id: string; baseline_json: string }>;
-    if (operation.undo_available !== 1 || baselines.length !== operation.imported_count) {
-      const retainedCount = operation.imported_count;
-      db.prepare(
-        "UPDATE import_job_operations SET undo_available = 0, undone_at_iso = ?, undo_removed_count = 0, undo_retained_count = ? WHERE import_job_id = ?"
-      ).run(new Date().toISOString(), retainedCount, importJobId);
-      return { importJobId, removedCount: 0, retainedCount, alreadyUndone: false };
-    }
-    const readTransaction = db.prepare(
-      "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions WHERE id = ?"
-    );
-    const deleteTransaction = db.prepare(
-      "DELETE FROM transactions WHERE id = ? AND import_job_id = ?"
-    );
+    const transactions = db.prepare(`
+      SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        currency_code, source_type, source_reference, category_id, import_job_id
+      FROM transactions
+      WHERE import_job_id = ?
+      ORDER BY id
+    `).all(importJobId) as unknown as TransactionRow[];
+    const baselines = new Map(db.prepare(`
+      SELECT transaction_id, baseline_json
+      FROM import_job_transaction_baselines
+      WHERE import_job_id = ?
+    `).all(importJobId).map((row) => {
+      const baseline = row as { transaction_id: string; baseline_json: string };
+      return [baseline.transaction_id, baseline.baseline_json] as const;
+    }));
+
     let removedCount = 0;
     let retainedCount = 0;
-
     db.exec("BEGIN");
     try {
-      for (const baseline of baselines) {
-        const row = readTransaction.get(baseline.transaction_id) as TransactionRow | undefined;
-        if (row === undefined || serializeTransactionForUndo(mapTransactionRow(row)) !== baseline.baseline_json) {
-          retainedCount += 1;
-          continue;
+      if (operation.undo_available === 1) {
+        const deleteTransaction = db.prepare(
+          "DELETE FROM transactions WHERE id = ? AND import_job_id = ?"
+        );
+        for (const row of transactions) {
+          const transaction = mapTransactionRow(row);
+          const baselineJson = baselines.get(transaction.id);
+          if (baselineJson !== undefined && serializeTransactionForUndo(transaction) === baselineJson) {
+            const result = deleteTransaction.run(transaction.id, importJobId) as { changes: number | bigint };
+            removedCount += Number(result.changes);
+          } else {
+            retainedCount += 1;
+          }
         }
-        const result = deleteTransaction.run(baseline.transaction_id, importJobId) as { changes: number | bigint };
-        if (Number(result.changes) === 1) removedCount += 1;
-        else retainedCount += 1;
+      } else {
+        retainedCount = transactions.length;
       }
+
       const undoneAtIso = new Date().toISOString();
-      db.prepare(
-        "UPDATE import_job_operations SET undone_at_iso = ?, undo_removed_count = ?, undo_retained_count = ? WHERE import_job_id = ?"
-      ).run(undoneAtIso, removedCount, retainedCount, importJobId);
+      db.prepare(`
+        UPDATE import_job_operations
+        SET undone_at_iso = ?, undo_removed_count = ?, undo_retained_count = ?, undo_available = 0
+        WHERE import_job_id = ?
+      `).run(undoneAtIso, removedCount, retainedCount, importJobId);
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
@@ -936,44 +1273,6 @@ export function createLocalLedgerDatabase(
     }
 
     return { importJobId, removedCount, retainedCount, alreadyUndone: false };
-  }
-
-  function getAccountsForHousehold(householdId: string): Account[] {
-    const accounts = db
-      .prepare(
-        "SELECT id, household_id, name, currency_code FROM accounts WHERE household_id = ? ORDER BY id"
-      )
-      .all(householdId) as Array<{
-      id: string;
-      household_id: string;
-      name: string;
-      currency_code: string;
-    }>;
-
-    return accounts.map((account) => ({
-      id: account.id,
-      householdId: account.household_id,
-      name: account.name,
-      currencyCode: account.currency_code,
-    }));
-  }
-
-  function appendImportJob(importJob: ImportJob): void {
-    db.prepare(
-      "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).run(
-      importJob.id,
-      importJob.householdId,
-      importJob.sourceType,
-      importJob.sourceName,
-      importJob.adapterId ?? null,
-      importJob.candidateCount ?? null,
-      importJob.validationFailureCount ?? null,
-      importJob.startedAtIso,
-      importJob.finishedAtIso ?? null,
-      importJob.provenance ? JSON.stringify(importJob.provenance) : null
-    );
-    persistImportJobOperation(db, importJob, []);
   }
 
   function hasImportJob(importJobId: string): boolean {
@@ -1021,8 +1320,8 @@ export function createLocalLedgerDatabase(
     const insertTransaction = db.prepare(
       "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
-    const insertedTransactions: Transaction[] = [];
     let insertedCount = 0;
+    const insertedTransactions: Transaction[] = [];
     db.exec("BEGIN");
     try {
       for (const transaction of transactions) {
@@ -1041,36 +1340,23 @@ export function createLocalLedgerDatabase(
           transaction.importJobId ?? null
         ) as { changes: number | bigint };
         if (Number(result.changes) > 0) {
-          insertedCount += 1;
+          insertedCount += Number(result.changes);
           insertedTransactions.push(transaction);
-          if (transaction.importJobId !== undefined) {
-            persistTransactionBaseline(db, transaction.importJobId, transaction);
-          }
         }
       }
-      for (const importJobId of new Set(insertedTransactions.map((transaction) => transaction.importJobId).filter((id): id is string => id !== undefined))) {
-        const job = db.prepare(
-          "SELECT id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json FROM import_jobs WHERE id = ?"
-        ).get(importJobId) as {
-          id: string; household_id: string; source_type: string; source_name: string; adapter_id: string | null;
-          candidate_count: number | null; validation_failure_count: number | null; started_at_iso: string;
-          finished_at_iso: string | null; provenance_json: string | null;
-        } | undefined;
-        if (job !== undefined) {
-          const jobTransactions = db.prepare(
-            "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions WHERE import_job_id = ?"
-            ).all(importJobId).map((row) => mapTransactionRow(row as unknown as TransactionRow));
-          const mappedJob: ImportJob = {
-            id: job.id, householdId: job.household_id, sourceType: parseSourceType(job.source_type),
-            sourceName: job.source_name, startedAtIso: job.started_at_iso,
-            ...(job.adapter_id === null ? {} : { adapterId: job.adapter_id }),
-            ...(job.candidate_count === null ? {} : { candidateCount: job.candidate_count }),
-            ...(job.validation_failure_count === null ? {} : { validationFailureCount: job.validation_failure_count }),
-            ...(job.finished_at_iso === null ? {} : { finishedAtIso: job.finished_at_iso }),
-            ...(job.provenance_json === null ? {} : { provenance: JSON.parse(job.provenance_json) as ImportJobProvenance }),
-          };
-          persistImportJobOperation(db, mappedJob, jobTransactions);
-        }
+      for (const transaction of insertedTransactions) {
+        if (transaction.importJobId === undefined) continue;
+        const operation = db.prepare(
+          "SELECT 1 FROM import_job_operations WHERE import_job_id = ?"
+        ).get(transaction.importJobId);
+        if (operation === undefined) continue;
+        persistTransactionBaseline(db, transaction.importJobId, transaction);
+        db.prepare(`
+          UPDATE import_job_operations
+          SET imported_count = imported_count + 1,
+            candidate_count = MAX(candidate_count, imported_count + 1)
+          WHERE import_job_id = ?
+        `).run(transaction.importJobId);
       }
       db.exec("COMMIT");
     } catch (error) {
@@ -1125,13 +1411,15 @@ export function createLocalLedgerDatabase(
           transaction.importJobId ?? null
         ) as { changes: number | bigint };
         if (Number(result.changes) > 0) {
-          insertedCount += 1;
+          insertedCount += Number(result.changes);
           insertedTransactions.push(transaction);
-          persistTransactionBaseline(db, importJob.id, transaction);
         }
       }
 
       persistImportJobOperation(db, importJob, insertedTransactions);
+      for (const transaction of insertedTransactions) {
+        persistTransactionBaseline(db, importJob.id, transaction);
+      }
 
       db.exec("COMMIT");
       return insertedCount;
@@ -1228,6 +1516,13 @@ export function createLocalLedgerDatabase(
   }
 
   return {
+    hasHousehold: () => hasHousehold(db),
+    createInitialHouseholdAndAccount: (input) => createInitialHouseholdAndAccount(db, input),
+    loadRuntimeMetadata,
+    listMonthlyTotals,
+    getTransactionsForMonth,
+    getTransactionsForAccount,
+    getTransactionById,
     loadLedgerSnapshotData,
     replaceLedgerSnapshotData,
     queryTransactions,
@@ -1235,6 +1530,9 @@ export function createLocalLedgerDatabase(
     saveLedgerView,
     listSavedLedgerViews,
     deleteSavedLedgerView,
+    saveBackupSnapshot,
+    listBackupSnapshots,
+    deleteBackupSnapshot,
     saveCsvImportProfile,
     listCsvImportProfiles,
     deleteCsvImportProfile,

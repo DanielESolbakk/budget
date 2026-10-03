@@ -1,12 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 import { installNetworkGuard } from "./networkGuard.js";
 import { createDashboardProvider } from "./dashboardProvider.js";
 import {
+  createBackupOutputDialog,
   createCsvExportDialog,
   createImportStatementDialog,
   createRestoreSnapshotDialog,
 } from "./fileDialogProvider.js";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -22,11 +23,18 @@ import {
 import { exportLedgerCsvToFile, type ExportCsvSummary } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
+import {
+  catalogBackupSnapshot,
+  createPreRestoreBackupSnapshot,
+} from "../src/app/backup/snapshotCatalog.js";
 import { listUncategorizedReviewQueue } from "../src/app/reviewQueue.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
-import { categorizeTransaction, categorizeTransactions } from "../src/domain/categorization/categorizeTransaction.js";
+import { categorizeTransactions } from "../src/domain/categorization/categorizeTransaction.js";
 import { normalizeMerchantName } from "../src/domain/merchant/normalizeMerchantName.js";
-import { restoreBackupSnapshot } from "../src/app/backup/restoreBackupSnapshot.js";
+import {
+  inspectBackupSnapshot,
+  restoreBackupSnapshot,
+} from "../src/app/backup/restoreBackupSnapshot.js";
 import {
   buildCsvImportRequest,
   classifyPreviouslyImportedCsvCandidates,
@@ -48,7 +56,6 @@ import {
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
-  appendUniqueTransactions,
   previewPdfImportWorkflowInBatches,
   runPdfImportWorkflow,
   type PdfImportPreviewResponse,
@@ -67,7 +74,6 @@ import {
   type CsvColumnMapping,
 } from "../src/domain/import/csvRowMapper.js";
 import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
-import { buildMonthBuckets } from "../src/domain/forecast/aggregationAdapter.js";
 import {
   MAX_TRANSACTION_PAGE_SIZE,
   type SavedLedgerView,
@@ -77,11 +83,14 @@ import {
   type TransactionSortField,
 } from "../src/domain/ledger/filterTransactions.js";
 import type {
+  BackupSnapshotCatalogEntry,
   BackupSnapshotFileOutput,
+  BackupSnapshotSummary,
   RestoreSnapshotInput,
-  RestoreSnapshotOutput,
+  RestoreSnapshotResult,
 } from "../src/domain/backup/snapshotContract.js";
 import {
+  isCurrencyCode,
   validateMonthlyCategoryTargetInput,
   type Household,
   type Account,
@@ -101,10 +110,7 @@ const sampleAccounts: Account[] = [
   { id: "sample-acc", householdId: "sample-hh", name: "Brukskonto", currencyCode: "NOK" },
 ];
 
-const sampleImportJobs: ImportJob[] = [];
-
-// Runtime state mirrors the persisted ledger for dashboard and import workflows.
-const liveTransactions: Transaction[] = [
+const sampleTransactions: Transaction[] = [
   {
     id: "sample-tx-1",
     householdId: "sample-hh",
@@ -143,7 +149,7 @@ const liveTransactions: Transaction[] = [
   },
 ];
 
-const sampleTargetStore = createMonthlyCategoryTargetStore([
+const sampleTargets: MonthlyCategoryTargetInput[] = [
   {
     yearMonth: "2026-04",
     categoryId: "groceries",
@@ -154,16 +160,24 @@ const sampleTargetStore = createMonthlyCategoryTargetStore([
     categoryId: "groceries",
     targetMinor: 9000,
   },
-]);
+];
+
+const isTestEnvironment = process.env["NODE_ENV"] === "test";
+const runtimeAccounts: Account[] = [];
+const sampleTargetStore = createMonthlyCategoryTargetStore(isTestEnvironment ? sampleTargets : []);
 
 const localLedgerDatabase = createLocalLedgerDatabase({
-  seedData: {
-    household: sampleHousehold,
-    accounts: sampleAccounts,
-    transactions: liveTransactions,
-    importJobs: sampleImportJobs,
-    monthlyCategoryTargets: Array.from(sampleTargetStore.targetsByMonthAndCategory.values()),
-  },
+  ...(isTestEnvironment
+    ? {
+        seedData: {
+          household: sampleHousehold,
+          accounts: sampleAccounts,
+          transactions: sampleTransactions,
+          importJobs: [],
+          monthlyCategoryTargets: sampleTargets,
+        },
+      }
+    : {}),
 });
 const learnedCategoryRules = new Map(
   localLedgerDatabase.listMerchantCategoryRules().map((rule) => [rule.merchantAlias, rule.categoryId])
@@ -180,15 +194,13 @@ const activeImportPreflights = new Map<string, { cancelled: boolean }>();
 function applyRuntimeLedgerSnapshot(snapshot: {
   household: Household;
   accounts: Account[];
-  transactions: Transaction[];
   monthlyCategoryTargets: MonthlyCategoryTargetInput[];
   merchantCategoryRules?: Array<{ merchantAlias: string; categoryId: string }>;
 }): void {
   sampleHousehold.id = snapshot.household.id;
   sampleHousehold.name = snapshot.household.name;
   sampleHousehold.createdAtIso = snapshot.household.createdAtIso;
-  sampleAccounts.splice(0, sampleAccounts.length, ...snapshot.accounts);
-  liveTransactions.splice(0, liveTransactions.length, ...snapshot.transactions);
+  runtimeAccounts.splice(0, runtimeAccounts.length, ...snapshot.accounts);
   sampleTargetStore.targetsByMonthAndCategory.clear();
   for (const target of snapshot.monthlyCategoryTargets) {
     const key = `${target.yearMonth}::${target.categoryId}`;
@@ -206,14 +218,15 @@ function applyRuntimeLedgerSnapshot(snapshot: {
 
 (function hydrateFromLedger(): void {
   try {
-    applyRuntimeLedgerSnapshot(localLedgerDatabase.loadLedgerSnapshotData());
+    const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+    if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
   } catch (error) {
     console.error("Failed to hydrate runtime state from local ledger:", error);
   }
 })();
 
 function resolveDefaultAccountId(householdId: string): string {
-  const account = sampleAccounts.find((item) => item.householdId === householdId);
+  const account = runtimeAccounts.find((item) => item.householdId === householdId);
   if (!account) {
     throw new Error(`No account available for household ${householdId}`);
   }
@@ -256,6 +269,27 @@ function parseNonEmptyString(value: unknown, fieldName: string): string {
     throw new Error(`${fieldName} must be a non-empty string.`);
   }
   return value.trim();
+}
+
+function parseHouseholdSetupInput(input: unknown): {
+  householdName: string;
+  accountName: string;
+  currencyCode: string;
+} {
+  if (typeof input !== "object" || input === null) {
+    throw new Error("Household setup must be an object.");
+  }
+  const record = input as Record<string, unknown>;
+  const householdName = parseNonEmptyString(record.householdName, "householdName");
+  const accountName = parseNonEmptyString(record.accountName, "accountName");
+  const currencyCode = parseNonEmptyString(record.currencyCode, "currencyCode").toUpperCase();
+  if (householdName.length > 100 || accountName.length > 100) {
+    throw new Error("Household and account names must be 100 characters or fewer.");
+  }
+  if (!isCurrencyCode(currencyCode)) {
+    throw new Error("currencyCode must be a three-letter currency code.");
+  }
+  return { householdName, accountName, currencyCode };
 }
 
 function parseTransactionQuery(input: unknown): TransactionQuery {
@@ -398,7 +432,24 @@ function parseRestoreSnapshotInput(input: unknown): RestoreSnapshotInput {
     throw new Error("Restore input must be an object.");
   }
   const record = input as Record<string, unknown>;
-  return { snapshotPath: parseNonEmptyString(record.snapshotPath, "snapshotPath") };
+  if (
+    record.expectedContentHashSha256 !== undefined &&
+    (typeof record.expectedContentHashSha256 !== "string" ||
+      !/^[a-f0-9]{64}$/i.test(record.expectedContentHashSha256))
+  ) {
+    throw new Error("expectedContentHashSha256 must be a SHA-256 digest.");
+  }
+  return {
+    snapshotPath: parseNonEmptyString(record.snapshotPath, "snapshotPath"),
+    ...(record.expectedContentHashSha256 === undefined
+      ? {}
+      : { expectedContentHashSha256: record.expectedContentHashSha256 as string }),
+  };
+}
+
+function getLocalBackupDirectory(): string {
+  const databasePath = process.env["BUDGET_DB_PATH"] ?? join(process.cwd(), "data", "local", "budget.sqlite");
+  return join(dirname(resolve(databasePath)), "backups");
 }
 
 interface RendererImportInput {
@@ -530,12 +581,12 @@ function pdfPreviewReceiptFailure(error: ImportPreviewError): PdfImportResponse 
 }
 
 function getDashboardData(): DashboardData {
-  return buildDashboardData({ monthlyTotals: buildMonthBuckets(liveTransactions) });
+  return buildDashboardData({ monthlyTotals: localLedgerDatabase.listMonthlyTotals(sampleHousehold.id) });
 }
 
 function getViewData(yearMonth: string): DashboardViewContract {
   return buildDashboardViewContract({
-    transactions: liveTransactions,
+    transactions: localLedgerDatabase.getTransactionsForMonth(sampleHousehold.id, yearMonth),
     selectedYearMonth: yearMonth,
     monthlyCategoryTargetStore: sampleTargetStore,
   });
@@ -558,6 +609,13 @@ async function applyTransactionListTestControl(queryKind: "ledger" | "review"): 
   if (Number.isFinite(delayMs) && delayMs > 0) {
     await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, delayMs));
   }
+}
+
+async function applyRecoveryOperationTestDelay(): Promise<void> {
+  if (process.env["NODE_ENV"] !== "test") return;
+  const delayMs = Number(process.env["BUDGET_TEST_RECOVERY_OPERATION_DELAY_MS"]);
+  if (!Number.isSafeInteger(delayMs) || delayMs < 1) return;
+  await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, delayMs));
 }
 
 function createWindow(): void {
@@ -594,6 +652,7 @@ app.whenReady().then(async () => {
     getViewData,
     ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
+  const backupOutputDialog = createBackupOutputDialog();
   const csvExportDialog = createCsvExportDialog();
   const csvImportStatementDialog = createImportStatementDialog("csv");
   const pdfImportStatementDialog = createImportStatementDialog("pdf");
@@ -644,7 +703,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("dialog:chooseBackupOutputPath", async (event) => {
     assertTrustedRenderer(event);
-    const result = await dialog.showSaveDialog({
+    const result = await backupOutputDialog({
       defaultPath: "budget-backup.json",
       filters: [{ name: "JSON files", extensions: ["json"] }],
     });
@@ -686,6 +745,29 @@ app.whenReady().then(async () => {
     return localLedgerDatabase.getAccountsForHousehold(parseNonEmptyString(householdId, "householdId"));
   });
 
+  ipcMain.handle("account:getCurrent", (event): { householdId: string; accounts: Account[] } | null => {
+    assertTrustedRenderer(event);
+    if (!localLedgerDatabase.hasHousehold()) return null;
+    return {
+      householdId: sampleHousehold.id,
+      accounts: localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id),
+    };
+  });
+
+  ipcMain.handle("setup:isRequired", (event): boolean => {
+    assertTrustedRenderer(event);
+    return !localLedgerDatabase.hasHousehold();
+  });
+
+  ipcMain.handle("setup:create", (event, input: unknown): void => {
+    assertTrustedRenderer(event);
+    const setupInput = parseHouseholdSetupInput(input);
+    localLedgerDatabase.createInitialHouseholdAndAccount(setupInput);
+    const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+    if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
+    ledgerGeneration += 1;
+  });
+
   ipcMain.handle("import:preflight:cancel", (event, requestId: unknown): boolean => {
     assertTrustedRenderer(event);
     const preflight = activeImportPreflights.get(parseNonEmptyString(requestId, "requestId"));
@@ -703,7 +785,8 @@ app.whenReady().then(async () => {
     assertTrustedRenderer(event);
     return ledgerOperationCoordinator.runExclusive(() => {
       const result = localLedgerDatabase.undoImportJob(parseNonEmptyString(importJobId, "importJobId"));
-      applyRuntimeLedgerSnapshot(localLedgerDatabase.loadLedgerSnapshotData());
+      const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+      if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
       ledgerGeneration += 1;
       importPreviewRegistry.invalidateAll();
       return result;
@@ -753,8 +836,9 @@ app.whenReady().then(async () => {
     );
   });
 
-  ipcMain.handle("export:writeLedgerCsv", (event, outputPath: unknown): ExportCsvSummary => {
+  ipcMain.handle("export:writeLedgerCsv", async (event, outputPath: unknown): Promise<ExportCsvSummary> => {
     assertTrustedRenderer(event);
+    await applyRecoveryOperationTestDelay();
     const validatedOutputPath = parseNonEmptyString(outputPath, "outputPath");
 
     const result = exportLedgerCsvToFile({
@@ -772,27 +856,53 @@ app.whenReady().then(async () => {
     "backup:create",
     (event, outputPath: unknown): Promise<BackupSnapshotFileOutput> => {
       assertTrustedRenderer(event);
-      return ledgerOperationCoordinator.runExclusive(() => {
+      return ledgerOperationCoordinator.runExclusive(async () => {
+        await applyRecoveryOperationTestDelay();
         const ledgerSnapshotData = localLedgerDatabase.loadLedgerSnapshotData();
-        return createBackupSnapshot({
+        const result = createBackupSnapshot({
           ...ledgerSnapshotData,
           outputPath: parseNonEmptyString(outputPath, "outputPath"),
         });
+        catalogBackupSnapshot({ snapshotPath: result.outputPath, kind: "backup" }, localLedgerDatabase);
+        return result;
       });
     }
   );
 
   ipcMain.handle(
-    "backup:restore",
-    (event, input: unknown): Promise<RestoreSnapshotOutput> => {
+    "backup:inspect",
+    (event, input: unknown): BackupSnapshotSummary => {
       assertTrustedRenderer(event);
-      return ledgerOperationCoordinator.runExclusive(() => {
-        const restored = restoreBackupSnapshot(parseRestoreSnapshotInput(input));
+      return inspectBackupSnapshot(parseRestoreSnapshotInput(input));
+    }
+  );
+
+  ipcMain.handle(
+    "backup:listSnapshots",
+    (event): BackupSnapshotCatalogEntry[] => {
+      assertTrustedRenderer(event);
+      return localLedgerDatabase.listBackupSnapshots();
+    }
+  );
+
+  ipcMain.handle(
+    "backup:restore",
+    (event, input: unknown): Promise<RestoreSnapshotResult> => {
+      assertTrustedRenderer(event);
+      return ledgerOperationCoordinator.runExclusive(async () => {
+        await applyRecoveryOperationTestDelay();
+        const restoreInput = parseRestoreSnapshotInput(input);
+        const restored = restoreBackupSnapshot(restoreInput);
+        const recoverySnapshot = createPreRestoreBackupSnapshot({
+          outputDirectory: getLocalBackupDirectory(),
+          ledgerSnapshotData: localLedgerDatabase.loadLedgerSnapshotData(),
+          catalog: localLedgerDatabase,
+        });
         localLedgerDatabase.replaceLedgerSnapshotData(restored);
         applyRuntimeLedgerSnapshot(restored);
         ledgerGeneration += 1;
         importPreviewRegistry.invalidateAll();
-        return restored;
+        return { ...restored, recoverySnapshot };
       });
     }
   );
@@ -1042,7 +1152,6 @@ app.whenReady().then(async () => {
           pendingTransactions
         );
 
-        appendUniqueTransactions(liveTransactions, pendingTransactions);
         importPreviewRegistry.complete(parsedInput.previewId!);
 
         return {
@@ -1125,12 +1234,11 @@ app.whenReady().then(async () => {
 
         const response = submitManualEntry(
           inputRecord as unknown as ManualEntryInput,
-          liveTransactions,
+          typeof inputRecord.accountId === "string"
+            ? localLedgerDatabase.getTransactionsForAccount(inputRecord.accountId)
+            : [],
           localLedgerDatabase
         );
-        if (response.ok) {
-          liveTransactions.push(response.transaction);
-        }
         return response;
       });
     }
@@ -1189,7 +1297,7 @@ app.whenReady().then(async () => {
       const transactionId = parseNonEmptyString(record.transactionId, "transactionId");
       const categoryId = parseNonEmptyString(record.categoryId, "categoryId");
 
-      const transaction = liveTransactions.find((item) => item.id === transactionId);
+      const transaction = localLedgerDatabase.getTransactionById(transactionId);
       if (transaction === undefined) {
         throw new Error(`Transaction not found: ${transactionId}`);
       }
@@ -1198,8 +1306,7 @@ app.whenReady().then(async () => {
       const futureMatchingChanged = learnedCategoryRules.get(merchantAlias) !== categoryId;
       localLedgerDatabase.updateTransactionCategoryAndRule(transactionId, { merchantAlias, categoryId });
       learnedCategoryRules.set(merchantAlias, categoryId);
-      transaction.categoryId = categoryId;
-        return { transaction: { ...transaction }, futureMatchingChanged };
+      return { transaction: { ...transaction, categoryId }, futureMatchingChanged };
       });
     }
   );
@@ -1286,8 +1393,7 @@ app.whenReady().then(async () => {
         }
         reportProgress("Validating statement rows", preview.transactions.length, preview.transactions.length);
 
-        const existingTransactions = localLedgerDatabase.loadLedgerSnapshotData().transactions
-          .filter((transaction) => transaction.accountId === request.accountId);
+        const existingTransactions = localLedgerDatabase.getTransactionsForAccount(request.accountId);
         const duplicateCandidates = classifyDuplicateCandidates(preview.transactions, existingTransactions)
           .flatMap((candidate, rowIndex) => candidate.duplicateMatch === undefined
             ? []
@@ -1380,18 +1486,10 @@ app.whenReady().then(async () => {
           hasImportJob: localLedgerDatabase.hasImportJob,
           getTransactionsForImportJob: localLedgerDatabase.getTransactionsForImportJob,
           getImportedTransactionsForSource: localLedgerDatabase.getImportedTransactionsForSource,
-          getExistingTransactionsForAccount: (targetAccountId) =>
-            localLedgerDatabase.loadLedgerSnapshotData().transactions
-              .filter((transaction) => transaction.accountId === targetAccountId),
+          getExistingTransactionsForAccount: localLedgerDatabase.getTransactionsForAccount,
           appendImportJob: localLedgerDatabase.appendImportJob,
           appendImportJobAndTransactions: localLedgerDatabase.appendImportJobAndTransactions,
           appendTransactions: localLedgerDatabase.appendTransactions,
-          onTransactionsPersisted: (transactions) => {
-            appendUniqueTransactions(
-              liveTransactions,
-              transactions.map((transaction) => categorizeTransaction(transaction, learnedCategoryRules))
-            );
-          },
         });
       } catch (error) {
         importPreviewRegistry.release(parsedInput.previewId!);

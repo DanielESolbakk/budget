@@ -74,6 +74,7 @@ export function createBackupSnapshot(input: CreateBackupSnapshotInput): BackupSn
 
   return {
     outputPath: input.outputPath,
+    accountCount: snapshot.metadata.accountCount,
     transactionCount: snapshot.metadata.transactionCount,
     createdAtIso: snapshot.metadata.createdAtIso,
   };

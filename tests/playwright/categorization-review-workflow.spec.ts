@@ -282,6 +282,7 @@ test.describe("Categorization review workflow", () => {
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
 
     await appShell.openWorkspace("Review");
+  await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyAttention).toContainText("Uncategorized transactions need a category this month.");
     await dashboard.reviewQueueAction.click();
 
@@ -345,6 +346,7 @@ test.describe("Categorization review workflow", () => {
       const recovery = new RecoveryPage(restartedWindow);
         await restartedShell.openWorkspace("Data safety");
       await recovery.restorePathInput.fill(restoredSnapshotPath);
+      await recovery.reviewSnapshotButton.click();
       restartedWindow.once("dialog", async (dialog) => await dialog.accept());
       await recovery.restoreButton.click();
       await expect(recovery.restoreSuccess).toContainText("0 transactions restored");

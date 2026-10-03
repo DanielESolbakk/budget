@@ -1,6 +1,12 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { BackupSnapshot } from "../../domain/backup/snapshotContract.js";
-import { SNAPSHOT_VERSION, type RestoreSnapshotInput, type RestoreSnapshotOutput } from "../../domain/backup/snapshotContract.js";
+import {
+  SNAPSHOT_VERSION,
+  type BackupSnapshotSummary,
+  type RestoreSnapshotInput,
+  type RestoreSnapshotOutput,
+} from "../../domain/backup/snapshotContract.js";
 import {
   isCurrencyCode,
   isYearMonth,
@@ -188,6 +194,13 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     );
   }
 
+  if (
+    typeof metadata.createdAtIso !== "string" ||
+    Number.isNaN(Date.parse(metadata.createdAtIso))
+  ) {
+    throw new Error(`Invalid snapshot creation timestamp: ${snapshotPath}`);
+  }
+
   const collections = ["accounts", "transactions", "importJobs", "monthlyCategoryTargets"] as const;
   for (const collectionName of collections) {
     if (!Array.isArray(value[collectionName])) {
@@ -229,6 +242,45 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   return value as unknown as BackupSnapshot;
 }
 
+function readValidatedBackupSnapshot(
+  snapshotPath: string,
+  expectedContentHashSha256?: string
+): { snapshot: BackupSnapshot; contentHashSha256: string } {
+  const raw = readFileSync(snapshotPath);
+  const contentHashSha256 = createHash("sha256").update(raw).digest("hex");
+  if (
+    expectedContentHashSha256 !== undefined &&
+    contentHashSha256 !== expectedContentHashSha256
+  ) {
+    throw new Error("Snapshot changed since it was reviewed. Review it again before restoring.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.toString("utf8")) as unknown;
+  } catch {
+    throw new Error(`Failed to parse snapshot file: ${snapshotPath}`);
+  }
+
+  return {
+    snapshot: validateBackupSnapshot(parsed, snapshotPath),
+    contentHashSha256,
+  };
+}
+
+export function inspectBackupSnapshot(input: RestoreSnapshotInput): BackupSnapshotSummary {
+  const { snapshot, contentHashSha256 } = readValidatedBackupSnapshot(input.snapshotPath);
+
+  return {
+    version: snapshot.metadata.version,
+    householdName: snapshot.household.name,
+    createdAtIso: snapshot.metadata.createdAtIso,
+    accountCount: snapshot.metadata.accountCount,
+    transactionCount: snapshot.metadata.transactionCount,
+    contentHashSha256,
+  };
+}
+
 /**
  * Reads a backup snapshot file and returns the equivalent ledger state.
  *
@@ -236,16 +288,10 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
  * produced by an incompatible snapshot version.
  */
 export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnapshotOutput {
-  const raw = readFileSync(input.snapshotPath, "utf8");
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    throw new Error(`Failed to parse snapshot file: ${input.snapshotPath}`);
-  }
-
-  const snapshot = validateBackupSnapshot(parsed, input.snapshotPath);
+  const { snapshot } = readValidatedBackupSnapshot(
+    input.snapshotPath,
+    input.expectedContentHashSha256
+  );
 
   return {
     household: snapshot.household,

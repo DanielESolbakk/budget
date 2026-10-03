@@ -585,6 +585,7 @@ test.describe("CSV import renderer workflow", () => {
 
   test("Regression: refresh failure preserves the loaded dashboard and shows recovery feedback", async ({ appShell, csvImport, dashboard, electronApp, window }) => {
     await appShell.openWorkspace("Review");
+    await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const incomeBeforeRefreshFailure = await dashboard.incomeValue.textContent();
 
@@ -624,6 +625,7 @@ test.describe("CSV import renderer workflow", () => {
     databasePath,
   }) => {
     await appShell.openWorkspace("Review");
+    await dashboard.monthSelector.selectOption("2026-05");
     const incomeBeforeImport = ((await dashboard.incomeValue.textContent()) ?? "").trim();
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(FIXTURE_PATH);
@@ -658,6 +660,7 @@ test.describe("CSV import renderer workflow", () => {
   test("Scenario 2: importing an unsupported CSV shape reports validation errors and leaves dashboard unchanged", async ({ appShell, csvImport, dashboard }) => {
     // Ensure dashboard is in a known state before the invalid import.
     await appShell.openWorkspace("Review");
+    await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
 
@@ -696,6 +699,7 @@ test.describe("CSV import renderer workflow", () => {
     const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.csv`);
     writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
     await appShell.openWorkspace("Review");
+    await dashboard.monthSelector.selectOption("2026-05");
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
     const beforeNetText = (await dashboard.netValue.textContent()) ?? "";

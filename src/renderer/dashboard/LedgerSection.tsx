@@ -491,7 +491,21 @@ export function LedgerSection({
         </div>
       )}
       {hasLoaded && transactions.length > 0 && (
-        <div className="ledger-table-scroll">
+        <div
+          className="ledger-table-scroll"
+          role="region"
+          aria-label="Ledger transactions"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+            if (direction === 0) return;
+            event.preventDefault();
+            event.currentTarget.scrollBy({
+              left: direction * event.currentTarget.clientWidth * 0.6,
+            });
+          }}
+        >
           <table className="ledger-table" aria-label="Ledger transactions">
             <thead>
               <tr>

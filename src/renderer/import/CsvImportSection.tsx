@@ -90,11 +90,11 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     let active = true;
     setProfileLoadState("loading");
     Promise.all([
-      window.budgetApi.accounts.list("sample-hh"),
+      window.budgetApi.accounts.getCurrent(),
       window.budgetApi.import.profiles.list(),
-    ]).then(([loadedAccounts, loadedProfiles]) => {
+    ]).then(([current, loadedProfiles]) => {
       if (!active) return;
-      setAccounts(loadedAccounts);
+      setAccounts(current?.accounts ?? []);
       setProfiles(loadedProfiles);
       setProfileLoadState("ready");
     }).catch(() => {

@@ -2,6 +2,7 @@ import React from "react";
 
 type ExportState =
   | { status: "idle" }
+  | { status: "choosing" }
   | { status: "pending" }
   | { status: "cancelled" }
   | { status: "success"; outputPath: string; transactionCount: number }
@@ -20,15 +21,12 @@ export function ExportSection(): React.JSX.Element {
   }
 
   async function handleExport(): Promise<void> {
+    const selectedPath = outputPath.trim();
+    if (!selectedPath) return;
+
     setExportState({ status: "pending" });
 
     try {
-      const selectedPath = outputPath.trim() || (await chooseOutputPath());
-      if (!selectedPath) {
-        setExportState({ status: "cancelled" });
-        return;
-      }
-
       const result = await window.budgetApi.export.writeLedgerCsv(selectedPath);
       setExportState({
         status: "success",
@@ -42,8 +40,11 @@ export function ExportSection(): React.JSX.Element {
   }
 
   async function handleBrowse(): Promise<void> {
+    setExportState({ status: "choosing" });
+
     try {
-      await chooseOutputPath();
+      const selectedPath = await chooseOutputPath();
+      setExportState(selectedPath ? { status: "idle" } : { status: "cancelled" });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unable to choose an export path.";
       setExportState({ status: "error", message });
@@ -53,27 +54,41 @@ export function ExportSection(): React.JSX.Element {
   return (
     <section aria-label="Export">
       <h2>Export Ledger</h2>
-      <label htmlFor="export-output-path">CSV output path</label>
+      <label htmlFor="export-output-path">Destination path</label>
       <input
         id="export-output-path"
         type="text"
         value={outputPath}
-        onChange={(event) => setOutputPath(event.target.value)}
+        onChange={(event) => {
+          setOutputPath(event.target.value);
+          setExportState({ status: "idle" });
+        }}
         placeholder="Choose a CSV destination"
-        disabled={exportState.status === "pending"}
+        disabled={exportState.status === "pending" || exportState.status === "choosing"}
       />
+      <p id="export-output-help" className="field-help">
+        Choose or enter a destination before exporting.
+      </p>
       <div className="action-row">
-        <button type="button" onClick={handleBrowse} disabled={exportState.status === "pending"}>
-          Browse
+        <button
+          type="button"
+          className="action-secondary"
+          onClick={() => void handleBrowse()}
+          disabled={exportState.status === "pending" || exportState.status === "choosing"}
+        >
+          {exportState.status === "choosing" ? "Choosing destination..." : "Choose destination"}
         </button>
         <button
           type="button"
           onClick={() => void handleExport()}
-          disabled={exportState.status === "pending"}
+          disabled={!outputPath.trim() || exportState.status === "pending" || exportState.status === "choosing"}
+          aria-describedby="export-output-help"
         >
           {exportState.status === "pending" ? "Exporting..." : "Export CSV"}
         </button>
       </div>
+      {exportState.status === "choosing" && <p role="status" aria-live="polite">Choosing CSV destination...</p>}
+      {exportState.status === "pending" && <p role="status" aria-live="polite">Exporting ledger...</p>}
       {exportState.status === "cancelled" && <p role="status">Export cancelled.</p>}
       {exportState.status === "success" && (
         <p role="status">
