@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import type { Transaction } from "../../src/domain/types.js";
 
@@ -70,6 +70,33 @@ function withDatabase<Result>(
 }
 
 describe("SQLite ledger queries", () => {
+  it("intersects This month with explicit date bounds in SQLite queries", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 15, 12));
+
+    try {
+      withDatabase([
+        transaction("september", "2026-09-30T23:59:59Z", -1000, "September"),
+        transaction("october-start", "2026-10-01T00:00:00Z", -1000, "October start"),
+        transaction("october-end", "2026-10-31T23:59:59Z", -1000, "October end"),
+        transaction("november", "2026-11-01T00:00:00Z", -1000, "November"),
+      ], (database) => {
+        const result = database.queryTransactions(HOUSEHOLD.id, {
+          datePreset: "thisMonth",
+          bookedFromIso: "2026-09-15",
+          bookedToIso: "2026-11-15",
+        });
+
+        expect(result.transactions.map((item) => item.id)).toEqual([
+          "october-end",
+          "october-start",
+        ]);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("filters before returning a bounded page and its matching total count", () => {
     const transactions = [
       transaction("rema-old", "2026-05-01T08:00:00Z", -5000, "Rema 1000", { categoryId: "groceries" }),

@@ -89,8 +89,12 @@ export function resolveTransactionDateBounds(
 ): { bookedFromIso: string | undefined; bookedToIso: string | undefined } {
   const currentMonth = query.datePreset === "thisMonth" ? thisMonthRange(now) : undefined;
   return {
-    bookedFromIso: query.bookedFromIso ?? currentMonth?.from,
-    bookedToIso: query.bookedToIso ?? currentMonth?.to,
+    bookedFromIso: currentMonth === undefined
+      ? query.bookedFromIso
+      : laterBookingStartBound(query.bookedFromIso, currentMonth.from),
+    bookedToIso: currentMonth === undefined
+      ? query.bookedToIso
+      : earlierBookingEndBound(query.bookedToIso, currentMonth.to),
   };
 }
 
@@ -131,6 +135,21 @@ function bookingTimeStart(value: string): string {
 
 function bookingTimeEnd(value: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
+}
+
+function laterBookingStartBound(left: string | undefined, right: string): string {
+  if (left === undefined) return right;
+  return compareBookingTimes(left, right) >= 0 ? left : right;
+}
+
+function earlierBookingEndBound(left: string | undefined, right: string): string {
+  if (left === undefined) return right;
+  const leftEnd = Date.parse(bookingTimeEnd(left));
+  const rightEnd = Date.parse(bookingTimeEnd(right));
+  if (!Number.isFinite(leftEnd) || !Number.isFinite(rightEnd)) {
+    return left.localeCompare(right) <= 0 ? left : right;
+  }
+  return leftEnd <= rightEnd ? left : right;
 }
 
 function compareBookingTimes(left: string, right: string): number {

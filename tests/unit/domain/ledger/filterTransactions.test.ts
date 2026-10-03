@@ -153,6 +153,30 @@ describe("filterTransactions", () => {
     }
   });
 
+  it("intersects This month with explicit date bounds", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 15, 12));
+    const monthTransactions: Transaction[] = [
+      { ...transactions[0]!, id: "september", bookedAtIso: "2026-09-30T23:59:59Z" },
+      { ...transactions[0]!, id: "october-start", bookedAtIso: "2026-10-01T00:00:00Z" },
+      { ...transactions[0]!, id: "october-end", bookedAtIso: "2026-10-31T23:59:59Z" },
+      { ...transactions[0]!, id: "november", bookedAtIso: "2026-11-01T00:00:00Z" },
+    ];
+
+    try {
+      expect(queryTransactions(monthTransactions, {
+        datePreset: "thisMonth",
+        bookedFromIso: "2026-09-15",
+        bookedToIso: "2026-11-15",
+      }).transactions.map((transaction) => transaction.id)).toEqual([
+        "october-end",
+        "october-start",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("matches large transactions by absolute amount at the documented threshold", () => {
     const largeExpenses: Transaction[] = [
       { ...transactions[0]!, id: "large-expense", amountMinor: -1_000_000 },

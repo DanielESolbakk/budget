@@ -180,9 +180,18 @@ test.describe("Ledger search and filter workflow", () => {
     await expect(ledger.transaction("Rema 1000")).toContainText("Brukskonto");
     await expect(ledger.transaction("Rema 1000")).toContainText("kr");
 
+    const dateHeader = ledger.table.getByRole("columnheader", { name: "Date" });
+    await expect(dateHeader).toHaveAttribute("aria-sort", "descending");
+    await expect(dateHeader).toContainText("DESC");
+
     await ledger.sortByMerchant();
-    await expect(ledger.table.getByRole("columnheader", { name: "Merchant" }))
-      .toHaveAttribute("aria-sort", "ascending");
+    const merchantHeader = ledger.table.getByRole("columnheader", { name: "Merchant" });
+    await expect(merchantHeader).toHaveAttribute("aria-sort", "ascending");
+    await expect(merchantHeader).toContainText("ASC");
+
+    await ledger.sortByMerchant();
+    await expect(merchantHeader).toHaveAttribute("aria-sort", "descending");
+    await expect(merchantHeader).toContainText("DESC");
   });
 
   test("shows applied filters as removable actions", async ({ ledger }) => {
@@ -237,6 +246,70 @@ test.describe("Ledger search and filter workflow", () => {
     await expect(ledger.loadingStatus).toBeVisible();
     await expect(ledger.transaction("Kiwi")).toBeVisible();
     await expect(ledger.loadingStatus).not.toBeVisible();
+  });
+
+  test("keeps saving disabled until debounced filter results match", async ({
+    electronApp,
+    ledger,
+    window,
+  }) => {
+    await ledger.openSavedViews();
+    await ledger.savedViewNameInput.fill("Pending filter");
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_LEDGER_LIST_DELAY_MS"] = "220";
+    });
+
+    await ledger.sortByMerchant();
+    await expect(ledger.updatingStatus).toBeVisible();
+
+    const enabledBeforeMatchingResults = window.evaluate(() => new Promise<boolean>((resolve) => {
+      const section = document.querySelector<HTMLElement>('section[aria-label="Ledger"]')!;
+      const merchantInput = section.querySelector<HTMLInputElement>('input[aria-label="Filter merchant"]')!;
+      const saveButton = section.querySelector<HTMLButtonElement>('.ledger-save-view-form button')!;
+      let filterEntered = false;
+      let pendingWasObserved = false;
+      let enabledBeforeMatch = false;
+
+      const hasMatchingEmptyResult = (): boolean => {
+        const resultSummary = section.querySelector(".ledger-result-summary")?.textContent?.trim();
+        const emptyState = section.querySelector(".empty-state")?.textContent ?? "";
+        const isUpdating = Array.from(section.querySelectorAll('[role="status"]'))
+          .some((status) => status.textContent?.includes("Updating ledger for selected filters..."));
+        return resultSummary === "0 ledger transactions" &&
+          emptyState.includes("No transactions match these filters.") &&
+          !isUpdating;
+      };
+
+      const finish = (result: boolean): void => {
+        observer.disconnect();
+        merchantInput.removeEventListener("input", handleInput);
+        resolve(result);
+      };
+      const check = (): void => {
+        if (!filterEntered) return;
+        if (saveButton.disabled) pendingWasObserved = true;
+        else if (pendingWasObserved && !hasMatchingEmptyResult()) enabledBeforeMatch = true;
+        if (hasMatchingEmptyResult()) finish(enabledBeforeMatch);
+      };
+      const handleInput = (): void => {
+        filterEntered = merchantInput.value === "no matching merchant";
+        check();
+      };
+
+      const observer = new MutationObserver(check);
+      observer.observe(section, {
+        attributes: true,
+        attributeFilter: ["disabled"],
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+      merchantInput.addEventListener("input", handleInput);
+    }));
+
+    await ledger.merchantInput.fill("no matching merchant");
+    await expect(ledger.saveViewButton).toBeDisabled();
+    expect(await enabledBeforeMatchingResults).toBe(false);
   });
 
   test("preserves prior rows and offers retry after a filtered ledger query fails", async ({

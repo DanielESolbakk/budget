@@ -719,12 +719,21 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
 }
 
 .ledger-table th button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
   border: 0;
   padding: 0.2rem 0;
   color: inherit;
   background: transparent;
   font: inherit;
   text-align: left;
+}
+
+.ledger-sort-direction {
+  color: var(--orange);
+  font-size: 0.65rem;
+  font-weight: 800;
 }
 
 .ledger-table th button:hover:not(:disabled) {

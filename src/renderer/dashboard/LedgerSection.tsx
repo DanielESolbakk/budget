@@ -82,8 +82,15 @@ export function LedgerSection({
 }: LedgerSectionProps): React.JSX.Element {
   const [amountFrom, setAmountFrom] = React.useState("");
   const [amountTo, setAmountTo] = React.useState("");
-  const [filters, setFilters] = React.useState<TransactionFilters>({});
-  const [query, setQuery] = React.useState<TransactionQuery>({});
+  const [filters, setFilterState] = React.useState<TransactionFilters>({});
+  const latestFilterRevision = React.useRef(0);
+  const appliedFilterRevision = React.useRef(0);
+  const [query, setQuery] = React.useState<TransactionQuery>({
+    sortBy: "bookedAtIso",
+    sortDirection: "desc",
+    page: 1,
+    pageSize: DEFAULT_TRANSACTION_PAGE_SIZE,
+  });
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = React.useState(false);
   const [transactions, setTransactions] = React.useState<Transaction[]>([]);
   const [accounts, setAccounts] = React.useState<Account[]>([]);
@@ -99,6 +106,11 @@ export function LedgerSection({
   const [retryKey, setRetryKey] = React.useState(0);
   const hasMountedFilterEffect = React.useRef(false);
 
+  function updateFilters(action: React.SetStateAction<TransactionFilters>): void {
+    latestFilterRevision.current += 1;
+    setFilterState(action);
+  }
+
   const minimumAmount = amountFrom.trim() === "" ? undefined : parseNokAmountToMinor(amountFrom);
   const maximumAmount = amountTo.trim() === "" ? undefined : parseNokAmountToMinor(amountTo);
   const amountRangeError =
@@ -111,6 +123,7 @@ export function LedgerSection({
 
   React.useEffect(() => {
     let active = true;
+    const requestFilterRevision = appliedFilterRevision.current;
     setIsLoading(true);
     setError(null);
 
@@ -130,7 +143,9 @@ export function LedgerSection({
       .finally(() => {
         if (active) {
           setIsLoading(false);
-          setIsFilterPending(false);
+          if (requestFilterRevision === latestFilterRevision.current) {
+            setIsFilterPending(false);
+          }
         }
       });
 
@@ -159,6 +174,7 @@ export function LedgerSection({
       hasMountedFilterEffect.current = true;
       return;
     }
+    const filterRevision = latestFilterRevision.current;
     if (amountRangeError !== null) {
       setIsFilterPending(false);
       return;
@@ -167,6 +183,7 @@ export function LedgerSection({
     setError(null);
     setIsFilterPending(true);
     const timer = window.setTimeout(() => {
+      appliedFilterRevision.current = filterRevision;
       setQuery((current) => ({
         ...filters,
         sortBy: current.sortBy ?? "bookedAtIso",
@@ -182,7 +199,7 @@ export function LedgerSection({
   }, [filters, amountRangeError]);
 
   function setFilter(field: LedgerFilterField, value: TransactionFilters[LedgerFilterField]): void {
-    setFilters((current) => {
+    updateFilters((current) => {
       const next: Record<string, unknown> = { ...current };
       if (value === undefined) delete next[field];
       else next[field] = value;
@@ -193,13 +210,13 @@ export function LedgerSection({
   function clearFilters(): void {
     setAmountFrom("");
     setAmountTo("");
-    setFilters({});
+    updateFilters({});
   }
 
   function removeFilter(field: LedgerFilterField): void {
     const nextFilters = { ...filters };
     delete nextFilters[field];
-    setFilters(nextFilters);
+    updateFilters(nextFilters);
     if (field === "amountMinor" || field === "amountFromMinor") setAmountFrom("");
     if (field === "amountToMinor") setAmountTo("");
   }
@@ -207,7 +224,7 @@ export function LedgerSection({
   function restoreFilterControls(savedFilters: TransactionFilters): void {
     setAmountFrom(amountToInput(savedFilters.amountFromMinor));
     setAmountTo(amountToInput(savedFilters.amountToMinor));
-    setFilters(savedFilters);
+    updateFilters(savedFilters);
   }
 
   function toggleBooleanQuickFilter(field: "uncategorizedOnly" | "largeTransactionsOnly"): void {
@@ -215,7 +232,7 @@ export function LedgerSection({
   }
 
   function toggleTypeQuickFilter(type: TransactionTypeFilter): void {
-    setFilters((current) => {
+    updateFilters((current) => {
       const next = { ...current };
       if (current.transactionType === type) delete next.transactionType;
       else next.transactionType = type;
@@ -479,19 +496,29 @@ export function LedgerSection({
             <thead>
               <tr>
                 <th scope="col" aria-sort={sortDirectionFor("bookedAtIso")}>
-                  <button type="button" aria-label="Sort by date" onClick={() => sortBy("bookedAtIso")}>Date</button>
+                  <button type="button" aria-label="Sort by date" onClick={() => sortBy("bookedAtIso")}>
+                    Date{query.sortBy === "bookedAtIso" && <span className="ledger-sort-direction" aria-hidden="true">{query.sortDirection === "asc" ? "ASC" : "DESC"}</span>}
+                  </button>
                 </th>
                 <th scope="col" aria-sort={sortDirectionFor("merchantRaw")}>
-                  <button type="button" aria-label="Sort by merchant" onClick={() => sortBy("merchantRaw")}>Merchant</button>
+                  <button type="button" aria-label="Sort by merchant" onClick={() => sortBy("merchantRaw")}>
+                    Merchant{query.sortBy === "merchantRaw" && <span className="ledger-sort-direction" aria-hidden="true">{query.sortDirection === "asc" ? "ASC" : "DESC"}</span>}
+                  </button>
                 </th>
                 <th scope="col" aria-sort={sortDirectionFor("amountMinor")}>
-                  <button type="button" aria-label="Sort by amount" onClick={() => sortBy("amountMinor")}>Amount</button>
+                  <button type="button" aria-label="Sort by amount" onClick={() => sortBy("amountMinor")}>
+                    Amount{query.sortBy === "amountMinor" && <span className="ledger-sort-direction" aria-hidden="true">{query.sortDirection === "asc" ? "ASC" : "DESC"}</span>}
+                  </button>
                 </th>
                 <th scope="col" aria-sort={sortDirectionFor("categoryId")}>
-                  <button type="button" aria-label="Sort by category" onClick={() => sortBy("categoryId")}>Category</button>
+                  <button type="button" aria-label="Sort by category" onClick={() => sortBy("categoryId")}>
+                    Category{query.sortBy === "categoryId" && <span className="ledger-sort-direction" aria-hidden="true">{query.sortDirection === "asc" ? "ASC" : "DESC"}</span>}
+                  </button>
                 </th>
                 <th scope="col" aria-sort={sortDirectionFor("accountId")}>
-                  <button type="button" aria-label="Sort by account" onClick={() => sortBy("accountId")}>Account</button>
+                  <button type="button" aria-label="Sort by account" onClick={() => sortBy("accountId")}>
+                    Account{query.sortBy === "accountId" && <span className="ledger-sort-direction" aria-hidden="true">{query.sortDirection === "asc" ? "ASC" : "DESC"}</span>}
+                  </button>
                 </th>
               </tr>
             </thead>
