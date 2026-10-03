@@ -469,6 +469,48 @@ section[aria-label].destination-workspace {
   background: var(--paper);
 }
 
+@container (max-width: 42rem) {
+  .review-primary section[aria-label="Monthly Totals"] dl {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  .review-primary section[aria-label="Monthly Totals"] .monthly-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.35rem;
+  }
+
+  .review-primary section[aria-label="Monthly Totals"] .monthly-total:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .review-primary section[aria-label="Monthly Totals"] dt {
+    margin: 0;
+  }
+
+  .review-primary section[aria-label="Monthly Totals"] dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 1.15rem;
+    text-align: right;
+  }
+
+  .monthly-attention-content {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-attention-item {
+    display: grid;
+    justify-items: start;
+    gap: 0.45rem;
+  }
+}
+
 .destination-heading {
   display: flex;
   align-items: end;
@@ -495,6 +537,453 @@ section[aria-label].destination-workspace {
   max-width: 52ch;
   color: var(--paper-muted);
   line-height: 1.5;
+}
+
+.import-format-picker {
+  margin-top: 1rem;
+  border-bottom: 1px solid var(--line-strong);
+  padding-bottom: 1rem;
+}
+
+.import-format-picker fieldset {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.import-format-picker legend {
+  margin-bottom: 0.65rem;
+  color: var(--paper-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.import-format-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.import-format-choice,
+.import-format-choice:hover:not(:disabled) {
+  display: grid;
+  min-height: 5rem;
+  align-content: center;
+  gap: 0.25rem;
+  border-color: var(--line-strong);
+  padding: 0.7rem 0.8rem;
+  color: var(--paper);
+  background: var(--panel);
+  font-family: inherit;
+  font-size: 0.85rem;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.import-format-choice small {
+  color: var(--paper-muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.import-format-choice[aria-pressed="true"],
+.import-format-choice[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: var(--orange);
+  color: var(--paper);
+  background: var(--orange-soft);
+}
+
+.import-format-choice:hover:not(:disabled) {
+  border-color: var(--paper-muted);
+}
+
+.import-format-content {
+  margin-top: 1rem;
+}
+
+.import-file-source {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.csv-import-profiles {
+  margin: 0.9rem 0 1.1rem;
+  border-bottom: 1px solid var(--line-strong);
+  padding-bottom: 0.75rem;
+}
+
+.csv-import-profiles summary {
+  width: fit-content;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.csv-import-profile-manager {
+  display: grid;
+  max-width: 56rem;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.csv-import-profile-manager .field-help {
+  margin: 0;
+}
+
+.csv-profile-form-actions,
+.csv-import-profile-list li > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.csv-profile-form-actions button,
+.csv-import-profile-list button {
+  margin: 0;
+}
+
+.csv-import-profile-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.csv-import-profile-list li {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 0.7fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 0.55rem 0;
+}
+
+.csv-import-profile-list li > span {
+  overflow-wrap: anywhere;
+  color: var(--paper);
+  font-weight: 700;
+}
+
+.csv-import-profile-list li > small {
+  color: var(--paper-muted);
+}
+
+.csv-import-profile-list button {
+  border-color: var(--line-strong);
+  padding: 0.45rem 0.6rem;
+  color: var(--paper);
+  background: var(--panel-raised);
+}
+
+.import-profile-account {
+  margin: 0.7rem 0 0;
+  color: var(--info);
+  font-size: 0.82rem;
+}
+
+.import-file-source button {
+  margin: 0;
+}
+
+.import-selected-file {
+  min-width: 0;
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.import-selected-file code {
+  color: var(--paper);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.import-path-entry {
+  margin-top: 0.65rem;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+}
+
+.import-path-entry summary {
+  width: fit-content;
+  cursor: pointer;
+  text-underline-offset: 0.2em;
+}
+
+.import-path-entry[open] label {
+  display: block;
+  margin-top: 0.75rem;
+}
+
+.import-stage-progress {
+  margin: 1.15rem 0;
+}
+
+.import-stage-progress ol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  padding: 0;
+  list-style: none;
+}
+
+.import-stage-progress li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+  border-right: 1px solid var(--line);
+  padding: 0.65rem 0.55rem;
+  color: var(--paper-muted);
+}
+
+.import-stage-progress li:last-child {
+  border-right: 0;
+}
+
+.import-stage-progress li[data-state="current"] {
+  color: var(--paper);
+  background: var(--panel-soft);
+}
+
+.import-stage-progress li[data-state="complete"] .import-stage-number,
+.import-stage-progress li[aria-current="step"] .import-stage-number {
+  border-color: var(--orange);
+  color: var(--ink);
+  background: var(--orange);
+}
+
+.import-stage-number {
+  display: grid;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: 0 0 1.6rem;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.import-stage-progress strong,
+.import-stage-progress small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.import-stage-progress strong {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 0.92rem;
+}
+
+.import-stage-progress small {
+  margin-top: 0.1rem;
+  font-size: 0.66rem;
+}
+
+.import-action-help {
+  margin: 0.55rem 0 0;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.import-preview-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.import-preview-pagination span {
+  color: var(--paper-muted);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.import-preview-pagination button {
+  min-height: 40px;
+  margin: 0;
+  border-color: var(--line-strong);
+  padding: 0.45rem 0.6rem;
+  color: var(--paper);
+  background: var(--panel-raised);
+  font-family: inherit;
+  font-size: 0.74rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.import-validation-report {
+  margin: 0.75rem 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+
+.import-validation-report summary {
+  width: fit-content;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.import-validation-report ul {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+
+.validation-row-link {
+  min-height: 0;
+  margin: 0 0 0 0.45rem;
+  border: 0;
+  padding: 0;
+  color: var(--orange);
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-transform: none;
+  text-underline-offset: 0.2em;
+}
+
+.import-validation-report .validation-row-link:hover:not(:disabled) {
+  border: 0;
+  color: var(--paper);
+  background: transparent;
+}
+
+.import-action-help a,
+section[aria-label="CSV Import"] [role="alert"] a {
+  color: var(--orange);
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.import-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+.import-result-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.6rem;
+}
+
+.import-result-summary p {
+  margin: 0;
+}
+
+.import-result-summary .import-duplicate-summary {
+  border: 1px solid var(--line-strong);
+  padding: 0.7rem;
+  color: var(--paper-muted);
+  background: var(--panel-soft);
+  font-size: 0.82rem;
+}
+
+.import-success-actions button {
+  margin: 0;
+}
+
+.import-success-actions .import-secondary-action {
+  border-color: var(--line-strong);
+  color: var(--paper);
+  background: var(--panel-raised);
+}
+
+.import-success-actions .import-secondary-action:hover:not(:disabled) {
+  border-color: var(--paper);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.import-history {
+  margin-top: 2rem;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 1rem;
+}
+
+.import-history h3 {
+  margin: 0 0 0.65rem;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.35rem;
+}
+
+.import-history-table-wrap {
+  overflow-x: auto;
+}
+
+.import-history-table {
+  min-width: 48rem;
+  font-size: 0.82rem;
+}
+
+.import-history-table td {
+  overflow-wrap: anywhere;
+}
+
+.import-undo-confirmation {
+  display: grid;
+  max-width: 58rem;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+  border: 1px solid var(--line-strong);
+  padding: 0.8rem;
+  background: var(--panel);
+}
+
+.import-undo-confirmation strong {
+  color: var(--paper);
+}
+
+.import-undo-confirmation p {
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.import-undo-confirmation > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.import-undo-confirmation button {
+  margin: 0;
+}
+
+.import-preview-table tr[data-state="invalid"] {
+  color: var(--error);
+  background: #241714;
+}
+
+.import-preview-table tr[data-state="ready"] {
+  color: var(--paper);
 }
 
 .transactions-workspace-grid,
@@ -1156,6 +1645,10 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   min-width: 0;
 }
 
+.review-primary {
+  container-type: inline-size;
+}
+
 section[aria-label] {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -1210,8 +1703,6 @@ section[aria-label="Monthly Totals"] dd[aria-label="Net"] {
   color: var(--orange);
 }
 
-section[aria-label="Category Breakdown"] li,
-section[aria-label="Category Target Entry"] li,
 section[aria-label="Forecast"] li {
   display: flex;
   justify-content: space-between;
@@ -1763,8 +2254,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
     display: none;
   }
 
-  .monthly-attention,
-  .monthly-attention-content {
+  .monthly-attention {
     grid-template-columns: 1fr;
   }
 
@@ -1806,9 +2296,37 @@ section[aria-label="Category Target Entry"] [role="status"] {
     grid-template-columns: 1fr;
   }
 
+  .import-stage-progress ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .csv-import-profile-list li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-stage-progress li:nth-child(2) {
+    border-right: 0;
+  }
+
+  .import-stage-progress li:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
   .ledger-primary-filters,
   .ledger-secondary-filters {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-format-options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .import-format-choice,
+  .import-format-choice:hover:not(:disabled) {
+    min-height: 4rem;
+    align-content: start;
+    padding: 0.55rem;
   }
 
   .workflow-step {
@@ -1872,34 +2390,6 @@ section[aria-label="Category Target Entry"] [role="status"] {
     font-size: 0.72rem;
     font-weight: 700;
     text-align: left;
-  }
-
-  section[aria-label="Monthly Totals"] dt {
-    margin: 0;
-  }
-
-  section[aria-label="Monthly Totals"] dl {
-    grid-template-columns: 1fr;
-    gap: 0.45rem;
-  }
-
-  section[aria-label="Monthly Totals"] .monthly-total {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--line);
-    padding-bottom: 0.35rem;
-  }
-
-  section[aria-label="Monthly Totals"] .monthly-total:last-child {
-    border-bottom: 0;
-    padding-bottom: 0;
-  }
-
-  section[aria-label="Monthly Totals"] dd {
-    font-size: 1.15rem;
-    text-align: right;
   }
 
   section[aria-label="Category Breakdown"] li,

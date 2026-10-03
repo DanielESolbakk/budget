@@ -9,12 +9,12 @@ test.describe("Mobile import preview workflow", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
 
-    await csvImport.filePathInput.fill(CSV_FIXTURE_PATH);
+    await csvImport.enterFilePath(CSV_FIXTURE_PATH);
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
 
     const previewTable = csvImport.previewRegion.getByRole("table", {
-      name: "Transactions ready from this CSV preview",
+      name: "CSV statement preview rows and validation states",
     });
     await expect(previewTable).toBeVisible();
 

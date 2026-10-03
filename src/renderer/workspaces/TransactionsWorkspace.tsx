@@ -5,12 +5,14 @@ import { CategoryReviewSection, type UncategorizedQueueState } from "../import/C
 interface TransactionsWorkspaceProps {
   isActive: boolean;
   refreshKey: number;
+  reviewQueueFocusRequest: number;
   onCategorySaved: () => void;
 }
 
 export function TransactionsWorkspace({
   isActive,
   refreshKey,
+  reviewQueueFocusRequest,
   onCategorySaved,
 }: TransactionsWorkspaceProps): React.JSX.Element {
   const [uncategorizedQueueState, setUncategorizedQueueState] = React.useState<UncategorizedQueueState>({
@@ -18,6 +20,12 @@ export function TransactionsWorkspace({
     isReady: false,
   });
   const [focusFirstRequest, setFocusFirstRequest] = React.useState(0);
+
+  React.useEffect(() => {
+    if (reviewQueueFocusRequest > 0) {
+      setFocusFirstRequest((current) => current + 1);
+    }
+  }, [reviewQueueFocusRequest]);
 
   return (
     <section className="destination-workspace" aria-label="Transactions workspace" hidden={!isActive}>

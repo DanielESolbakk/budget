@@ -30,6 +30,10 @@ export class CsvImportPage {
     return this.page.getByRole("textbox", { name: "CSV file path" });
   }
 
+  get chooseFileButton() {
+    return this.page.getByRole("button", { name: "Choose CSV file", exact: true });
+  }
+
   /** The Import CSV action button. */
   get importButton() {
     return this.page.getByRole("button", { name: "Preview CSV" });
@@ -37,6 +41,14 @@ export class CsvImportPage {
 
   get confirmImportButton() {
     return this.page.getByRole("button", { name: "Confirm CSV import" });
+  }
+
+  async enterFilePath(filePath: string): Promise<void> {
+    const advancedPathEntry = this.importSection.locator("details.import-path-entry");
+    if (await advancedPathEntry.getAttribute("open") === null) {
+      await advancedPathEntry.getByText("Advanced: enter a file path", { exact: true }).click();
+    }
+    await this.filePathInput.fill(filePath);
   }
 
   get previewRegion() {
@@ -59,7 +71,7 @@ export class CsvImportPage {
 
   /** Fills the file path input and triggers the import action. */
   async submitImport(filePath: string): Promise<void> {
-    await this.filePathInput.fill(filePath);
+    await this.enterFilePath(filePath);
     await this.importButton.click();
     await Promise.race([
       this.previewRegion.waitFor({ state: "visible" }),

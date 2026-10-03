@@ -1,7 +1,7 @@
 import { test as base, expect, _electron as electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { AppShellPage } from "../pom/AppShellPage.js";
 import { CategoryTargetPage } from "../pom/CategoryTargetPage.js";
@@ -20,6 +20,7 @@ const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 interface ElectronFixtures {
   csvExportDialogBehavior: "native" | "cancel" | "selected";
+  importFileDialogBehavior: "native" | "cancel" | "csv-selected" | "pdf-selected";
   restoreSnapshotDialogBehavior: "native" | "cancel";
   databasePath: string;
   electronApp: ElectronApplication;
@@ -40,6 +41,7 @@ interface ElectronFixtures {
 
 export const test = base.extend<ElectronFixtures>({
   csvExportDialogBehavior: ["native", { option: true }],
+  importFileDialogBehavior: ["native", { option: true }],
   restoreSnapshotDialogBehavior: ["native", { option: true }],
   // eslint-disable-next-line no-empty-pattern
   databasePath: async ({}, use) => {
@@ -52,7 +54,7 @@ export const test = base.extend<ElectronFixtures>({
       rmSync(databaseDirectory, { recursive: true, force: true });
     }
   },
-  electronApp: async ({ csvExportDialogBehavior, databasePath, restoreSnapshotDialogBehavior }, use) => {
+  electronApp: async ({ csvExportDialogBehavior, databasePath, importFileDialogBehavior, restoreSnapshotDialogBehavior }, use) => {
     let app: ElectronApplication | undefined;
 
     try {
@@ -62,6 +64,9 @@ export const test = base.extend<ElectronFixtures>({
           ...process.env,
           BUDGET_TEST_CSV_EXPORT_DIALOG: csvExportDialogBehavior,
           BUDGET_TEST_CSV_EXPORT_PATH: join(dirname(databasePath), "dialog-selected.csv"),
+          BUDGET_TEST_IMPORT_FILE_DIALOG: importFileDialogBehavior,
+          BUDGET_TEST_CSV_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv"),
+          BUDGET_TEST_PDF_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt"),
           BUDGET_TEST_RESTORE_DIALOG: restoreSnapshotDialogBehavior,
           NODE_ENV: "test",
           BUDGET_DB_PATH: databasePath,
@@ -90,6 +95,7 @@ export const test = base.extend<ElectronFixtures>({
   },
   csvImport: async ({ appShell, window }, use) => {
     await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("CSV statement");
     await use(new CsvImportPage(window));
   },
   dashboard: async ({ window }, use) => {
@@ -103,10 +109,12 @@ export const test = base.extend<ElectronFixtures>({
   },
   manualEntry: async ({ appShell, window }, use) => {
     await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Manual transaction");
     await use(new ManualEntryPage(window));
   },
   pdfImport: async ({ appShell, window }, use) => {
     await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Digital PDF");
     await use(new PdfImportPage(window));
   },
   preloadBridge: async ({ window }, use) => {

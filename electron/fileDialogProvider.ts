@@ -7,6 +7,28 @@ type OpenDialogResult = Awaited<ReturnType<typeof dialog.showOpenDialog>>;
 
 export type CsvExportDialog = (options: SaveDialogOptions) => Promise<SaveDialogResult>;
 export type RestoreSnapshotDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
+export type ImportStatementFormat = "csv" | "pdf";
+export type ImportStatementDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
+
+export function createImportStatementDialog(format: ImportStatementFormat): ImportStatementDialog {
+  if (process.env["NODE_ENV"] === "test") {
+    const behavior = process.env["BUDGET_TEST_IMPORT_FILE_DIALOG"];
+
+    if (behavior === "cancel") {
+      return async () => ({ canceled: true, filePaths: [] });
+    }
+
+    if (behavior === `${format}-selected`) {
+      const selectedPath = process.env[`BUDGET_TEST_${format.toUpperCase()}_IMPORT_PATH`];
+      if (typeof selectedPath !== "string" || selectedPath.trim().length === 0) {
+        throw new Error(`A test ${format.toUpperCase()} import path is required for selected dialog behavior.`);
+      }
+      return async () => ({ canceled: false, filePaths: [selectedPath] });
+    }
+  }
+
+  return (options) => dialog.showOpenDialog(options);
+}
 
 export function createCsvExportDialog(): CsvExportDialog {
   if (process.env["NODE_ENV"] === "test") {

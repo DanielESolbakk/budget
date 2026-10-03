@@ -1,6 +1,8 @@
-import type { PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import type { PdfTextParseBatchCallbacks, PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import { randomUUID } from "node:crypto";
 import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
+import { classifyDuplicateCandidates, type DuplicateImportDecision, type DuplicateTransactionMatch } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { buildRogalandImportJobId } from "../../domain/import/pdfTextParser.js";
 import { categorizeTransaction } from "../../domain/categorization/categorizeTransaction.js";
 import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
@@ -29,6 +31,8 @@ export interface PdfImportFailure {
   errors: Array<{
     code: string;
     message: string;
+    lineNumber?: number;
+    field?: string;
   }>;
 }
 
@@ -40,6 +44,11 @@ export interface PdfImportPreviewSuccess {
   previewId: string;
   adapterId: string;
   transactions: Transaction[];
+  duplicateCandidates?: Array<{
+    rowIndex: number;
+    transactionId: string;
+    duplicateMatch: DuplicateTransactionMatch;
+  }>;
 }
 
 export type PdfImportPreviewResponse = PdfImportPreviewSuccess | PdfImportFailure;
@@ -53,6 +62,7 @@ export interface PdfImportWorkflowInput extends PdfImportRequest {
   startedAtIso: string;
   finishedAtIso: string;
   categoryRules?: ReadonlyMap<string, string>;
+  duplicateDecisions?: DuplicateImportDecision[];
 }
 
 export interface PdfImportWorkflowDependencies {
@@ -63,6 +73,7 @@ export interface PdfImportWorkflowDependencies {
   getImportedTransactionsForSource?: (
     sourceType: ImportJob["sourceType"], sourceName: string, accountId: string, sourceIdentity?: string
   ) => Transaction[];
+  getExistingTransactionsForAccount?: (accountId: string) => Transaction[];
   appendImportJobAndTransactions?: (importJob: ImportJob, transactions: Transaction[]) => number;
   appendTransactions: (transactions: Transaction[]) => number | void;
   onTransactionsPersisted?: (transactions: Transaction[]) => void;
@@ -111,7 +122,12 @@ export function normalizePdfImportErrors(
 ): PdfImportFailure {
   return {
     ok: false,
-    errors: errors.map((e) => ({ code: e.code, message: e.message })),
+    errors: errors.map((error) => ({
+      code: error.code,
+      message: error.message,
+      ...(error.lineNumber === undefined ? {} : { lineNumber: error.lineNumber }),
+      ...(error.field === undefined ? {} : { field: error.field }),
+    })),
   };
 }
 
@@ -169,6 +185,28 @@ export function previewPdfImportWorkflow(
   };
 }
 
+export async function previewPdfImportWorkflowInBatches(
+  input: Pick<PdfImportWorkflowInput, "pdfText" | "filePath" | "householdId" | "accountId">,
+  parserRegistry: Pick<ParserAdapterRegistry, "parseInBatches">,
+  callbacks: PdfTextParseBatchCallbacks
+): Promise<PdfImportPreviewWorkflowResponse | null> {
+  const parseResult = await parserRegistry.parseInBatches(input.pdfText, {
+    householdId: input.householdId,
+    accountId: input.accountId,
+  }, callbacks);
+  if (parseResult === null) return null;
+  if (!parseResult.ok) return normalizePdfImportErrors(parseResult.errors);
+
+  return {
+    ok: true,
+    adapterId: parseResult.adapterId,
+    transactions: buildPdfImportTransactions(
+      parseResult.candidates,
+      canonicalSourceScope(input.filePath)
+    ),
+  };
+}
+
 export function runPdfImportWorkflow(
   input: PdfImportWorkflowInput,
   dependencies: PdfImportWorkflowDependencies
@@ -201,7 +239,42 @@ export function runPdfImportWorkflow(
   ].filter((transaction, index, all) =>
     all.findIndex((candidate) => candidate.id === transaction.id) === index
   );
-  const pendingTransactions = filterPreviouslyImportedTransactions(transactions, previousTransactions);
+  let pendingTransactions: Transaction[];
+  let duplicateCount: number;
+  if (input.duplicateDecisions === undefined) {
+    pendingTransactions = filterPreviouslyImportedTransactions(transactions, previousTransactions);
+    duplicateCount = 0;
+  } else {
+    const existingTransactions = dependencies.getExistingTransactionsForAccount?.(input.accountId) ?? previousTransactions;
+    const classifiedCandidates = classifyDuplicateCandidates(transactions, existingTransactions);
+    const decisions = new Map(input.duplicateDecisions.map((decision) => [decision.rowIndex, decision.action]));
+    const duplicateRowIndices = new Set(classifiedCandidates.flatMap((candidate, index) =>
+      candidate.duplicateMatch === undefined ? [] : [index]
+    ));
+    const missingDecisionIndex = Array.from(duplicateRowIndices).find((rowIndex) => !decisions.has(rowIndex));
+    const unexpectedDecisionIndex = Array.from(decisions.keys()).find((rowIndex) => !duplicateRowIndices.has(rowIndex));
+    if (missingDecisionIndex !== undefined || unexpectedDecisionIndex !== undefined) {
+      return {
+        ok: false,
+        errors: [{
+          code: "DUPLICATE_DECISION_REQUIRED",
+          message: "Preview the current ledger state and explicitly choose whether to skip or import each duplicate candidate.",
+        }],
+      };
+    }
+
+    pendingTransactions = [];
+    duplicateCount = 0;
+    for (const [rowIndex, candidate] of classifiedCandidates.entries()) {
+      if (candidate.duplicateMatch === undefined) {
+        pendingTransactions.push(candidate.candidate);
+      } else if (decisions.get(rowIndex) === "skip") {
+        duplicateCount += 1;
+      } else {
+        pendingTransactions.push({ ...candidate.candidate, id: randomUUID() });
+      }
+    }
+  }
 
   const importJob: ImportJob = {
     id: input.importJobId,
@@ -217,6 +290,8 @@ export function runPdfImportWorkflow(
       sourceIdentity: parseResult.sourceIdentity,
       contentDigest: buildRogalandImportJobId(input.pdfText, input),
       adapterId: parseResult.adapterId,
+      accountId: input.accountId,
+      ...(input.duplicateDecisions === undefined ? {} : { duplicateCount }),
       storyAnchor: PDF_IMPORT_STORY_ANCHOR,
     },
   };
@@ -227,13 +302,16 @@ export function runPdfImportWorkflow(
         return dependencies.appendTransactions(pendingTransactions) ?? pendingTransactions.length;
       })()
     : dependencies.appendImportJobAndTransactions(importJob, pendingTransactions);
+  const reportedDuplicateCount = input.duplicateDecisions === undefined
+    ? transactions.length - insertedCount
+    : duplicateCount;
   dependencies.onTransactionsPersisted?.(pendingTransactions);
 
   return {
     ok: true,
     importJobId: input.importJobId,
     transactionCount: insertedCount,
-    duplicateCount: transactions.length - insertedCount,
+    duplicateCount: reportedDuplicateCount,
     adapterId: parseResult.adapterId,
   };
 }

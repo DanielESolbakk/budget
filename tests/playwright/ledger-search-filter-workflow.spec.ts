@@ -69,24 +69,92 @@ test.describe("Ledger search and filter workflow", () => {
     }
   });
 
-  test("quick filters automatically update the count and ledger rows", async ({ ledger }) => {
-    await expect(ledger.table.getByRole("row")).toHaveCount(5);
-    await ledger.quickFilter("Income").click();
+  test("quick filters return matching rows and compose with each other", async ({ databasePath }) => {
+    const householdId = "household-quick-filters";
+    const accountId = "account-quick-filters";
+    const now = new Date();
+    const currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 15, 12).toISOString();
+    const previousMonthDate = new Date(now.getFullYear(), now.getMonth(), 0, 12).toISOString();
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: { id: householdId, name: "Quick Filter Household", createdAtIso: "2026-01-01T00:00:00Z" },
+        accounts: [{ id: accountId, householdId, name: "Everyday account", currencyCode: "NOK" }],
+        transactions: [
+          { id: "current-large-income", householdId, accountId, bookedAtIso: currentMonthDate, amountMinor: 1_000_000, merchantRaw: "Current large income", categoryId: "salary" },
+          { id: "current-large-expense", householdId, accountId, bookedAtIso: currentMonthDate, amountMinor: -1_000_000, merchantRaw: "Current large expense", categoryId: "groceries" },
+          { id: "current-uncategorized-expense", householdId, accountId, bookedAtIso: currentMonthDate, amountMinor: -2_500, merchantRaw: "Current uncategorized expense" },
+          { id: "current-small-expense", householdId, accountId, bookedAtIso: currentMonthDate, amountMinor: -999_999, merchantRaw: "Current small expense", categoryId: "housing" },
+          { id: "previous-income", householdId, accountId, bookedAtIso: previousMonthDate, amountMinor: 50_000, merchantRaw: "Previous income", categoryId: "salary" },
+          { id: "previous-uncategorized-income", householdId, accountId, bookedAtIso: previousMonthDate, amountMinor: 2_500, merchantRaw: "Previous uncategorized income" },
+        ],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+        merchantCategoryRules: [],
+      },
+    });
+    database.close();
 
-    await expect(ledger.updatingStatus).toBeVisible();
-    await expect(ledger.table.getByRole("row")).toHaveCount(3);
-    await expect(ledger.resultStatus).toHaveText("2 ledger transactions");
-    await expect(ledger.applyButton).toHaveCount(0);
-    await expect(ledger.quickFilter("Income")).toHaveAttribute("aria-pressed", "true");
+    const app = await electron.launch({
+      args: [MAIN_ENTRY],
+      env: { ...process.env, NODE_ENV: "test", BUDGET_DB_PATH: databasePath },
+    });
 
-    await ledger.quickFilter("Income").click();
-    await expect(ledger.table.getByRole("row")).toHaveCount(5);
+    try {
+      const window = await app.firstWindow();
+      await window.waitForLoadState("domcontentloaded");
+      const appShell = new AppShellPage(window);
+      const ledger = new LedgerPage(window);
+      await appShell.openWorkspace("Transactions");
+      await expect(ledger.resultStatus).toHaveText("6 ledger transactions");
 
-    for (const filterName of ["Uncategorized", "Expenses", "This month", "Large transactions"]) {
-      await ledger.quickFilter(filterName).click();
-      await expect(ledger.quickFilter(filterName)).toHaveAttribute("aria-pressed", "true");
-      await ledger.quickFilter(filterName).click();
-      await expect(ledger.quickFilter(filterName)).toHaveAttribute("aria-pressed", "false");
+      await ledger.quickFilter("Income").click();
+      await expect(ledger.resultStatus).toHaveText("3 ledger transactions");
+      await expect(ledger.transaction("Current large income")).toBeVisible();
+      await expect(ledger.transaction("Current large expense")).not.toBeVisible();
+      await expect(ledger.quickFilter("Income")).toHaveAttribute("aria-pressed", "true");
+      await expect(ledger.applyButton).toHaveCount(0);
+      await ledger.quickFilter("Income").click();
+      await expect(ledger.resultStatus).toHaveText("6 ledger transactions");
+
+      await ledger.quickFilter("Expenses").click();
+      await expect(ledger.resultStatus).toHaveText("3 ledger transactions");
+      await expect(ledger.transaction("Current large expense")).toBeVisible();
+      await expect(ledger.transaction("Current large income")).not.toBeVisible();
+      await ledger.quickFilter("Expenses").click();
+      await expect(ledger.resultStatus).toHaveText("6 ledger transactions");
+
+      await ledger.quickFilter("Uncategorized").click();
+      await expect(ledger.resultStatus).toHaveText("2 ledger transactions");
+      await expect(ledger.transaction("Current uncategorized expense")).toBeVisible();
+      await expect(ledger.transaction("Previous uncategorized income")).toBeVisible();
+      await expect(ledger.transaction("Current small expense")).not.toBeVisible();
+      await ledger.quickFilter("Uncategorized").click();
+      await expect(ledger.resultStatus).toHaveText("6 ledger transactions");
+
+      await ledger.quickFilter("This month").click();
+      await expect(ledger.resultStatus).toHaveText("4 ledger transactions");
+      await expect(ledger.transaction("Current large income")).toBeVisible();
+      await expect(ledger.transaction("Previous income")).not.toBeVisible();
+      await ledger.quickFilter("Uncategorized").click();
+      await expect(ledger.resultStatus).toHaveText("1 ledger transactions");
+      await expect(ledger.transaction("Current uncategorized expense")).toBeVisible();
+      await ledger.quickFilter("Uncategorized").click();
+      await expect(ledger.resultStatus).toHaveText("4 ledger transactions");
+      await ledger.quickFilter("This month").click();
+      await expect(ledger.resultStatus).toHaveText("6 ledger transactions");
+
+      await ledger.quickFilter("Large transactions").click();
+      await expect(ledger.resultStatus).toHaveText("2 ledger transactions");
+      await expect(ledger.transaction("Current large income")).toBeVisible();
+      await expect(ledger.transaction("Current large expense")).toBeVisible();
+      await expect(ledger.transaction("Current small expense")).not.toBeVisible();
+      await ledger.quickFilter("Expenses").click();
+      await expect(ledger.resultStatus).toHaveText("1 ledger transactions");
+      await expect(ledger.transaction("Current large expense")).toBeVisible();
+      await expect(ledger.transaction("Current large income")).not.toBeVisible();
+    } finally {
+      await app.close();
     }
   });
 
@@ -189,6 +257,62 @@ test.describe("Ledger search and filter workflow", () => {
       page: 1,
       pageSize: 2,
     });
+    expect(result.transactions).toHaveLength(2);
+  });
+
+  test("account and category sorts follow displayed labels and expose direction", async ({ databasePath }) => {
+    const householdId = "household-ledger-label-sorts";
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: { id: householdId, name: "Label Sort Household", createdAtIso: "2026-01-01T00:00:00Z" },
+        accounts: [
+          { id: "account-z", householdId, name: "Alpha account", currencyCode: "NOK" },
+          { id: "account-a", householdId, name: "Zulu account", currencyCode: "NOK" },
+        ],
+        transactions: [
+          { id: "transaction-z", householdId, accountId: "account-z", bookedAtIso: "2026-05-23T08:00:00Z", amountMinor: -1200, merchantRaw: "ZZZ category", categoryId: "ZZZ" },
+          { id: "transaction-a", householdId, accountId: "account-a", bookedAtIso: "2026-05-23T08:00:00Z", amountMinor: -1300, merchantRaw: "Housing payment", categoryId: "housing" },
+        ],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+        merchantCategoryRules: [],
+      },
+    });
+    database.close();
+
+    const app = await electron.launch({
+      args: [MAIN_ENTRY],
+      env: { ...process.env, NODE_ENV: "test", BUDGET_DB_PATH: databasePath },
+    });
+
+    try {
+      const window = await app.firstWindow();
+      await window.waitForLoadState("domcontentloaded");
+      const appShell = new AppShellPage(window);
+      const ledger = new LedgerPage(window);
+      await appShell.openWorkspace("Transactions");
+      await expect(ledger.resultStatus).toHaveText("2 ledger transactions");
+
+      const accountHeader = ledger.table.getByRole("columnheader", { name: "Account" });
+      await ledger.table.getByRole("button", { name: "Sort by account" }).click();
+      await expect(accountHeader).toHaveAttribute("aria-sort", "ascending");
+      await expect(ledger.table.getByRole("row").nth(1)).toContainText("Alpha account");
+      await expect(ledger.table.getByRole("row").nth(1)).toContainText("ZZZ category");
+      await ledger.table.getByRole("button", { name: "Sort by account" }).click();
+      await expect(accountHeader).toHaveAttribute("aria-sort", "descending");
+      await expect(ledger.table.getByRole("row").nth(1)).toContainText("Zulu account");
+
+      const categoryHeader = ledger.table.getByRole("columnheader", { name: "Category" });
+      await ledger.table.getByRole("button", { name: "Sort by category" }).click();
+      await expect(categoryHeader).toHaveAttribute("aria-sort", "ascending");
+      await expect(ledger.table.getByRole("row").nth(1)).toContainText("Housing payment");
+      await ledger.table.getByRole("button", { name: "Sort by category" }).click();
+      await expect(categoryHeader).toHaveAttribute("aria-sort", "descending");
+      await expect(ledger.table.getByRole("row").nth(1)).toContainText("ZZZ category");
+    } finally {
+      await app.close();
+    }
   });
 
   test("shows ledger rows in a readable sortable table", async ({ ledger }) => {
