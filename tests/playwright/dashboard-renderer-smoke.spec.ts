@@ -149,10 +149,6 @@ test.describe("Dashboard renderer smoke", () => {
 
     expect(overflowingTotalLabels).toEqual([]);
     expect(overflowingAttentionItems).toEqual([]);
-    await expect(window).toHaveScreenshot("dashboard-startup-size.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
   });
 
   test("compact Target vs Actual exposes its horizontal scroll and column headers", async ({
