@@ -173,20 +173,51 @@ Scope:
 - Explain why confirmation is unavailable and link the reason to the field or row that needs attention.
 - End successful imports with a concise result summary and direct actions to review uncategorized transactions or return to the ledger.
 - Keep manual entry focused and separate from batch-file mapping controls.
+- Let users save, edit, apply, and delete named local CSV import profiles containing an explicit account and column mapping.
+- Identify duplicate candidates before confirmation using source references or transaction fingerprints; show the matching ledger transaction and allow an explicit per-row skip or import decision.
+- Retain local import-job history and support a confirmed, carefully scoped undo that preserves later categorization corrections and unrelated transactions.
+- For statements with 10,000 or more source rows, provide cancellable asynchronous preflight with progress, bounded preview rendering, aggregate counts, and a local row-level validation report.
 
 Acceptance criteria:
 
-- [ ] The current import stage, completed stages, and next valid action are always clear.
-- [ ] No transaction is persisted before explicit confirmation.
-- [ ] Disabled confirmation has a visible, accessible reason.
-- [ ] Validation identifies affected rows and preserves valid preview context.
-- [ ] Success reports imported and skipped duplicate counts and offers the next relevant action.
-- [ ] CSV and PDF share interaction vocabulary without hiding format-specific validation.
+- [x] The current import stage, completed stages, and next valid action are always clear.
+- [x] No transaction is persisted before explicit confirmation.
+- [x] Disabled confirmation has a visible, accessible reason.
+- [x] Validation identifies affected rows and preserves valid preview context.
+- [x] Success reports imported and skipped duplicate counts and offers the next relevant action.
+- [x] CSV and PDF share interaction vocabulary without hiding format-specific validation.
+- [x] Users can create, edit, apply, and delete named local CSV profiles that survive restart and store an explicit account and column mapping; applying a profile never silently changes the import destination and requires a new explicit account selection if its account is unavailable.
+- [x] Preview identifies duplicate candidates by source reference or transaction fingerprint, shows the matching ledger transaction and match basis, and lets the user explicitly skip or import each candidate before final confirmation; result counts reflect those decisions.
+- [x] Local import-job history identifies each run by format, source, time, account, and outcome counts; confirmed undo removes only unchanged transactions created by that job, preserves later category corrections, categorization rules, and unrelated transactions, and reports removed and retained counts.
+- [x] For CSV or PDF statements with 10,000 or more source rows, preflight runs asynchronously with visible progress and cancellation; preview displays at most 100 rows at a time with complete aggregate counts and navigable pages, and a local report identifies each invalid row, field, and reason. Cancellation persists no transactions or completed import job and invalidates the preview.
 
 Dependencies:
 
 - Existing preview identifiers, duplicate reporting, and source-aware parser adapters.
 - File-dialog IPC support for CSV and PDF selection if not already shared.
+- A local SQLite import-profile store with additive migrations and validation that profiles reference an available household account.
+- A ledger query for duplicate candidates using source references and transaction fingerprints, with enough provenance to explain each match.
+- Import-job provenance that identifies rows created by a job and detects transactions changed after import before undo.
+- An asynchronous, cancellable import worker/service contract with progress events, bounded preview pages, and local validation-report generation.
+
+Risks:
+
+- Duplicate matching can produce false positives; never skip a candidate without an explicit user decision, and make the match basis visible.
+- Undo must not overwrite or remove work performed after import. Changed or categorized rows must be retained and reported rather than silently reverted.
+- CSV parsing and PDF extraction currently run through main-process import workflows; large-file cancellation and progress require an asynchronous service boundary, not renderer-side parsing or a blocking IPC handler.
+
+Out of scope:
+
+- OCR for scanned or image-only statements, bank APIs, cloud sync, and remote import-profile storage.
+- Blanket rollback of later transaction edits, category corrections, categorization rules, or unrelated ledger changes.
+
+Validation commands, run from the repository root:
+
+- `npm run typecheck`
+- `npm run test:unit`
+- `npm run test:integration`
+- `npm run test:e2e:playwright`
+- `npm run verify:no-network`
 
 ### Slice 4: Data Safety And Interface Hardening
 
@@ -223,9 +254,9 @@ Create or update planning issues only after this direction is accepted. Keep imp
 
 - Epic alignment: E4 Dashboard, budgeting, and forecasting; E2 Transaction ingestion and normalization; E3 Categorization and correction workflow; E5 Privacy, backup, export, and release quality.
 - Proposed feature scope: desktop information architecture and monthly review workspace.
-- Proposed stories: application shell navigation; review-home hierarchy; ledger table and filters; categorization attention queue; same-merchant correction propagation with preview and undo; guided CSV/PDF import; data-safety workspace; shared interaction-state hardening.
+- Proposed stories: application shell navigation; review-home hierarchy; ledger table and filters; categorization attention queue; same-merchant correction propagation with preview and undo; guided CSV/PDF and manual import; local CSV import profiles; duplicate-candidate review; import history with safe undo; cancellable large-statement preflight and bounded preview; data-safety workspace; shared interaction-state hardening.
 - Proposed enablers: paged ledger query contract; account and category display-label contract; reusable renderer primitives where repeated behavior justifies them.
-- Proposed test issues: navigation and compact-window coverage; ledger scale and keyboard coverage; same-merchant propagation unit, integration, and Playwright runtime coverage; import-state coverage; restore safety and recovery coverage; visual regression baselines.
+- Proposed test issues: navigation and compact-window coverage; ledger scale and keyboard coverage; same-merchant propagation unit, integration, and Playwright runtime coverage; import-state coverage; profile persistence and account-selection coverage; duplicate-decision coverage; import-undo safety coverage; large-statement cancellation and bounded-preview coverage; restore safety and recovery coverage; visual regression baselines.
 
 Any catalog changes must derive parent relationships from `docs/ways-of-work/plan/budget-planner/issue-catalog.json` and follow the repository's planning issue templates.
 
@@ -235,6 +266,8 @@ Any catalog changes must derive parent relationships from `docs/ways-of-work/pla
 
 - Pure view-model transformations for exception summaries and destination-state decisions, NOK-to-minor-unit filter conversion, display-label sorting, filter chips, pagination state, and review queue ordering.
 - Quick-filter composition, dynamic current-month resolution, inclusive amount ranges, NOK parsing, pending-filter debounce state, and saved-view validation.
+- CSV import-profile validation, explicit account availability, duplicate-candidate classification and decisions, and import-job undo eligibility for unchanged versus later-corrected transactions.
+- Large-statement progress/cancellation state and bounded preview paging for deterministic 10,000-row synthetic inputs.
 - No unit tests for static styling or implementation details.
 
 ### Integration
@@ -244,6 +277,10 @@ Any catalog changes must derive parent relationships from `docs/ways-of-work/pla
 - Navigation view-state preservation for selected month, ledger filters, and unsaved form input across destination changes; submitted operations retain an observable completion or error outcome.
 - Destination data-state contracts distinguish pending, empty, stale, and failed results without allowing a Review load failure to gate unrelated destinations.
 - Import stage transitions, validation summaries, and post-import next actions.
+- Local SQLite import-profile create/list/update/delete persistence, restart durability, and explicit account mapping.
+- Duplicate candidates matched by source reference or fingerprint, user-selected skip/import outcomes, and final imported/skipped counts.
+- Import-job history and undo that removes only unchanged rows from the selected job and preserves later categorization corrections, rules, and unrelated transactions.
+- Cancellable 10,000-row preflight, progress events, bounded preview-page queries, complete aggregate counts, validation-report contents, and no persistence after cancellation.
 - Restore confirmation input and snapshot metadata boundaries.
 - Same-merchant propagation updates only explicitly selected existing uncategorized matches; undo restores only those propagated rows and preserves the original correction and future rule.
 
@@ -260,6 +297,10 @@ Any catalog changes must derive parent relationships from `docs/ways-of-work/pla
 - Review target-form disclosure and exception actions whose labels match the destination queue scope.
 - Same-merchant propagation preview, selection, cancel, confirmation, success, and undo.
 - CSV/PDF preview-to-confirm workflows, including disabled reasons and validation recovery.
+- CSV profile create/edit/apply/delete across an Electron restart, with explicit account selection and unavailable-account recovery.
+- Duplicate candidate inspection and per-row skip/import decisions before confirmation, including the resulting count summary.
+- Import-history inspection and undo confirmation, verifying corrected and unrelated transactions remain unchanged.
+- Large CSV/PDF preflight progress and cancellation, bounded 100-row preview pages, full aggregate counts, local row-level validation report, and no persisted work after cancellation.
 - Backup, export, and restore cancellation, confirmation, success, and error paths.
 
 ## Validation Commands

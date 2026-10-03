@@ -114,6 +114,43 @@ test.describe("Dashboard renderer smoke", () => {
     expect(totalsBottom).toBeLessThanOrEqual(viewportHeight);
   });
 
+  test("startup-size review keeps long totals and attention actions within their columns", async ({
+    dashboard,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1200, 800);
+    });
+    await dashboard.monthSelector.selectOption("2026-04");
+    await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
+    await expect(dashboard.reviewQueueAction).toBeVisible();
+
+    const longNokTotal = await window.evaluate(() => new Intl.NumberFormat("nb-NO", {
+      style: "currency",
+      currency: "NOK",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(12_345_678_901.23));
+    await dashboard.incomeValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
+    await dashboard.expenseValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
+    await dashboard.netValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
+
+    const overflowingTotalLabels = await dashboard.monthlyTotalsSection.locator(".monthly-total dd").evaluateAll((values) =>
+      values
+        .filter((value) => value.scrollWidth > value.clientWidth + 1)
+        .map((value) => value.getAttribute("aria-label"))
+    );
+    const overflowingAttentionItems = await dashboard.monthlyAttention.locator(".monthly-attention-item").evaluateAll((items) =>
+      items
+        .filter((item) => item.scrollWidth > item.clientWidth + 1)
+        .map((item) => item.textContent?.trim() ?? "")
+    );
+
+    expect(overflowingTotalLabels).toEqual([]);
+    expect(overflowingAttentionItems).toEqual([]);
+  });
+
   test("compact Target vs Actual exposes its horizontal scroll and column headers", async ({
     dashboard,
     electronApp,

@@ -3,12 +3,14 @@ import { installNetworkGuard } from "./networkGuard.js";
 import { createDashboardProvider } from "./dashboardProvider.js";
 import {
   createCsvExportDialog,
+  createImportStatementDialog,
   createRestoreSnapshotDialog,
 } from "./fileDialogProvider.js";
 import { join, resolve } from "path";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import {
   buildDashboardData,
   buildDashboardViewContract,
@@ -27,8 +29,9 @@ import { normalizeMerchantName } from "../src/domain/merchant/normalizeMerchantN
 import { restoreBackupSnapshot } from "../src/app/backup/restoreBackupSnapshot.js";
 import {
   buildCsvImportRequest,
-  filterPreviouslyImportedCsvTransactions,
+  classifyPreviouslyImportedCsvCandidates,
   normalizeCsvImportErrors,
+  previewCsvRowsWithProgress,
   type CsvImportPreviewFailure,
   type CsvImportPreviewResponse,
   type CsvImportResponse,
@@ -46,22 +49,24 @@ import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
   appendUniqueTransactions,
-  previewPdfImportWorkflow,
+  previewPdfImportWorkflowInBatches,
   runPdfImportWorkflow,
   type PdfImportPreviewResponse,
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
 import { extractPdfTextFromBuffer } from "../src/app/import/extractPdfText.js";
 import { parseCsvText } from "../src/domain/import/parseCsvText.js";
+import type { CsvImportProfile } from "../src/domain/import/csvImportProfile.js";
+import type { ImportJobHistoryEntry } from "../src/domain/import/importJobHistory.js";
+import type { ImportPreflightProgress } from "../src/app/import/importPreflight.js";
+import { classifyDuplicateCandidates, type DuplicateImportDecision } from "../src/domain/import/filterPreviouslyImportedTransactions.js";
 import {
   mapCsvRows,
-  previewCsvRows,
   CSV_COLUMN_NAMES,
   type CsvColumnKey,
   type CsvColumnMapping,
 } from "../src/domain/import/csvRowMapper.js";
 import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
-import { buildRogalandImportJobId } from "../src/domain/import/pdfTextParser.js";
 import { buildMonthBuckets } from "../src/domain/forecast/aggregationAdapter.js";
 import {
   MAX_TRANSACTION_PAGE_SIZE,
@@ -167,6 +172,7 @@ const importPreviewRegistry = new ImportPreviewRegistry();
 const ledgerOperationCoordinator = new LedgerOperationCoordinator();
 let mainWindow: BrowserWindow | undefined;
 let ledgerGeneration = 0;
+const activeImportPreflights = new Map<string, { cancelled: boolean }>();
 
 // Load persisted transactions from the SQLite ledger so that dashboard views include
 // data imported in previous sessions. This merges DB transactions with the seed set
@@ -223,15 +229,6 @@ function accountBelongsToHousehold(accountId: string, householdId: string): bool
 
 function invalidAccountMessage(accountId: string): string {
   return `accountId must identify an account belonging to the household: ${accountId}`;
-}
-
-function buildPdfImportJobId(contentIdentity: string, filePath: string): string {
-  const resolvedPath = resolve(filePath);
-  const canonicalPath = process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
-  return `import-pdf-${createHash("sha256")
-    .update(`${contentIdentity}|${canonicalPath}`, "utf8")
-    .digest("hex")
-    .slice(0, 24)}`;
 }
 
 function assertTrustedRenderer(event: Electron.IpcMainInvokeEvent): void {
@@ -406,9 +403,11 @@ function parseRestoreSnapshotInput(input: unknown): RestoreSnapshotInput {
 
 interface RendererImportInput {
   filePath: string;
+  requestId?: string;
   accountId?: string;
   columnMapping?: CsvColumnMapping;
   previewId?: string;
+  duplicateDecisions?: DuplicateImportDecision[];
 }
 
 function parseRendererImportInput(
@@ -429,6 +428,9 @@ function parseRendererImportInput(
   if (options.requirePreviewId && (typeof record.previewId !== "string" || record.previewId.trim().length === 0)) {
     throw new Error("previewId must be a non-empty string.");
   }
+  if (record.requestId !== undefined && (typeof record.requestId !== "string" || record.requestId.trim().length === 0)) {
+    throw new Error("requestId must be a non-empty string when provided.");
+  }
 
   let columnMapping: CsvColumnMapping | undefined;
   if (options.csv && record.columnMapping !== undefined) {
@@ -446,11 +448,69 @@ function parseRendererImportInput(
     columnMapping = mapping;
   }
 
+  let duplicateDecisions: DuplicateImportDecision[] | undefined;
+  if (record.duplicateDecisions !== undefined) {
+    if (!Array.isArray(record.duplicateDecisions)) {
+      throw new Error("duplicateDecisions must be an array when provided.");
+    }
+    const seenRowIndices = new Set<number>();
+    duplicateDecisions = record.duplicateDecisions.map((value) => {
+      if (typeof value !== "object" || value === null) {
+        throw new Error("Each duplicate decision must be an object.");
+      }
+      const decision = value as Record<string, unknown>;
+      if (!Number.isSafeInteger(decision.rowIndex) || (decision.rowIndex as number) < 0) {
+        throw new Error("Duplicate decision rowIndex must be a non-negative integer.");
+      }
+      if (decision.action !== "skip" && decision.action !== "import") {
+        throw new Error("Duplicate decision action must be 'skip' or 'import'.");
+      }
+      const rowIndex = decision.rowIndex as number;
+      if (seenRowIndices.has(rowIndex)) throw new Error(`Duplicate decision supplied more than once for row ${rowIndex + 1}.`);
+      seenRowIndices.add(rowIndex);
+      return { rowIndex, action: decision.action };
+    });
+  }
+
   return {
     filePath: record.filePath.trim(),
+    ...(record.requestId === undefined ? {} : { requestId: (record.requestId as string).trim() }),
     ...(record.accountId === undefined ? {} : { accountId: (record.accountId as string).trim() }),
     ...(columnMapping === undefined ? {} : { columnMapping }),
     ...(record.previewId === undefined ? {} : { previewId: (record.previewId as string).trim() }),
+    ...(duplicateDecisions === undefined ? {} : { duplicateDecisions }),
+  };
+}
+
+function parseCsvImportProfileInput(input: unknown): {
+  id?: string;
+  name: string;
+  accountId: string;
+  columnMapping: CsvColumnMapping;
+} {
+  if (typeof input !== "object" || input === null) {
+    throw new Error("CSV import profile input must be an object.");
+  }
+
+  const record = input as Record<string, unknown>;
+  const columnMappingValue = record.columnMapping ?? {};
+  if (typeof columnMappingValue !== "object" || columnMappingValue === null || Array.isArray(columnMappingValue)) {
+    throw new Error("columnMapping must be an object.");
+  }
+
+  const columnMapping: CsvColumnMapping = {};
+  for (const [key, value] of Object.entries(columnMappingValue)) {
+    if (!(key in CSV_COLUMN_NAMES) || typeof value !== "string" || value.trim().length === 0) {
+      throw new Error(`Invalid CSV column mapping: ${key}`);
+    }
+    columnMapping[key as CsvColumnKey] = value.trim();
+  }
+
+  return {
+    ...(record.id === undefined ? {} : { id: parseNonEmptyString(record.id, "id") }),
+    name: parseNonEmptyString(record.name, "name"),
+    accountId: parseNonEmptyString(record.accountId, "accountId"),
+    columnMapping,
   };
 }
 
@@ -535,6 +595,8 @@ app.whenReady().then(async () => {
     ...(dashboardTestOverrides === undefined ? {} : { testOverrides: dashboardTestOverrides }),
   });
   const csvExportDialog = createCsvExportDialog();
+  const csvImportStatementDialog = createImportStatementDialog("csv");
+  const pdfImportStatementDialog = createImportStatementDialog("pdf");
   const restoreSnapshotDialog = createRestoreSnapshotDialog();
 
   ipcMain.handle("dashboard:getData", (event) => {
@@ -560,6 +622,24 @@ app.whenReady().then(async () => {
       filters: [{ name: "CSV files", extensions: ["csv"] }],
     });
     return result.canceled ? null : result.filePath;
+  });
+
+  ipcMain.handle("dialog:chooseCsvImportPath", async (event) => {
+    assertTrustedRenderer(event);
+    const result = await csvImportStatementDialog({
+      properties: ["openFile"],
+      filters: [{ name: "CSV files", extensions: ["csv"] }],
+    });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
+
+  ipcMain.handle("dialog:choosePdfImportPath", async (event) => {
+    assertTrustedRenderer(event);
+    const result = await pdfImportStatementDialog({
+      properties: ["openFile"],
+      filters: [{ name: "PDF files", extensions: ["pdf"] }],
+    });
+    return result.canceled ? null : result.filePaths[0] ?? null;
   });
 
   ipcMain.handle("dialog:chooseBackupOutputPath", async (event) => {
@@ -604,6 +684,73 @@ app.whenReady().then(async () => {
   ipcMain.handle("account:list", (event, householdId: unknown): Account[] => {
     assertTrustedRenderer(event);
     return localLedgerDatabase.getAccountsForHousehold(parseNonEmptyString(householdId, "householdId"));
+  });
+
+  ipcMain.handle("import:preflight:cancel", (event, requestId: unknown): boolean => {
+    assertTrustedRenderer(event);
+    const preflight = activeImportPreflights.get(parseNonEmptyString(requestId, "requestId"));
+    if (preflight === undefined) return false;
+    preflight.cancelled = true;
+    return true;
+  });
+
+  ipcMain.handle("import:history:list", (event): ImportJobHistoryEntry[] => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listImportJobHistory(sampleHousehold.id);
+  });
+
+  ipcMain.handle("import:history:undo", (event, importJobId: unknown) => {
+    assertTrustedRenderer(event);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const result = localLedgerDatabase.undoImportJob(parseNonEmptyString(importJobId, "importJobId"));
+      applyRuntimeLedgerSnapshot(localLedgerDatabase.loadLedgerSnapshotData());
+      ledgerGeneration += 1;
+      importPreviewRegistry.invalidateAll();
+      return result;
+    });
+  });
+
+  ipcMain.handle("import:csvProfiles:list", (event): CsvImportProfile[] => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listCsvImportProfiles(sampleHousehold.id);
+  });
+
+  ipcMain.handle("import:csvProfiles:save", (event, input: unknown): CsvImportProfile => {
+    assertTrustedRenderer(event);
+    const parsedInput = parseCsvImportProfileInput(input);
+    const householdId = sampleHousehold.id;
+    if (!accountBelongsToHousehold(parsedInput.accountId, householdId)) {
+      throw new Error(invalidAccountMessage(parsedInput.accountId));
+    }
+
+    const existingProfiles = localLedgerDatabase.listCsvImportProfiles(householdId);
+    const existingProfile = parsedInput.id === undefined
+      ? undefined
+      : existingProfiles.find((profile) => profile.id === parsedInput.id);
+    if (parsedInput.id !== undefined && existingProfile === undefined) {
+      throw new Error("CSV import profile was not found in this household.");
+    }
+
+    const now = new Date().toISOString();
+    const profile: CsvImportProfile = {
+      id: existingProfile?.id ?? randomUUID(),
+      householdId,
+      name: parsedInput.name,
+      accountId: parsedInput.accountId,
+      columnMapping: parsedInput.columnMapping,
+      createdAtIso: existingProfile?.createdAtIso ?? now,
+      updatedAtIso: now,
+    };
+    localLedgerDatabase.saveCsvImportProfile(profile);
+    return profile;
+  });
+
+  ipcMain.handle("import:csvProfiles:delete", (event, profileId: unknown): boolean => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.deleteCsvImportProfile(
+      sampleHousehold.id,
+      parseNonEmptyString(profileId, "profileId")
+    );
   });
 
   ipcMain.handle("export:writeLedgerCsv", (event, outputPath: unknown): ExportCsvSummary => {
@@ -652,10 +799,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     "import:csvPreview",
-    (
+    async (
       event,
       input: unknown
-    ): CsvImportPreviewResponse => {
+    ): Promise<CsvImportPreviewResponse> => {
       assertTrustedRenderer(event);
       const parsedInput = parseRendererImportInput(input, { csv: true, requirePreviewId: false });
       const householdId = sampleHousehold.id;
@@ -668,35 +815,81 @@ app.whenReady().then(async () => {
         accountId,
         columnMapping: parsedInput.columnMapping,
       });
+      const requestId = parsedInput.requestId ?? randomUUID();
+      if (activeImportPreflights.has(requestId)) throw new Error("An import preflight with this request ID is already active.");
+      const preflight = { cancelled: false };
+      const previewGeneration = ledgerGeneration;
+      activeImportPreflights.set(requestId, preflight);
+      const reportProgress = (phase: string, completedRows: number, totalRows: number): void => {
+        const progress: ImportPreflightProgress = { requestId, format: "csv", phase, completedRows, totalRows };
+        event.sender.send("import:preflight:progress", progress);
+      };
 
-      let csvBytes: Buffer;
       try {
-        csvBytes = readFileSync(request.filePath);
-      } catch (fileError) {
-        return csvPreviewFailure(
-          "FILE_READ_ERROR",
-          fileError instanceof Error ? fileError.message : "Could not read CSV file."
-        );
-      }
+        reportProgress("Reading statement", 0, 0);
+        let csvBytes: Buffer;
+        try {
+          csvBytes = await readFile(request.filePath);
+        } catch (fileError) {
+          return csvPreviewFailure(
+            "FILE_READ_ERROR",
+            fileError instanceof Error ? fileError.message : "Could not read CSV file."
+          );
+        }
+        if (preflight.cancelled) return csvPreviewFailure("PREVIEW_CANCELLED", "Preview cancelled. No transactions were saved.");
 
-      const csvText = csvBytes.toString("utf8");
-      const rows = parseCsvText(csvText);
-      const preview = previewCsvRows(rows, {
-        householdId: request.householdId,
-        accountId: request.accountId,
-        columnMapping: request.columnMapping,
-        sourceIdentity: digestImportBytes(csvBytes),
-        sourceScope: process.platform === "win32" ? resolve(request.filePath).toLowerCase() : resolve(request.filePath),
-      });
-      const previewId = importPreviewRegistry.create({
-        format: "csv",
-        filePath: request.filePath,
-        fileDigest: digestImportBytes(csvBytes),
-        householdId,
-        accountId,
-        ...(request.columnMapping === undefined ? {} : { columnMapping: request.columnMapping }),
-      });
-      return { ok: true, previewId, headers: Object.keys(rows[0] ?? {}), ...preview };
+        const csvText = csvBytes.toString("utf8");
+        const rows = parseCsvText(csvText);
+        reportProgress("Validating rows", 0, rows.length);
+        const preview = await previewCsvRowsWithProgress(rows, {
+          householdId: request.householdId,
+          accountId: request.accountId,
+          columnMapping: request.columnMapping,
+          sourceIdentity: digestImportBytes(csvBytes),
+          sourceScope: process.platform === "win32" ? resolve(request.filePath).toLowerCase() : resolve(request.filePath),
+        }, {
+          isCancelled: () => preflight.cancelled,
+          onProgress: (completedRows, totalRows) => reportProgress("Validating rows", completedRows, totalRows),
+          batchSize: 100,
+        });
+        if (preview === null || preflight.cancelled) {
+          return csvPreviewFailure("PREVIEW_CANCELLED", "Preview cancelled. No transactions were saved.");
+        }
+        if (previewGeneration !== ledgerGeneration) {
+          return csvPreviewFailure("PREVIEW_STALE", "The ledger changed while the statement was being checked. Preview it again.");
+        }
+
+        const snapshot = localLedgerDatabase.loadLedgerSnapshotData();
+        const previouslyImported = localLedgerDatabase.getImportedTransactionsForSource(
+          "csv",
+          request.filePath,
+          request.accountId,
+          digestImportBytes(csvBytes)
+        );
+        const duplicateMatches = new Map(classifyPreviouslyImportedCsvCandidates(
+          preview.transactions,
+          previouslyImported,
+          snapshot,
+          { filePath: request.filePath, accountId: request.accountId, sourceIdentity: digestImportBytes(csvBytes) }
+        )
+          .filter((candidate) => candidate.duplicateMatch !== undefined)
+          .map((candidate) => [candidate.candidate.id, candidate.duplicateMatch!]));
+        const rowsWithDuplicateMatches = preview.rows.map((row) => {
+          const duplicateMatch = row.transaction === undefined ? undefined : duplicateMatches.get(row.transaction.id);
+          return duplicateMatch === undefined ? row : { ...row, duplicateMatch };
+        });
+        const previewId = importPreviewRegistry.create({
+          format: "csv",
+          filePath: request.filePath,
+          fileDigest: digestImportBytes(csvBytes),
+          householdId,
+          accountId,
+          ...(request.columnMapping === undefined ? {} : { columnMapping: request.columnMapping }),
+        });
+        return { ok: true, previewId, headers: Object.keys(rows[0] ?? {}), ...preview, rows: rowsWithDuplicateMatches };
+      } finally {
+        activeImportPreflights.delete(requestId);
+      }
     }
   );
 
@@ -764,8 +957,7 @@ app.whenReady().then(async () => {
       const csvText = csvBytes.toString("utf8");
       const rows = parseCsvText(csvText);
       const canonicalPath = process.platform === "win32" ? resolve(request.filePath).toLowerCase() : resolve(request.filePath);
-      const importJobIdentity = [request.householdId, request.accountId, canonicalPath, digestImportBytes(csvBytes)].join("|");
-      const importJobId = `import-csv-${createHash("sha256").update(importJobIdentity, "utf8").digest("hex").slice(0, 24)}`;
+      const importJobId = `import-csv-${randomUUID()}`;
       const now = new Date().toISOString();
 
       const result = mapCsvRows(rows, {
@@ -784,26 +976,67 @@ app.whenReady().then(async () => {
       }
 
       try {
+        const categorizedTransactions = categorizeTransactions(result.transactions, learnedCategoryRules);
+        const snapshot = localLedgerDatabase.loadLedgerSnapshotData();
+        const previouslyImported = localLedgerDatabase.getImportedTransactionsForSource(
+          "csv",
+          request.filePath,
+          request.accountId,
+          digestImportBytes(csvBytes)
+        );
+        const classifiedCandidates = classifyPreviouslyImportedCsvCandidates(
+          categorizedTransactions,
+          previouslyImported,
+          snapshot,
+          { filePath: request.filePath, accountId: request.accountId, sourceIdentity: digestImportBytes(csvBytes) }
+        );
+        const decisions = new Map((parsedInput.duplicateDecisions ?? []).map((decision) => [decision.rowIndex, decision.action]));
+        const duplicateRowIndices = new Set(classifiedCandidates.flatMap((candidate, index) =>
+          candidate.duplicateMatch === undefined ? [] : [index]
+        ));
+        const missingDecisionIndex = Array.from(duplicateRowIndices).find((rowIndex) => !decisions.has(rowIndex));
+        const unexpectedDecisionIndex = Array.from(decisions.keys()).find((rowIndex) => !duplicateRowIndices.has(rowIndex));
+        if (missingDecisionIndex !== undefined || unexpectedDecisionIndex !== undefined) {
+          importPreviewRegistry.release(parsedInput.previewId!);
+          const rowIndex = missingDecisionIndex ?? unexpectedDecisionIndex ?? -1;
+          return {
+            ok: false,
+            errors: [{
+              rowIndex,
+              fields: ["duplicateDecision"],
+              codes: ["DUPLICATE_DECISION_REQUIRED"],
+              messages: ["Preview the current ledger state and explicitly choose whether to skip or import each duplicate candidate."],
+            }],
+          };
+        }
+
+        const pendingTransactions: Transaction[] = [];
+        let skippedDuplicateCount = 0;
+        for (const [rowIndex, candidate] of classifiedCandidates.entries()) {
+          if (candidate.duplicateMatch === undefined) {
+            pendingTransactions.push(candidate.candidate);
+            continue;
+          }
+          if (decisions.get(rowIndex) === "skip") {
+            skippedDuplicateCount += 1;
+            continue;
+          }
+          pendingTransactions.push({ ...candidate.candidate, id: randomUUID() });
+        }
         const importJob: ImportJob = {
           id: importJobId,
           householdId: request.householdId,
           sourceType: "csv",
           sourceName: request.filePath,
+          candidateCount: result.transactions.length,
           startedAtIso: now,
           finishedAtIso: now,
-          provenance: { sourceIdentity: digestImportBytes(csvBytes) },
-        };
-
-        const categorizedTransactions = categorizeTransactions(result.transactions, learnedCategoryRules);
-        const pendingTransactions = filterPreviouslyImportedCsvTransactions(
-          categorizedTransactions,
-          localLedgerDatabase.loadLedgerSnapshotData(),
-          {
-            filePath: request.filePath,
-            accountId: request.accountId,
+          provenance: {
             sourceIdentity: digestImportBytes(csvBytes),
-          }
-        );
+            accountId: request.accountId,
+            duplicateCount: skippedDuplicateCount,
+          },
+        };
         const insertedCount = localLedgerDatabase.appendImportJobAndTransactions(
           importJob,
           pendingTransactions
@@ -816,7 +1049,7 @@ app.whenReady().then(async () => {
           ok: true,
           importJobId,
           transactionCount: insertedCount,
-          duplicateCount: result.transactions.length - insertedCount,
+          duplicateCount: skippedDuplicateCount,
         };
       } catch (error) {
         importPreviewRegistry.release(parsedInput.previewId!);
@@ -989,45 +1222,88 @@ app.whenReady().then(async () => {
         };
       }
       const request = buildPdfImportRequest(parsedInput.filePath, { householdId, accountId });
+      const requestId = parsedInput.requestId ?? randomUUID();
+      if (activeImportPreflights.has(requestId)) throw new Error("An import preflight with this request ID is already active.");
+      const preflight = { cancelled: false };
+      activeImportPreflights.set(requestId, preflight);
+      const reportProgress = (phase: string, completedRows: number, totalRows: number): void => {
+        const progress: ImportPreflightProgress = { requestId, format: "pdf", phase, completedRows, totalRows };
+        event.sender.send("import:preflight:progress", progress);
+      };
 
-      let pdfBytes: Buffer;
       try {
-        pdfBytes = readFileSync(request.filePath);
-      } catch (fileError) {
-        return normalizePdfImportErrors([
-          {
+        reportProgress("Reading statement", 0, 0);
+        let pdfBytes: Buffer;
+        try {
+          pdfBytes = await readFile(request.filePath);
+        } catch (fileError) {
+          return normalizePdfImportErrors([{
             code: "FILE_READ_ERROR",
             message: fileError instanceof Error ? fileError.message : "Could not read PDF text file.",
+          }]);
+        }
+        if (preflight.cancelled) {
+          return { ok: false, errors: [{ code: "PREVIEW_CANCELLED", message: "Preview cancelled. No transactions were saved." }] };
+        }
+
+        reportProgress("Extracting statement text", 0, 0);
+        const pdfText = await extractPdfTextFromBuffer(pdfBytes);
+        if (preflight.cancelled) {
+          return { ok: false, errors: [{ code: "PREVIEW_CANCELLED", message: "Preview cancelled. No transactions were saved." }] };
+        }
+        const totalRows = pdfText.match(/^\s*\d{2}\.\d{2}\.\d{4}\s+/gm)?.length ?? 0;
+        reportProgress("Validating statement rows", 0, totalRows);
+        const preview = await previewPdfImportWorkflowInBatches(
+          {
+            pdfText,
+            filePath: request.filePath,
+            householdId: request.householdId,
+            accountId: request.accountId,
           },
-        ]);
-      }
+          defaultParserAdapterRegistry,
+          {
+            isCancelled: () => preflight.cancelled,
+            onProgress: (completedRows, batchTotalRows) => {
+              if (completedRows % 100 === 0 || completedRows === batchTotalRows) {
+                reportProgress("Validating statement rows", completedRows, batchTotalRows);
+              }
+            },
+            batchSize: 10,
+          }
+        );
+        if (preview === null || preflight.cancelled) {
+          return { ok: false, errors: [{ code: "PREVIEW_CANCELLED", message: "Preview cancelled. No transactions were saved." }] };
+        }
+        if (!preview.ok) return preview;
+        if (previewGeneration !== ledgerGeneration) {
+          return normalizePdfImportErrors([{
+            code: "FILE_READ_ERROR",
+            message: "The ledger changed while the statement was being checked. Preview the statement again.",
+          }]);
+        }
+        if (preflight.cancelled) {
+          return { ok: false, errors: [{ code: "PREVIEW_CANCELLED", message: "Preview cancelled. No transactions were saved." }] };
+        }
+        reportProgress("Validating statement rows", preview.transactions.length, preview.transactions.length);
 
-      const pdfText = await extractPdfTextFromBuffer(pdfBytes);
-      const preview = previewPdfImportWorkflow(
-        {
-          pdfText,
+        const existingTransactions = localLedgerDatabase.loadLedgerSnapshotData().transactions
+          .filter((transaction) => transaction.accountId === request.accountId);
+        const duplicateCandidates = classifyDuplicateCandidates(preview.transactions, existingTransactions)
+          .flatMap((candidate, rowIndex) => candidate.duplicateMatch === undefined
+            ? []
+            : [{ rowIndex, transactionId: candidate.candidate.id, duplicateMatch: candidate.duplicateMatch }]);
+
+        const previewId = importPreviewRegistry.create({
+          format: "pdf",
           filePath: request.filePath,
-          householdId: request.householdId,
-          accountId: request.accountId,
-        },
-        defaultParserAdapterRegistry
-      );
-      if (!preview.ok) return preview;
-      if (previewGeneration !== ledgerGeneration) {
-        return normalizePdfImportErrors([{
-          code: "FILE_READ_ERROR",
-          message: "The ledger changed while the statement was being checked. Preview the statement again.",
-        }]);
+          fileDigest: digestImportBytes(pdfBytes),
+          householdId,
+          accountId,
+        });
+        return { ...preview, previewId, duplicateCandidates };
+      } finally {
+        activeImportPreflights.delete(requestId);
       }
-
-      const previewId = importPreviewRegistry.create({
-        format: "pdf",
-        filePath: request.filePath,
-        fileDigest: digestImportBytes(pdfBytes),
-        householdId,
-        accountId,
-      });
-      return { ...preview, previewId };
     }
   );
 
@@ -1084,11 +1360,7 @@ app.whenReady().then(async () => {
         return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
       }
 
-      const contentIdentity = buildRogalandImportJobId(pdfText, {
-        householdId: request.householdId,
-        accountId: request.accountId,
-      });
-      const importJobId = buildPdfImportJobId(contentIdentity, request.filePath);
+      const importJobId = `import-pdf-${randomUUID()}`;
       const now = new Date().toISOString();
 
       let response: PdfImportResponse;
@@ -1100,6 +1372,7 @@ app.whenReady().then(async () => {
           accountId: request.accountId,
           importJobId,
           categoryRules: learnedCategoryRules,
+          ...(parsedInput.duplicateDecisions === undefined ? {} : { duplicateDecisions: parsedInput.duplicateDecisions }),
           startedAtIso: now,
           finishedAtIso: now,
         }, {
@@ -1107,6 +1380,9 @@ app.whenReady().then(async () => {
           hasImportJob: localLedgerDatabase.hasImportJob,
           getTransactionsForImportJob: localLedgerDatabase.getTransactionsForImportJob,
           getImportedTransactionsForSource: localLedgerDatabase.getImportedTransactionsForSource,
+          getExistingTransactionsForAccount: (targetAccountId) =>
+            localLedgerDatabase.loadLedgerSnapshotData().transactions
+              .filter((transaction) => transaction.accountId === targetAccountId),
           appendImportJob: localLedgerDatabase.appendImportJob,
           appendImportJobAndTransactions: localLedgerDatabase.appendImportJobAndTransactions,
           appendTransactions: localLedgerDatabase.appendTransactions,

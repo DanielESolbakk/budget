@@ -129,7 +129,8 @@ test.describe("Categorization review workflow", () => {
   }) => {
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(writeReviewQueueFixture());
-    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger. No duplicates found.");
+    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger.");
+    await expect(csvImport.importSection.getByText("0 duplicate rows skipped.", { exact: true })).toBeVisible();
 
     await appShell.openWorkspace("Transactions");
     await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
@@ -140,7 +141,8 @@ test.describe("Categorization review workflow", () => {
     });
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(writeFutureMerchantFixture("29.05.2026", "queue-count-refresh.csv"));
-    await expect(csvImport.successStatus).toHaveText("Added 1 transaction to your ledger. No duplicates found.");
+    await expect(csvImport.successStatus).toHaveText("Added 1 transaction to your ledger.");
+    await expect(csvImport.importSection.getByText("0 duplicate rows skipped.", { exact: true })).toBeVisible();
 
     await appShell.openWorkspace("Transactions");
     const updatingStatus = reviewQueue.section.getByRole("status").filter({
@@ -162,7 +164,8 @@ test.describe("Categorization review workflow", () => {
   }) => {
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(writeReviewQueueFixture());
-    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger. No duplicates found.");
+    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger.");
+    await expect(csvImport.importSection.getByText("0 duplicate rows skipped.", { exact: true })).toBeVisible();
 
     await appShell.openWorkspace("Transactions");
     await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
@@ -181,7 +184,8 @@ test.describe("Categorization review workflow", () => {
   }) => {
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(writeReviewQueueFixture());
-    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger. No duplicates found.");
+    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger.");
+    await expect(csvImport.importSection.getByText("0 duplicate rows skipped.", { exact: true })).toBeVisible();
 
     await appShell.openWorkspace("Transactions");
     await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
@@ -208,7 +212,8 @@ test.describe("Categorization review workflow", () => {
   }) => {
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(writeReviewQueueFixture());
-    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger. No duplicates found.");
+    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger.");
+    await expect(csvImport.importSection.getByText("0 duplicate rows skipped.", { exact: true })).toBeVisible();
 
     await appShell.openWorkspace("Transactions");
     await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
@@ -289,7 +294,7 @@ test.describe("Categorization review workflow", () => {
     await reviewQueue.saveButton("MERCHANT-005").click();
 
     await expect(reviewQueue.reviewItem("MERCHANT-005")).not.toBeVisible();
-  await appShell.openWorkspace("Review");
+    await appShell.openWorkspace("Review");
     await expect(dashboard.categoryBreakdownSection).toContainText("groceries");
 
     await electronApp.close();
@@ -313,6 +318,7 @@ test.describe("Categorization review workflow", () => {
       await restartedShell.openWorkspace("Transactions");
       await expect(restartedReviewQueue.reviewItem("MERCHANT-005")).not.toBeVisible();
       await restartedShell.openWorkspace("Import");
+      await restartedShell.selectImportFormat("CSV statement");
       await restartedCsvImport.submitImport(writeFutureMerchantFixture());
       await expect(restartedCsvImport.successStatus).toBeVisible({ timeout: 10_000 });
       await restartedShell.openWorkspace("Transactions");
@@ -337,7 +343,7 @@ test.describe("Categorization review workflow", () => {
       writeFileSync(restoredSnapshotPath, JSON.stringify(restoredSnapshot), "utf8");
 
       const recovery = new RecoveryPage(restartedWindow);
-  await restartedShell.openWorkspace("Data safety");
+        await restartedShell.openWorkspace("Data safety");
       await recovery.restorePathInput.fill(restoredSnapshotPath);
       restartedWindow.once("dialog", async (dialog) => await dialog.accept());
       await recovery.restoreButton.click();
@@ -358,6 +364,7 @@ test.describe("Categorization review workflow", () => {
       const restoredCsvImport = new CsvImportPage(restoredWindow);
       const restoredReviewQueue = new ReviewQueuePage(restoredWindow);
       await restoredShell.openWorkspace("Import");
+      await restoredShell.selectImportFormat("CSV statement");
       await restoredCsvImport.submitImport(writeFutureMerchantFixture("01.06.2026", "merchant-after-rule-restore.csv"));
       await expect(restoredCsvImport.successStatus).toBeVisible({ timeout: 10_000 });
       await restoredShell.openWorkspace("Transactions");

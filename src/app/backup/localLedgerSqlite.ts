@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
+import type { ImportJobHistoryEntry, UndoImportJobResult } from "../../domain/import/importJobHistory.js";
 import {
   DEFAULT_TRANSACTION_PAGE_SIZE,
   LARGE_TRANSACTION_THRESHOLD_MINOR,
@@ -42,6 +44,11 @@ export interface LocalLedgerDatabase {
   saveLedgerView: (savedLedgerView: SavedLedgerView) => void;
   listSavedLedgerViews: () => SavedLedgerView[];
   deleteSavedLedgerView: (viewId: string) => boolean;
+  saveCsvImportProfile: (profile: CsvImportProfile) => void;
+  listCsvImportProfiles: (householdId: string) => CsvImportProfile[];
+  deleteCsvImportProfile: (householdId: string, profileId: string) => boolean;
+  listImportJobHistory: (householdId: string) => ImportJobHistoryEntry[];
+  undoImportJob: (importJobId: string) => UndoImportJobResult;
   getAccountsForHousehold: (householdId: string) => Account[];
   upsertMonthlyCategoryTarget: (target: MonthlyCategoryTarget) => void;
   appendImportJob: (importJob: ImportJob) => void;
@@ -114,6 +121,44 @@ function mapTransactionRow(transaction: TransactionRow): Transaction {
   return mapped;
 }
 
+function serializeTransactionForUndo(transaction: Transaction): string {
+  return JSON.stringify({
+    id: transaction.id,
+    householdId: transaction.householdId,
+    accountId: transaction.accountId,
+    bookedAtIso: transaction.bookedAtIso,
+    amountMinor: transaction.amountMinor,
+    merchantRaw: transaction.merchantRaw,
+    currencyCode: transaction.currencyCode ?? null,
+    sourceType: transaction.sourceType ?? null,
+    sourceReference: transaction.sourceReference ?? null,
+    categoryId: transaction.categoryId ?? null,
+    importJobId: transaction.importJobId ?? null,
+  });
+}
+
+function persistImportJobOperation(
+  db: DatabaseSync,
+  importJob: ImportJob,
+  importedTransactions: readonly Transaction[]
+): void {
+  const duplicateCount = importJob.provenance?.duplicateCount ?? Math.max(
+    0,
+    (importJob.candidateCount ?? importedTransactions.length) - importedTransactions.length
+  );
+  const candidateCount = importJob.candidateCount ?? importedTransactions.length + duplicateCount;
+  const accountId = importJob.provenance?.accountId ?? importedTransactions[0]?.accountId ?? null;
+  db.prepare(
+    "INSERT INTO import_job_operations (import_job_id, household_id, account_id, candidate_count, imported_count, duplicate_count) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(import_job_id) DO UPDATE SET household_id = excluded.household_id, account_id = COALESCE(excluded.account_id, import_job_operations.account_id), candidate_count = excluded.candidate_count, imported_count = excluded.imported_count, duplicate_count = excluded.duplicate_count"
+  ).run(importJob.id, importJob.householdId, accountId, candidateCount, importedTransactions.length, duplicateCount);
+}
+
+function persistTransactionBaseline(db: DatabaseSync, importJobId: string, transaction: Transaction): void {
+  db.prepare(
+    "INSERT OR REPLACE INTO import_job_transaction_baselines (import_job_id, transaction_id, baseline_json) VALUES (?, ?, ?)"
+  ).run(importJobId, transaction.id, serializeTransactionForUndo(transaction));
+}
+
 function defaultLocalDatabasePath(): string {
   return process.env.BUDGET_DB_PATH ?? join(process.cwd(), "data", "local", "budget.sqlite");
 }
@@ -178,7 +223,43 @@ function ensureSchema(db: DatabaseSync): void {
       name TEXT NOT NULL COLLATE NOCASE UNIQUE,
       filters_json TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS csv_import_profiles (
+      id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      column_mapping_json TEXT NOT NULL,
+      created_at_iso TEXT NOT NULL,
+      updated_at_iso TEXT NOT NULL,
+      UNIQUE (household_id, name COLLATE NOCASE)
+    );
+
+    CREATE TABLE IF NOT EXISTS import_job_operations (
+      import_job_id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      account_id TEXT,
+      candidate_count INTEGER NOT NULL DEFAULT 0,
+      imported_count INTEGER NOT NULL DEFAULT 0,
+      duplicate_count INTEGER NOT NULL DEFAULT 0,
+      undone_at_iso TEXT,
+      undo_removed_count INTEGER NOT NULL DEFAULT 0,
+      undo_retained_count INTEGER NOT NULL DEFAULT 0,
+      undo_available INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS import_job_transaction_baselines (
+      import_job_id TEXT NOT NULL,
+      transaction_id TEXT NOT NULL,
+      baseline_json TEXT NOT NULL,
+      PRIMARY KEY (import_job_id, transaction_id)
+    );
   `);
+
+  const importOperationColumns = db.prepare("PRAGMA table_info(import_job_operations)").all() as Array<{ name: string }>;
+  if (!importOperationColumns.some((column) => column.name === "undo_available")) {
+    db.exec("ALTER TABLE import_job_operations ADD COLUMN undo_available INTEGER NOT NULL DEFAULT 1");
+  }
 
   const transactionColumns = db.prepare("PRAGMA table_info(transactions)").all() as Array<{ name: string }>;
   if (!transactionColumns.some((column) => column.name === "currency_code")) {
@@ -275,6 +356,11 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       importJob.finishedAtIso ?? null,
       importJob.provenance ? JSON.stringify(importJob.provenance) : null
     );
+    const importedTransactions = snapshot.transactions.filter((transaction) => transaction.importJobId === importJob.id);
+    persistImportJobOperation(db, importJob, importedTransactions);
+    for (const transaction of importedTransactions) {
+      persistTransactionBaseline(db, importJob.id, transaction);
+    }
   }
 
   const insertTarget = db.prepare(
@@ -330,6 +416,56 @@ export function createLocalLedgerDatabase(
   const db = new DatabaseSync(dbPath);
   ensureSchema(db);
   seedIfEmpty(db, options.seedData);
+
+  function backfillImportJobHistory(): void {
+    const legacyJobs = db.prepare(`
+      SELECT job.id, job.household_id, job.source_type, job.source_name, job.adapter_id,
+        job.candidate_count, job.validation_failure_count, job.started_at_iso,
+        job.finished_at_iso, job.provenance_json
+      FROM import_jobs AS job
+      LEFT JOIN import_job_operations AS operation ON operation.import_job_id = job.id
+      WHERE operation.import_job_id IS NULL
+    `).all() as Array<{
+      id: string;
+      household_id: string;
+      source_type: string;
+      source_name: string;
+      adapter_id: string | null;
+      candidate_count: number | null;
+      validation_failure_count: number | null;
+      started_at_iso: string;
+      finished_at_iso: string | null;
+      provenance_json: string | null;
+    }>;
+    db.exec("BEGIN");
+    try {
+      for (const job of legacyJobs) {
+        const importedTransactions = db.prepare(
+          "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions WHERE import_job_id = ?"
+        ).all(job.id).map((row) => mapTransactionRow(row as unknown as TransactionRow));
+        const importJob: ImportJob = {
+          id: job.id,
+          householdId: job.household_id,
+          sourceType: parseSourceType(job.source_type),
+          sourceName: job.source_name,
+          startedAtIso: job.started_at_iso,
+          ...(job.adapter_id === null ? {} : { adapterId: job.adapter_id }),
+          ...(job.candidate_count === null ? {} : { candidateCount: job.candidate_count }),
+          ...(job.validation_failure_count === null ? {} : { validationFailureCount: job.validation_failure_count }),
+          ...(job.finished_at_iso === null ? {} : { finishedAtIso: job.finished_at_iso }),
+          ...(job.provenance_json === null ? {} : { provenance: JSON.parse(job.provenance_json) as ImportJobProvenance }),
+        };
+        persistImportJobOperation(db, importJob, importedTransactions);
+        db.prepare("UPDATE import_job_operations SET undo_available = 0 WHERE import_job_id = ?").run(job.id);
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  backfillImportJobHistory();
 
   function loadLedgerSnapshotData(): LedgerSnapshotData {
     const householdRow = db
@@ -561,6 +697,8 @@ export function createLocalLedgerDatabase(
     db.exec("BEGIN");
     try {
       db.exec(`
+        DELETE FROM import_job_transaction_baselines;
+        DELETE FROM import_job_operations;
         DELETE FROM monthly_category_targets;
         DELETE FROM transactions;
         DELETE FROM import_jobs;
@@ -609,6 +747,197 @@ export function createLocalLedgerDatabase(
     return Number(result.changes) > 0;
   }
 
+  function saveCsvImportProfile(profile: CsvImportProfile): void {
+    const accountExists = db.prepare(
+      "SELECT 1 FROM accounts WHERE id = ? AND household_id = ?"
+    ).get(profile.accountId, profile.householdId);
+    if (accountExists === undefined) {
+      throw new Error("CSV import profile account must belong to its household.");
+    }
+
+    db.prepare(
+      "INSERT INTO csv_import_profiles (id, household_id, name, account_id, column_mapping_json, created_at_iso, updated_at_iso) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, account_id = excluded.account_id, column_mapping_json = excluded.column_mapping_json, updated_at_iso = excluded.updated_at_iso"
+    ).run(
+      profile.id,
+      profile.householdId,
+      profile.name,
+      profile.accountId,
+      JSON.stringify(profile.columnMapping),
+      profile.createdAtIso,
+      profile.updatedAtIso
+    );
+  }
+
+  function listCsvImportProfiles(householdId: string): CsvImportProfile[] {
+    return db.prepare(
+      "SELECT id, household_id, name, account_id, column_mapping_json, created_at_iso, updated_at_iso FROM csv_import_profiles WHERE household_id = ? ORDER BY name COLLATE NOCASE"
+    ).all(householdId).map((row) => {
+      const profile = row as {
+        id: string;
+        household_id: string;
+        name: string;
+        account_id: string;
+        column_mapping_json: string;
+        created_at_iso: string;
+        updated_at_iso: string;
+      };
+      return {
+        id: profile.id,
+        householdId: profile.household_id,
+        name: profile.name,
+        accountId: profile.account_id,
+        columnMapping: JSON.parse(profile.column_mapping_json) as CsvImportProfile["columnMapping"],
+        createdAtIso: profile.created_at_iso,
+        updatedAtIso: profile.updated_at_iso,
+      };
+    });
+  }
+
+  function deleteCsvImportProfile(householdId: string, profileId: string): boolean {
+    const result = db.prepare(
+      "DELETE FROM csv_import_profiles WHERE household_id = ? AND id = ?"
+    ).run(householdId, profileId) as { changes: number | bigint };
+    return Number(result.changes) > 0;
+  }
+
+  function listImportJobHistory(householdId: string): ImportJobHistoryEntry[] {
+    return db.prepare(`
+      SELECT
+        job.id,
+        job.household_id,
+        job.source_type,
+        job.source_name,
+        job.adapter_id,
+        COALESCE(operation.account_id, (
+          SELECT tx.account_id FROM transactions AS tx
+          WHERE tx.import_job_id = job.id LIMIT 1
+        )) AS account_id,
+        COALESCE(operation.candidate_count, job.candidate_count, 0) AS candidate_count,
+        COALESCE(operation.imported_count, (
+          SELECT COUNT(*) FROM transactions AS tx
+          WHERE tx.import_job_id = job.id
+        ), 0) AS imported_count,
+        COALESCE(operation.duplicate_count, MAX(
+          COALESCE(job.candidate_count, 0) - COALESCE((
+            SELECT COUNT(*) FROM transactions AS tx
+            WHERE tx.import_job_id = job.id
+          ), 0),
+          0
+        )) AS duplicate_count,
+        job.started_at_iso,
+        job.finished_at_iso,
+        operation.undone_at_iso,
+        COALESCE(operation.undo_removed_count, 0) AS undo_removed_count,
+        COALESCE(operation.undo_retained_count, 0) AS undo_retained_count,
+        COALESCE(operation.undo_available, 0) AS undo_available
+      FROM import_jobs AS job
+      LEFT JOIN import_job_operations AS operation ON operation.import_job_id = job.id
+      WHERE job.household_id = ?
+      ORDER BY job.started_at_iso DESC, job.id DESC
+    `).all(householdId).map((row) => {
+      const history = row as {
+        id: string;
+        household_id: string;
+        source_type: string;
+        source_name: string;
+        adapter_id: string | null;
+        account_id: string | null;
+        candidate_count: number;
+        imported_count: number;
+        duplicate_count: number;
+        started_at_iso: string;
+        finished_at_iso: string | null;
+        undone_at_iso: string | null;
+        undo_removed_count: number;
+        undo_retained_count: number;
+        undo_available: number;
+      };
+      return {
+        id: history.id,
+        householdId: history.household_id,
+        sourceType: parseSourceType(history.source_type),
+        sourceName: history.source_name,
+        adapterId: history.adapter_id,
+        accountId: history.account_id,
+        candidateCount: history.candidate_count,
+        importedCount: history.imported_count,
+        duplicateCount: history.duplicate_count,
+        undoAvailable: history.undo_available === 1,
+        startedAtIso: history.started_at_iso,
+        finishedAtIso: history.finished_at_iso,
+        undoneAtIso: history.undone_at_iso,
+        undoRemovedCount: history.undo_removed_count,
+        undoRetainedCount: history.undo_retained_count,
+      };
+    });
+  }
+
+  function undoImportJob(importJobId: string): UndoImportJobResult {
+    const jobExists = db.prepare("SELECT 1 FROM import_jobs WHERE id = ?").get(importJobId);
+    if (jobExists === undefined) throw new Error(`Import job not found: ${importJobId}`);
+    const operation = db.prepare(
+      "SELECT undone_at_iso, undo_removed_count, undo_retained_count, imported_count, undo_available FROM import_job_operations WHERE import_job_id = ?"
+    ).get(importJobId) as {
+      undone_at_iso: string | null;
+      undo_removed_count: number;
+      undo_retained_count: number;
+      imported_count: number;
+      undo_available: number;
+    } | undefined;
+    if (operation?.undone_at_iso !== null && operation?.undone_at_iso !== undefined) {
+      return {
+        importJobId,
+        removedCount: operation.undo_removed_count,
+        retainedCount: operation.undo_retained_count,
+        alreadyUndone: true,
+      };
+    }
+    if (operation === undefined) throw new Error(`Import job history not found: ${importJobId}`);
+
+    const baselines = db.prepare(
+      "SELECT transaction_id, baseline_json FROM import_job_transaction_baselines WHERE import_job_id = ? ORDER BY transaction_id"
+    ).all(importJobId) as Array<{ transaction_id: string; baseline_json: string }>;
+    if (operation.undo_available !== 1 || baselines.length !== operation.imported_count) {
+      const retainedCount = operation.imported_count;
+      db.prepare(
+        "UPDATE import_job_operations SET undo_available = 0, undone_at_iso = ?, undo_removed_count = 0, undo_retained_count = ? WHERE import_job_id = ?"
+      ).run(new Date().toISOString(), retainedCount, importJobId);
+      return { importJobId, removedCount: 0, retainedCount, alreadyUndone: false };
+    }
+    const readTransaction = db.prepare(
+      "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions WHERE id = ?"
+    );
+    const deleteTransaction = db.prepare(
+      "DELETE FROM transactions WHERE id = ? AND import_job_id = ?"
+    );
+    let removedCount = 0;
+    let retainedCount = 0;
+
+    db.exec("BEGIN");
+    try {
+      for (const baseline of baselines) {
+        const row = readTransaction.get(baseline.transaction_id) as TransactionRow | undefined;
+        if (row === undefined || serializeTransactionForUndo(mapTransactionRow(row)) !== baseline.baseline_json) {
+          retainedCount += 1;
+          continue;
+        }
+        const result = deleteTransaction.run(baseline.transaction_id, importJobId) as { changes: number | bigint };
+        if (Number(result.changes) === 1) removedCount += 1;
+        else retainedCount += 1;
+      }
+      const undoneAtIso = new Date().toISOString();
+      db.prepare(
+        "UPDATE import_job_operations SET undone_at_iso = ?, undo_removed_count = ?, undo_retained_count = ? WHERE import_job_id = ?"
+      ).run(undoneAtIso, removedCount, retainedCount, importJobId);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+
+    return { importJobId, removedCount, retainedCount, alreadyUndone: false };
+  }
+
   function getAccountsForHousehold(householdId: string): Account[] {
     const accounts = db
       .prepare(
@@ -644,6 +973,7 @@ export function createLocalLedgerDatabase(
       importJob.finishedAtIso ?? null,
       importJob.provenance ? JSON.stringify(importJob.provenance) : null
     );
+    persistImportJobOperation(db, importJob, []);
   }
 
   function hasImportJob(importJobId: string): boolean {
@@ -691,6 +1021,7 @@ export function createLocalLedgerDatabase(
     const insertTransaction = db.prepare(
       "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
+    const insertedTransactions: Transaction[] = [];
     let insertedCount = 0;
     db.exec("BEGIN");
     try {
@@ -709,7 +1040,37 @@ export function createLocalLedgerDatabase(
           transaction.categoryId ?? null,
           transaction.importJobId ?? null
         ) as { changes: number | bigint };
-        insertedCount += Number(result.changes);
+        if (Number(result.changes) > 0) {
+          insertedCount += 1;
+          insertedTransactions.push(transaction);
+          if (transaction.importJobId !== undefined) {
+            persistTransactionBaseline(db, transaction.importJobId, transaction);
+          }
+        }
+      }
+      for (const importJobId of new Set(insertedTransactions.map((transaction) => transaction.importJobId).filter((id): id is string => id !== undefined))) {
+        const job = db.prepare(
+          "SELECT id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json FROM import_jobs WHERE id = ?"
+        ).get(importJobId) as {
+          id: string; household_id: string; source_type: string; source_name: string; adapter_id: string | null;
+          candidate_count: number | null; validation_failure_count: number | null; started_at_iso: string;
+          finished_at_iso: string | null; provenance_json: string | null;
+        } | undefined;
+        if (job !== undefined) {
+          const jobTransactions = db.prepare(
+            "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions WHERE import_job_id = ?"
+            ).all(importJobId).map((row) => mapTransactionRow(row as unknown as TransactionRow));
+          const mappedJob: ImportJob = {
+            id: job.id, householdId: job.household_id, sourceType: parseSourceType(job.source_type),
+            sourceName: job.source_name, startedAtIso: job.started_at_iso,
+            ...(job.adapter_id === null ? {} : { adapterId: job.adapter_id }),
+            ...(job.candidate_count === null ? {} : { candidateCount: job.candidate_count }),
+            ...(job.validation_failure_count === null ? {} : { validationFailureCount: job.validation_failure_count }),
+            ...(job.finished_at_iso === null ? {} : { finishedAtIso: job.finished_at_iso }),
+            ...(job.provenance_json === null ? {} : { provenance: JSON.parse(job.provenance_json) as ImportJobProvenance }),
+          };
+          persistImportJobOperation(db, mappedJob, jobTransactions);
+        }
       }
       db.exec("COMMIT");
     } catch (error) {
@@ -747,6 +1108,7 @@ export function createLocalLedgerDatabase(
       );
 
       let insertedCount = 0;
+      const insertedTransactions: Transaction[] = [];
       for (const transaction of transactions) {
         const result = insertTransaction.run(
           transaction.id,
@@ -762,8 +1124,14 @@ export function createLocalLedgerDatabase(
           transaction.categoryId ?? null,
           transaction.importJobId ?? null
         ) as { changes: number | bigint };
-        insertedCount += Number(result.changes);
+        if (Number(result.changes) > 0) {
+          insertedCount += 1;
+          insertedTransactions.push(transaction);
+          persistTransactionBaseline(db, importJob.id, transaction);
+        }
       }
+
+      persistImportJobOperation(db, importJob, insertedTransactions);
 
       db.exec("COMMIT");
       return insertedCount;
@@ -850,6 +1218,8 @@ export function createLocalLedgerDatabase(
         transaction.categoryId ?? null,
         transaction.importJobId ?? null
       );
+      persistImportJobOperation(db, importJob, [transaction]);
+      persistTransactionBaseline(db, importJob.id, transaction);
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
@@ -865,6 +1235,11 @@ export function createLocalLedgerDatabase(
     saveLedgerView,
     listSavedLedgerViews,
     deleteSavedLedgerView,
+    saveCsvImportProfile,
+    listCsvImportProfiles,
+    deleteCsvImportProfile,
+    listImportJobHistory,
+    undoImportJob,
     getAccountsForHousehold,
     upsertMonthlyCategoryTarget,
     appendImportJob,

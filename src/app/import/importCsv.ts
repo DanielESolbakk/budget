@@ -2,10 +2,22 @@ import type {
   CsvColumnMapping,
   CsvRowPreview,
   CsvRowValidationError,
+  CsvRowMappingOptions,
+} from "../../domain/import/csvRowMapper.js";
+import {
+  CSV_COLUMN_NAMES,
+  mapCsvRowToTransaction,
+  normalizeCsvRow,
 } from "../../domain/import/csvRowMapper.js";
 import type { Transaction } from "../../domain/types.js";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
+import {
+  classifyDuplicateCandidates,
+  type ClassifiedDuplicateCandidate,
+  type DuplicateTransactionMatch,
+} from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { resolve } from "node:path";
+import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { buildTransactionFingerprint } from "../../domain/import/buildTransactionFingerprint.js";
 
@@ -39,11 +51,15 @@ export interface CsvImportFailure {
 /** Discriminated union returned by the `import:csv` IPC channel. */
 export type CsvImportResponse = CsvImportSuccess | CsvImportFailure;
 
+export interface CsvImportPreviewRow extends CsvRowPreview {
+  duplicateMatch?: DuplicateTransactionMatch;
+}
+
 export interface CsvImportPreviewSuccess {
   ok: true;
   previewId: string;
   headers: string[];
-  rows: CsvRowPreview[];
+  rows: CsvImportPreviewRow[];
   transactions: Transaction[];
 }
 
@@ -54,6 +70,56 @@ export interface CsvImportPreviewFailure {
 }
 
 export type CsvImportPreviewResponse = CsvImportPreviewSuccess | CsvImportPreviewFailure;
+
+export async function previewCsvRowsWithProgress(
+  rows: Array<Record<string, string>>,
+  options: CsvRowMappingOptions,
+  callbacks: {
+    isCancelled: () => boolean;
+    onProgress: (completedRows: number, totalRows: number) => void;
+    batchSize?: number;
+  }
+): Promise<{ rows: CsvRowPreview[]; transactions: Transaction[] } | null> {
+  const batchSize = callbacks.batchSize ?? 100;
+  const previews: CsvRowPreview[] = [];
+
+  for (let start = 0; start < rows.length; start += batchSize) {
+    if (callbacks.isCancelled()) return null;
+    const end = Math.min(start + batchSize, rows.length);
+    for (let rowIndex = start; rowIndex < end; rowIndex += 1) {
+      const row = rows[rowIndex]!;
+      const result = mapCsvRowToTransaction(row, rowIndex, options);
+      previews.push(result.ok
+        ? { rowIndex, transaction: result.transaction, errors: [] }
+        : { rowIndex, errors: result.errors });
+    }
+    callbacks.onProgress(end, rows.length);
+    await new Promise<void>((resolveBatch) => setImmediate(resolveBatch));
+  }
+
+  if (callbacks.isCancelled()) return null;
+  const validTransactions = assignImportedTransactionIds(
+    previews.flatMap((preview) => preview.transaction === undefined ? [] : [preview.transaction]),
+    {
+      ...(options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope }),
+      sourceReferences: previews.flatMap((preview) => preview.transaction === undefined
+        ? []
+        : [normalizeCsvRow(rows[preview.rowIndex]!, options.columnMapping)[CSV_COLUMN_NAMES.reference]]),
+    }
+  );
+  let validTransactionIndex = 0;
+  const normalizedPreviews = previews.map((preview) => {
+    if (preview.transaction === undefined) return preview;
+    const transaction = validTransactions[validTransactionIndex]!;
+    validTransactionIndex += 1;
+    return { ...preview, transaction };
+  });
+
+  return {
+    rows: normalizedPreviews,
+    transactions: normalizedPreviews.flatMap((preview) => preview.transaction === undefined ? [] : [preview.transaction]),
+  };
+}
 
 function canonicalSourcePath(filePath: string): string {
   const resolvedPath = resolve(filePath);
@@ -133,6 +199,39 @@ export function filterPreviouslyImportedCsvTransactions(
     ...referencedTransactions,
     ...unreferencedTransactions,
   ]);
+}
+
+export function classifyPreviouslyImportedCsvCandidates(
+  candidates: readonly Transaction[],
+  previouslyImported: readonly Transaction[],
+  snapshot: Pick<LedgerSnapshotData, "transactions" | "importJobs">,
+  input: { filePath: string; accountId: string; sourceIdentity: string }
+): ClassifiedDuplicateCandidate[] {
+  const pendingCandidateIds = new Set(filterPreviouslyImportedCsvTransactions(candidates, snapshot, input)
+    .map((transaction) => transaction.id));
+  const classified = classifyDuplicateCandidates(candidates, previouslyImported);
+  const legacyMatchesByFingerprint = new Map<string, Transaction[]>();
+  for (const transaction of previouslyImported) {
+    if (transaction.sourceReference?.trim()) continue;
+    const fingerprint = buildTransactionFingerprint(transaction);
+    const matches = legacyMatchesByFingerprint.get(fingerprint) ?? [];
+    matches.push(transaction);
+    legacyMatchesByFingerprint.set(fingerprint, matches);
+  }
+
+  return classified.map((candidate) => {
+    if (candidate.duplicateMatch !== undefined || pendingCandidateIds.has(candidate.candidate.id)) {
+      return candidate;
+    }
+    const fingerprint = buildTransactionFingerprint(candidate.candidate);
+    const matchingTransaction = legacyMatchesByFingerprint.get(fingerprint)?.shift();
+    return matchingTransaction === undefined
+      ? candidate
+      : {
+          candidate: candidate.candidate,
+          duplicateMatch: { matchingTransaction, matchBasis: "transaction-fingerprint" },
+        };
+  });
 }
 
 /**

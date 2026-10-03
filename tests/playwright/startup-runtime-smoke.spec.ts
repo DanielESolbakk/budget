@@ -86,7 +86,7 @@ test.describe("Electron startup smoke", () => {
     csvImport,
   }) => {
     const pendingPath = "synthetic-unsaved-statement.csv";
-    await csvImport.filePathInput.fill(pendingPath);
+    await csvImport.enterFilePath(pendingPath);
 
     await appShell.openWorkspace("Transactions");
     await appShell.openWorkspace("Import");
