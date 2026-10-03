@@ -150,9 +150,9 @@ test.describe("PDF import renderer workflow", () => {
     await pdfImport.submitImport(FIXTURE_PATH);
 
     // AC-1: success status is shown after import.
-    await expect(pdfImport.successStatus).toBeVisible({ timeout: 10_000 });
-    const statusText = await pdfImport.successStatus.textContent();
-    expect(statusText).toMatch(/Added 10 transactions to your ledger/i);
+    await expect(pdfImport.successStatus).toContainText(/Added 10 transactions to your ledger/i, {
+      timeout: 10_000,
+    });
 
     // AC-4: the import completes with user-facing feedback; adapter provenance is persisted separately.
 
