@@ -114,6 +114,29 @@ test.describe("Dashboard renderer smoke", () => {
     expect(totalsBottom).toBeLessThanOrEqual(viewportHeight);
   });
 
+  test("compact Target vs Actual exposes its horizontal scroll and column headers", async ({
+    dashboard,
+    electronApp,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    const headers = dashboard.targetVsActualSection.getByRole("columnheader");
+    await expect(headers).toHaveCount(4);
+    for (const header of await headers.all()) {
+      await expect(header).toHaveAttribute("scope", "col");
+    }
+
+    const scrollState = await dashboard.targetVsActualSection.evaluate((section) => ({
+      clientWidth: section.clientWidth,
+      scrollWidth: section.scrollWidth,
+      scrollbarHeight: getComputedStyle(section, "::-webkit-scrollbar").height,
+    }));
+    expect(scrollState.scrollWidth).toBeGreaterThan(scrollState.clientWidth);
+    expect(scrollState.scrollbarHeight).toBe("10px");
+  });
+
   test("Scenario 6: target overruns link to their monthly details", async ({ dashboard }) => {
     await dashboard.monthSelector.selectOption("2026-04");
 

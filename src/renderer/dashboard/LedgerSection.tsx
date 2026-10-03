@@ -294,8 +294,7 @@ export function LedgerSection({
   const activeAdvancedFilterCount = [
     filters.accountId !== undefined,
     filters.categoryId !== undefined,
-    filters.amountFromMinor !== undefined,
-    filters.amountToMinor !== undefined,
+    filters.amountFromMinor !== undefined || filters.amountToMinor !== undefined,
   ].filter(Boolean).length;
   const activeAdvancedFilterLabels = [
     ...(filters.accountId === undefined ? [] : ["Account"]),

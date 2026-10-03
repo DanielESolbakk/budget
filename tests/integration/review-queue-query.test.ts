@@ -86,7 +86,7 @@ describe("listUncategorizedReviewQueue", () => {
         "same-date-z",
         "z-old",
       ]);
-      expect(listUncategorizedReviewQueue(database).map((transaction) => transaction.id)).toEqual([
+      expect(listUncategorizedReviewQueue(database, household.id).map((transaction) => transaction.id)).toEqual([
         "z-old",
         "same-date-a",
         "same-date-z",

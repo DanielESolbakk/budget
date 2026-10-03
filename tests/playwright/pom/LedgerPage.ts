@@ -33,6 +33,10 @@ export class LedgerPage {
     return this.section.getByRole("table", { name: "Ledger transactions" });
   }
 
+  get paginationStatus() {
+    return this.section.getByRole("navigation", { name: "Ledger pagination" }).locator("span");
+  }
+
   get activeFilters() {
     return this.section.getByRole("list", { name: "Active ledger filters" });
   }
@@ -147,6 +151,11 @@ export class LedgerPage {
 
   async sortByMerchant(): Promise<void> {
     await this.table.getByRole("button", { name: "Sort by merchant" }).click();
+  }
+
+  async goToNextPage(): Promise<void> {
+    await this.section.getByRole("navigation", { name: "Ledger pagination" })
+      .getByRole("button", { name: "Next page" }).click();
   }
 
   quickFilter(name: string) {

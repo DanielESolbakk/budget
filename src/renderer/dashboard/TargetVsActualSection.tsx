@@ -59,10 +59,10 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
       <table>
         <thead>
           <tr>
-            <th>Category</th>
-            <th>Target</th>
-            <th>Actual</th>
-            <th>Delta</th>
+            <th scope="col">Category</th>
+            <th scope="col">Target</th>
+            <th scope="col">Actual</th>
+            <th scope="col">Delta</th>
           </tr>
         </thead>
         <tbody>

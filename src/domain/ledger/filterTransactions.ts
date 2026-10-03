@@ -1,4 +1,5 @@
 import type { Transaction } from "../types.js";
+import { CATEGORY_OPTIONS } from "../categorization/categoryOptions.js";
 
 export type TransactionTypeFilter = "income" | "expenses";
 export type TransactionDatePreset = "thisMonth";
@@ -82,14 +83,33 @@ function thisMonthRange(now = new Date()): { from: string; to: string } {
   return { from: localDateString(start), to: localDateString(end) };
 }
 
+export function resolveTransactionDateBounds(
+  query: Pick<TransactionQuery, "bookedFromIso" | "bookedToIso" | "datePreset">,
+  now = new Date()
+): { bookedFromIso: string | undefined; bookedToIso: string | undefined } {
+  const currentMonth = query.datePreset === "thisMonth" ? thisMonthRange(now) : undefined;
+  return {
+    bookedFromIso: query.bookedFromIso ?? currentMonth?.from,
+    bookedToIso: query.bookedToIso ?? currentMonth?.to,
+  };
+}
+
 function compareTransactions(
   left: Transaction,
   right: Transaction,
   sortBy: TransactionSortField,
   sortDirection: TransactionSortDirection
 ): number {
-  const leftValue = sortBy === "bookedAtIso" ? bookingTimeStart(left.bookedAtIso) : left[sortBy] ?? "";
-  const rightValue = sortBy === "bookedAtIso" ? bookingTimeStart(right.bookedAtIso) : right[sortBy] ?? "";
+  const leftValue = sortBy === "bookedAtIso"
+    ? bookingTimeStart(left.bookedAtIso)
+    : sortBy === "categoryId"
+      ? CATEGORY_OPTIONS.find((category) => category.id === left.categoryId)?.label ?? left.categoryId ?? "Uncategorized"
+      : left[sortBy] ?? "";
+  const rightValue = sortBy === "bookedAtIso"
+    ? bookingTimeStart(right.bookedAtIso)
+    : sortBy === "categoryId"
+      ? CATEGORY_OPTIONS.find((category) => category.id === right.categoryId)?.label ?? right.categoryId ?? "Uncategorized"
+      : right[sortBy] ?? "";
   const comparison = typeof leftValue === "number" && typeof rightValue === "number"
     ? leftValue - rightValue
     : String(leftValue).localeCompare(String(rightValue));
@@ -124,9 +144,7 @@ export function filterTransactions(
   transactions: readonly Transaction[],
   query: TransactionQuery
 ): Transaction[] {
-  const currentMonth = query.datePreset === "thisMonth" ? thisMonthRange() : undefined;
-  const bookedFromIso = query.bookedFromIso ?? currentMonth?.from;
-  const bookedToIso = query.bookedToIso ?? currentMonth?.to;
+  const { bookedFromIso, bookedToIso } = resolveTransactionDateBounds(query);
 
   return transactions
     .filter((transaction) => query.accountId === undefined || transaction.accountId === query.accountId)

@@ -1226,6 +1226,21 @@ section[aria-label="Forecast"] ul {
 
 section[aria-label="Target vs Actual"] {
   overflow-x: auto;
+  scrollbar-color: var(--orange) var(--panel);
+  scrollbar-width: auto;
+}
+
+section[aria-label="Target vs Actual"]::-webkit-scrollbar {
+  height: 10px;
+}
+
+section[aria-label="Target vs Actual"]::-webkit-scrollbar-track {
+  background: var(--panel);
+}
+
+section[aria-label="Target vs Actual"]::-webkit-scrollbar-thumb {
+  border: 2px solid var(--panel);
+  background: var(--orange);
 }
 
 section[aria-label="Target vs Actual"] table {

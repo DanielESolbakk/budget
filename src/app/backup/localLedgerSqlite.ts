@@ -3,7 +3,18 @@ import { dirname, join } from "node:path";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
-import type { SavedLedgerView } from "../../domain/ledger/filterTransactions.js";
+import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import {
+  DEFAULT_TRANSACTION_PAGE_SIZE,
+  LARGE_TRANSACTION_THRESHOLD_MINOR,
+  MAX_TRANSACTION_PAGE_SIZE,
+  resolveTransactionDateBounds,
+  type SavedLedgerView,
+  type TransactionPage,
+  type TransactionQuery,
+  type TransactionSortDirection,
+  type TransactionSortField,
+} from "../../domain/ledger/filterTransactions.js";
 import type {
   Account,
   Household,
@@ -26,6 +37,8 @@ interface LocalLedgerSeedData {
 export interface LocalLedgerDatabase {
   loadLedgerSnapshotData: () => LedgerSnapshotData;
   replaceLedgerSnapshotData: (snapshot: LedgerSnapshotData) => void;
+  queryTransactions: (householdId: string, query: TransactionQuery) => TransactionPage;
+  listUncategorizedTransactions: (householdId: string) => Transaction[];
   saveLedgerView: (savedLedgerView: SavedLedgerView) => void;
   listSavedLedgerViews: () => SavedLedgerView[];
   deleteSavedLedgerView: (viewId: string) => boolean;
@@ -48,6 +61,57 @@ export interface LocalLedgerDatabase {
 interface CreateLocalLedgerDatabaseOptions {
   dbPath?: string;
   seedData: LocalLedgerSeedData;
+}
+
+interface TransactionRow {
+  id: string;
+  household_id: string;
+  account_id: string;
+  booked_at_iso: string;
+  amount_minor: number;
+  merchant_raw: string;
+  currency_code: string | null;
+  source_type: NonNullable<Transaction["sourceType"]> | null;
+  source_reference: string | null;
+  category_id: string | null;
+  import_job_id: string | null;
+}
+
+const transactionSortColumns: Record<TransactionSortField, string> = {
+  bookedAtIso: "t.booked_at_iso",
+  merchantRaw: "t.merchant_search",
+  amountMinor: "t.amount_minor",
+  categoryId: "t.category_id",
+  accountId: "COALESCE(a.name, t.account_id)",
+};
+const categorySortExpression = `CASE WHEN t.category_id IS NULL THEN ? ELSE CASE t.category_id ${CATEGORY_OPTIONS
+  .map(() => "WHEN ? THEN ?")
+  .join(" ")} ELSE t.category_id END END`;
+const categorySortParameters = [
+  "Uncategorized",
+  ...CATEGORY_OPTIONS.flatMap(({ id, label }) => [id, label]),
+];
+
+function merchantSearchValue(transaction: Pick<Transaction, "merchantRaw" | "merchantAlias">): string {
+  return `${transaction.merchantRaw}\n${transaction.merchantAlias ?? ""}`.toUpperCase();
+}
+
+function mapTransactionRow(transaction: TransactionRow): Transaction {
+  const mapped: Transaction = {
+    id: transaction.id,
+    householdId: transaction.household_id,
+    accountId: transaction.account_id,
+    bookedAtIso: transaction.booked_at_iso,
+    amountMinor: transaction.amount_minor,
+    merchantRaw: transaction.merchant_raw,
+  };
+
+  if (transaction.currency_code !== null) mapped.currencyCode = transaction.currency_code;
+  if (transaction.source_type !== null) mapped.sourceType = transaction.source_type;
+  if (transaction.source_reference !== null) mapped.sourceReference = transaction.source_reference;
+  if (transaction.category_id !== null) mapped.categoryId = transaction.category_id;
+  if (transaction.import_job_id !== null) mapped.importJobId = transaction.import_job_id;
+  return mapped;
 }
 
 function defaultLocalDatabasePath(): string {
@@ -76,6 +140,7 @@ function ensureSchema(db: DatabaseSync): void {
       booked_at_iso TEXT NOT NULL,
       amount_minor INTEGER NOT NULL,
       merchant_raw TEXT NOT NULL,
+      merchant_search TEXT NOT NULL DEFAULT '',
       currency_code TEXT,
       source_type TEXT,
       source_reference TEXT,
@@ -138,6 +203,28 @@ function ensureSchema(db: DatabaseSync): void {
       db.exec(`ALTER TABLE import_jobs ADD COLUMN ${columnName} ${columnType}`);
     }
   }
+
+  if (!transactionColumns.some((column) => column.name === "merchant_search")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN merchant_search TEXT NOT NULL DEFAULT ''");
+  }
+  const transactionsWithoutMerchantSearch = db
+    .prepare("SELECT id, merchant_raw FROM transactions WHERE merchant_search = ''")
+    .all() as Array<{ id: string; merchant_raw: string }>;
+  const updateMerchantSearch = db.prepare("UPDATE transactions SET merchant_search = ? WHERE id = ?");
+  for (const transaction of transactionsWithoutMerchantSearch) {
+    updateMerchantSearch.run(transaction.merchant_raw.toUpperCase(), transaction.id);
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_booked_id
+      ON transactions (household_id, booked_at_iso, id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_account_booked_id
+      ON transactions (household_id, account_id, booked_at_iso, id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_amount_id
+      ON transactions (household_id, amount_minor, id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_category_id
+      ON transactions (household_id, category_id, id);
+  `);
 }
 
 function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): void {
@@ -153,7 +240,7 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   }
 
   const insertTransaction = db.prepare(
-    "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   );
   for (const transaction of snapshot.transactions) {
     insertTransaction.run(
@@ -163,6 +250,7 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       transaction.bookedAtIso,
       transaction.amountMinor,
       transaction.merchantRaw,
+      merchantSearchValue(transaction),
       transaction.currencyCode ?? null,
       transaction.sourceType ?? null,
       transaction.sourceReference ?? null,
@@ -267,19 +355,7 @@ export function createLocalLedgerDatabase(
       .prepare(
         "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions ORDER BY id"
       )
-      .all() as Array<{
-      id: string;
-      household_id: string;
-      account_id: string;
-      booked_at_iso: string;
-      amount_minor: number;
-      merchant_raw: string;
-      currency_code: string | null;
-      source_type: NonNullable<Transaction["sourceType"]> | null;
-      source_reference: string | null;
-      category_id: string | null;
-      import_job_id: string | null;
-    }>;
+      .all() as unknown as TransactionRow[];
 
     const importJobs = db
       .prepare(
@@ -310,37 +386,7 @@ export function createLocalLedgerDatabase(
       )
       .all() as Array<{ merchant_alias: string; category_id: string }>;
 
-    const mappedTransactions: Transaction[] = transactions.map((transaction) => {
-      const mapped: Transaction = {
-        id: transaction.id,
-        householdId: transaction.household_id,
-        accountId: transaction.account_id,
-        bookedAtIso: transaction.booked_at_iso,
-        amountMinor: transaction.amount_minor,
-        merchantRaw: transaction.merchant_raw,
-      };
-
-      if (transaction.currency_code !== null) {
-        mapped.currencyCode = transaction.currency_code;
-      }
-      if (transaction.source_type !== null) {
-        mapped.sourceType = transaction.source_type;
-      }
-
-      if (transaction.source_reference !== null) {
-        mapped.sourceReference = transaction.source_reference;
-      }
-
-      if (transaction.category_id !== null) {
-        mapped.categoryId = transaction.category_id;
-      }
-
-      if (transaction.import_job_id !== null) {
-        mapped.importJobId = transaction.import_job_id;
-      }
-
-      return mapped;
-    });
+    const mappedTransactions = transactions.map(mapTransactionRow);
 
     const mappedImportJobs: ImportJob[] = importJobs.map((importJob) => {
       const mapped: ImportJob = {
@@ -398,6 +444,117 @@ export function createLocalLedgerDatabase(
         categoryId: rule.category_id,
       })),
     };
+  }
+
+  function queryTransactions(householdId: string, query: TransactionQuery): TransactionPage {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
+    if (!Number.isSafeInteger(page) || page < 1) {
+      throw new RangeError("page must be a positive safe integer.");
+    }
+    if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > MAX_TRANSACTION_PAGE_SIZE) {
+      throw new RangeError(`pageSize must be an integer between 1 and ${MAX_TRANSACTION_PAGE_SIZE}.`);
+    }
+
+    const sortBy = query.sortBy ?? "bookedAtIso";
+    const sortColumn = sortBy === "categoryId"
+      ? `${categorySortExpression} COLLATE NOCASE`
+      : transactionSortColumns[sortBy];
+    if (sortColumn === undefined) throw new Error("sortBy must be a supported ledger field.");
+    const sortDirection: TransactionSortDirection = query.sortDirection ?? "desc";
+    if (sortDirection !== "asc" && sortDirection !== "desc") {
+      throw new Error("sortDirection must be 'asc' or 'desc'.");
+    }
+
+    const conditions = ["t.household_id = ?"];
+    const parameters: Array<string | number> = [householdId];
+    const { bookedFromIso, bookedToIso } = resolveTransactionDateBounds(query);
+    if (query.accountId !== undefined) {
+      conditions.push("t.account_id = ?");
+      parameters.push(query.accountId);
+    }
+    if (bookedFromIso !== undefined) {
+      const start = /^\d{4}-\d{2}-\d{2}$/.test(bookedFromIso)
+        ? `${bookedFromIso}T00:00:00.000Z`
+        : bookedFromIso;
+      conditions.push("julianday(t.booked_at_iso) >= julianday(?)");
+      parameters.push(start);
+    }
+    if (bookedToIso !== undefined) {
+      const end = /^\d{4}-\d{2}-\d{2}$/.test(bookedToIso)
+        ? `${bookedToIso}T23:59:59.999Z`
+        : bookedToIso;
+      conditions.push("julianday(t.booked_at_iso) <= julianday(?)");
+      parameters.push(end);
+    }
+    if (query.merchant !== undefined && query.merchant.trim() !== "") {
+      conditions.push("instr(t.merchant_search, ?) > 0");
+      parameters.push(query.merchant.trim().toUpperCase());
+    }
+    if (query.amountMinor !== undefined) {
+      conditions.push("t.amount_minor = ?");
+      parameters.push(query.amountMinor);
+    }
+    if (query.amountFromMinor !== undefined) {
+      conditions.push("t.amount_minor >= ?");
+      parameters.push(query.amountFromMinor);
+    }
+    if (query.amountToMinor !== undefined) {
+      conditions.push("t.amount_minor <= ?");
+      parameters.push(query.amountToMinor);
+    }
+    if (query.categoryId !== undefined) {
+      conditions.push("t.category_id = ?");
+      parameters.push(query.categoryId);
+    }
+    if (query.uncategorizedOnly === true) conditions.push("t.category_id IS NULL");
+    if (query.transactionType === "income") conditions.push("t.amount_minor > 0");
+    if (query.transactionType === "expenses") conditions.push("t.amount_minor < 0");
+    if (query.largeTransactionsOnly === true) {
+      conditions.push("ABS(t.amount_minor) >= ?");
+      parameters.push(LARGE_TRANSACTION_THRESHOLD_MINOR);
+    }
+
+    const whereClause = conditions.join(" AND ");
+    const countRow = db
+      .prepare(`SELECT COUNT(*) AS total_count FROM transactions AS t WHERE ${whereClause}`)
+      .get(...parameters) as { total_count: number | bigint };
+    const totalCount = Number(countRow.total_count);
+    const offset = (page - 1) * pageSize;
+    if (!Number.isSafeInteger(offset)) throw new RangeError("page offset is too large.");
+
+    const transactions = db
+      .prepare(`
+        SELECT t.id, t.household_id, t.account_id, t.booked_at_iso, t.amount_minor,
+          t.merchant_raw, t.currency_code, t.source_type, t.source_reference,
+          t.category_id, t.import_job_id
+        FROM transactions AS t
+        LEFT JOIN accounts AS a ON a.id = t.account_id
+        WHERE ${whereClause}
+        ORDER BY ${sortColumn} ${sortDirection.toUpperCase()}, t.id ASC
+        LIMIT ? OFFSET ?
+      `)
+      .all(
+        ...parameters,
+        ...(sortBy === "categoryId" ? categorySortParameters : []),
+        pageSize,
+        offset
+      ) as unknown as TransactionRow[];
+
+    return { transactions: transactions.map(mapTransactionRow), totalCount, page, pageSize };
+  }
+
+  function listUncategorizedTransactions(householdId: string): Transaction[] {
+    const transactions = db
+      .prepare(`
+        SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+          currency_code, source_type, source_reference, category_id, import_job_id
+        FROM transactions
+        WHERE household_id = ? AND category_id IS NULL
+        ORDER BY substr(booked_at_iso, 1, 10) ASC, id ASC
+      `)
+      .all(householdId) as unknown as TransactionRow[];
+    return transactions.map(mapTransactionRow);
   }
 
   function replaceLedgerSnapshotData(snapshot: LedgerSnapshotData): void {
@@ -532,7 +689,7 @@ export function createLocalLedgerDatabase(
 
   function appendTransactions(transactions: Transaction[]): number {
     const insertTransaction = db.prepare(
-      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     let insertedCount = 0;
     db.exec("BEGIN");
@@ -545,6 +702,7 @@ export function createLocalLedgerDatabase(
           transaction.bookedAtIso,
           transaction.amountMinor,
           transaction.merchantRaw,
+          merchantSearchValue(transaction),
           transaction.currencyCode ?? null,
           transaction.sourceType ?? null,
           transaction.sourceReference ?? null,
@@ -570,7 +728,7 @@ export function createLocalLedgerDatabase(
       "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     db.exec("BEGIN");
@@ -597,6 +755,7 @@ export function createLocalLedgerDatabase(
           transaction.bookedAtIso,
           transaction.amountMinor,
           transaction.merchantRaw,
+          merchantSearchValue(transaction),
           transaction.currencyCode ?? null,
           transaction.sourceType ?? null,
           transaction.sourceReference ?? null,
@@ -660,7 +819,7 @@ export function createLocalLedgerDatabase(
       "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     db.exec("BEGIN");
@@ -684,6 +843,7 @@ export function createLocalLedgerDatabase(
         transaction.bookedAtIso,
         transaction.amountMinor,
         transaction.merchantRaw,
+        merchantSearchValue(transaction),
         transaction.currencyCode ?? null,
         transaction.sourceType ?? null,
         transaction.sourceReference ?? null,
@@ -700,6 +860,8 @@ export function createLocalLedgerDatabase(
   return {
     loadLedgerSnapshotData,
     replaceLedgerSnapshotData,
+    queryTransactions,
+    listUncategorizedTransactions,
     saveLedgerView,
     listSavedLedgerViews,
     deleteSavedLedgerView,

@@ -65,7 +65,6 @@ import { buildRogalandImportJobId } from "../src/domain/import/pdfTextParser.js"
 import { buildMonthBuckets } from "../src/domain/forecast/aggregationAdapter.js";
 import {
   MAX_TRANSACTION_PAGE_SIZE,
-  queryTransactions,
   type SavedLedgerView,
   type TransactionFilters,
   type TransactionQuery,
@@ -907,13 +906,13 @@ app.whenReady().then(async () => {
   ipcMain.handle("transaction:listReview", async (event) => {
     assertTrustedRenderer(event);
     await applyTransactionListTestControl("review");
-    return listUncategorizedReviewQueue(localLedgerDatabase);
+    return listUncategorizedReviewQueue(localLedgerDatabase, sampleHousehold.id);
   });
 
   ipcMain.handle("transaction:list", async (event, input: unknown = {}) => {
     assertTrustedRenderer(event);
     await applyTransactionListTestControl("ledger");
-    const result = queryTransactions(liveTransactions, parseTransactionQuery(input));
+    const result = localLedgerDatabase.queryTransactions(sampleHousehold.id, parseTransactionQuery(input));
     const accounts = localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id);
     return { ...result, accounts };
   });

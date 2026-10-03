@@ -1,6 +1,74 @@
+import { _electron as electron } from "@playwright/test";
+import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { AppShellPage } from "./pom/AppShellPage.js";
+import { LedgerPage } from "./pom/LedgerPage.js";
+
+const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 test.describe("Ledger search and filter workflow", () => {
+  test("@performance keeps the Electron ledger responsive with 10,001 rows while sorting and paging", async ({
+    databasePath,
+  }) => {
+    test.setTimeout(60_000);
+    const householdId = "household-ledger-scale";
+    const accountId = "account-ledger-scale";
+    const transactions = Array.from({ length: 10_001 }, (_, index) => ({
+      id: `scale-${String(index).padStart(5, "0")}`,
+      householdId,
+      accountId,
+      bookedAtIso: `2026-05-${String((index % 28) + 1).padStart(2, "0")}T08:00:00Z`,
+      amountMinor: index % 2 === 0 ? 125 : -125,
+      merchantRaw: `Merchant ${String(index).padStart(5, "0")}`,
+      categoryId: "groceries",
+    }));
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: { id: householdId, name: "Synthetic Household", createdAtIso: "2026-01-01T00:00:00Z" },
+        accounts: [{ id: accountId, householdId, name: "Synthetic account", currencyCode: "NOK" }],
+        transactions,
+        importJobs: [],
+        monthlyCategoryTargets: [],
+        merchantCategoryRules: [],
+      },
+    });
+    database.close();
+
+    const app = await electron.launch({
+      args: [MAIN_ENTRY],
+      env: { ...process.env, NODE_ENV: "test", BUDGET_DB_PATH: databasePath },
+    });
+
+    try {
+      const window = await app.firstWindow();
+      await window.waitForLoadState("domcontentloaded");
+      const appShell = new AppShellPage(window);
+      const ledger = new LedgerPage(window);
+      await appShell.openWorkspace("Transactions");
+
+      await expect(ledger.resultStatus).toHaveText("10001 ledger transactions");
+      await expect(ledger.table.getByRole("row")).toHaveCount(51);
+
+      const sortStartedAt = Date.now();
+      await ledger.sortByMerchant();
+      await expect(ledger.table.getByRole("columnheader", { name: "Merchant" }))
+        .toHaveAttribute("aria-sort", "ascending");
+      await expect(ledger.table.getByRole("row").nth(1)).toContainText("Merchant 00000");
+      expect(Date.now() - sortStartedAt).toBeLessThan(5_000);
+
+      const pageChangeStartedAt = Date.now();
+      await ledger.goToNextPage();
+      await expect(ledger.paginationStatus).toHaveText("Page 2 of 201");
+      await expect(ledger.table.getByRole("row").nth(1)).toContainText("Merchant 00050");
+      expect(Date.now() - pageChangeStartedAt).toBeLessThan(5_000);
+      await expect(ledger.table.getByRole("row")).toHaveCount(51);
+    } finally {
+      await app.close();
+    }
+  });
+
   test("quick filters automatically update the count and ledger rows", async ({ ledger }) => {
     await expect(ledger.table.getByRole("row")).toHaveCount(5);
     await ledger.quickFilter("Income").click();
@@ -51,6 +119,17 @@ test.describe("Ledger search and filter workflow", () => {
 
     await ledger.moreFiltersSummary.click();
     await expect(ledger.amountFromInput).not.toBeVisible();
+    await expect(ledger.moreFiltersSummary).toContainText("Account");
+    await expect(ledger.moreFiltersSummary).toContainText("Amount range");
+  });
+
+  test("counts the two amount bounds as one active range filter", async ({ ledger }) => {
+    await ledger.openMoreFilters();
+    await ledger.accountInput.selectOption("sample-acc");
+    await ledger.amountFromInput.fill("100");
+    await ledger.amountToInput.fill("200");
+
+    await expect(ledger.moreFiltersSummary).toContainText("2 active");
     await expect(ledger.moreFiltersSummary).toContainText("Account");
     await expect(ledger.moreFiltersSummary).toContainText("Amount range");
   });
@@ -207,12 +286,12 @@ test.describe("Ledger search and filter workflow", () => {
     await ledger.amountFromInput.fill("-85.00");
     await ledger.amountToInput.fill("-85.00");
 
-      await expect(ledger.moreFiltersSummary).toContainText("3 active");
+      await expect(ledger.moreFiltersSummary).toContainText("2 active");
       await expect(ledger.moreFiltersSummary).toContainText("Account");
       await expect(ledger.moreFiltersSummary).toContainText("Amount range");
     await ledger.moreFiltersSummary.click();
     await expect(ledger.amountFromInput).not.toBeVisible();
-      await expect(ledger.moreFiltersSummary).toContainText("3 active");
+      await expect(ledger.moreFiltersSummary).toContainText("2 active");
       await expect(ledger.moreFiltersSummary).toContainText("Account");
       await expect(ledger.moreFiltersSummary).toContainText("Amount range");
     await expect(ledger.transaction("Rema 1000")).toBeVisible();
@@ -220,6 +299,8 @@ test.describe("Ledger search and filter workflow", () => {
 
     await ledger.merchantInput.fill("missing merchant");
     await expect(ledger.resultStatus).toHaveText("0 ledger transactions");
+    await ledger.openMoreFilters();
+    await expect(ledger.accountInput).toContainText("Brukskonto");
   });
 
   test("@visual Visual: desktop transaction filters preserve ledger hierarchy", async ({ window, electronApp, ledger }) => {
