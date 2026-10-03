@@ -8,7 +8,7 @@ import {
 import { join, resolve } from "path";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   buildDashboardData,
   buildDashboardViewContract,
@@ -20,6 +20,7 @@ import {
 import { exportLedgerCsvToFile, type ExportCsvSummary } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
+import { listUncategorizedReviewQueue } from "../src/app/reviewQueue.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
 import { categorizeTransaction, categorizeTransactions } from "../src/domain/categorization/categorizeTransaction.js";
 import { normalizeMerchantName } from "../src/domain/merchant/normalizeMerchantName.js";
@@ -62,7 +63,14 @@ import {
 import { defaultParserAdapterRegistry } from "../src/domain/import/parserAdapterRegistry.js";
 import { buildRogalandImportJobId } from "../src/domain/import/pdfTextParser.js";
 import { buildMonthBuckets } from "../src/domain/forecast/aggregationAdapter.js";
-import { filterTransactions, type TransactionQuery } from "../src/domain/ledger/filterTransactions.js";
+import {
+  MAX_TRANSACTION_PAGE_SIZE,
+  type SavedLedgerView,
+  type TransactionFilters,
+  type TransactionQuery,
+  type TransactionSortDirection,
+  type TransactionSortField,
+} from "../src/domain/ledger/filterTransactions.js";
 import type {
   BackupSnapshotFileOutput,
   RestoreSnapshotInput,
@@ -267,13 +275,106 @@ function parseTransactionQuery(input: unknown): TransactionQuery {
       query[field] = parseNonEmptyString(record[field], field);
     }
   }
+  if (record.sortBy !== undefined) {
+    const sortFields: TransactionSortField[] = [
+      "bookedAtIso",
+      "merchantRaw",
+      "amountMinor",
+      "categoryId",
+      "accountId",
+    ];
+    if (typeof record.sortBy !== "string" || !sortFields.includes(record.sortBy as TransactionSortField)) {
+      throw new Error("sortBy must be a supported ledger field.");
+    }
+    query.sortBy = record.sortBy as TransactionSortField;
+  }
+  if (record.sortDirection !== undefined) {
+    if (record.sortDirection !== "asc" && record.sortDirection !== "desc") {
+      throw new Error("sortDirection must be 'asc' or 'desc'.");
+    }
+    query.sortDirection = record.sortDirection as TransactionSortDirection;
+  }
+  if (record.page !== undefined) {
+    if (typeof record.page !== "number" || !Number.isSafeInteger(record.page) || record.page < 1) {
+      throw new Error("page must be a positive safe integer.");
+    }
+    query.page = record.page;
+  }
+  if (record.pageSize !== undefined) {
+    if (
+      typeof record.pageSize !== "number" ||
+      !Number.isSafeInteger(record.pageSize) ||
+      record.pageSize < 1 ||
+      record.pageSize > MAX_TRANSACTION_PAGE_SIZE
+    ) {
+      throw new Error(`pageSize must be an integer between 1 and ${MAX_TRANSACTION_PAGE_SIZE}.`);
+    }
+    query.pageSize = record.pageSize;
+  }
   if (record.amountMinor !== undefined) {
     if (typeof record.amountMinor !== "number" || !Number.isSafeInteger(record.amountMinor)) {
       throw new Error("amountMinor must be a safe integer when provided.");
     }
     query.amountMinor = record.amountMinor;
   }
+  for (const field of ["amountFromMinor", "amountToMinor"] as const) {
+    if (record[field] !== undefined) {
+      if (typeof record[field] !== "number" || !Number.isSafeInteger(record[field])) {
+        throw new Error(`${field} must be a safe integer when provided.`);
+      }
+      query[field] = record[field];
+    }
+  }
+  if (
+    query.amountFromMinor !== undefined &&
+    query.amountToMinor !== undefined &&
+    query.amountFromMinor > query.amountToMinor
+  ) {
+    throw new Error("amountFromMinor must not exceed amountToMinor.");
+  }
+  if (record.uncategorizedOnly !== undefined) {
+    if (typeof record.uncategorizedOnly !== "boolean") {
+      throw new Error("uncategorizedOnly must be a boolean when provided.");
+    }
+    query.uncategorizedOnly = record.uncategorizedOnly;
+  }
+  if (record.largeTransactionsOnly !== undefined) {
+    if (typeof record.largeTransactionsOnly !== "boolean") {
+      throw new Error("largeTransactionsOnly must be a boolean when provided.");
+    }
+    query.largeTransactionsOnly = record.largeTransactionsOnly;
+  }
+  if (record.transactionType !== undefined) {
+    if (record.transactionType !== "income" && record.transactionType !== "expenses") {
+      throw new Error("transactionType must be 'income' or 'expenses'.");
+    }
+    query.transactionType = record.transactionType;
+  }
+  if (record.datePreset !== undefined) {
+    if (record.datePreset !== "thisMonth") {
+      throw new Error("datePreset must be 'thisMonth'.");
+    }
+    query.datePreset = record.datePreset;
+  }
   return query;
+}
+
+function parseTransactionFilters(input: unknown): TransactionFilters {
+  const query = parseTransactionQuery(input);
+  return {
+    ...(query.accountId === undefined ? {} : { accountId: query.accountId }),
+    ...(query.bookedFromIso === undefined ? {} : { bookedFromIso: query.bookedFromIso }),
+    ...(query.bookedToIso === undefined ? {} : { bookedToIso: query.bookedToIso }),
+    ...(query.merchant === undefined ? {} : { merchant: query.merchant }),
+    ...(query.amountMinor === undefined ? {} : { amountMinor: query.amountMinor }),
+    ...(query.amountFromMinor === undefined ? {} : { amountFromMinor: query.amountFromMinor }),
+    ...(query.amountToMinor === undefined ? {} : { amountToMinor: query.amountToMinor }),
+    ...(query.categoryId === undefined ? {} : { categoryId: query.categoryId }),
+    ...(query.uncategorizedOnly === undefined ? {} : { uncategorizedOnly: query.uncategorizedOnly }),
+    ...(query.transactionType === undefined ? {} : { transactionType: query.transactionType }),
+    ...(query.datePreset === undefined ? {} : { datePreset: query.datePreset }),
+    ...(query.largeTransactionsOnly === undefined ? {} : { largeTransactionsOnly: query.largeTransactionsOnly }),
+  };
 }
 
 function parseCategoryTargetInput(input: unknown): MonthlyCategoryTargetInput {
@@ -805,15 +906,42 @@ app.whenReady().then(async () => {
   ipcMain.handle("transaction:listReview", async (event) => {
     assertTrustedRenderer(event);
     await applyTransactionListTestControl("review");
-    return localLedgerDatabase
-      .loadLedgerSnapshotData()
-      .transactions.filter((transaction) => transaction.categoryId === undefined);
+    return listUncategorizedReviewQueue(localLedgerDatabase, sampleHousehold.id);
   });
 
   ipcMain.handle("transaction:list", async (event, input: unknown = {}) => {
     assertTrustedRenderer(event);
     await applyTransactionListTestControl("ledger");
-    return filterTransactions(liveTransactions, parseTransactionQuery(input));
+    const result = localLedgerDatabase.queryTransactions(sampleHousehold.id, parseTransactionQuery(input));
+    const accounts = localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id);
+    return { ...result, accounts };
+  });
+
+  ipcMain.handle("ledgerView:list", (event) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listSavedLedgerViews();
+  });
+
+  ipcMain.handle("ledgerView:save", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    if (typeof input !== "object" || input === null) {
+      throw new Error("Saved ledger view input must be an object.");
+    }
+    const record = input as Record<string, unknown>;
+    const name = parseNonEmptyString(record.name, "name");
+    if (name.length > 40) throw new Error("Saved view name must be 40 characters or fewer.");
+    const savedView: SavedLedgerView = {
+      id: randomUUID(),
+      name,
+      filters: parseTransactionFilters(record.filters),
+    };
+    localLedgerDatabase.saveLedgerView(savedView);
+    return savedView;
+  });
+
+  ipcMain.handle("ledgerView:delete", (event, viewId: unknown) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.deleteSavedLedgerView(parseNonEmptyString(viewId, "viewId"));
   });
 
   ipcMain.handle(
@@ -834,10 +962,11 @@ app.whenReady().then(async () => {
       }
 
       const merchantAlias = normalizeMerchantName(transaction.merchantRaw);
+      const futureMatchingChanged = learnedCategoryRules.get(merchantAlias) !== categoryId;
       localLedgerDatabase.updateTransactionCategoryAndRule(transactionId, { merchantAlias, categoryId });
       learnedCategoryRules.set(merchantAlias, categoryId);
       transaction.categoryId = categoryId;
-        return { ...transaction };
+        return { transaction: { ...transaction }, futureMatchingChanged };
       });
     }
   );

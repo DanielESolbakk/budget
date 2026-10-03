@@ -19,6 +19,18 @@ export class ReviewQueuePage {
     return this.section.getByRole("status").filter({ hasText: "Loading categorization queue..." });
   }
 
+  get progressStatus() {
+    return this.section.getByRole("status", { name: "Review queue progress" });
+  }
+
+  get savedStatus() {
+    return this.section.getByRole("status", { name: "Category correction result" });
+  }
+
+  get firstCategorySelect() {
+    return this.section.getByRole("combobox").first();
+  }
+
   get errorAlert() {
     return this.section.getByRole("alert");
   }

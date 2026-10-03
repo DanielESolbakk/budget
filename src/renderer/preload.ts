@@ -23,7 +23,12 @@ import type {
   RestoreSnapshotInput,
   RestoreSnapshotOutput,
 } from "../domain/backup/snapshotContract.js";
-import type { TransactionQuery } from "../domain/ledger/filterTransactions.js";
+import type {
+  TransactionPage,
+  SavedLedgerView,
+  TransactionFilters,
+  TransactionQuery,
+} from "../domain/ledger/filterTransactions.js";
 import type { CsvColumnMapping } from "../domain/import/csvRowMapper.js";
 
 export interface DashboardApi {
@@ -64,11 +69,21 @@ export interface ImportApi {
 
 export interface ReviewApi {
   list: () => Promise<Transaction[]>;
-  updateCategory: (input: { transactionId: string; categoryId: string }) => Promise<Transaction>;
+  updateCategory: (input: { transactionId: string; categoryId: string }) => Promise<CategoryUpdateResult>;
+}
+
+export interface CategoryUpdateResult {
+  transaction: Transaction;
+  futureMatchingChanged: boolean;
 }
 
 export interface LedgerApi {
-  list: (query: TransactionQuery) => Promise<Transaction[]>;
+  list: (query: TransactionQuery) => Promise<TransactionPage & { accounts: Account[] }>;
+  savedViews: {
+    list: () => Promise<SavedLedgerView[]>;
+    save: (input: { name: string; filters: TransactionFilters }) => Promise<SavedLedgerView>;
+    delete: (viewId: string) => Promise<boolean>;
+  };
 }
 
 export interface BackupApi {
@@ -127,12 +142,18 @@ const budgetApi: BudgetApi = {
   },
   review: {
     list: (): Promise<Transaction[]> => ipcRenderer.invoke("transaction:listReview"),
-    updateCategory: (input: { transactionId: string; categoryId: string }): Promise<Transaction> =>
+    updateCategory: (input: { transactionId: string; categoryId: string }): Promise<CategoryUpdateResult> =>
       ipcRenderer.invoke("transaction:updateCategory", input),
   },
   ledger: {
-    list: (query: TransactionQuery): Promise<Transaction[]> =>
+    list: (query: TransactionQuery): Promise<TransactionPage & { accounts: Account[] }> =>
       ipcRenderer.invoke("transaction:list", query),
+    savedViews: {
+      list: (): Promise<SavedLedgerView[]> => ipcRenderer.invoke("ledgerView:list"),
+      save: (input: { name: string; filters: TransactionFilters }): Promise<SavedLedgerView> =>
+        ipcRenderer.invoke("ledgerView:save", input),
+      delete: (viewId: string): Promise<boolean> => ipcRenderer.invoke("ledgerView:delete", viewId),
+    },
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

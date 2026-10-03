@@ -108,26 +108,53 @@ Turn the ledger and categorization queue into an efficient repeated-use workspac
 Scope:
 
 - Replace the ledger result list with a semantic data table containing date, merchant, amount, category, and account.
-- Format amounts as NOK and show human-readable category and account labels where contracts provide them.
-- Show result count, active filters, clear-all action, and explicit loading, empty, and error states.
+- Format ledger amounts as NOK and accept amount-filter input in kroner with up to two decimal places, converting exactly to minor units for queries.
+- Show result count, active filters, clear-all action, accessible per-filter removal, and explicit loading, empty, and error states.
 - Keep merchant and date as immediately available filters; move less frequent filters into progressive disclosure.
-- Add service-backed sorting and bounded pagination or virtualization before presenting 10,000 or more transactions.
-- Surface the categorization queue as an attention view with remaining count, current progress, and predictable focus movement after a save.
+- Show the number and identity of active account, category, and NOK range filters in the collapsed `More filters` label so their state remains recognizable when the controls are hidden; group the two bounds as `Amount range` in the summary.
+- Give progressive filters a quieter, denser treatment than quick filters while retaining a minimum 44px interactive control height.
+- Provide quick filters for Uncategorized, Income, Expenses, This month, and Large transactions; define Large transactions as an absolute amount of at least NOK 10,000, and resolve This month against the current local calendar month whenever a filter or saved view is applied.
+- Accept inclusive amount ranges in NOK with up to two decimal places, converting exactly to integer minor units, and show a localized example beside the fields.
+- Apply changed filter criteria automatically after 250 milliseconds without further input; keep the last successful rows visible and announce that the ledger is updating until the matching rows and count arrive together.
+- Persist user-named filter views locally, allow applying and deleting them, and disable saving while filter results are pending; support views such as Needs a category and Large expenses.
+- Keep saved views and maintenance actions visually secondary: show saved views behind a collapsed count disclosure, group Income/Expenses as one choice, reserve the action accent for selected quick filters and the primary task, and keep Clear all and pagination neutral.
+- Sort account and category columns by their displayed labels, and visibly and programmatically expose the active sort field and direction.
+- Keep account choices and display labels available independently of matching ledger rows, including when the ledger is empty.
+- Add SQLite-backed filtering, sorting, total counts, and bounded pagination before presenting 10,000 or more transactions; query only uncategorized rows for the review queue.
+- Surface the categorization queue as an attention view with remaining count, current progress, oldest-booking-first order with stable transaction-ID tie-breaking, and predictable focus movement after a save.
+- Provide a `Review uncategorized` action from the ledger summary that shows the queue count and moves focus to the first pending category control.
 - Add a clear explanation when a correction creates or updates future categorization behavior.
-- Consider batch categorization only after a safe preview, mixed-selection handling, and undo or confirmation behavior are specified.
 
 Acceptance criteria:
 
-- [ ] A user can scan ledger rows by date, merchant, amount, category, and account without parsing concatenated text.
-- [ ] Applied filters are visible and removable individually or together.
-- [ ] Sorting and page changes do not load or transform the full ledger in the renderer.
-- [ ] The transaction workspace remains responsive with a synthetic 10,000-transaction data set.
-- [ ] The review queue communicates the remaining workload and moves focus to the next relevant item after a successful correction.
-- [ ] Correction feedback states whether future matching behavior changed.
+- [x] A user can scan ledger rows by date, merchant, amount, category, and account without parsing concatenated text.
+- [x] Applied filters are visible and removable individually or together.
+- [x] Ledger filtering, sorting, and page changes use SQLite-backed bounded queries with a separate total count; the renderer receives and transforms only the requested page, and review loading queries only uncategorized transactions.
+- [x] The Electron transaction workspace remains responsive with a synthetic 10,000-transaction data set while sorting and changing pages.
+- [x] The review queue communicates the remaining workload and moves focus to the next relevant item after a successful correction.
+- [x] Correction feedback states whether future matching behavior changed.
+- [x] The amount filter accepts valid NOK values with up to two decimal places, converts them exactly to minor units, and displays active amounts in NOK.
+- [x] Quick filters for Uncategorized, Income, Expenses, This month, and Large transactions compose with other criteria and can be toggled off; Large transactions means absolute amount greater than or equal to NOK 10,000.
+- [x] This month resolves to the current local calendar month each time it is applied, including when loaded from a saved view.
+- [x] The amount range accepts inclusive minimum and maximum NOK values with at most two decimal places, converts them exactly to minor units, and rejects malformed values or a minimum greater than the maximum while preserving the last successful results and associating the error with both fields.
+- [x] Changing any filter automatically applies the complete criteria after 250 milliseconds without further input; result count, active chips, and table rows represent the same query, and no Apply filters action is exposed.
+- [x] While a debounced query is pending, the last successful rows remain visible with an updating status; on failure, those rows remain visible and a retry action is available.
+- [x] Users can save a named, fully applied filter view locally, apply it after restarting the application, and delete it; saving is unavailable while results are pending, and saved views preserve semantic quick filters and amount ranges rather than a stale page of results.
+- [x] Saved-view management is collapsed by default with its saved-view count visible; its controls appear only when the user opens the disclosure.
+- [x] The collapsed `More filters` label reports the count and identity of active account, category, and amount-range criteria; it groups minimum/maximum under `Amount range` and preserves the summary while the controls are hidden.
+- [x] The NOK amount controls show an example accepted value such as `100,50` beside their persistent labels.
+- [x] Expanded account, category, and amount controls are visually subordinate to quick filters and retain at least 44px interactive height.
+- [x] Income and Expenses are visually grouped as one choice; only selected quick filters use the action accent, while Clear all and pagination are secondary controls.
+- [x] At a 390-by-844 content viewport, the Transactions workspace stacks navigation and filter controls without horizontal page overflow or clipped filter labels.
+- [x] Account and category sorts follow the displayed labels, and the active sort field and direction are visible and exposed to assistive technology.
+- [x] Account choices and human-readable account labels remain available when no transactions match or the ledger is empty.
+- [x] Every active-filter removal control has an accessible name based on its user-facing filter label rather than an internal field identifier.
+- [x] Review queue order is oldest booked transaction first, with transaction ID as a deterministic tie-breaker.
+- [x] When uncategorized transactions exist, the ledger summary offers a `Review uncategorized` action with the pending count that moves focus to the first pending category control.
 
 Dependencies:
 
-- Query contracts for total count, sorting, pagination, and display labels.
+- SQLite query contracts and indexes for total count, sorting, pagination, uncategorized review, and account display metadata.
 - Existing deterministic categorization-rule persistence and provenance.
 
 ### Slice 3: Guided Import Workspace
@@ -196,9 +223,9 @@ Create or update planning issues only after this direction is accepted. Keep imp
 
 - Epic alignment: E4 Dashboard, budgeting, and forecasting; E2 Transaction ingestion and normalization; E3 Categorization and correction workflow; E5 Privacy, backup, export, and release quality.
 - Proposed feature scope: desktop information architecture and monthly review workspace.
-- Proposed stories: application shell navigation; review-home hierarchy; ledger table and filters; categorization attention queue; guided CSV/PDF import; data-safety workspace; shared interaction-state hardening.
+- Proposed stories: application shell navigation; review-home hierarchy; ledger table and filters; categorization attention queue; same-merchant correction propagation with preview and undo; guided CSV/PDF import; data-safety workspace; shared interaction-state hardening.
 - Proposed enablers: paged ledger query contract; account and category display-label contract; reusable renderer primitives where repeated behavior justifies them.
-- Proposed test issues: navigation and compact-window coverage; ledger scale and keyboard coverage; import-state coverage; restore safety and recovery coverage; visual regression baselines.
+- Proposed test issues: navigation and compact-window coverage; ledger scale and keyboard coverage; same-merchant propagation unit, integration, and Playwright runtime coverage; import-state coverage; restore safety and recovery coverage; visual regression baselines.
 
 Any catalog changes must derive parent relationships from `docs/ways-of-work/plan/budget-planner/issue-catalog.json` and follow the repository's planning issue templates.
 
@@ -206,24 +233,32 @@ Any catalog changes must derive parent relationships from `docs/ways-of-work/pla
 
 ### Unit
 
-- Pure view-model transformations for exception summaries and destination-state decisions, plus filter chips, pagination state, and import-stage derivation.
+- Pure view-model transformations for exception summaries and destination-state decisions, NOK-to-minor-unit filter conversion, display-label sorting, filter chips, pagination state, and review queue ordering.
+- Quick-filter composition, dynamic current-month resolution, inclusive amount ranges, NOK parsing, pending-filter debounce state, and saved-view validation.
 - No unit tests for static styling or implementation details.
 
 ### Integration
 
-- Paged and sorted ledger query contracts, total counts, and display labels.
+- SQLite-backed paged and sorted ledger queries, total counts, account metadata for empty results, and targeted uncategorized queue ordering.
+- Local SQLite saved-view create/list/delete persistence and query counts for combined draft criteria.
 - Navigation view-state preservation for selected month, ledger filters, and unsaved form input across destination changes; submitted operations retain an observable completion or error outcome.
 - Destination data-state contracts distinguish pending, empty, stale, and failed results without allowing a Review load failure to gate unrelated destinations.
 - Import stage transitions, validation summaries, and post-import next actions.
 - Restore confirmation input and snapshot metadata boundaries.
+- Same-merchant propagation updates only explicitly selected existing uncategorized matches; undo restores only those propagated rows and preserves the original correction and future rule.
 
 ### Playwright
 
 - Critical navigation and monthly-review journey through the Electron runtime, including current-location semantics and returning to a destination with local work in progress.
+- Transaction table cell labels and sort order, visible sort direction, NOK amount filtering, accessible filter removal and clear-all, empty-ledger account choices, and the direct uncategorized review action.
+- Quick-filter composition and removal, debounced result updates without an Apply action, amount-range validation and error associations, and saved-view create/apply/delete across an Electron restart.
+- Saved-view collapsed/expanded state, quick-filter active/inactive hierarchy, and compact-width ledger overflow.
+- The transaction workspace with a synthetic 10,000-transaction dataset, including sorting and page changes.
 - Keyboard traversal across destinations, month selection, exception actions, and main content; verify focus remains predictable after destination changes.
 - Compact 390 by 844 and desktop 1280 by 800 visual checks for navigation, review hierarchy, and first-viewport content.
 - Initial Review-load, destination-data-load, month-change, and stale-refresh failures, including recovery while another destination is active.
 - Review target-form disclosure and exception actions whose labels match the destination queue scope.
+- Same-merchant propagation preview, selection, cancel, confirmation, success, and undo.
 - CSV/PDF preview-to-confirm workflows, including disabled reasons and validation recovery.
 - Backup, export, and restore cancellation, confirmation, success, and error paths.
 
@@ -260,7 +295,7 @@ For each implementation slice, also run the narrowest affected Playwright specs 
 - New budgeting or forecast calculations.
 - Multi-user, multi-device, or mobile-native product support.
 - Theme switching, extensive animation, gamification, decorative dashboard charts, and visual changes without a workflow benefit.
-- Batch categorization until safe preview and reversal behavior are planned.
+- Mixed-merchant batch categorization. Same-merchant correction propagation remains in its separately groomed story until preview, selection, confirmation, and undo behavior are specified.
 
 ## Exit Criteria
 

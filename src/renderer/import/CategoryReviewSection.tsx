@@ -16,11 +16,20 @@ function formatAmount(amountMinor: number): string {
 interface CategoryReviewSectionProps {
   refreshKey: number;
   onCategorySaved: () => void;
+  onUncategorizedQueueStateChange: (state: UncategorizedQueueState) => void;
+  focusFirstRequest: number;
+}
+
+export interface UncategorizedQueueState {
+  count: number;
+  isReady: boolean;
 }
 
 export function CategoryReviewSection({
   refreshKey,
   onCategorySaved,
+  onUncategorizedQueueStateChange,
+  focusFirstRequest,
 }: CategoryReviewSectionProps): React.JSX.Element {
   const [transactions, setTransactions] = React.useState<Transaction[]>([]);
   const [selectedCategories, setSelectedCategories] = React.useState<Record<string, string>>({});
@@ -28,7 +37,14 @@ export function CategoryReviewSection({
   const [isLoading, setIsLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
+  const [reviewedCount, setReviewedCount] = React.useState(0);
+  const [savingTransactionId, setSavingTransactionId] = React.useState<string | null>(null);
   const [retryKey, setRetryKey] = React.useState(0);
+  const queueHeadingRef = React.useRef<HTMLHeadingElement>(null);
+  const pendingFocusTransactionId = React.useRef<string | null>(null);
+  const focusQueueHeading = React.useRef(false);
+  const lastHandledFocusRequest = React.useRef(0);
 
   React.useEffect(() => {
     let active = true;
@@ -55,26 +71,65 @@ export function CategoryReviewSection({
     };
   }, [refreshKey, retryKey]);
 
+  React.useEffect(() => {
+    onUncategorizedQueueStateChange({
+      count: transactions.length,
+      isReady: hasLoaded && !isLoading && loadError === null,
+    });
+  }, [transactions.length, hasLoaded, isLoading, loadError, onUncategorizedQueueStateChange]);
+
+  React.useEffect(() => {
+    const shouldFocusFirstTransaction = focusFirstRequest > lastHandledFocusRequest.current;
+
+    const nextTransactionId = pendingFocusTransactionId.current;
+    if (nextTransactionId !== null) {
+      document.getElementById(`category-for-${nextTransactionId}`)?.focus();
+    } else if (focusQueueHeading.current) {
+      queueHeadingRef.current?.focus();
+    } else if (shouldFocusFirstTransaction) {
+      if (!hasLoaded || isLoading || loadError !== null) return;
+      lastHandledFocusRequest.current = focusFirstRequest;
+      const firstTransaction = transactions[0];
+      if (firstTransaction === undefined) queueHeadingRef.current?.focus();
+      else document.getElementById(`category-for-${firstTransaction.id}`)?.focus();
+    }
+    pendingFocusTransactionId.current = null;
+    focusQueueHeading.current = false;
+  }, [transactions, focusFirstRequest, hasLoaded, isLoading, loadError]);
+
   async function saveCategory(transaction: Transaction): Promise<void> {
     const categoryId = selectedCategories[transaction.id]?.trim() ?? "";
     if (!categoryId) return;
 
     setSaveError(null);
+    setSaveStatus(null);
+    setSavingTransactionId(transaction.id);
     try {
-      await window.budgetApi.review.updateCategory({
+      const result = await window.budgetApi.review.updateCategory({
         transactionId: transaction.id,
         categoryId,
       });
+      const transactionIndex = transactions.findIndex((item) => item.id === transaction.id);
+      const nextTransaction = transactions[transactionIndex + 1] ?? transactions[transactionIndex - 1];
+      pendingFocusTransactionId.current = nextTransaction?.id ?? null;
+      focusQueueHeading.current = nextTransaction === undefined;
       setTransactions((current) => current.filter((item) => item.id !== transaction.id));
+      setReviewedCount((current) => current + 1);
+      const categoryLabel = CATEGORY_OPTIONS.find((category) => category.id === categoryId)?.label ?? categoryId;
+      setSaveStatus(result.futureMatchingChanged
+        ? `Category saved. Future matching for this merchant will use ${categoryLabel}.`
+        : "Category saved. Future matching was unchanged.");
       onCategorySaved();
     } catch (saveError: unknown) {
       setSaveError(saveError instanceof Error ? saveError.message : "Unable to save category.");
+    } finally {
+      setSavingTransactionId(null);
     }
   }
 
   return (
     <section aria-label="Categorization Review" aria-busy={isLoading}>
-      <h2>Categorization Review</h2>
+      <h2 ref={queueHeadingRef} tabIndex={-1}>Categorization Review</h2>
       <p className="section-intro">These transactions are in your ledger, but they do not have a category yet.</p>
       {isLoading && (
         <p role="status">
@@ -90,6 +145,12 @@ export function CategoryReviewSection({
         </div>
       )}
       {saveError !== null && <p role="alert">{saveError}</p>}
+      {saveStatus !== null && <p role="status" aria-label="Category correction result">{saveStatus}</p>}
+      {hasLoaded && !isLoading && loadError === null && (
+        <p role="status" aria-label="Review queue progress">
+          {reviewedCount} reviewed this session; {transactions.length} remaining to review
+        </p>
+      )}
       {hasLoaded && !isLoading && loadError === null && transactions.length === 0 ? (
         <div className="empty-state">
           <strong>Nothing needs your attention.</strong>
@@ -125,8 +186,12 @@ export function CategoryReviewSection({
                     ))}
                   </select>
                 </label>
-                <button type="button" onClick={() => void saveCategory(transaction)}>
-                  Save category
+                <button
+                  type="button"
+                  disabled={savingTransactionId === transaction.id}
+                  onClick={() => void saveCategory(transaction)}
+                >
+                  {savingTransactionId === transaction.id ? "Saving category..." : "Save category"}
                 </button>
               </div>
             </li>

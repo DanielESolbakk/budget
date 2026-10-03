@@ -90,6 +90,34 @@ function runDeferredPdfImport(
 }
 
 describe("ledger recovery runtime contracts", () => {
+  it("persists saved ledger views across database reopen and supports deletion", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-saved-ledger-view-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const savedView = {
+      id: "needs-category",
+      name: "Needs a category",
+      filters: { uncategorizedOnly: true },
+    };
+    const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+    let reopened: ReturnType<typeof createLocalLedgerDatabase> | undefined;
+    let databaseClosed = false;
+
+    try {
+      database.saveLedgerView(savedView);
+      database.close();
+      databaseClosed = true;
+
+      reopened = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+      expect(reopened.listSavedLedgerViews()).toEqual([savedView]);
+      expect(reopened.deleteSavedLedgerView(savedView.id)).toBe(true);
+      expect(reopened.listSavedLedgerViews()).toEqual([]);
+    } finally {
+      reopened?.close();
+      if (!databaseClosed) database.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("replaces the SQLite ledger and preserves restored state after reopening", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-ledger-replace-"));
     const dbPath = join(tempDir, "ledger.sqlite");
