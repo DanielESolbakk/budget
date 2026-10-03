@@ -550,6 +550,38 @@ test.describe("Ledger search and filter workflow", () => {
     });
   });
 
+  test("keyboard horizontal scrolling can reach the final compact ledger column", async ({ window, electronApp, ledger }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+    await expect(ledger.table).toBeVisible();
+
+    const tableScroller = window.getByRole("region", { name: "Ledger transactions" });
+    await expect(tableScroller).toBeVisible();
+    await expect(tableScroller).toHaveAttribute("tabindex", "0");
+    await tableScroller.focus();
+    await expect(tableScroller).toBeFocused();
+    for (let keypress = 0; keypress < 20; keypress += 1) {
+      await window.keyboard.press("ArrowRight");
+    }
+    await expect.poll(() => tableScroller.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+
+    const lastColumnBounds = await ledger.table.getByRole("columnheader", { name: "Account" }).evaluate((header) => {
+      const scroller = header.closest<HTMLElement>(".ledger-table-scroll");
+      if (scroller === null) throw new Error("Ledger table is missing its scroll container.");
+      const headerBounds = header.getBoundingClientRect();
+      const scrollerBounds = scroller.getBoundingClientRect();
+      return {
+        headerLeft: headerBounds.left,
+        headerRight: headerBounds.right,
+        scrollerLeft: scrollerBounds.left,
+        scrollerRight: scrollerBounds.right,
+      };
+    });
+    expect(lastColumnBounds.headerLeft).toBeGreaterThanOrEqual(lastColumnBounds.scrollerLeft - 1);
+    expect(lastColumnBounds.headerRight).toBeLessThanOrEqual(lastColumnBounds.scrollerRight + 1);
+  });
+
     test("@visual Visual: advanced filters remain subordinate on desktop", async ({ window, electronApp, ledger }) => {
       await electronApp.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);

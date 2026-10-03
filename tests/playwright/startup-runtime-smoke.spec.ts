@@ -81,6 +81,13 @@ test.describe("Electron startup smoke", () => {
     await expect(appShell.workspace("Import")).toHaveCount(0);
   });
 
+  test("Review defaults to the current local month", async ({ dashboard }) => {
+    const today = new Date();
+    const expectedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+
+    await expect(dashboard.monthSelector).toHaveValue(expectedMonth);
+  });
+
   test("navigation preserves an unsaved import path when the user changes destinations", async ({
     appShell,
     csvImport,
@@ -135,5 +142,43 @@ test.describe("Electron startup smoke — fallback branch", () => {
     await expect(forecast.sectionHeading).toBeVisible();
     await expect(forecast.fallbackLabel).toBeVisible();
     await expect(forecast.projectedDescription).not.toBeVisible();
+  });
+});
+
+test.describe("Fresh local setup", () => {
+  test.use({ nodeEnvironment: "production" });
+
+  test("a fresh database creates a usable local household without sample transactions", async ({ window, appShell }) => {
+    await expect(window.getByRole("heading", { name: "Set up your household" })).toBeVisible();
+    const householdNameInput = window.getByLabel("Household name");
+    const accountNameInput = window.getByLabel("Account name");
+    const createLedgerButton = window.getByRole("button", { name: "Create local ledger" });
+    await expect(householdNameInput).toBeVisible();
+    await expect(accountNameInput).toBeVisible();
+    await expect(createLedgerButton).toBeVisible();
+    await expect(window.getByText("Lønn AS", { exact: true })).toHaveCount(0);
+
+    await householdNameInput.fill("My household");
+    await accountNameInput.fill("Everyday account");
+    await createLedgerButton.click();
+    await expect(window.getByRole("heading", { name: "Set up your household" })).toHaveCount(0);
+    await expect(window.getByText("Lønn AS", { exact: true })).toHaveCount(0);
+
+    await window.reload();
+    await expect(window.getByRole("heading", { name: "Set up your household" })).toHaveCount(0);
+    await expect(window.getByRole("heading", { name: "Budget Planner" })).toBeVisible();
+
+    await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Manual transaction");
+    const accountInput = window.getByLabel("Account");
+    const accountOption = window.getByRole("option", { name: /Everyday account/ });
+    await expect(accountOption).toHaveCount(1);
+    const accountId = await accountOption.getAttribute("value");
+    await accountInput.selectOption(accountId!);
+    await window.getByLabel("Booked date").fill("2026-10-03");
+    await window.getByLabel("Amount (øre)").fill("-123");
+    await window.getByLabel("Description or merchant").fill("First entry");
+    await window.getByRole("button", { name: "Add transaction" }).click();
+    await expect(window.getByRole("status").filter({ hasText: "Added First entry to your ledger." })).toBeVisible();
   });
 });

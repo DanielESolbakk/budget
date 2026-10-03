@@ -361,6 +361,7 @@ test.describe("PDF import renderer workflow", () => {
   test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async ({ appShell, pdfImport, dashboard }) => {
     // Ensure dashboard is in a known state before the invalid import.
     await appShell.openWorkspace("Review");
+    await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
 
@@ -399,6 +400,7 @@ test.describe("PDF import renderer workflow", () => {
     const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.txt`);
     writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
     await appShell.openWorkspace("Review");
+    await dashboard.monthSelector.selectOption("2026-05");
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
     const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
     const beforeNetText = (await dashboard.netValue.textContent()) ?? "";

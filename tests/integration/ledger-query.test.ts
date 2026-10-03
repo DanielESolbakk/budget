@@ -70,6 +70,51 @@ function withDatabase<Result>(
 }
 
 describe("SQLite ledger queries", () => {
+  it("aggregates dashboard month totals and fills missing months", () => {
+    withDatabase([
+      transaction("april-expense", "2026-04-03T08:00:00Z", -1200, "April expense"),
+      transaction("june-income", "2026-06-01T08:00:00Z", 5000, "June income"),
+      transaction("june-expense", "2026-06-20T08:00:00Z", -800, "June expense"),
+    ], (database) => {
+      expect(database.listMonthlyTotals(HOUSEHOLD.id)).toEqual([
+        { yearMonth: "2026-04", totalMinor: -1200 },
+        { yearMonth: "2026-05", totalMinor: 0 },
+        { yearMonth: "2026-06", totalMinor: 4200 },
+      ]);
+    });
+  });
+
+  it("returns only transactions from the selected dashboard month", () => {
+    withDatabase([
+      transaction("april", "2026-04-30T23:59:59Z", -100, "April"),
+      transaction("may-first", "2026-05-01T00:00:00Z", -200, "May first"),
+      transaction("may-last", "2026-05-31T23:59:59Z", 300, "May last"),
+      transaction("june", "2026-06-01T00:00:00Z", -400, "June"),
+    ], (database) => {
+      expect(database.getTransactionsForMonth(HOUSEHOLD.id, "2026-05").map(({ id }) => id)).toEqual([
+        "may-first",
+        "may-last",
+      ]);
+    });
+  });
+
+  it("loads dashboard startup metadata without materializing transactions", () => {
+    withDatabase([
+      transaction("startup-row", "2026-05-01T08:00:00Z", -100, "Existing transaction"),
+    ], (database) => {
+      const metadata = database.loadRuntimeMetadata();
+
+      expect(metadata).not.toBeNull();
+      expect(metadata).toMatchObject({
+        household: HOUSEHOLD,
+        accounts: [SAVINGS_ACCOUNT, CHECKING_ACCOUNT],
+        monthlyCategoryTargets: [],
+        merchantCategoryRules: [],
+      });
+      expect(metadata).not.toHaveProperty("transactions");
+    });
+  });
+
   it("intersects This month with explicit date bounds in SQLite queries", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 15, 12));

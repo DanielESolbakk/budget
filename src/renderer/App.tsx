@@ -8,9 +8,11 @@ import { DataSafetyWorkspace } from "./workspaces/DataSafetyWorkspace.js";
 import { ImportWorkspace } from "./workspaces/ImportWorkspace.js";
 import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
 import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
+import { HouseholdSetup } from "./setup/HouseholdSetup.js";
+import { toLocalYearMonth } from "./localDate.js";
 import type { ReviewState } from "./workspaces/types.js";
 
-const DEFAULT_YEAR_MONTH = "2026-05";
+const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
 type AppState = ReviewState;
 
 type WorkspaceId = "review" | "transactions" | "import" | "data-safety";
@@ -24,6 +26,7 @@ const WORKSPACES: Array<{ id: WorkspaceId; label: string; description: string }>
 
 export function App(): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
+  const [setupRequired, setSetupRequired] = React.useState<boolean | null>(null);
   const [activeWorkspace, setActiveWorkspace] = React.useState<WorkspaceId>("review");
   const [visitedWorkspaces, setVisitedWorkspaces] = React.useState<Set<WorkspaceId>>(
     () => new Set(["review"])
@@ -53,16 +56,25 @@ export function App(): React.JSX.Element {
       setRefreshError(null);
     }
 
-    Promise.all([
-      loadDashboardData(window.budgetApi),
-      window.budgetApi.dashboard.getViewData(requestedYearMonth),
-    ])
-      .then(([dashboardData, viewContract]) => {
-        if (!isActive || requestId !== latestViewRequestRef.current) return;
+    window.budgetApi.setup
+      .isRequired()
+      .then((required) => {
+        if (!isActive) return null;
+        setSetupRequired(required);
+        if (required) return null;
+        return Promise.all([
+          loadDashboardData(window.budgetApi),
+          window.budgetApi.dashboard.getViewData(requestedYearMonth),
+        ] as const);
+      })
+      .then((loadedData) => {
+        if (loadedData === null || !isActive || requestId !== latestViewRequestRef.current) return;
+        const [dashboardData, viewContract] = loadedData;
         hasLoadedInitialState.current = true;
         setIsRefreshing(false);
         setRefreshError(null);
         const availableMonths = dashboardData.monthlyTotals.map((t) => t.yearMonth);
+        if (!availableMonths.includes(requestedYearMonth)) availableMonths.unshift(requestedYearMonth);
         selectedYearMonthRef.current = requestedYearMonth;
         setAppState({
           status: "ready",
@@ -129,6 +141,15 @@ export function App(): React.JSX.Element {
   function openReviewQueue(): void {
     openWorkspace("transactions");
     setReviewQueueFocusRequest((request) => request + 1);
+  }
+
+  function handleSetupComplete(): void {
+    setSetupRequired(false);
+    setRefreshCounter((counter) => counter + 1);
+  }
+
+  if (setupRequired) {
+    return <HouseholdSetup onComplete={handleSetupComplete} />;
   }
 
   const headerStatus =

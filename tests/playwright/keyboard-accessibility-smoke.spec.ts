@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures/electron.js";
-import { resolve } from "node:path";
+import { writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
@@ -84,6 +86,7 @@ test.describe("Keyboard accessibility smoke", () => {
   });
 
   test("month selector responds to keyboard selection", async ({ dashboard, window }) => {
+    await dashboard.monthSelector.selectOption("2026-05");
     const initialMonth = await dashboard.monthSelector.inputValue();
     await dashboard.monthSelector.focus();
     await expect(dashboard.monthSelector).toBeFocused();
@@ -98,6 +101,7 @@ test.describe("Keyboard accessibility smoke", () => {
     dashboard,
     window,
   }) => {
+    await dashboard.monthSelector.selectOption("2026-05");
     await appShell.destination("Review").focus();
     await expect(appShell.destination("Review")).toBeFocused();
 
@@ -124,5 +128,75 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(categoryTarget.addTargetButton).toBeFocused();
     await window.keyboard.press("Enter");
     await expect(categoryTarget.categoryIdInput).toBeFocused();
+  });
+
+  test("Data Safety backup, export, and restore expose keyboard actions and text outcomes", async ({
+    appShell,
+    databasePath,
+    recovery,
+    window,
+  }) => {
+    const backupPath = join(dirname(databasePath), "keyboard-backup.json");
+    const exportPath = join(dirname(databasePath), "keyboard-export.csv");
+    const snapshotPath = join(dirname(databasePath), "keyboard-restore.json");
+    const snapshot = buildBackupSnapshot({
+      household: {
+        id: "keyboard-restore-household",
+        name: "Keyboard Restore Household",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      },
+      accounts: [
+        {
+          id: "keyboard-restore-account",
+          householdId: "keyboard-restore-household",
+          name: "Everyday account",
+          currencyCode: "NOK",
+        },
+      ],
+      transactions: [],
+      importJobs: [],
+      monthlyCategoryTargets: [],
+      createdAtIso: "2026-09-30T12:15:00.000Z",
+    });
+    writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
+
+    await appShell.destination("Data safety").focus();
+    await window.keyboard.press("Enter");
+    await window.keyboard.press("Tab");
+    await expect(recovery.backupPathInput).toBeFocused();
+    await recovery.backupPathInput.fill(backupPath);
+    await window.keyboard.press("Tab");
+    await expect(recovery.backupBrowseButton).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(recovery.backupCreateButton).toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(recovery.backupSuccess).toContainText(backupPath);
+
+    await window.keyboard.press("Tab");
+    await expect(recovery.exportPathInput).toBeFocused();
+    await recovery.exportPathInput.fill(exportPath);
+    await window.keyboard.press("Tab");
+    await expect(recovery.browseButton).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(recovery.exportButton).toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(recovery.exportSuccess).toContainText(exportPath);
+
+    await window.keyboard.press("Tab");
+  await expect(recovery.recentSnapshotsSummary).toBeFocused();
+  await window.keyboard.press("Tab");
+    await expect(recovery.restorePathInput).toBeFocused();
+    await recovery.restorePathInput.fill(snapshotPath);
+    await window.keyboard.press("Tab");
+    await expect(recovery.chooseSnapshotButton).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(recovery.reviewSnapshotButton).toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(recovery.snapshotReviewSuccess).toBeVisible();
+    await window.keyboard.press("Tab");
+    await expect(recovery.restoreButton).toBeFocused();
+    window.once("dialog", async (dialog) => await dialog.accept());
+    await window.keyboard.press("Enter");
+    await expect(recovery.restoreSuccess).toContainText("Restore complete.");
   });
 });

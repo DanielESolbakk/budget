@@ -17,6 +17,10 @@
 import { test, expect } from "./fixtures/electron.js";
 
 test.describe("Category target entry renderer smoke", () => {
+  test.beforeEach(async ({ dashboard }) => {
+    await dashboard.monthSelector.selectOption("2026-05");
+  });
+
   test("Scenario 1: category target entry form renders in the Electron window and is interactive", async ({ appShell, categoryTarget }) => {
     // AC-1: renderer path shows the target entry section without runtime errors.
     await expect(appShell.heading).toBeVisible();
@@ -80,6 +84,10 @@ test.describe("Category target entry renderer smoke — save and reload persiste
   * The shared Electron fixture gives this test its own application process
   * and database, so the save + reload flow is isolated from other scenarios.
    */
+  test.beforeEach(async ({ dashboard }) => {
+    await dashboard.monthSelector.selectOption("2026-05");
+  });
+
   test("Scenario 2: save interaction persists target value and reload preserves displayed value", async ({ window, categoryTarget }) => {
     // AC-2: save a target for a category not in the default store, then reload.
     // The default sampleTargetStore in main.ts includes groceries/2026-05 but not transport.
@@ -99,6 +107,7 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     // keeps running across renderer reloads; the stored target survives the reload).
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
+    await window.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
 
     // After reload the saved targets list re-loads via categoryTarget:listByMonth IPC.
     await expect(categoryTarget.savedTargetsList).toBeVisible();

@@ -38,11 +38,11 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
     setLoadState("loading");
     Promise.all([
       window.budgetApi.import.history.list(),
-      window.budgetApi.accounts.list("sample-hh"),
-    ]).then(([history, loadedAccounts]) => {
+      window.budgetApi.accounts.getCurrent(),
+    ]).then(([history, current]) => {
       if (!active) return;
       setEntries(history);
-      setAccounts(loadedAccounts);
+      setAccounts(current?.accounts ?? []);
       setLoadState("ready");
     }).catch(() => {
       if (active) setLoadState("error");

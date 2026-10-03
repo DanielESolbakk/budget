@@ -17,6 +17,10 @@ function formatMinor(minor: number): string {
 }
 
 test.describe("Dashboard target-vs-actual renderer smoke", () => {
+  test.beforeEach(async ({ dashboard }) => {
+    await dashboard.monthSelector.selectOption(DEFAULT_YEAR_MONTH);
+  });
+
   test("renders target-vs-actual section with visible target, actual, and delta values", async ({ dashboardTarget: targetPage }) => {
     await expect(targetPage.section).toBeVisible();
     await expect(targetPage.heading).toBeVisible();
@@ -43,6 +47,10 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
 });
 
 test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () => {
+  test.beforeEach(async ({ dashboard }) => {
+    await dashboard.monthSelector.selectOption(DEFAULT_YEAR_MONTH);
+  });
+
   test("reflects the latest saved target values after a refresh", async ({ window, dashboardTarget: targetPage, categoryTarget }) => {
     await expect(targetPage.section).toBeVisible();
     await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_BASELINE_TARGET_MINOR));
@@ -56,6 +64,7 @@ test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () =
     await expect(categoryTarget.savedConfirmation).toContainText("Target saved.");
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
+    await window.getByRole("combobox", { name: "Select month" }).selectOption(DEFAULT_YEAR_MONTH);
 
     await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_UPDATED_TARGET_MINOR));
     await expect(targetPage.actualCell("groceries")).toHaveText(formatMinor(GROCERIES_ACTUAL_MINOR));

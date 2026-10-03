@@ -19,9 +19,11 @@ import type {
   Transaction,
 } from "../domain/types.js";
 import type {
+  BackupSnapshotCatalogEntry,
   BackupSnapshotFileOutput,
+  BackupSnapshotSummary,
   RestoreSnapshotInput,
-  RestoreSnapshotOutput,
+  RestoreSnapshotResult,
 } from "../domain/backup/snapshotContract.js";
 import type {
   TransactionPage,
@@ -51,6 +53,12 @@ export interface CategoryTargetsApi {
 
 export interface AccountsApi {
   list: (householdId: string) => Promise<Account[]>;
+  getCurrent: () => Promise<{ householdId: string; accounts: Account[] } | null>;
+}
+
+export interface SetupApi {
+  isRequired: () => Promise<boolean>;
+  create: (input: { householdName: string; accountName: string; currencyCode: string }) => Promise<void>;
 }
 
 export interface ExportApi {
@@ -105,12 +113,15 @@ export interface LedgerApi {
 
 export interface BackupApi {
   create: (outputPath: string) => Promise<BackupSnapshotFileOutput>;
-  restore: (input: RestoreSnapshotInput) => Promise<RestoreSnapshotOutput>;
+  inspect: (input: RestoreSnapshotInput) => Promise<BackupSnapshotSummary>;
+  listSnapshots: () => Promise<BackupSnapshotCatalogEntry[]>;
+  restore: (input: RestoreSnapshotInput) => Promise<RestoreSnapshotResult>;
 }
 
 export interface BudgetApi {
   dashboard: DashboardApi;
   accounts: AccountsApi;
+  setup: SetupApi;
   forecast: ForecastApi;
   categoryTargets: CategoryTargetsApi;
   export: ExportApi;
@@ -122,9 +133,15 @@ export interface BudgetApi {
 }
 
 const budgetApi: BudgetApi = {
+  setup: {
+    isRequired: (): Promise<boolean> => ipcRenderer.invoke("setup:isRequired"),
+    create: (input): Promise<void> => ipcRenderer.invoke("setup:create", input),
+  },
   accounts: {
     list: (householdId: string): Promise<Account[]> =>
       ipcRenderer.invoke("account:list", householdId),
+    getCurrent: (): Promise<{ householdId: string; accounts: Account[] } | null> =>
+      ipcRenderer.invoke("account:getCurrent"),
   },
   dashboard: {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),
@@ -194,7 +211,11 @@ const budgetApi: BudgetApi = {
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>
       ipcRenderer.invoke("backup:create", outputPath),
-    restore: (input: RestoreSnapshotInput): Promise<RestoreSnapshotOutput> =>
+    inspect: (input: RestoreSnapshotInput): Promise<BackupSnapshotSummary> =>
+      ipcRenderer.invoke("backup:inspect", input),
+    listSnapshots: (): Promise<BackupSnapshotCatalogEntry[]> =>
+      ipcRenderer.invoke("backup:listSnapshots"),
+    restore: (input: RestoreSnapshotInput): Promise<RestoreSnapshotResult> =>
       ipcRenderer.invoke("backup:restore", input),
   },
   dialogs: {

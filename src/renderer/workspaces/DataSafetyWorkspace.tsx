@@ -9,6 +9,12 @@ interface DataSafetyWorkspaceProps {
 }
 
 export function DataSafetyWorkspace({ isActive, onRestoreSuccess }: DataSafetyWorkspaceProps): React.JSX.Element {
+  const [catalogRevision, setCatalogRevision] = React.useState(0);
+
+  function refreshSnapshotCatalog(): void {
+    setCatalogRevision((revision) => revision + 1);
+  }
+
   return (
     <section className="destination-workspace" aria-label="Data safety workspace" hidden={!isActive}>
       <div className="destination-heading">
@@ -16,9 +22,15 @@ export function DataSafetyWorkspace({ isActive, onRestoreSuccess }: DataSafetyWo
         <p>Back up the local ledger, export a portable copy, or restore a snapshot.</p>
       </div>
       <div className="workflow-recovery-grid">
-        <BackupSection />
+        <BackupSection onBackupSuccess={refreshSnapshotCatalog} />
         <ExportSection />
-        <RestoreSnapshotSection onRestoreSuccess={onRestoreSuccess} />
+        <RestoreSnapshotSection
+          catalogRevision={catalogRevision}
+          onRestoreSuccess={() => {
+            onRestoreSuccess();
+            refreshSnapshotCatalog();
+          }}
+        />
       </div>
     </section>
   );
