@@ -178,6 +178,32 @@ test.describe("Categorization review workflow", () => {
     electronApp,
     ledger,
     reviewQueue,
+  }) => {
+    await appShell.openWorkspace("Import");
+    await csvImport.submitImport(writeReviewQueueFixture());
+    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger. No duplicates found.");
+
+    await appShell.openWorkspace("Transactions");
+    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
+    });
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(ledger.reviewUncategorizedButton).toBeInViewport();
+  });
+
+  test("@visual Visual: review action preserves desktop and compact layouts", async ({
+    appShell,
+    csvImport,
+    electronApp,
+    ledger,
+    reviewQueue,
     window,
   }) => {
     await appShell.openWorkspace("Import");
@@ -198,8 +224,6 @@ test.describe("Categorization review workflow", () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
-
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
     await expect(ledger.reviewUncategorizedButton).toBeInViewport();
     await expect(window).toHaveScreenshot("review-action-compact.png", {
       animations: "disabled",
