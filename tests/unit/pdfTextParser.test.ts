@@ -10,6 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import * as pdfTextParser from "../../src/domain/import/pdfTextParser.js";
 import {
   buildRogalandImportJobId,
   isRogalandStatementText,
@@ -31,6 +32,45 @@ function loadFixture(): string {
 }
 
 describe("pdfTextParser unit tests", () => {
+  it("reports progress while preserving global transaction order across batches", async () => {
+    const parseInBatches = (pdfTextParser as unknown as {
+      parseRogalandStatementTextInBatches?: (
+        text: string,
+        options: typeof BASE_OPTIONS,
+        callbacks: {
+          batchSize: number;
+          isCancelled: () => boolean;
+          onProgress: (completedRows: number, totalRows: number) => void;
+        }
+      ) => Promise<unknown>;
+    }).parseRogalandStatementTextInBatches;
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Kontoopplysninger",
+      "Dato         Beskrivelse                              Beløp          Saldo",
+      "28.05.2026   FIRST SHOP                                -1,00         10,00",
+      "30.05.2026   LATER SHOP                                -2,00         11,00",
+      "29.05.2026   MIDDLE SHOP                               -3,00         13,00",
+    ].join("\n");
+    const progress: Array<[number, number]> = [];
+
+    const result = await parseInBatches?.(text, BASE_OPTIONS, {
+      batchSize: 1,
+      isCancelled: () => false,
+      onProgress: (completedRows, totalRows) => progress.push([completedRows, totalRows]),
+    });
+
+    expect(progress).toEqual([[1, 3], [2, 3], [3, 3]]);
+    expect(result).toMatchObject({
+      ok: true,
+      transactions: [
+        expect.objectContaining({ bookedAtIso: "2026-05-30T00:00:00Z", merchantRaw: "LATER SHOP" }),
+        expect.objectContaining({ bookedAtIso: "2026-05-29T00:00:00Z", merchantRaw: "MIDDLE SHOP" }),
+        expect.objectContaining({ bookedAtIso: "2026-05-28T00:00:00Z", merchantRaw: "FIRST SHOP" }),
+      ],
+    });
+  });
+
   it("builds the same import job ID for identical content and context", () => {
     const text = loadFixture();
 
@@ -94,6 +134,23 @@ describe("pdfTextParser unit tests", () => {
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.errors[0]?.code).toBe("MISSING_TRANSACTION_SECTION");
+    });
+  });
+
+  it("includes the source line and field for a malformed transaction row", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Dato         Beskrivelse                              Beløp          Saldo",
+      "27.05.2026   BROKEN ROW                               invalid         75,00",
+    ].join("\n");
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]).toMatchObject({
+      code: "INVALID_AMOUNT_FORMAT",
+      lineNumber: 3,
+      field: "amount",
     });
   });
 

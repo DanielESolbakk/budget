@@ -167,6 +167,8 @@ export interface ImportJobProvenance {
   sourceIdentity: string;
   contentDigest?: string;
   adapterId?: string;
+  accountId?: string;
+  duplicateCount?: number;
   storyAnchor?: ImportJobStoryAnchor;
 }
 

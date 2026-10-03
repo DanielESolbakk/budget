@@ -28,6 +28,7 @@ export function App(): React.JSX.Element {
   const [visitedWorkspaces, setVisitedWorkspaces] = React.useState<Set<WorkspaceId>>(
     () => new Set(["review"])
   );
+  const [reviewQueueFocusRequest, setReviewQueueFocusRequest] = React.useState(0);
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [isChangingMonth, setIsChangingMonth] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -125,6 +126,11 @@ export function App(): React.JSX.Element {
     });
   }
 
+  function openReviewQueue(): void {
+    openWorkspace("transactions");
+    setReviewQueueFocusRequest((request) => request + 1);
+  }
+
   const headerStatus =
     appState.status === "loading"
       ? "Loading review"
@@ -219,13 +225,17 @@ export function App(): React.JSX.Element {
             <TransactionsWorkspace
               isActive={activeWorkspace === "transactions"}
               refreshKey={refreshCounter}
+              reviewQueueFocusRequest={reviewQueueFocusRequest}
               onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
             />
           )}
           {visitedWorkspaces.has("import") && (
             <ImportWorkspace
               isActive={activeWorkspace === "import"}
+              refreshKey={refreshCounter}
               onImportSuccess={() => setRefreshCounter((counter) => counter + 1)}
+              onOpenLedger={() => openWorkspace("transactions")}
+              onReviewUncategorized={openReviewQueue}
             />
           )}
           {visitedWorkspaces.has("data-safety") && (

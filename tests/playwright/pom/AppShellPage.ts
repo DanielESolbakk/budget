@@ -50,4 +50,8 @@ export class AppShellPage {
   async openWorkspace(name: WorkspaceName): Promise<void> {
     await this.destination(name).click();
   }
+
+  async selectImportFormat(format: "CSV statement" | "Digital PDF" | "Manual transaction"): Promise<void> {
+    await this.page.getByRole("button", { name: format, exact: true }).click();
+  }
 }

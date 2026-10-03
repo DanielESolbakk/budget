@@ -35,7 +35,7 @@ test.describe("Keyboard accessibility smoke", () => {
   });
 
   test("CSV mapping controls follow a keyboard focus order", async ({ csvImport, window }) => {
-    await csvImport.filePathInput.fill(CSV_FIXTURE_PATH);
+    await csvImport.enterFilePath(CSV_FIXTURE_PATH);
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
 
@@ -73,7 +73,7 @@ test.describe("Keyboard accessibility smoke", () => {
     pdfImport,
     window,
   }) => {
-    await pdfImport.filePathInput.fill(PDF_FIXTURE_PATH);
+    await pdfImport.enterFilePath(PDF_FIXTURE_PATH);
     await pdfImport.importButton.focus();
     await window.keyboard.press("Enter");
     await expect(pdfImport.previewRegion).toBeVisible();

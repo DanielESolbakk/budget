@@ -1,8 +1,9 @@
 import type { Transaction } from "../types.js";
-import type { PdfTextParseOptions, PdfTextValidationError } from "./pdfTextParser.js";
+import type { PdfTextParseBatchCallbacks, PdfTextParseOptions, PdfTextValidationError } from "./pdfTextParser.js";
 import {
   isRogalandStatementText,
   parseRogalandStatementText,
+  parseRogalandStatementTextInBatches,
   ROGALAND_ADAPTER_ID,
   ROGALAND_SOURCE_ID,
 } from "./pdfTextParser.js";
@@ -40,6 +41,12 @@ export interface ParserAdapter {
   canHandle(text: string): boolean;
   /** Parses the source text into ordered transaction candidates. */
   parse(text: string, options: PdfTextParseOptions): AdapterParseResult;
+  /** Parses large sources in cancellable batches when the adapter supports it. */
+  parseInBatches?: (
+    text: string,
+    options: PdfTextParseOptions,
+    callbacks: PdfTextParseBatchCallbacks
+  ) => Promise<AdapterParseResult | null>;
 }
 
 /**
@@ -93,6 +100,30 @@ export class ParserAdapterRegistry {
     return adapter.parse(text, options);
   }
 
+  async parseInBatches(
+    text: string,
+    options: PdfTextParseOptions,
+    callbacks: PdfTextParseBatchCallbacks
+  ): Promise<RegistryParseResult | null> {
+    const adapter = this.selectAdapter(text);
+    if (!adapter) {
+      return {
+        ok: false,
+        adapterId: null,
+        errors: [{
+          code: "UNSUPPORTED_LAYOUT",
+          message: "No registered adapter recognised the source text. Unsupported layout.",
+        }],
+      };
+    }
+    if (adapter.parseInBatches !== undefined) {
+      return adapter.parseInBatches(text, options, callbacks);
+    }
+    const result = adapter.parse(text, options);
+    callbacks.onProgress(1, 1);
+    return result;
+  }
+
   /** Returns the ids of all registered adapters in registration order. */
   registeredIds(): string[] {
     return this.adapters.map((a) => a.id);
@@ -107,6 +138,19 @@ const rogalandAdapter: ParserAdapter = {
   },
   parse(text: string, options: PdfTextParseOptions): AdapterParseResult {
     const result = parseRogalandStatementText(text, options);
+    if (result.ok) {
+      return {
+        ok: true,
+        adapterId: result.adapterId,
+        sourceIdentity: ROGALAND_SOURCE_ID,
+        candidates: result.transactions,
+      };
+    }
+    return { ok: false, adapterId: ROGALAND_ADAPTER_ID, errors: result.errors };
+  },
+  async parseInBatches(text, options, callbacks): Promise<AdapterParseResult | null> {
+    const result = await parseRogalandStatementTextInBatches(text, options, callbacks);
+    if (result === null) return null;
     if (result.ok) {
       return {
         ok: true,

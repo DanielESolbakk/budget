@@ -29,6 +29,8 @@ export type PdfTextValidationErrorCode =
 export interface PdfTextValidationError {
   code: PdfTextValidationErrorCode;
   message: string;
+  lineNumber?: number;
+  field?: "date" | "description" | "amount";
 }
 
 export interface PdfTextParseSuccess {
@@ -50,6 +52,12 @@ export interface PdfTextParseOptions {
   importJobId?: string;
   /** Prefix for generated transaction IDs. Defaults to "pdf". */
   idPrefix?: string;
+}
+
+export interface PdfTextParseBatchCallbacks {
+  batchSize?: number;
+  isCancelled: () => boolean;
+  onProgress: (completedRows: number, totalRows: number) => void;
 }
 
 export function buildRogalandImportJobId(
@@ -158,18 +166,23 @@ export function parseRogalandStatementText(
   const errors: PdfTextValidationError[] = [];
   let rowIndex = 0;
 
-  for (const line of transactionLines) {
+  for (const [transactionLineIndex, line] of transactionLines.entries()) {
+    const lineNumber = tableHeaderIndex + transactionLineIndex + 2;
     const match = TRANSACTION_LINE_PATTERN.exec(line);
     if (!match) {
       if (VALID_TRANSACTION_DATE_PREFIX_PATTERN.test(line)) {
         errors.push({
           code: "INVALID_AMOUNT_FORMAT",
           message: `Could not parse transaction line: "${line.trim()}"`,
+          lineNumber,
+          field: "amount",
         });
       } else if (TRANSACTION_DATE_LIKE_PREFIX_PATTERN.test(line)) {
         errors.push({
           code: "INVALID_DATE_FORMAT",
           message: `Could not parse transaction line: "${line.trim()}"`,
+          lineNumber,
+          field: "date",
         });
       }
       continue;
@@ -182,6 +195,8 @@ export function parseRogalandStatementText(
       errors.push({
         code: "INVALID_DATE_FORMAT",
         message: `Invalid date value "${rawDate}" on line: "${line.trim()}"`,
+        lineNumber,
+        field: "date",
       });
       continue;
     }
@@ -191,6 +206,8 @@ export function parseRogalandStatementText(
       errors.push({
         code: "MISSING_DESCRIPTION",
         message: `Missing description on line: "${line.trim()}"`,
+        lineNumber,
+        field: "description",
       });
       continue;
     }
@@ -200,6 +217,8 @@ export function parseRogalandStatementText(
       errors.push({
         code: "INVALID_AMOUNT_FORMAT",
         message: `Invalid amount value "${rawAmount}" on line: "${line.trim()}"`,
+        lineNumber,
+        field: "amount",
       });
       continue;
     }
@@ -260,4 +279,65 @@ export function parseRogalandStatementText(
     adapterId: ROGALAND_ADAPTER_ID,
     transactions,
   };
+}
+
+export async function parseRogalandStatementTextInBatches(
+  text: string,
+  options: PdfTextParseOptions,
+  callbacks: PdfTextParseBatchCallbacks
+): Promise<PdfTextParseResult | null> {
+  if (!isRogalandStatementText(text)) return parseRogalandStatementText(text, options);
+
+  const lines = text.split(/\r?\n/);
+  const tableHeaderIndex = lines.findIndex((line) => /^Dato\s+Beskrivelse/.test(line.trim()));
+  if (tableHeaderIndex === -1) return parseRogalandStatementText(text, options);
+
+  const transactionLines = lines.slice(tableHeaderIndex + 1).filter((line) => line.trim().length > 0);
+  if (transactionLines.length === 0) return parseRogalandStatementText(text, options);
+
+  const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
+  const headerText = lines.slice(0, tableHeaderIndex + 1).join("\n");
+  const transactions: Transaction[] = [];
+  const errors: PdfTextValidationError[] = [];
+
+  for (let start = 0; start < transactionLines.length; start += batchSize) {
+    if (callbacks.isCancelled()) return null;
+    const end = Math.min(start + batchSize, transactionLines.length);
+    const batchText = `${headerText}\n${transactionLines.slice(start, end).join("\n")}`;
+    const result = parseRogalandStatementText(batchText, {
+      ...options,
+      idPrefix: `${options.idPrefix ?? "pdf"}-batch-${start}`,
+    });
+    if (result.ok) {
+      transactions.push(...result.transactions);
+    } else {
+      errors.push(...result.errors
+        .filter((error) => error.code !== "MISSING_TRANSACTION_SECTION")
+        .map((error) => ({
+          ...error,
+          ...(error.lineNumber === undefined ? {} : { lineNumber: error.lineNumber + start }),
+        })));
+    }
+
+    callbacks.onProgress(end, transactionLines.length);
+    await new Promise<void>((resolveBatch) => setImmediate(resolveBatch));
+  }
+
+  if (callbacks.isCancelled()) return null;
+  if (errors.length > 0) return { ok: false, errors };
+  if (transactions.length === 0) return parseRogalandStatementText(text, options);
+
+  transactions.sort((left, right) => {
+    const dateComparison = right.bookedAtIso.localeCompare(left.bookedAtIso);
+    if (dateComparison !== 0) return dateComparison;
+    const amountComparison = left.amountMinor - right.amountMinor;
+    if (amountComparison !== 0) return amountComparison;
+    return left.merchantRaw.localeCompare(right.merchantRaw);
+  });
+  const idPrefix = options.idPrefix ?? "pdf";
+  transactions.forEach((transaction, index) => {
+    transaction.id = `${idPrefix}-${index + 1}`;
+  });
+
+  return { ok: true, adapterId: ROGALAND_ADAPTER_ID, transactions };
 }

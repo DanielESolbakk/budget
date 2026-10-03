@@ -47,9 +47,11 @@ function toManualEntryInput(values: ManualEntryFormValues): ManualEntryInput {
 
 interface ManualEntrySectionProps {
   onEntrySuccess: () => void;
+  onOpenLedger: () => void;
+  onReviewUncategorized: () => void;
 }
 
-export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps): React.JSX.Element {
+export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncategorized }: ManualEntrySectionProps): React.JSX.Element {
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [accountState, setAccountState] = React.useState<"loading" | "ready" | "error">("loading");
   const [formValues, setFormValues] = React.useState<ManualEntryFormValues>(initialFormValues);
@@ -210,9 +212,13 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
         <p role="alert">No accounts are available for this household.</p>
       )}
       {entryState.status === "success" && (
-        <p role="status">
-          Added {entryState.response.transaction.merchantRaw} to your ledger.
-        </p>
+        <div className="import-success">
+          <p role="status">Added {entryState.response.transaction.merchantRaw} to your ledger.</p>
+          <div className="import-success-actions" aria-label="Next transaction actions">
+            <button type="button" onClick={onReviewUncategorized}>Review uncategorized transactions</button>
+            <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
+          </div>
+        </div>
       )}
       {entryState.status === "duplicate" && (
         <div role="alert">
