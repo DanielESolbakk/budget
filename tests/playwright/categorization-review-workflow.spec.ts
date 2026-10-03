@@ -38,6 +38,28 @@ function writeFutureMerchantFixture(date = "31.05.2026", fileName = "merchant-ru
   return filePath;
 }
 
+function writeReviewQueueFixture(): string {
+  const directory = createTemporaryDirectory();
+  const filePath = join(directory, "review-queue.csv");
+  writeFileSync(
+    filePath,
+    "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta\n30.05.2026;;MERCHANT-005;;-12.00;NOK\n31.05.2026;;MERCHANT-006;;-13.00;NOK\n",
+    "utf8"
+  );
+  return filePath;
+}
+
+function writeOutOfOrderReviewQueueFixture(): string {
+  const directory = createTemporaryDirectory();
+  const filePath = join(directory, "out-of-order-review-queue.csv");
+  writeFileSync(
+    filePath,
+    "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta\n30.05.2026;;MERCHANT-005;;-12.00;NOK\n29.05.2026;;MERCHANT-000;;-11.00;NOK\n31.05.2026;;MERCHANT-006;;-13.00;NOK\n",
+    "utf8"
+  );
+  return filePath;
+}
+
 function readCategoryForMerchant(databasePath: string, bookedAtIso: string): string | undefined {
   const database = new DatabaseSync(databasePath);
   try {
@@ -51,6 +73,140 @@ function readCategoryForMerchant(databasePath: string, bookedAtIso: string): str
 }
 
 test.describe("Categorization review workflow", () => {
+  test("tracks queue progress, future matching, and focus after a correction", async ({
+    appShell,
+    csvImport,
+    ledger,
+    reviewQueue,
+  }) => {
+    await appShell.openWorkspace("Import");
+    await csvImport.submitImport(writeReviewQueueFixture());
+    await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+
+    await appShell.openWorkspace("Transactions");
+    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await ledger.reviewUncategorizedButton.click();
+    await expect(reviewQueue.firstCategorySelect).toBeFocused();
+    await reviewQueue.categorySelect("MERCHANT-005").selectOption("groceries");
+    await reviewQueue.saveButton("MERCHANT-005").click();
+
+    await expect(reviewQueue.progressStatus).toHaveText("1 reviewed this session; 1 remaining to review");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (1)");
+    await expect(reviewQueue.firstCategorySelect).toBeFocused();
+    await expect(reviewQueue.savedStatus).toHaveText(
+      "Category saved. Future matching for this merchant will use Groceries & food."
+    );
+  });
+
+  test("opens the review queue at the oldest booking regardless of import order", async ({
+    appShell,
+    csvImport,
+    ledger,
+    reviewQueue,
+  }) => {
+    await appShell.openWorkspace("Import");
+    await csvImport.submitImport(writeOutOfOrderReviewQueueFixture());
+    await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+
+    await appShell.openWorkspace("Transactions");
+    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 3 remaining to review");
+    await ledger.reviewUncategorizedButton.click();
+
+    await expect(reviewQueue.firstCategorySelect).toHaveAttribute(
+      "aria-label",
+      "Category for MERCHANT-000"
+    );
+    await expect(reviewQueue.firstCategorySelect).toBeFocused();
+  });
+
+  test("waits for a fresh queue count before exposing the review action", async ({
+    appShell,
+    csvImport,
+    electronApp,
+    ledger,
+    reviewQueue,
+  }) => {
+    await appShell.openWorkspace("Import");
+    await csvImport.submitImport(writeReviewQueueFixture());
+    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger. No duplicates found.");
+
+    await appShell.openWorkspace("Transactions");
+    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_REVIEW_LIST_DELAY_MS"] = "800";
+    });
+    await appShell.openWorkspace("Import");
+    await csvImport.submitImport(writeFutureMerchantFixture("29.05.2026", "queue-count-refresh.csv"));
+    await expect(csvImport.successStatus).toHaveText("Added 1 transaction to your ledger. No duplicates found.");
+
+    await appShell.openWorkspace("Transactions");
+    const updatingStatus = reviewQueue.section.getByRole("status").filter({
+      hasText: "Updating categorization queue...",
+    });
+    await expect(updatingStatus).toBeVisible();
+    await expect(ledger.reviewUncategorizedButton).toHaveCount(0);
+    await expect(reviewQueue.progressStatus).not.toBeVisible();
+
+    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 3 remaining to review");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (3)");
+  });
+
+  test("clarifies that the review count is independent of ledger filters", async ({
+    appShell,
+    csvImport,
+    ledger,
+    reviewQueue,
+  }) => {
+    await appShell.openWorkspace("Import");
+    await csvImport.submitImport(writeReviewQueueFixture());
+    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger. No duplicates found.");
+
+    await appShell.openWorkspace("Transactions");
+    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
+    await ledger.merchantInput.fill("no ledger matches");
+    await expect(ledger.resultStatus).toHaveText("0 ledger transactions");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(ledger.reviewUncategorizedScope).toBeVisible();
+  });
+
+  test("keeps the review action in view on a compact Transactions workspace", async ({
+    appShell,
+    csvImport,
+    electronApp,
+    ledger,
+    reviewQueue,
+    window,
+  }) => {
+    await appShell.openWorkspace("Import");
+    await csvImport.submitImport(writeReviewQueueFixture());
+    await expect(csvImport.successStatus).toHaveText("Added 2 transactions to your ledger. No duplicates found.");
+
+    await appShell.openWorkspace("Transactions");
+    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
+    });
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(window).toHaveScreenshot("review-action-desktop.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(ledger.reviewUncategorizedButton).toBeInViewport();
+    await expect(window).toHaveScreenshot("review-action-compact.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.015,
+    });
+  });
+
   test("distinguishes queue loading, empty, and retryable error states", async ({
     appShell,
     electronApp,

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
+import type { SavedLedgerView } from "../../domain/ledger/filterTransactions.js";
 import type {
   Account,
   Household,
@@ -25,6 +26,9 @@ interface LocalLedgerSeedData {
 export interface LocalLedgerDatabase {
   loadLedgerSnapshotData: () => LedgerSnapshotData;
   replaceLedgerSnapshotData: (snapshot: LedgerSnapshotData) => void;
+  saveLedgerView: (savedLedgerView: SavedLedgerView) => void;
+  listSavedLedgerViews: () => SavedLedgerView[];
+  deleteSavedLedgerView: (viewId: string) => boolean;
   getAccountsForHousehold: (householdId: string) => Account[];
   upsertMonthlyCategoryTarget: (target: MonthlyCategoryTarget) => void;
   appendImportJob: (importJob: ImportJob) => void;
@@ -102,6 +106,12 @@ function ensureSchema(db: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS merchant_category_rules (
       merchant_alias TEXT PRIMARY KEY,
       category_id TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS saved_ledger_views (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      filters_json TEXT NOT NULL
     );
   `);
 
@@ -415,6 +425,33 @@ export function createLocalLedgerDatabase(
     ).run(target.yearMonth, target.categoryId, target.targetMinor);
   }
 
+  function saveLedgerView(savedLedgerView: SavedLedgerView): void {
+    db.prepare(
+      "INSERT INTO saved_ledger_views (id, name, filters_json) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET id = excluded.id, filters_json = excluded.filters_json"
+    ).run(savedLedgerView.id, savedLedgerView.name, JSON.stringify(savedLedgerView.filters));
+  }
+
+  function listSavedLedgerViews(): SavedLedgerView[] {
+    return db
+      .prepare("SELECT id, name, filters_json FROM saved_ledger_views ORDER BY name COLLATE NOCASE")
+      .all()
+      .map((row) => {
+        const savedView = row as { id: string; name: string; filters_json: string };
+        return {
+          id: savedView.id,
+          name: savedView.name,
+          filters: JSON.parse(savedView.filters_json) as SavedLedgerView["filters"],
+        };
+      });
+  }
+
+  function deleteSavedLedgerView(viewId: string): boolean {
+    const result = db
+      .prepare("DELETE FROM saved_ledger_views WHERE id = ?")
+      .run(viewId) as { changes: number | bigint };
+    return Number(result.changes) > 0;
+  }
+
   function getAccountsForHousehold(householdId: string): Account[] {
     const accounts = db
       .prepare(
@@ -663,6 +700,9 @@ export function createLocalLedgerDatabase(
   return {
     loadLedgerSnapshotData,
     replaceLedgerSnapshotData,
+    saveLedgerView,
+    listSavedLedgerViews,
+    deleteSavedLedgerView,
     getAccountsForHousehold,
     upsertMonthlyCategoryTarget,
     appendImportJob,

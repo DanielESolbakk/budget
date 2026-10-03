@@ -42,16 +42,30 @@ test.describe("Main-process transaction privacy", () => {
     expect(requests).toEqual([]);
   });
 
-  test("rejects malformed ledger and restore payloads at the IPC boundary", async ({ window }) => {
+  test("rejects malformed ledger filters, saved views, and restore payloads at the IPC boundary", async ({ window }) => {
     const responses = await window.evaluate(async () => {
       const api = (globalThis as unknown as { budgetApi: unknown }).budgetApi as {
-        ledger: { list: (query: unknown) => Promise<unknown> };
+        ledger: {
+          list: (query: unknown) => Promise<unknown>;
+          savedViews: { save: (input: unknown) => Promise<unknown> };
+        };
         backup: { restore: (input: unknown) => Promise<unknown> };
       };
       const results: string[] = [];
 
       await api.ledger.list(null).then(
         () => results.push("ledger-accepted"),
+        (error: unknown) => results.push(error instanceof Error ? error.message : String(error))
+      );
+      await api.ledger.list({ amountFromMinor: 200, amountToMinor: 100 }).then(
+        () => results.push("ledger-range-accepted"),
+        (error: unknown) => results.push(error instanceof Error ? error.message : String(error))
+      );
+      await api.ledger.savedViews.save({
+        name: "Invalid month",
+        filters: { datePreset: "lastMonth" },
+      }).then(
+        () => results.push("saved-view-accepted"),
         (error: unknown) => results.push(error instanceof Error ? error.message : String(error))
       );
       await api.backup.restore(null).then(
@@ -63,7 +77,9 @@ test.describe("Main-process transaction privacy", () => {
     });
 
     expect(responses[0]).toContain("Transaction query must be an object.");
-    expect(responses[1]).toContain("Restore input must be an object.");
+    expect(responses[1]).toContain("amountFromMinor must not exceed amountToMinor.");
+    expect(responses[2]).toContain("datePreset must be 'thisMonth'.");
+    expect(responses[3]).toContain("Restore input must be an object.");
   });
 
   test("rejects malformed import input before reading the supplied path", async ({ window }) => {
