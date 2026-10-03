@@ -134,31 +134,48 @@ test.describe("Ledger search and filter workflow", () => {
     await expect(ledger.moreFiltersSummary).toContainText("Amount range");
   });
 
-  test("saves, reapplies after renderer reload, and deletes a local view", async ({ appShell, ledger, window }) => {
-    await expect(ledger.savedViewsSummary).toHaveText("Saved views (0)");
-    await expect(ledger.savedViewNameInput).not.toBeVisible();
-    await ledger.openSavedViews();
-    await expect(ledger.savedViewNameInput).toBeVisible();
+  test("saves, reapplies after an Electron restart, and deletes a local view", async ({ databasePath }) => {
+    const launchElectron = () => electron.launch({
+      args: [MAIN_ENTRY],
+      env: { ...process.env, NODE_ENV: "test", BUDGET_DB_PATH: databasePath },
+    });
+    let app = await launchElectron();
 
-    await ledger.quickFilter("Income").click();
-    await expect(ledger.table.getByRole("row")).toHaveCount(3);
-    await ledger.savedViewNameInput.fill("Income transactions");
-    await expect(ledger.saveViewButton).toBeEnabled();
-    await ledger.saveViewButton.click();
-    await expect(ledger.savedViewsSummary).toHaveText("Saved views (1)");
-    await ledger.openSavedViews();
-    await expect(ledger.savedViews).toContainText("Income transactions");
+    try {
+      let window = await app.firstWindow();
+      await window.waitForLoadState("domcontentloaded");
+      const appShell = new AppShellPage(window);
+      await appShell.openWorkspace("Transactions");
+      const ledger = new LedgerPage(window);
 
-    await window.reload();
-  await appShell.openWorkspace("Transactions");
-    await expect(ledger.savedViewsSummary).toHaveText("Saved views (1)");
-    await ledger.openSavedViews();
-    await expect(ledger.savedViews).toContainText("Income transactions");
-    await ledger.applySavedView("Income transactions");
-    await expect(ledger.table.getByRole("row")).toHaveCount(3);
+      await expect(ledger.savedViewsSummary).toHaveText("Saved views (0)");
+      await ledger.openSavedViews();
+      await ledger.quickFilter("Income").click();
+      await expect(ledger.table.getByRole("row")).toHaveCount(3);
+      await ledger.savedViewNameInput.fill("Income transactions");
+      await expect(ledger.saveViewButton).toBeEnabled();
+      await ledger.saveViewButton.click();
+      await expect(ledger.savedViewsSummary).toHaveText("Saved views (1)");
+      await expect(ledger.savedViews).toContainText("Income transactions");
 
-    await ledger.deleteSavedView("Income transactions");
-    await expect(ledger.savedViewApplyButton("Income transactions")).toHaveCount(0);
+      await app.close();
+      app = await launchElectron();
+      window = await app.firstWindow();
+      await window.waitForLoadState("domcontentloaded");
+      const restartedAppShell = new AppShellPage(window);
+      await restartedAppShell.openWorkspace("Transactions");
+      const restartedLedger = new LedgerPage(window);
+
+      await expect(restartedLedger.savedViewsSummary).toHaveText("Saved views (1)");
+      await restartedLedger.openSavedViews();
+      await expect(restartedLedger.savedViews).toContainText("Income transactions");
+      await restartedLedger.applySavedView("Income transactions");
+      await expect(restartedLedger.table.getByRole("row")).toHaveCount(3);
+      await restartedLedger.deleteSavedView("Income transactions");
+      await expect(restartedLedger.savedViewApplyButton("Income transactions")).toHaveCount(0);
+    } finally {
+      await app.close();
+    }
   });
 
   test("returns a bounded ledger page with the full filtered count", async ({ window: page }) => {
