@@ -38,6 +38,37 @@ export interface MerchantCategoryRule {
   categoryId: string;
 }
 
+export interface MerchantCorrectionProvenance {
+  id: string;
+  sourceTransactionId: string;
+  merchantAlias: string;
+  categoryId: string;
+  correctedAtIso: string;
+}
+
+export interface SameMerchantPropagationChange {
+  transactionId: string;
+  beforeCategoryId: string | null;
+  afterCategoryId: string;
+}
+
+export interface SameMerchantPropagationInput {
+  sourceTransactionId: string;
+  merchantAlias: string;
+  categoryId: string;
+  transactionIds: string[];
+}
+
+export interface SameMerchantPropagationOperation {
+  id: string;
+  sourceTransactionId: string;
+  merchantAlias: string;
+  categoryId: string;
+  appliedAtIso: string;
+  undoneAtIso?: string;
+  changes: SameMerchantPropagationChange[];
+}
+
 /**
  * Raw input provided by a household user when manually entering a transaction.
  * All fields are strings at the boundary; validation converts them to canonical types.
