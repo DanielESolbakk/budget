@@ -14,8 +14,11 @@ import type {
   Account,
   ForecastEntry,
   ManualEntryInput,
+  MerchantCorrectionProvenance,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
+  SameMerchantPropagationInput,
+  SameMerchantPropagationOperation,
   Transaction,
 } from "../domain/types.js";
 import type {
@@ -95,6 +98,14 @@ export interface ImportApi {
 export interface ReviewApi {
   list: () => Promise<Transaction[]>;
   updateCategory: (input: { transactionId: string; categoryId: string }) => Promise<CategoryUpdateResult>;
+  history: {
+    corrections: () => Promise<MerchantCorrectionProvenance[]>;
+    propagations: () => Promise<SameMerchantPropagationOperation[]>;
+  };
+  propagation: {
+    apply: (input: SameMerchantPropagationInput) => Promise<SameMerchantPropagationOperation>;
+    undo: (operationId: string) => Promise<boolean>;
+  };
 }
 
 export interface CategoryUpdateResult {
@@ -197,6 +208,18 @@ const budgetApi: BudgetApi = {
     list: (): Promise<Transaction[]> => ipcRenderer.invoke("transaction:listReview"),
     updateCategory: (input: { transactionId: string; categoryId: string }): Promise<CategoryUpdateResult> =>
       ipcRenderer.invoke("transaction:updateCategory", input),
+    history: {
+      corrections: (): Promise<MerchantCorrectionProvenance[]> =>
+        ipcRenderer.invoke("review:correctionHistory:list"),
+      propagations: (): Promise<SameMerchantPropagationOperation[]> =>
+        ipcRenderer.invoke("review:propagationHistory:list"),
+    },
+    propagation: {
+      apply: (input: SameMerchantPropagationInput): Promise<SameMerchantPropagationOperation> =>
+        ipcRenderer.invoke("review:propagation:apply", input),
+      undo: (operationId: string): Promise<boolean> =>
+        ipcRenderer.invoke("review:propagation:undo", operationId),
+    },
   },
   ledger: {
     list: (query: TransactionQuery): Promise<TransactionPage & { accounts: Account[] }> =>
