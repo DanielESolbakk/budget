@@ -253,7 +253,7 @@ function assertTrustedRenderer(event: Electron.IpcMainInvokeEvent): void {
   const packagedRendererUrl = pathToFileURL(join(__dirname, "../renderer/index.html")).href;
   if (senderUrl === packagedRendererUrl) return;
 
-  const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL;
   if (senderUrl !== undefined && rendererUrl !== undefined) {
     try {
       if (new URL(senderUrl).origin === new URL(rendererUrl).origin) return;
