@@ -62,7 +62,7 @@ The entire skill creation process follows RED-GREEN-REFACTOR.
 Concrete method with steps to follow (condition-based-waiting, root-cause-tracing)
 
 ### Pattern
-Way of thinking about problems (flatten-with-flags, test-invariants)
+A way of thinking (flatten-with-flags, test-invariants)
 
 ### Reference
 API docs, syntax guides, tool documentation (office docs)
@@ -184,7 +184,7 @@ description: I can help you with async tests when they're flaky
 # ❌ BAD: Mentions technology but skill isn't specific to it
 description: Use when tests use setTimeout/sleep and are flaky
 
-# ✅ GOOD: Starts with "Use when", describes problem, no workflow
+# ✅ GOOD: Starts with "Use when", describes problem
 description: Use when tests have race conditions, timing dependencies, or pass/fail inconsistently
 
 # ✅ GOOD: Technology-specific skill with explicit trigger
@@ -201,7 +201,7 @@ Use words an agent would search for:
 
 ### 3. Descriptive Naming
 
-**Use active voice, verb-first:**
+Use active voice, verb-first:
 - ✅ `creating-skills` not `skill-creation`
 - ✅ `condition-based-waiting` not `async-test-helpers`
 
@@ -227,7 +227,7 @@ search-conversations supports multiple modes and filters. Run --help for details
 
 **Use cross-references:**
 ```markdown
-# ❌ BAD: Repeat workflow details
+# ❌ BAD: Repeat what's in cross-referenced skills
 When searching, dispatch subagent with template...
 [20 lines of repeated instructions]
 
@@ -257,7 +257,7 @@ You: Searching...
 ```bash
 wc -w skills/path/SKILL.md
 # getting-started workflows: aim for <150 each
-# Other frequently-loaded: aim for <200 total
+# Other frequently-loaded skills: aim for <200 total
 ```
 
 **Name by what you DO or core insight:**
@@ -366,7 +366,7 @@ pptx/
 ```
 When: Reference material too large for inline
 
-Invoke bundled scripts through their interpreter in the prose (`bash scripts/tool.sh`, `node scripts/tool.js`), never by bare path: some harness plugin packagers strip executable bits, and a bare `scripts/tool.sh` fails there with `Permission denied`.
+Invoke bundled scripts through their interpreter in the prose (`bash scripts/tool.sh`, `node scripts/tool.js`), never by bare path; a harness plugin packager may strip executable bits, and a bare path can fail with `Permission denied`.
 
 ## The Iron Law (Same as TDD)
 
@@ -383,9 +383,9 @@ Edit skill without testing? Same violation.
 - Not for "simple additions"
 - Not for "just adding a section"
 - Not for "documentation updates"
-- Don't keep untested changes as "reference"
-- Don't "adapt" it while running tests
-- Don't look at it
+- Don't keep existing changes as "reference"
+- Don't "adapt" them while writing tests
+- Don't look at them
 - Delete means delete
 
 **REQUIRED BACKGROUND:** The superpowers:test-driven-development skill explains why this matters. Same principles apply to documentation.
@@ -413,31 +413,31 @@ Different skill types need different test approaches:
 **Test with:**
 - Application scenarios: Can they apply the technique correctly?
 - Variation scenarios: Do they handle edge cases?
-- Missing information tests: Do instructions have gaps?
+- Missing-information tests: Do they know enough to apply the skill?
 
-**Success criteria:** Agent successfully applies technique to new scenario
+**Success criteria:** Agent successfully applies the technique to a new scenario
 
 ### Pattern Skills (mental models)
 
 **Examples:** reducing-complexity, information-hiding concepts
 
 **Test with:**
-- Recognition scenarios: Do they recognize when pattern applies?
-- Application scenarios: Can they use the mental model?
-- Counter-examples: Do they know when NOT to apply?
+- Recognition scenarios: Do they recognize when the pattern applies?
+- Application scenarios: Do they use the model appropriately?
+- Counter-examples: Do they know when not to apply it?
 
-**Success criteria:** Agent correctly identifies when/how to apply pattern
+**Success criteria:** Agent correctly identifies when/how to apply the pattern
 
 ### Reference Skills (documentation/APIs)
 
-**Examples:** API documentation, command references, library guides
+**Examples:** API documentation, command references
 
 **Test with:**
 - Retrieval scenarios: Can they find the right information?
 - Application scenarios: Can they use what they found correctly?
 - Gap testing: Are common use cases covered?
 
-**Success criteria:** Agent finds and correctly applies reference information
+**Success criteria:** Agent finds and correctly applies the reference
 
 ## Common Rationalizations for Skipping Testing
 
@@ -446,9 +446,9 @@ Different skill types need different test approaches:
 | "Skill is obviously clear" | Clear to you ≠ clear to other agents. Test it. |
 | "It's just a reference" | References can have gaps, unclear sections. Test retrieval. |
 | "Testing is overkill" | Untested skills have issues. Always. 15 min testing saves hours. |
-| "I'll test if problems emerge" | Problems = agents can't use skill. Test BEFORE deploying. |
+| "I'll test if problems emerge" | Problems = agents can't use the skill. Test BEFORE deploying. |
 | "Too tedious to test" | Testing is less tedious than debugging bad skill in production. |
-| "I'm confident it's good" | Overconfidence guarantees issues. Test anyway. |
+| "I'm confident it's good" | Overconfidence guarantees issues. Test it. |
 | "Academic review is enough" | Reading ≠ using. Test application scenarios. |
 | "No time to test" | Deploying untested skills wastes more time fixing them later. |
 | "Baselines take too long, so skip RED and GREEN" | Reduce redundant samples for a narrow edit; keep one no-skill baseline and the same-scenario guided run. |
@@ -466,27 +466,23 @@ Before writing guidance, classify the baseline failure. The form that bulletproo
 | Baseline failure | Right form | Wrong form |
 |---|---|---|
 | Skips/violates a rule under pressure (knows better, does it anyway) | Prohibition + rationalization table + red flags (see Bulletproofing below) | Soft guidance ("prefer...", "consider...") |
-| Complies, but output has the wrong shape (bloated prompt, buried verdict, restated spec) | Positive recipe or contract: state what the output IS — its parts, in order | Prohibition list ("don't restate", "never narrate") |
-| Omits a required element from something they already produce | Structural: REQUIRED field or slot in the template they fill in | Prose reminders near the template |
+| Complies, but output has the wrong shape (bloated prompt, buried verdict, restated spec) | Positive recipe or contract: state the output that IS expected and its order | Prohibition list ("don't restate", "never narrate") |
+| Omits a required element from something already produced | Structural: REQUIRED field or slot in the template they fill in | Prose reminders near the template |
 | Behavior should depend on a condition | Conditional keyed to an observable predicate ("if the brief exists, reference it") | Unconditional rule + exemption clauses |
 
-**Why prohibitions backfire on shaping problems:** under a competing incentive ("make the prompt self-contained"), agents negotiate with "don't X". In head-to-head wording tests on dispatch-prompt guidance, the prohibition arm produced clearly more of the unwanted content than the recipe arm (fully separated distributions), and trended worse than even the no-guidance control — micro-test your own case rather than assuming, but never reach for the prohibition by default. A recipe leaves nothing to negotiate: the output matches the stated shape or it doesn't.
+**Why prohibitions backfire on shaping problems:** under competing incentives, agents negotiate with "don't X". In head-to-head wording tests on dispatch-prompt guidance, the prohibition arm produced clearly more of the unwanted content than the recipe arm (fully separated distributions), and trended worse than even the no-guidance control. Micro-test wording rather than assuming; a recipe leaves less room to negotiate.
 
 **Rules for whichever form you pick:**
-- **No nuance clauses.** "Don't X unless it matters" reopens the negotiation — appending a single nuance clause to a winning recipe degraded it from consistent to noisy in the same wording tests. Express a real exception as its own conditional on an observable predicate.
-- **Exemption clauses don't scope.** "This limit doesn't apply to code blocks" still suppresses code blocks. If part of the output must be exempt, restructure so the rule can't reach it.
+- Avoid nuance clauses that reopen a loophole. State real exceptions as separate conditions on observable predicates.
+- Exemption clauses don't scope. If part of the output must be exempt, restructure so the rule cannot reach it.
 
 ## Bulletproofing Skills Against Rationalization
 
-Skills that enforce discipline (like TDD) need to resist rationalization. Agents are smart and will find loopholes when under pressure.
-
-**Scope:** this toolkit is for discipline failures — an agent that knows the rule and skips it under pressure. For wrong-shaped output or omitted elements, prohibition-based bulletproofing backfires; use the forms in Match the Form to the Failure instead.
-
-**Psychology note:** Understanding WHY persuasion techniques work helps you apply them systematically. See persuasion-principles.md for research foundation (Cialdini, 2021; Meincke et al., 2025) on authority, commitment, scarcity, social proof, and unity principles.
+Skills that enforce discipline need to resist rationalization. For wrong-shaped output or omissions, use positive recipes or structural requirements instead of prohibitions.
 
 ### Close Every Loophole Explicitly
 
-Don't just state the rule - forbid specific workarounds:
+Don't just state the rule; forbid observed workarounds.
 
 <Bad>
 ```markdown
@@ -500,21 +496,18 @@ Write code before test? Delete it. Start over.
 
 **No exceptions:**
 - Don't keep it as "reference"
-- Don't "adapt" it while writing tests
+- Don't adapt it while writing tests
 - Don't look at it
-- Delete means delete
 ```
 </Good>
 
-### Address "Spirit vs Letter" Arguments
+### Address Spirit vs Letter Arguments
 
-Add foundational principle early:
+Add the foundational principle early:
 
 ```markdown
 **Violating the letter of the rules is violating the spirit of the rules.**
 ```
-
-This cuts off entire class of "I'm following the spirit" rationalizations.
 
 ### Build Rationalization Table
 
@@ -558,7 +551,7 @@ Follow the TDD cycle:
 
 ### RED: Write Failing Test (Baseline)
 
-Run pressure scenario with subagent WITHOUT the skill. Document exact behavior:
+Run a pressure scenario with a subagent WITHOUT the skill. Document exact behavior:
 - What choices did they make?
 - What rationalizations did they use (verbatim)?
 - Which pressures triggered violations?
@@ -573,8 +566,7 @@ Run same scenarios WITH the skill. Agent should now comply.
 
 ### REFACTOR: Close Loopholes
 
-Agent found new rationalization? Add explicit counter. Re-test until bulletproof.
-
+Agent found a new rationalization? Add a specific counter and rerun the same scenario. Avoid rerunning passing scenarios unless an edit affects them.
 
 ### Risk-Based Validation Depth
 
@@ -601,22 +593,22 @@ This bounded loop preserves the failure signal without repeating unchanged passi
 
 ### ❌ Narrative Example
 "In session 2025-10-03, we found empty projectDir caused..."
-**Why bad:** Too specific, not reusable
+**Why bad:** Too specific; not reusable.
 
 ### ❌ Multi-Language Dilution
 example-js.js, example-py.py, example-go.go
-**Why bad:** Mediocre quality, maintenance burden
+**Why bad:** Mediocre quality; maintenance burden.
 
 ### ❌ Code in Flowcharts
 ```dot
 step1 [label="import fs"];
 step2 [label="read file"];
 ```
-**Why bad:** Can't copy-paste, hard to read
+**Why bad:** Can't copy-paste, hard to read.
 
 ### ❌ Generic Labels
 helper1, helper2, step3, pattern4
-**Why bad:** Labels should have semantic meaning
+**Why bad:** Labels should have semantic meaning.
 
 ## Terminal Failures and Cleanup Safety
 
@@ -639,7 +631,7 @@ Red flags: choosing Yes for recursive junction deletion; treating skill-test ter
 - Move to next skill before current one is verified
 - Skip testing because "batching is more efficient"
 
-**The deployment checklist below is MANDATORY for EACH skill.**
+The deployment checklist below is MANDATORY for EACH skill.
 
 Deploying untested skills = deploying untested code. It's a violation of quality standards.
 
@@ -686,13 +678,13 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 
 ## Discovery Workflow
 
-How future agents find your skill:
+How future agents find this skill:
 
-1. **Encounters problem** ("tests are flaky")
+1. **Encounters problem** (for example, tests are flaky)
 2. **Searches skills** (greps descriptions, browses categories)
-3. **Finds SKILL** (description matches)
-4. **Scans overview** (is this relevant?)
-5. **Reads patterns** (quick reference table)
-6. **Loads example** (only when implementing)
+3. **Finds a matching skill**
+4. **Scans the overview**
+5. **Reads the relevant pattern**
+6. **Loads examples only when implementing**
 
-**Optimize this discovery flow** - put searchable terms early and often.
+**Optimize this discovery flow** with searchable, trigger-focused wording.

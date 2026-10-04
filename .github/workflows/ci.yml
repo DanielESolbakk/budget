@@ -4,8 +4,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, reopened, ready_for_review, synchronize]
-  pull_request_review:
-    types: [submitted]
   push:
     branches: [main]
   merge_group:
@@ -22,12 +20,12 @@ concurrency:
 
 jobs:
   detect-changes:
-    name: Determine Full CI Scope
+    name: Determine CI Scope
     runs-on: ubuntu-latest
     outputs:
       run_ci: ${{ steps.scope.outputs.run_ci }}
       run_full: ${{ steps.scope.outputs.run_full }}
-      run_harness_gate: ${{ steps.scope.outputs.run_harness_gate }}
+      run_benchmark: ${{ steps.scope.outputs.run_benchmark }}
 
     steps:
       - name: Determine if full CI should run
@@ -35,11 +33,11 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            if (context.eventName !== "pull_request" && context.eventName !== "pull_request_review") {
+            if (context.eventName !== "pull_request") {
               core.setOutput("run_ci", "true");
               core.setOutput("run_full", "true");
-              core.setOutput("run_harness_gate", "true");
-              core.info("Full CI enabled for non-PR event.");
+              core.setOutput("run_benchmark", "true");
+              core.info("CI enabled for non-PR event.");
               return;
             }
 
@@ -50,25 +48,14 @@ jobs:
               pull_number: payloadPr.number,
             });
 
-            let shouldRunCi = false;
-            if (context.eventName === "pull_request") {
-              // Run CI only after the PR is out of draft (or when that transition event fires).
-              shouldRunCi = context.payload.action === "ready_for_review" || livePr.draft === false;
-            } else {
-              // Repo-settings-safe fallback: run CI when a non-draft PR receives an approval review.
-              const reviewState = String(context.payload.review?.state || "").toLowerCase();
-              shouldRunCi = reviewState === "approved" && livePr.draft === false;
-            }
+            // Run CI only after the PR is out of draft (or when that transition event fires).
+            const shouldRunCi = context.payload.action === "ready_for_review" || livePr.draft === false;
             core.setOutput("run_ci", shouldRunCi ? "true" : "false");
 
             if (!shouldRunCi) {
               core.setOutput("run_full", "false");
-              core.setOutput("run_harness_gate", "false");
-              if (context.eventName === "pull_request") {
-                core.info("Skipping CI while PR is draft. CI begins after ready_for_review.");
-              } else {
-                core.info("Skipping CI for review event because PR is draft or review is not APPROVED.");
-              }
+              core.setOutput("run_benchmark", "false");
+              core.info("Skipping CI while PR is draft. CI begins after ready_for_review.");
               return;
             }
 
@@ -83,23 +70,24 @@ jobs:
               const path = String(file.filename || "");
               return (
                 path.startsWith("src/") ||
+                path.startsWith("electron/") ||
                 path.startsWith("tests/") ||
                 path.startsWith("scripts/") ||
                 path === "package.json" ||
                 path === "package-lock.json" ||
-                path === "stryker.config.json" ||
+                path === "electron.vite.config.ts" ||
+                path === "playwright.config.ts" ||
                 path === "tsconfig.json" ||
                 /^vitest.*\.config\.ts$/i.test(path) ||
                 path === ".github/workflows/ci.yml"
               );
             });
 
-            const shouldRunHarnessGate = files.some((file) => {
+            const shouldRunBenchmark = files.some((file) => {
               const path = String(file.filename || "");
               return (
                 path.startsWith("src/tooling/performance/") ||
                 path.startsWith("src/domain/import/") ||
-                path === "scripts/run-skill-evals.ts" ||
                 path === "scripts/run-backup-restore-benchmark.ts" ||
                 path === "tests/integration/performance-harness-contract.test.ts" ||
                 path === "tests/fixtures/synthetic/backup-restore-performance-contract.json" ||
@@ -111,12 +99,12 @@ jobs:
             });
 
             core.setOutput("run_full", shouldRunFull ? "true" : "false");
-            core.setOutput("run_harness_gate", shouldRunHarnessGate ? "true" : "false");
-            core.info(`Full CI ${shouldRunFull ? "enabled" : "skipped"} based on changed files.`);
-            core.info(`Harness eval gate ${shouldRunHarnessGate ? "enabled" : "skipped"} based on changed files.`);
+            core.setOutput("run_benchmark", shouldRunBenchmark ? "true" : "false");
+            core.info(`Extended CI ${shouldRunFull ? "enabled" : "skipped"} based on changed files.`);
+            core.info(`Backup/restore benchmark ${shouldRunBenchmark ? "enabled" : "skipped"} based on changed files.`);
 
-  ci-fast:
-    name: CI Fast
+  ci:
+    name: CI
     needs: [detect-changes]
     if: needs.detect-changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
@@ -183,7 +171,10 @@ jobs:
       - name: Validate required npm scripts
         if: steps.detect.outputs.has_package == 'true'
         run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const required=['lint','typecheck','test:unit']; const missing=required.filter((name)=>typeof scripts[name] !== 'string' || !scripts[name].trim()); if (missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const required=['lint','typecheck','test:unit']; const full=['test:integration','test:e2e:vitest','test:e2e:playwright:ci','verify:no-network','build','validate:packaged-runtime']; const missing=required.filter((name)=>!has(name)); if(process.env.RUN_FULL==='true') missing.push(...full.filter((name)=>!has(name))); if(process.env.RUN_BENCHMARK==='true'&&!has('benchmark:backup-restore')) missing.push('benchmark:backup-restore'); if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+        env:
+          RUN_FULL: ${{ needs.detect-changes.outputs.run_full }}
+          RUN_BENCHMARK: ${{ needs.detect-changes.outputs.run_benchmark }}
 
       - name: Lint
         if: steps.detect.outputs.has_package == 'true'
@@ -197,183 +188,43 @@ jobs:
         if: steps.detect.outputs.has_package == 'true'
         run: npm run test:unit
 
-      - name: No package marker
-        if: steps.detect.outputs.has_package != 'true'
-        run: echo "No package.json found. Docs-only and governance changes may proceed until scaffolding is created."
-
-  ci-full:
-    name: CI Full
-    needs: [detect-changes]
-    if: needs.detect-changes.outputs.run_ci == 'true' && needs.detect-changes.outputs.run_full == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Detect Node project
-        id: detect
-        run: |
-          if [ -f package.json ]; then
-            echo "has_package=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_package=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Setup Node
-        if: steps.detect.outputs.has_package == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        if: steps.detect.outputs.has_package == 'true'
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
-
-      - name: Validate required npm scripts
-        if: steps.detect.outputs.has_package == 'true'
-        run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const missing=['test:integration','test:e2e:playwright','test:e2e:playwright:ci','test:mutation:unit-integration:signal','verify:no-network','deps:audit:signal','ai:feedback:signal','ai:skills:prune:signal','ai:risk:checkpoint:signal'].filter((name)=>!has(name)); if(!(has('test:e2e:vitest')||has('test:e2e'))){ missing.push('test:e2e:vitest|test:e2e'); } if(process.env.RUN_HARNESS_GATE==='true' && !has('eval:skill')){ missing.push('eval:skill'); } if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
-        env:
-          RUN_HARNESS_GATE: ${{ needs.detect-changes.outputs.run_harness_gate }}
-
-      - name: Harness eval gate
-        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_harness_gate == 'true'
-        run: npm run eval:skill
-
       - name: Integration tests
-        if: steps.detect.outputs.has_package == 'true'
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'
         run: npm run test:integration
 
-      - name: Unit coverage signal (non-blocking)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: npm run test:coverage:signal
-
-      - name: Integration coverage signal (non-blocking)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: npm run test:coverage:integration
-
-      - name: Upload layered coverage reports
-        if: steps.detect.outputs.has_package == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: layered-coverage
-          path: |
-            coverage/unit
-            coverage/integration
-          if-no-files-found: ignore
-
-      - name: Mutation score signal (non-blocking)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: npm run test:mutation:signal
-
-      - name: Upload mutation report artifact
-        if: steps.detect.outputs.has_package == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mutation-report
-          path: reports/mutation
-          if-no-files-found: ignore
-
-      - name: Unit and integration mutation signal (advisory)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: npm run test:mutation:unit-integration:signal
-
-      - name: Upload unit and integration mutation report artifact
-        if: steps.detect.outputs.has_package == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mutation-unit-integration-report
-          path: reports/mutation-unit-integration
-          if-no-files-found: ignore
-
-      - name: Dependency governance signal (non-blocking)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: npm run deps:audit:signal
-
-      - name: Upload dependency governance artifact
-        if: steps.detect.outputs.has_package == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dependency-governance
-          path: reports/dependency-audit
-          if-no-files-found: ignore
-
-      - name: AI failure feedback loop (non-blocking)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: npm run ai:feedback:signal
-
-      - name: Upload AI feedback artifact
-        if: steps.detect.outputs.has_package == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-feedback
-          path: reports/ai-feedback
-          if-no-files-found: ignore
-
-      - name: AI skill pruning loop (non-blocking)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: npm run ai:skills:prune:signal
-
-      - name: Upload AI skill pruning artifact
-        if: steps.detect.outputs.has_package == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-skill-pruning
-          path: reports/ai-skill-pruning
-          if-no-files-found: ignore
-
-      - name: High-risk judgment checkpoint signal (non-blocking)
-        if: steps.detect.outputs.has_package == 'true'
-        continue-on-error: true
-        run: npm run ai:risk:checkpoint:signal
-
-      - name: Upload high-risk checkpoint artifact
-        if: steps.detect.outputs.has_package == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: high-risk-checkpoint
-          path: reports/high-risk-checkpoint
-          if-no-files-found: ignore
-
       - name: Vitest end-to-end smoke tests
-        if: steps.detect.outputs.has_package == 'true'
-        run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const cmd=has('test:e2e:vitest')?'test:e2e:vitest':(has('test:e2e')?'test:e2e':''); if(!cmd){ console.error('No e2e script found (expected test:e2e:vitest or test:e2e).'); process.exit(1);} console.log(cmd);" > .e2e_cmd
-          npm run "$(cat .e2e_cmd)"
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'
+        run: npm run test:e2e:vitest
 
       - name: Install Electron runtime
-        if: steps.detect.outputs.has_package == 'true'
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'
         run: node node_modules/electron/install.js
 
-      - name: Build Playwright artifacts
-        if: steps.detect.outputs.has_package == 'true'
+      - name: Build application
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'
         run: npm run build
 
+      - name: No-network verification
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'
+        run: npm run verify:no-network
+
+      - name: Packaged runtime validation
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'
+        run: npm run validate:packaged-runtime
+
+      - name: Backup/restore benchmark harness validation
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_benchmark == 'true'
+        run: npm run benchmark:backup-restore -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv
+
       - name: Playwright runtime tests
-        if: steps.detect.outputs.has_package == 'true'
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'
         env:
           PLAYWRIGHT_OUTPUT_DIR: test-results/functional
           PLAYWRIGHT_REPORT_DIR: playwright-report/functional
         run: xvfb-run -a npm run test:e2e:playwright:ci -- --grep-invert '@visual'
 
       - name: Upload Playwright functional artifacts
-        if: steps.detect.outputs.has_package == 'true' && always()
+        if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-functional-artifacts
@@ -382,43 +233,9 @@ jobs:
             test-results/functional
           if-no-files-found: ignore
 
-      - name: Playwright visual tests (informational)
-        if: steps.detect.outputs.has_package == 'true' && always()
-        continue-on-error: true
-        env:
-          PLAYWRIGHT_OUTPUT_DIR: test-results/visual
-          PLAYWRIGHT_REPORT_DIR: playwright-report/visual
-        run: xvfb-run -a npm run test:e2e:playwright:ci -- --grep '@visual'
-
-      - name: Upload Playwright visual artifacts
-        if: steps.detect.outputs.has_package == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-visual-artifacts
-          path: |
-            playwright-report/visual
-            test-results/visual
-          if-no-files-found: ignore
-
-      - name: No-network verification
-        if: steps.detect.outputs.has_package == 'true'
-        run: npm run verify:no-network
-
-      - name: Build packaged artifacts
-        if: steps.detect.outputs.has_package == 'true'
-        run: npm run build
-
-      - name: Packaged runtime validation
-        if: steps.detect.outputs.has_package == 'true'
-        run: npm run validate:packaged-runtime
-
-      - name: Backup/restore benchmark harness validation
-        if: steps.detect.outputs.has_package == 'true'
-        run: npm run benchmark:backup-restore -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv
-
       - name: No package marker
         if: steps.detect.outputs.has_package != 'true'
-        run: echo "No package.json found. Full CI checks are skipped."
+        run: echo "No package.json found. Application CI checks are skipped."
 
   pr-guardrails:
     name: PR Guardrails

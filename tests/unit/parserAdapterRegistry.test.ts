@@ -22,6 +22,40 @@ const BASE_OPTIONS = {
 };
 
 describe("ParserAdapterRegistry", () => {
+  it("forwards progress through the selected adapter's batched parse", async () => {
+    const registryWithBatches = defaultParserAdapterRegistry as unknown as {
+      parseInBatches?: (
+        text: string,
+        options: typeof BASE_OPTIONS,
+        callbacks: {
+          batchSize: number;
+          isCancelled: () => boolean;
+          onProgress: (completedRows: number, totalRows: number) => void;
+        }
+      ) => Promise<unknown>;
+    };
+    const progress: Array<[number, number]> = [];
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Dato         Beskrivelse                              Beløp          Saldo",
+      "28.05.2026   FIRST SHOP                                -1,00         10,00",
+      "30.05.2026   LATER SHOP                                -2,00         11,00",
+    ].join("\n");
+
+    const result = await registryWithBatches.parseInBatches?.(text, BASE_OPTIONS, {
+      batchSize: 1,
+      isCancelled: () => false,
+      onProgress: (completedRows, totalRows) => progress.push([completedRows, totalRows]),
+    });
+
+    expect(progress).toEqual([[1, 2], [2, 2]]);
+    expect(result).toMatchObject({
+      ok: true,
+      adapterId: ROGALAND_ADAPTER_ID,
+      sourceIdentity: "no.rogaland-sparebank.statement-text",
+    });
+  });
+
   describe("registration", () => {
     it("registers an adapter and lists its id", () => {
       const registry = new ParserAdapterRegistry();

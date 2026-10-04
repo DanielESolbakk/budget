@@ -1,7 +1,7 @@
 import { test as base, expect, _electron as electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { AppShellPage } from "../pom/AppShellPage.js";
 import { CategoryTargetPage } from "../pom/CategoryTargetPage.js";
@@ -19,8 +19,11 @@ import { LedgerPage } from "../pom/LedgerPage.js";
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 interface ElectronFixtures {
+  backupOutputDialogBehavior: "native" | "cancel" | "selected";
   csvExportDialogBehavior: "native" | "cancel" | "selected";
-  restoreSnapshotDialogBehavior: "native" | "cancel";
+  importFileDialogBehavior: "native" | "cancel" | "csv-selected" | "pdf-selected";
+  nodeEnvironment: "test" | "production";
+  restoreSnapshotDialogBehavior: "native" | "cancel" | "selected";
   databasePath: string;
   electronApp: ElectronApplication;
   window: Page;
@@ -39,7 +42,10 @@ interface ElectronFixtures {
 }
 
 export const test = base.extend<ElectronFixtures>({
+  backupOutputDialogBehavior: ["native", { option: true }],
   csvExportDialogBehavior: ["native", { option: true }],
+  importFileDialogBehavior: ["native", { option: true }],
+  nodeEnvironment: ["test", { option: true }],
   restoreSnapshotDialogBehavior: ["native", { option: true }],
   // eslint-disable-next-line no-empty-pattern
   databasePath: async ({}, use) => {
@@ -52,7 +58,7 @@ export const test = base.extend<ElectronFixtures>({
       rmSync(databaseDirectory, { recursive: true, force: true });
     }
   },
-  electronApp: async ({ csvExportDialogBehavior, databasePath, restoreSnapshotDialogBehavior }, use) => {
+  electronApp: async ({ backupOutputDialogBehavior, csvExportDialogBehavior, databasePath, importFileDialogBehavior, nodeEnvironment, restoreSnapshotDialogBehavior }, use) => {
     let app: ElectronApplication | undefined;
 
     try {
@@ -60,10 +66,16 @@ export const test = base.extend<ElectronFixtures>({
         args: [MAIN_ENTRY],
         env: {
           ...process.env,
+          BUDGET_TEST_BACKUP_OUTPUT_DIALOG: backupOutputDialogBehavior,
+          BUDGET_TEST_BACKUP_OUTPUT_PATH: join(dirname(databasePath), "dialog-selected-backup.json"),
           BUDGET_TEST_CSV_EXPORT_DIALOG: csvExportDialogBehavior,
           BUDGET_TEST_CSV_EXPORT_PATH: join(dirname(databasePath), "dialog-selected.csv"),
+          BUDGET_TEST_IMPORT_FILE_DIALOG: importFileDialogBehavior,
+          BUDGET_TEST_CSV_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv"),
+          BUDGET_TEST_PDF_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt"),
           BUDGET_TEST_RESTORE_DIALOG: restoreSnapshotDialogBehavior,
-          NODE_ENV: "test",
+          BUDGET_TEST_RESTORE_SNAPSHOT_PATH: join(dirname(databasePath), "dialog-selected-restore.json"),
+          NODE_ENV: nodeEnvironment,
           BUDGET_DB_PATH: databasePath,
         },
       });
@@ -88,7 +100,9 @@ export const test = base.extend<ElectronFixtures>({
   categoryTarget: async ({ window }, use) => {
     await use(new CategoryTargetPage(window));
   },
-  csvImport: async ({ window }, use) => {
+  csvImport: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("CSV statement");
     await use(new CsvImportPage(window));
   },
   dashboard: async ({ window }, use) => {
@@ -100,22 +114,29 @@ export const test = base.extend<ElectronFixtures>({
   forecast: async ({ window }, use) => {
     await use(new ForecastPage(window));
   },
-  manualEntry: async ({ window }, use) => {
+  manualEntry: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Manual transaction");
     await use(new ManualEntryPage(window));
   },
-  pdfImport: async ({ window }, use) => {
+  pdfImport: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Digital PDF");
     await use(new PdfImportPage(window));
   },
   preloadBridge: async ({ window }, use) => {
     await use(new PreloadBridgePage(window));
   },
-  recovery: async ({ window }, use) => {
+  recovery: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Data safety");
     await use(new RecoveryPage(window));
   },
-  reviewQueue: async ({ window }, use) => {
+  reviewQueue: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Transactions");
     await use(new ReviewQueuePage(window));
   },
-  ledger: async ({ window }, use) => {
+  ledger: async ({ appShell, window }, use) => {
+    await appShell.openWorkspace("Transactions");
     await use(new LedgerPage(window));
   },
 });

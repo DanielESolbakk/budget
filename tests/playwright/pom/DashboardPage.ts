@@ -46,6 +46,10 @@ export class DashboardPage {
     return this.page.getByRole("region", { name: "Category Breakdown" });
   }
 
+  get targetVsActualSection() {
+    return this.page.getByRole("region", { name: "Target vs Actual" });
+  }
+
   /** The "Category Breakdown" heading inside the section. */
   get categoryBreakdownHeading() {
     return this.page.getByRole("heading", { name: "Category Breakdown", level: 2 });
@@ -61,12 +65,20 @@ export class DashboardPage {
     return this.page.getByRole("combobox", { name: "Select month" });
   }
 
-  get monthFrameButtons() {
-    return this.page.getByRole("button", { name: /^Select .+ for review$/ });
+  get monthlyAttention() {
+    return this.page.getByRole("complementary", { name: "Monthly attention" });
   }
 
-  monthFrame(yearMonth: string): Locator {
-    return this.monthFrameButtons.filter({ hasText: yearMonth });
+  get reviewQueueAction() {
+    return this.monthlyAttention.getByRole("button", { name: "Open all-month queue" });
+  }
+
+  get overTargetLink() {
+    return this.monthlyAttention.getByRole("link", { name: /over target/ });
+  }
+
+  get monthChangeError() {
+    return this.page.getByRole("alert").filter({ hasText: "Unable to change month." });
   }
 
   monthlyTotal(label: "Income" | "Expenses" | "Net"): Locator {

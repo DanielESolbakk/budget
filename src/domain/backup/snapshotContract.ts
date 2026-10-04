@@ -79,16 +79,39 @@ export type CreateBackupSnapshotInput = LedgerSnapshotData & BackupSnapshotInput
 export interface BackupSnapshotFileOutput {
   /** Absolute path where the snapshot was written. */
   outputPath: string;
+  /** Number of accounts contained in the snapshot. */
+  accountCount: number;
   /** Number of transactions contained in the snapshot. */
   transactionCount: number;
   /** ISO 8601 datetime string recorded as the snapshot creation time. */
   createdAtIso: string;
 }
 
+/** Safe-to-display metadata returned when a snapshot is reviewed before restore. */
+export interface BackupSnapshotSummary {
+  version: SnapshotVersion;
+  householdName: string;
+  createdAtIso: string;
+  accountCount: number;
+  transactionCount: number;
+  contentHashSha256: string;
+}
+
+export type BackupSnapshotKind = "backup" | "pre-restore";
+
+/** Local catalog entry; snapshot contents remain in the referenced file. */
+export interface BackupSnapshotCatalogEntry extends BackupSnapshotSummary {
+  snapshotPath: string;
+  kind: BackupSnapshotKind;
+  savedAtIso: string;
+}
+
 /** Input required to restore a snapshot. */
 export interface RestoreSnapshotInput {
   /** Absolute path to the snapshot file to restore from. */
   snapshotPath: string;
+  /** SHA-256 digest from the reviewed file contents. */
+  expectedContentHashSha256?: string;
 }
 
 /** Output produced by a successful restore. */
@@ -101,4 +124,9 @@ export interface RestoreSnapshotOutput {
   merchantCategoryRules: MerchantCategoryRule[];
   /** Number of transactions that were restored. */
   transactionCount: number;
+}
+
+/** Restore response including the safety snapshot captured before replacement. */
+export interface RestoreSnapshotResult extends RestoreSnapshotOutput {
+  recoverySnapshot: BackupSnapshotCatalogEntry;
 }

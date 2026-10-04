@@ -9,7 +9,29 @@ function readRepositoryFile(relativePath: string): string {
 }
 
 function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapeCharacter = "\\";
+  const specialCharacters = new Set([
+    ".",
+    "*",
+    "+",
+    "?",
+    "^",
+    "$",
+    "{",
+    "}",
+    "(",
+    ")",
+    "|",
+    "[",
+    "]",
+    escapeCharacter,
+  ]);
+
+  return [...value]
+    .map((character) =>
+      specialCharacters.has(character) ? escapeCharacter + character : character,
+    )
+    .join("");
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {
@@ -24,6 +46,15 @@ describe("AC traceability governance checks", () => {
   it("treats Markdown section headings as literal text", () => {
     const markdown = "## Heading (literal)+\nsection content\n## Next section\nother";
     expect(readMarkdownSection(markdown, "## Heading (literal)+")).toBe("section content\n");
+  });
+
+  it("reads a Markdown section across blank lines and stops at the next heading", () => {
+    const markdown = "## Status (accepted)\n\nAccepted\n\n## Date\n\n2026-05-23\n";
+
+    const section = readMarkdownSection(markdown, "## Status (accepted)");
+
+    expect(section).toContain("Accepted");
+    expect(section).not.toContain("## Date");
   });
 
   it("AC-1: ADR records required stack and runtime boundary decisions", () => {
@@ -110,7 +141,7 @@ describe("AC traceability governance checks", () => {
     expect(copilotInstructions).toContain("Node 22.12 or newer");
     expect(agentInstructions).toContain("v22.12.0 or newer");
 
-    expect(planningSkill).toContain("R16 Frontend planning completeness");
+    expect(planningSkill).toContain("Apply R16/G9 to visible UI");
     expect(planningDeepDive).toContain("**G9:** Renderer-visible work");
     expect(planningDeepDive).toContain("Mark G9 not applicable only when there is no renderer-visible work.");
     for (const requirement of [
@@ -154,11 +185,11 @@ describe("AC traceability governance checks", () => {
       ".agents/skills/issue-planning-governor/references/checklists.md",
     );
 
-    expect(planningSkill).toContain("Run G1-G9 and the deep-dive checks");
-    expect(planningSkill).toContain("Quote evidence for each pass");
-    expect(planningSkill).toContain("A pre-existing `planning-invalid` label is not a fresh processing signal.");
-    expect(planningSkill).toContain("If no fresh signal appears within 180 seconds, stop and escalate without repair.");
-    expect(planningSkill).toContain("Epic issues may be read for hierarchy checks, but do not create, rewrite, validate, or close them.");
+    expect(planningSkill).toContain("Run G1-G9 from the deep-dive.");
+    expect(planningSkill).toContain("Quote each pass");
+    expect(planningSkill).toContain("`planning-invalid` blocks readiness.");
+    expect(planningSkill).toContain("After 180 seconds without one, stop without repair.");
+    expect(planningSkill).toContain("Epics are read-only hierarchy context.");
     expect(planningDeepDive).toContain("Test issue's \"Test Scenarios\" section has at least 2 concrete, reproducible scenarios.");
     expect(planningChecklists).toContain("G9 [PASS/FAIL/N/A]");
     expect((planningSkill.match(/\S+/g) ?? []).length).toBeLessThanOrEqual(500);

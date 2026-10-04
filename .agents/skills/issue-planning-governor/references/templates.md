@@ -136,7 +136,7 @@ Mapping rule: AC IDs belong to this issue. If the test issue is story- or enable
 
 - #ENABLER
 
-Note: if repository validation requires this section to be non-empty, do not use `_None_`; link at least one feature-scoped enabler issue.
+Link only a real same-feature Enabler that owns implementation work required by this Story. Search existing feature-scoped Enablers before creating one. If no Enabler is justified but validation requires a non-empty reference, do not invent or borrow a link: leave the Story `needs-grooming`, report the validator conflict, and continue unrelated authorized batch items.
 
 ### Linked Test Issues
 
@@ -147,6 +147,8 @@ Note: if repository validation requires this section to be non-empty, do not use
 #### Blocked by
 
 - #BLOCKER
+
+For an explicitly approved Story absent from the catalog, use the next unambiguous key under the owning Feature's `storyKeyPattern`. Do not require a catalog-file edit or PR to create the issue record. Keep a distinct user outcome in its own Story; do not absorb it into a neighboring Story to avoid creating an issue.
 ```
 
 ## Enabler Issue Template
@@ -167,6 +169,8 @@ Note: if repository validation requires this section to be non-empty, do not use
 ### Stories Enabled
 
 - #STORY
+
+Link only real Stories under this Enabler's Parent Feature Issue. Search all existing same-feature Stories before creating one; never create a placeholder Story solely to satisfy validation.
 
 ### Related Planning Issues
 

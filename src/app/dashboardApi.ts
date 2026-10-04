@@ -60,6 +60,11 @@ export type DashboardViewContract =
   | ReadyDashboardViewContract
   | EmptyDashboardViewContract;
 
+export interface MonthlyAttentionSummary {
+  hasUncategorizedTransactions: boolean;
+  overTargetCategoryCount: number;
+}
+
 export interface DashboardViewContractInput {
   transactions: Transaction[];
   selectedYearMonth: string;
@@ -280,6 +285,22 @@ export function queryMonthlyDashboardSnapshot(
       monthlyCategoryTargetStore,
       selectedYearMonth
     ),
+  };
+}
+
+export function getMonthlyAttentionSummary(
+  viewContract: DashboardViewContract
+): MonthlyAttentionSummary | null {
+  if (viewContract.state === "loading") {
+    return null;
+  }
+
+  const rows = viewContract.snapshot.targetVsActualCategoryRows.rows;
+  return {
+    hasUncategorizedTransactions: rows.some((row) => row.categoryId === null),
+    overTargetCategoryCount: rows.filter(
+      (row) => row.categoryId !== null && row.targetMinor !== null && row.deltaMinor !== null && row.deltaMinor > 0
+    ).length,
   };
 }
 

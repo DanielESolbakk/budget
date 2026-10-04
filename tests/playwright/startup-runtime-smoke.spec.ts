@@ -56,6 +56,69 @@ test.describe("Electron startup smoke", () => {
     const title = await window.title();
     expect(title).toBe("Budget Planner");
   });
+
+  test("Scenario 5: primary navigation exposes one focused workspace at a time", async ({ appShell }) => {
+    await expect(appShell.primaryNavigation).toBeVisible();
+    await expect(appShell.destination("Review")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Review")).toBeVisible();
+
+    await appShell.openWorkspace("Transactions");
+
+    await expect(appShell.destination("Transactions")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Transactions")).toBeVisible();
+    await expect(appShell.workspace("Review")).toHaveCount(0);
+
+    await appShell.openWorkspace("Import");
+
+    await expect(appShell.destination("Import")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Import")).toBeVisible();
+    await expect(appShell.workspace("Transactions")).toHaveCount(0);
+
+    await appShell.openWorkspace("Data safety");
+
+    await expect(appShell.destination("Data safety")).toHaveAttribute("aria-current", "page");
+    await expect(appShell.workspace("Data safety")).toBeVisible();
+    await expect(appShell.workspace("Import")).toHaveCount(0);
+  });
+
+  test("Review defaults to the current local month", async ({ dashboard }) => {
+    const today = new Date();
+    const expectedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+
+    await expect(dashboard.monthSelector).toHaveValue(expectedMonth);
+  });
+
+  test("navigation preserves an unsaved import path when the user changes destinations", async ({
+    appShell,
+    csvImport,
+  }) => {
+    const pendingPath = "synthetic-unsaved-statement.csv";
+    await csvImport.enterFilePath(pendingPath);
+
+    await appShell.openWorkspace("Transactions");
+    await appShell.openWorkspace("Import");
+
+    await expect(csvImport.filePathInput).toHaveValue(pendingPath);
+  });
+
+  test("other destinations remain available when the initial Review load fails", async ({
+    appShell,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+    });
+    await window.reload();
+    await expect(window.getByRole("alert")).toContainText("Household ledger unavailable");
+
+    await appShell.openWorkspace("Transactions");
+    await expect(appShell.workspace("Transactions")).toBeVisible();
+    await appShell.openWorkspace("Import");
+    await expect(appShell.workspace("Import")).toBeVisible();
+    await appShell.openWorkspace("Data safety");
+    await expect(appShell.workspace("Data safety")).toBeVisible();
+  });
 });
 
 test.describe("Electron startup smoke — fallback branch", () => {
@@ -73,11 +136,49 @@ test.describe("Electron startup smoke — fallback branch", () => {
     await window.reload();
   });
 
-  test("Scenario 5: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast }) => {
+  test("Scenario 6: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast }) => {
     // AC-3: explicit fallback label renders at the Electron runtime level when
     // the IPC response signals insufficient transaction history.
     await expect(forecast.sectionHeading).toBeVisible();
     await expect(forecast.fallbackLabel).toBeVisible();
     await expect(forecast.projectedDescription).not.toBeVisible();
+  });
+});
+
+test.describe("Fresh local setup", () => {
+  test.use({ nodeEnvironment: "production" });
+
+  test("a fresh database creates a usable local household without sample transactions", async ({ window, appShell }) => {
+    await expect(window.getByRole("heading", { name: "Set up your household" })).toBeVisible();
+    const householdNameInput = window.getByLabel("Household name");
+    const accountNameInput = window.getByLabel("Account name");
+    const createLedgerButton = window.getByRole("button", { name: "Create local ledger" });
+    await expect(householdNameInput).toBeVisible();
+    await expect(accountNameInput).toBeVisible();
+    await expect(createLedgerButton).toBeVisible();
+    await expect(window.getByText("Lønn AS", { exact: true })).toHaveCount(0);
+
+    await householdNameInput.fill("My household");
+    await accountNameInput.fill("Everyday account");
+    await createLedgerButton.click();
+    await expect(window.getByRole("heading", { name: "Set up your household" })).toHaveCount(0);
+    await expect(window.getByText("Lønn AS", { exact: true })).toHaveCount(0);
+
+    await window.reload();
+    await expect(window.getByRole("heading", { name: "Set up your household" })).toHaveCount(0);
+    await expect(window.getByRole("heading", { name: "Budget Planner" })).toBeVisible();
+
+    await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Manual transaction");
+    const accountInput = window.getByLabel("Account");
+    const accountOption = window.getByRole("option", { name: /Everyday account/ });
+    await expect(accountOption).toHaveCount(1);
+    const accountId = await accountOption.getAttribute("value");
+    await accountInput.selectOption(accountId!);
+    await window.getByLabel("Booked date").fill("2026-10-03");
+    await window.getByLabel("Amount (øre)").fill("-123");
+    await window.getByLabel("Description or merchant").fill("First entry");
+    await window.getByRole("button", { name: "Add transaction" }).click();
+    await expect(window.getByRole("status").filter({ hasText: "Added First entry to your ledger." })).toBeVisible();
   });
 });

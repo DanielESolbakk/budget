@@ -2,14 +2,16 @@
 
 ## Source Issue Resolution
 
-- Primary issue is unique and selected as the review anchor.
-- Anchor issue has ACs and validation commands.
-- Related-issue set combines PR-linked planning issues and source-issue links.
-- Source and required related planning issues are not `planning-invalid`.
-- `Blocked by` references are resolved or explicitly treated as scope blockers.
-- Required `Implementation Entry Points` paths exist, or missing paths are reported as blockers.
+- Select issue-bound mode when one primary planning issue can be resolved; verify its ACs and validation commands.
+- If no primary issue can be resolved, select PR-only mode: do not invent ACs or claim issue coverage, do not mutate issue checkboxes, and continue the full technical PR review.
+- In issue-bound mode, the related-issue set combines PR-linked planning issues and source-issue links.
+- In issue-bound mode, source and required related planning issues are not `planning-invalid`.
+- In issue-bound mode, `Blocked by` references are resolved or explicitly treated as scope blockers.
+- In issue-bound mode, required `Implementation Entry Points` paths exist, or missing paths are reported as blockers.
 
 ## Issue Coverage Checks
+
+Apply this section only in issue-bound mode. In PR-only mode, mark issue/AC coverage unverified and continue technical PR review with exact diff, test, and CI evidence.
 
 - Every AC is classified as `satisfied`, `partially satisfied`, `unsatisfied`, or `unproven (validation blocked)`.
 - Record the behavior and execution path named by each AC; full satisfaction requires evidence that exercises that path and every conjunctive requirement.
@@ -72,6 +74,8 @@
 - Final output includes `Checkbox Gap Closure` with one compact action reference for every unresolved unchecked or failed-to-reconcile item listed in `Not Checked — How To Fix`; reference its gap ID rather than restating the item.
 
 ## Checkbox Sync Readiness
+
+Apply checkbox sync only in issue-bound mode after the evidence requirements are satisfied. PR-only mode performs no issue-body mutations.
 
 - Only allowed sections are targeted.
 - Bidirectional reconciliation to evidence-based target state is the default policy.

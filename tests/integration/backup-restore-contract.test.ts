@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildBackupSnapshot, createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
-import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
+import {
+  inspectBackupSnapshot,
+  restoreBackupSnapshot,
+} from "../../src/app/backup/restoreBackupSnapshot.js";
 import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
 import type { Account, Household, ImportJob, MonthlyCategoryTarget, Transaction } from "../../src/domain/types.js";
 
@@ -442,6 +445,17 @@ describe("backup/restore contract", () => {
       } finally {
         rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+
+    it("rejects an invalid creation timestamp when reviewing a snapshot", () => {
+      const snapshot = buildRestoreSnapshot();
+      snapshot.metadata.createdAtIso = "not-a-timestamp";
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => inspectBackupSnapshot({ snapshotPath })).toThrow(
+          `Invalid snapshot creation timestamp: ${snapshotPath}`
+        );
+      });
     });
 
     it("restoreBackupSnapshot throws on malformed JSON", () => {

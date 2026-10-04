@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlit
 import { LedgerOperationCoordinator } from "../../src/app/ledgerOperationCoordinator.js";
 import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
+import { createPreRestoreBackupSnapshot } from "../../src/app/backup/snapshotCatalog.js";
 import type { LedgerSnapshotData } from "../../src/domain/backup/snapshotContract.js";
 import type { Transaction } from "../../src/domain/types.js";
 
@@ -21,6 +22,23 @@ const ACCOUNT = {
   name: "Brukskonto",
   currencyCode: "NOK" as const,
 };
+
+interface BackupSnapshotCatalogEntry {
+  snapshotPath: string;
+  kind: "backup" | "pre-restore";
+  version: "1" | "2";
+  householdName: string;
+  createdAtIso: string;
+  savedAtIso: string;
+  accountCount: number;
+  transactionCount: number;
+  contentHashSha256: string;
+}
+
+interface BackupSnapshotCatalogStore {
+  saveBackupSnapshot?: (entry: BackupSnapshotCatalogEntry) => void;
+  listBackupSnapshots?: () => BackupSnapshotCatalogEntry[];
+}
 
 function createSnapshotData(): LedgerSnapshotData {
   return {
@@ -90,6 +108,119 @@ function runDeferredPdfImport(
 }
 
 describe("ledger recovery runtime contracts", () => {
+  it("retains only the five newest pre-restore snapshots without pruning manual backups", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-pre-restore-retention-"));
+    const outputDirectory = join(tempDir, "backups");
+    const database = createLocalLedgerDatabase({
+      dbPath: join(tempDir, "ledger.sqlite"),
+      seedData: createSnapshotData(),
+    });
+
+    try {
+      const automaticSnapshots = Array.from({ length: 5 }, (_, index) => {
+        const entry = createPreRestoreBackupSnapshot({
+          outputDirectory,
+          ledgerSnapshotData: createSnapshotData(),
+          catalog: database,
+        });
+        const datedEntry = {
+          ...entry,
+          savedAtIso: `2026-01-0${index + 1}T00:00:00.000Z`,
+        };
+        database.saveBackupSnapshot(datedEntry);
+        return datedEntry;
+      });
+      const oldestSnapshot = automaticSnapshots[0]!;
+      const manualSnapshotPath = join(outputDirectory, "manual-backup.json");
+      copyFileSync(automaticSnapshots[4]!.snapshotPath, manualSnapshotPath);
+      database.saveBackupSnapshot({
+        ...automaticSnapshots[4]!,
+        snapshotPath: manualSnapshotPath,
+        kind: "backup",
+      });
+
+      createPreRestoreBackupSnapshot({
+        outputDirectory,
+        ledgerSnapshotData: createSnapshotData(),
+        catalog: database,
+      });
+
+      const catalog = database.listBackupSnapshots();
+      const retainedAutomaticSnapshots = catalog.filter((snapshot) => snapshot.kind === "pre-restore");
+      expect(retainedAutomaticSnapshots).toHaveLength(5);
+      expect(retainedAutomaticSnapshots.some((snapshot) => snapshot.snapshotPath === oldestSnapshot.snapshotPath)).toBe(false);
+      expect(existsSync(oldestSnapshot.snapshotPath)).toBe(false);
+      expect(catalog.filter((snapshot) => snapshot.kind === "backup")).toHaveLength(1);
+      expect(existsSync(manualSnapshotPath)).toBe(true);
+    } finally {
+      database.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves snapshot catalog entries across ledger replacement and database reopen", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-snapshot-catalog-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const entry: BackupSnapshotCatalogEntry = {
+      snapshotPath: join(tempDir, "snapshots", "household-backup.json"),
+      kind: "backup",
+      version: "2",
+      householdName: "Recovery Household",
+      createdAtIso: "2026-09-30T12:15:00.000Z",
+      savedAtIso: "2026-10-01T08:00:00.000Z",
+      accountCount: 1,
+      transactionCount: 1,
+      contentHashSha256: "a".repeat(64),
+    };
+    const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+    let reopened: ReturnType<typeof createLocalLedgerDatabase> | undefined;
+    let databaseClosed = false;
+
+    try {
+      const catalogStore = database as unknown as BackupSnapshotCatalogStore;
+      catalogStore.saveBackupSnapshot?.(entry);
+      database.replaceLedgerSnapshotData(createSnapshotData());
+      database.close();
+      databaseClosed = true;
+
+      reopened = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+      const reopenedCatalogStore = reopened as unknown as BackupSnapshotCatalogStore;
+      expect(reopenedCatalogStore.listBackupSnapshots?.()).toEqual([entry]);
+    } finally {
+      reopened?.close();
+      if (!databaseClosed) database.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists saved ledger views across database reopen and supports deletion", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-saved-ledger-view-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const savedView = {
+      id: "needs-category",
+      name: "Needs a category",
+      filters: { uncategorizedOnly: true },
+    };
+    const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+    let reopened: ReturnType<typeof createLocalLedgerDatabase> | undefined;
+    let databaseClosed = false;
+
+    try {
+      database.saveLedgerView(savedView);
+      database.close();
+      databaseClosed = true;
+
+      reopened = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
+      expect(reopened.listSavedLedgerViews()).toEqual([savedView]);
+      expect(reopened.deleteSavedLedgerView(savedView.id)).toBe(true);
+      expect(reopened.listSavedLedgerViews()).toEqual([]);
+    } finally {
+      reopened?.close();
+      if (!databaseClosed) database.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("replaces the SQLite ledger and preserves restored state after reopening", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-ledger-replace-"));
     const dbPath = join(tempDir, "ledger.sqlite");
