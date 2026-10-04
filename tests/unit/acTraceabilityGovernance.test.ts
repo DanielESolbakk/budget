@@ -30,7 +30,7 @@ describe("AC traceability governance checks", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
     );
-    expect(adr).toMatch(/^## Status\\s+Accepted$/m);
+    expect(adr).toMatch(/^## Status\s+Accepted$/m);
     const parserSection = readMarkdownSection(adr, "### Import and Parser Layer");
     expect(parserSection).toContain("source-aware parser adapters");
     expect(parserSection).toContain("parser-specific logic isolated");
@@ -50,7 +50,7 @@ describe("AC traceability governance checks", () => {
       "local-first",
       "no-network",
     ]) {
-      expect(adr, `ADR must contain \\"${term}\\"`).toContain(term);
+      expect(adr, `ADR must contain "${term}"`).toContain(term);
     }
   });
 
@@ -72,10 +72,10 @@ describe("AC traceability governance checks", () => {
       "forecast assumption": "An explicit input used by forecasting logic",
       "backup snapshot": "A user-initiated exportable backup",
     };
-    const glossaryRows = glossary.split(/\\r?\\n/);
+    const glossaryRows = glossary.split(/\r?\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
-      expect(row, `Glossary must define \\"${term}\\"`).not.toBe("");
+      expect(row, `Glossary must define "${term}"`).not.toBe("");
       expect(row).toContain(`| ${term} | ${fragment}`);
     }
 
@@ -159,8 +159,8 @@ describe("AC traceability governance checks", () => {
     expect(planningSkill).toContain("A pre-existing `planning-invalid` label is not a fresh processing signal.");
     expect(planningSkill).toContain("If no fresh signal appears within 180 seconds, stop and escalate without repair.");
     expect(planningSkill).toContain("Epic issues may be read for hierarchy checks, but do not create, rewrite, validate, or close them.");
-    expect(planningDeepDive).toContain("Test issue's \\"Test Scenarios\\" section has at least 2 concrete, reproducible scenarios.");
+    expect(planningDeepDive).toContain("Test issue's \"Test Scenarios\" section has at least 2 concrete, reproducible scenarios.");
     expect(planningChecklists).toContain("G9 [PASS/FAIL/N/A]");
-    expect((planningSkill.match(/\\S+/g) ?? []).length).toBeLessThanOrEqual(500);
+    expect((planningSkill.match(/\S+/g) ?? []).length).toBeLessThanOrEqual(500);
   });
 });
