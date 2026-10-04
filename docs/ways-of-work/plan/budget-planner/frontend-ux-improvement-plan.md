@@ -16,8 +16,8 @@ This is an Operate-mode product surface. Task completion, financial-data confide
 ## Current Baseline Evidence
 
 - `src/renderer/App.tsx` already provides four focused destinations: Review, Transactions, Import, and Data safety. The old one-long-page diagnosis is no longer accurate.
-- `electron/main.ts` initializes a sample household, account, and transactions. The renderer's manual-entry and import-history flows still refer to `sample-hh`; `src/renderer/preload.ts` exposes account listing but no household or account creation flow. First-run setup and an honest no-data state are not present.
-- `src/renderer/App.tsx` defaults the review to `2026-05`, and `src/renderer/import/ManualEntrySection.tsx` defaults the booking date to `2026-05-23`. Both are fixture-era dates, not live defaults.
+- Production startup checks whether setup is required and routes an unconfigured database to `HouseholdSetup`. Sample household, account, and transaction data is passed as seed data only in the test environment. The first-run slice still needs acceptance validation for transactional household/account creation, restart behavior, and use of the active household/account across import and manual-entry flows.
+- Monthly review defaults to the current local year-month, and manual entry defaults to today's local date. These are live defaults; historical fixture dates should remain unchanged, and date-only behavior still needs boundary validation.
 - The desktop screenshot baseline shows a readable monthly summary, attention row, and supporting analysis. It does not by itself justify replacing the current visual identity.
 - The 390px screenshot keeps the main totals readable, but the target-versus-actual table extends beyond the visible width. Compact-window access to tabular financial data needs a deliberate launch decision.
 - Import already has format selection, staged CSV/PDF flows, validation, duplicate decisions, and success actions. Improve the first-use handoff and validate the complete task rather than rebuilding these workflows without evidence.
