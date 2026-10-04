@@ -26,9 +26,12 @@ import type {
   Household,
   ImportJob,
   ImportJobProvenance,
+  MerchantCorrectionProvenance,
   MerchantCategoryRule,
   MonthlyCategoryTarget,
   MonthlyTotal,
+  SameMerchantPropagationInput,
+  SameMerchantPropagationOperation,
   Transaction,
 } from "../../domain/types.js";
 import { isYearMonth } from "../../domain/types.js";
@@ -86,6 +89,10 @@ export interface LocalLedgerDatabase {
   appendTransactions: (transactions: Transaction[]) => number;
   updateTransactionCategory: (transactionId: string, categoryId: string) => void;
   updateTransactionCategoryAndRule: (transactionId: string, rule: MerchantCategoryRule) => void;
+  listMerchantCorrectionProvenance: () => MerchantCorrectionProvenance[];
+  applySameMerchantPropagation: (input: SameMerchantPropagationInput) => SameMerchantPropagationOperation;
+  listSameMerchantPropagationOperations: () => SameMerchantPropagationOperation[];
+  undoSameMerchantPropagation: (operationId: string) => boolean;
   listMerchantCategoryRules: () => MerchantCategoryRule[];
   upsertMerchantCategoryRule: (rule: MerchantCategoryRule) => void;
   appendManualEntry: (importJob: ImportJob, transaction: Transaction) => void;
@@ -265,6 +272,31 @@ function ensureSchema(db: DatabaseSync): void {
       category_id TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS merchant_correction_provenance (
+      id TEXT PRIMARY KEY,
+      source_transaction_id TEXT NOT NULL,
+      merchant_alias TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      corrected_at_iso TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS same_merchant_propagation_operations (
+      id TEXT PRIMARY KEY,
+      source_transaction_id TEXT NOT NULL,
+      merchant_alias TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      applied_at_iso TEXT NOT NULL,
+      undone_at_iso TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS same_merchant_propagation_changes (
+      operation_id TEXT NOT NULL,
+      transaction_id TEXT NOT NULL,
+      before_category_id TEXT,
+      after_category_id TEXT NOT NULL,
+      PRIMARY KEY (operation_id, transaction_id)
+    );
+
     CREATE TABLE IF NOT EXISTS saved_ledger_views (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -355,6 +387,10 @@ function ensureSchema(db: DatabaseSync): void {
       ON transactions (household_id, amount_minor, id);
     CREATE INDEX IF NOT EXISTS idx_transactions_household_category_id
       ON transactions (household_id, category_id, id);
+    CREATE INDEX IF NOT EXISTS idx_merchant_correction_provenance_corrected_at
+      ON merchant_correction_provenance (corrected_at_iso, id);
+    CREATE INDEX IF NOT EXISTS idx_same_merchant_propagation_applied_at
+      ON same_merchant_propagation_operations (applied_at_iso, id);
     CREATE INDEX IF NOT EXISTS idx_backup_snapshots_saved_at
       ON backup_snapshots (saved_at_iso DESC, snapshot_path);
   `);
@@ -822,6 +858,9 @@ export function createLocalLedgerDatabase(
       db.exec(`
         DELETE FROM import_job_transaction_baselines;
         DELETE FROM import_job_operations;
+        DELETE FROM same_merchant_propagation_changes;
+        DELETE FROM same_merchant_propagation_operations;
+        DELETE FROM merchant_correction_provenance;
         DELETE FROM monthly_category_targets;
         DELETE FROM transactions;
         DELETE FROM import_jobs;
@@ -1444,7 +1483,229 @@ export function createLocalLedgerDatabase(
     try {
       updateTransactionCategory(transactionId, rule.categoryId);
       upsertMerchantCategoryRule(rule);
+      db.prepare(`
+        INSERT INTO merchant_correction_provenance (
+          id, source_transaction_id, merchant_alias, category_id, corrected_at_iso
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(randomUUID(), transactionId, rule.merchantAlias, rule.categoryId, new Date().toISOString());
       db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function listMerchantCorrectionProvenance(): MerchantCorrectionProvenance[] {
+    return db
+      .prepare(`
+        SELECT id, source_transaction_id, merchant_alias, category_id, corrected_at_iso
+        FROM merchant_correction_provenance
+        ORDER BY corrected_at_iso, id
+      `)
+      .all()
+      .map((row) => {
+        const typedRow = row as {
+          id: string;
+          source_transaction_id: string;
+          merchant_alias: string;
+          category_id: string;
+          corrected_at_iso: string;
+        };
+        return {
+          id: typedRow.id,
+          sourceTransactionId: typedRow.source_transaction_id,
+          merchantAlias: typedRow.merchant_alias,
+          categoryId: typedRow.category_id,
+          correctedAtIso: typedRow.corrected_at_iso,
+        };
+      });
+  }
+
+  function applySameMerchantPropagation(
+    input: SameMerchantPropagationInput
+  ): SameMerchantPropagationOperation {
+    if (input.transactionIds.length === 0) {
+      throw new Error("At least one transaction must be selected for propagation.");
+    }
+    if (new Set(input.transactionIds).size !== input.transactionIds.length) {
+      throw new Error("Propagation transaction IDs must be unique.");
+    }
+
+    const operation: SameMerchantPropagationOperation = {
+      id: randomUUID(),
+      sourceTransactionId: input.sourceTransactionId,
+      merchantAlias: input.merchantAlias,
+      categoryId: input.categoryId,
+      appliedAtIso: new Date().toISOString(),
+      changes: [],
+    };
+    const insertOperation = db.prepare(`
+      INSERT INTO same_merchant_propagation_operations (
+        id, source_transaction_id, merchant_alias, category_id, applied_at_iso
+      ) VALUES (?, ?, ?, ?, ?)
+    `);
+    const getTransactionCategory = db.prepare("SELECT category_id FROM transactions WHERE id = ?");
+    const insertChange = db.prepare(`
+      INSERT INTO same_merchant_propagation_changes (
+        operation_id, transaction_id, before_category_id, after_category_id
+      ) VALUES (?, ?, ?, ?)
+    `);
+    const updateCategory = db.prepare(
+      "UPDATE transactions SET category_id = ? WHERE id = ? AND category_id IS NULL"
+    );
+
+    db.exec("BEGIN");
+    try {
+      const sourceCorrection = db.prepare(`
+        SELECT 1
+        FROM merchant_correction_provenance
+        WHERE source_transaction_id = ? AND merchant_alias = ? AND category_id = ?
+      `).get(input.sourceTransactionId, input.merchantAlias, input.categoryId);
+      const sourceTransaction = getTransactionCategory.get(input.sourceTransactionId) as
+        | { category_id: string | null }
+        | undefined;
+      const sourceRule = db.prepare(
+        "SELECT category_id FROM merchant_category_rules WHERE merchant_alias = ?"
+      ).get(input.merchantAlias) as { category_id: string } | undefined;
+      if (
+        sourceCorrection === undefined ||
+        sourceTransaction?.category_id !== input.categoryId ||
+        sourceRule?.category_id !== input.categoryId
+      ) {
+        throw new Error(`Source correction not found: ${input.sourceTransactionId}`);
+      }
+
+      insertOperation.run(
+        operation.id,
+        operation.sourceTransactionId,
+        operation.merchantAlias,
+        operation.categoryId,
+        operation.appliedAtIso
+      );
+      for (const transactionId of input.transactionIds) {
+        const row = getTransactionCategory.get(transactionId) as { category_id: string | null } | undefined;
+        if (row === undefined) throw new Error(`Transaction not found: ${transactionId}`);
+        if (row.category_id !== null) throw new Error(`Transaction is already categorized: ${transactionId}`);
+
+        const result = updateCategory.run(input.categoryId, transactionId) as { changes: number | bigint };
+        if (Number(result.changes) !== 1) throw new Error(`Transaction could not be propagated: ${transactionId}`);
+        insertChange.run(operation.id, transactionId, row.category_id, input.categoryId);
+        operation.changes.push({
+          transactionId,
+          beforeCategoryId: row.category_id,
+          afterCategoryId: input.categoryId,
+        });
+      }
+      db.exec("COMMIT");
+      return operation;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function listSameMerchantPropagationOperations(): SameMerchantPropagationOperation[] {
+    const rows = db.prepare(`
+      SELECT
+        operation.id,
+        operation.source_transaction_id,
+        operation.merchant_alias,
+        operation.category_id,
+        operation.applied_at_iso,
+        operation.undone_at_iso,
+        change.transaction_id,
+        change.before_category_id,
+        change.after_category_id
+      FROM same_merchant_propagation_operations AS operation
+      LEFT JOIN same_merchant_propagation_changes AS change ON change.operation_id = operation.id
+      ORDER BY operation.applied_at_iso, operation.id, change.transaction_id
+    `).all() as Array<{
+      id: string;
+      source_transaction_id: string;
+      merchant_alias: string;
+      category_id: string;
+      applied_at_iso: string;
+      undone_at_iso: string | null;
+      transaction_id: string | null;
+      before_category_id: string | null;
+      after_category_id: string | null;
+    }>;
+    const operations = new Map<string, SameMerchantPropagationOperation>();
+
+    for (const row of rows) {
+      let operation = operations.get(row.id);
+      if (operation === undefined) {
+        operation = {
+          id: row.id,
+          sourceTransactionId: row.source_transaction_id,
+          merchantAlias: row.merchant_alias,
+          categoryId: row.category_id,
+          appliedAtIso: row.applied_at_iso,
+          ...(row.undone_at_iso === null ? {} : { undoneAtIso: row.undone_at_iso }),
+          changes: [],
+        };
+        operations.set(row.id, operation);
+      }
+      if (row.transaction_id !== null && row.after_category_id !== null) {
+        operation.changes.push({
+          transactionId: row.transaction_id,
+          beforeCategoryId: row.before_category_id,
+          afterCategoryId: row.after_category_id,
+        });
+      }
+    }
+
+    return [...operations.values()];
+  }
+
+  function undoSameMerchantPropagation(operationId: string): boolean {
+    db.exec("BEGIN");
+    try {
+      const operation = db.prepare(`
+        SELECT undone_at_iso
+        FROM same_merchant_propagation_operations
+        WHERE id = ?
+      `).get(operationId) as { undone_at_iso: string | null } | undefined;
+      if (operation === undefined || operation.undone_at_iso !== null) {
+        db.exec("ROLLBACK");
+        return false;
+      }
+
+      const changes = db.prepare(`
+        SELECT transaction_id, before_category_id, after_category_id
+        FROM same_merchant_propagation_changes
+        WHERE operation_id = ?
+        ORDER BY transaction_id
+      `).all(operationId) as Array<{
+        transaction_id: string;
+        before_category_id: string | null;
+        after_category_id: string;
+      }>;
+      const restoreCategory = db.prepare(
+        "UPDATE transactions SET category_id = ? WHERE id = ? AND category_id = ?"
+      );
+      for (const change of changes) {
+        const result = restoreCategory.run(
+          change.before_category_id,
+          change.transaction_id,
+          change.after_category_id
+        ) as { changes: number | bigint };
+        if (Number(result.changes) !== 1) {
+          throw new Error(`Transaction changed since propagation: ${change.transaction_id}`);
+        }
+      }
+
+      const markUndone = db.prepare(`
+        UPDATE same_merchant_propagation_operations
+        SET undone_at_iso = ?
+        WHERE id = ? AND undone_at_iso IS NULL
+      `).run(new Date().toISOString(), operationId) as { changes: number | bigint };
+      if (Number(markUndone.changes) !== 1) {
+        throw new Error(`Propagation operation could not be undone: ${operationId}`);
+      }
+
+      db.exec("COMMIT");
+      return true;
     } catch (error) {
       db.exec("ROLLBACK");
       throw error;
@@ -1548,6 +1809,10 @@ export function createLocalLedgerDatabase(
     appendTransactions,
     updateTransactionCategory,
     updateTransactionCategoryAndRule,
+    listMerchantCorrectionProvenance,
+    applySameMerchantPropagation,
+    listSameMerchantPropagationOperations,
+    undoSameMerchantPropagation,
     listMerchantCategoryRules,
     upsertMerchantCategoryRule,
     appendManualEntry,
