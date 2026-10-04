@@ -47,6 +47,18 @@ export class ReviewQueuePage {
     return this.section.getByRole("listitem", { name: `Review ${merchantRaw}` });
   }
 
+  confidenceLabel(merchantRaw: string) {
+    return this.reviewItem(merchantRaw).getByText(/Confidence:/);
+  }
+
+  proposedCategoryLabel(merchantRaw: string) {
+    return this.reviewItem(merchantRaw).getByText(/Proposed category:/);
+  }
+
+  matchingRulesLabel(merchantRaw: string) {
+    return this.reviewItem(merchantRaw).getByText(/Matching rules:/);
+  }
+
   categorySelect(merchantRaw: string) {
     return this.reviewItem(merchantRaw).getByRole("combobox", {
       name: `Category for ${merchantRaw}`,

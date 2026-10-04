@@ -24,6 +24,7 @@ import {
 } from "../../domain/ledger/filterTransactions.js";
 import type {
   Account,
+  CategorizationDecision,
   Household,
   ImportJob,
   ImportJobProvenance,
@@ -89,7 +90,11 @@ export interface LocalLedgerDatabase {
   appendImportJobAndTransactions: (importJob: ImportJob, transactions: Transaction[]) => number;
   appendTransactions: (transactions: Transaction[]) => number;
   updateTransactionCategory: (transactionId: string, categoryId: string) => void;
-  updateTransactionCategoryAndRule: (transactionId: string, rule: MerchantCategoryRule) => void;
+  updateTransactionCategoryAndRule: (
+    transactionId: string,
+    rule: MerchantCategoryRule,
+    categorization?: CategorizationDecision
+  ) => void;
   listMerchantCorrectionProvenance: () => MerchantCorrectionProvenance[];
   applySameMerchantPropagation: (input: SameMerchantPropagationInput) => SameMerchantPropagationOperation;
   listSameMerchantPropagationOperations: () => SameMerchantPropagationOperation[];
@@ -242,7 +247,8 @@ function ensureSchema(db: DatabaseSync): void {
       source_type TEXT,
       source_reference TEXT,
       category_id TEXT,
-      import_job_id TEXT
+      import_job_id TEXT,
+      categorization_json TEXT
     );
 
     CREATE INDEX IF NOT EXISTS transactions_by_household_booked_at
@@ -278,7 +284,8 @@ function ensureSchema(db: DatabaseSync): void {
       source_transaction_id TEXT NOT NULL,
       merchant_alias TEXT NOT NULL,
       category_id TEXT NOT NULL,
-      corrected_at_iso TEXT NOT NULL
+      corrected_at_iso TEXT NOT NULL,
+      original_categorization_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS same_merchant_propagation_operations (
@@ -358,8 +365,17 @@ function ensureSchema(db: DatabaseSync): void {
   if (!transactionColumns.some((column) => column.name === "source_reference")) {
     db.exec("ALTER TABLE transactions ADD COLUMN source_reference TEXT");
   }
+  if (!transactionColumns.some((column) => column.name === "categorization_json")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN categorization_json TEXT");
+  }
   if (!transactionColumns.some((column) => column.name === "merchant_search")) {
     db.exec("ALTER TABLE transactions ADD COLUMN merchant_search TEXT NOT NULL DEFAULT ''");
+  }
+  const correctionProvenanceColumns = db
+    .prepare("PRAGMA table_info(merchant_correction_provenance)")
+    .all() as Array<{ name: string }>;
+  if (!correctionProvenanceColumns.some((column) => column.name === "original_categorization_json")) {
+    db.exec("ALTER TABLE merchant_correction_provenance ADD COLUMN original_categorization_json TEXT");
   }
   const transactionsWithoutMerchantSearch = db
     .prepare("SELECT id, merchant_raw FROM transactions WHERE merchant_search = ''")
@@ -423,7 +439,7 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   }
 
   const insertTransaction = db.prepare(
-    "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   );
   for (const transaction of snapshot.transactions) {
     insertTransaction.run(
@@ -438,7 +454,8 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       transaction.sourceType ?? null,
       transaction.sourceReference ?? null,
       transaction.categoryId ?? null,
-      transaction.importJobId ?? null
+      transaction.importJobId ?? null,
+      transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
     );
   }
 
@@ -718,7 +735,7 @@ export function createLocalLedgerDatabase(
 
     const transactions = db
       .prepare(
-        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id FROM transactions ORDER BY id"
+        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json FROM transactions ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -732,6 +749,7 @@ export function createLocalLedgerDatabase(
       source_reference: string | null;
       category_id: string | null;
       import_job_id: string | null;
+      categorization_json: string | null;
     }>;
 
     const importJobs = db
@@ -790,6 +808,9 @@ export function createLocalLedgerDatabase(
 
       if (transaction.import_job_id !== null) {
         mapped.importJobId = transaction.import_job_id;
+      }
+      if (transaction.categorization_json !== null) {
+        mapped.categorization = JSON.parse(transaction.categorization_json) as CategorizationDecision;
       }
 
       return mapped;
@@ -1358,7 +1379,7 @@ export function createLocalLedgerDatabase(
 
   function appendTransactions(transactions: Transaction[]): number {
     const insertTransaction = db.prepare(
-      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     let insertedCount = 0;
     const insertedTransactions: Transaction[] = [];
@@ -1377,7 +1398,8 @@ export function createLocalLedgerDatabase(
           transaction.sourceType ?? null,
           transaction.sourceReference ?? null,
           transaction.categoryId ?? null,
-          transaction.importJobId ?? null
+          transaction.importJobId ?? null,
+          transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
         ) as { changes: number | bigint };
         if (Number(result.changes) > 0) {
           insertedCount += Number(result.changes);
@@ -1415,7 +1437,7 @@ export function createLocalLedgerDatabase(
       "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-      "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     db.exec("BEGIN");
@@ -1448,7 +1470,8 @@ export function createLocalLedgerDatabase(
           transaction.sourceType ?? null,
           transaction.sourceReference ?? null,
           transaction.categoryId ?? null,
-          transaction.importJobId ?? null
+          transaction.importJobId ?? null,
+          transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
         ) as { changes: number | bigint };
         if (Number(result.changes) > 0) {
           insertedCount += Number(result.changes);
@@ -1479,16 +1502,37 @@ export function createLocalLedgerDatabase(
     }
   }
 
-  function updateTransactionCategoryAndRule(transactionId: string, rule: MerchantCategoryRule): void {
+  function updateTransactionCategoryAndRule(
+    transactionId: string,
+    rule: MerchantCategoryRule,
+    categorization?: CategorizationDecision
+  ): void {
     db.exec("BEGIN");
     try {
+      const originalCategorizationRow = db
+        .prepare("SELECT categorization_json FROM transactions WHERE id = ?")
+        .get(transactionId) as { categorization_json: string | null } | undefined;
       updateTransactionCategory(transactionId, rule.categoryId);
+      if (categorization !== undefined) {
+        db.prepare("UPDATE transactions SET categorization_json = ? WHERE id = ?").run(
+          JSON.stringify(categorization),
+          transactionId
+        );
+      }
       upsertMerchantCategoryRule(rule);
       db.prepare(`
         INSERT INTO merchant_correction_provenance (
-          id, source_transaction_id, merchant_alias, category_id, corrected_at_iso
-        ) VALUES (?, ?, ?, ?, ?)
-      `).run(randomUUID(), transactionId, rule.merchantAlias, rule.categoryId, new Date().toISOString());
+          id, source_transaction_id, merchant_alias, category_id, corrected_at_iso,
+          original_categorization_json
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        randomUUID(),
+        transactionId,
+        rule.merchantAlias,
+        rule.categoryId,
+        new Date().toISOString(),
+        originalCategorizationRow?.categorization_json ?? null
+      );
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
@@ -1499,7 +1543,8 @@ export function createLocalLedgerDatabase(
   function listMerchantCorrectionProvenance(): MerchantCorrectionProvenance[] {
     return db
       .prepare(`
-        SELECT id, source_transaction_id, merchant_alias, category_id, corrected_at_iso
+        SELECT id, source_transaction_id, merchant_alias, category_id, corrected_at_iso,
+          original_categorization_json
         FROM merchant_correction_provenance
         ORDER BY corrected_at_iso, id
       `)
@@ -1511,14 +1556,21 @@ export function createLocalLedgerDatabase(
           merchant_alias: string;
           category_id: string;
           corrected_at_iso: string;
+          original_categorization_json: string | null;
         };
-        return {
+        const provenance: MerchantCorrectionProvenance = {
           id: typedRow.id,
           sourceTransactionId: typedRow.source_transaction_id,
           merchantAlias: typedRow.merchant_alias,
           categoryId: typedRow.category_id,
           correctedAtIso: typedRow.corrected_at_iso,
         };
+        if (typedRow.original_categorization_json !== null) {
+          provenance.originalCategorization = JSON.parse(
+            typedRow.original_categorization_json
+          ) as CategorizationDecision;
+        }
+        return provenance;
       });
   }
 
@@ -1749,7 +1801,7 @@ export function createLocalLedgerDatabase(
       "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-      "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     db.exec("BEGIN");
@@ -1778,7 +1830,8 @@ export function createLocalLedgerDatabase(
         transaction.sourceType ?? null,
         transaction.sourceReference ?? null,
         transaction.categoryId ?? null,
-        transaction.importJobId ?? null
+        transaction.importJobId ?? null,
+        transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
       );
       persistImportJobOperation(db, importJob, [transaction]);
       persistTransactionBaseline(db, importJob.id, transaction);

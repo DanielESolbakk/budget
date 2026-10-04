@@ -65,6 +65,6 @@ export class CategoryTargetPage {
 
   /** Success status message shown after a target is saved. */
   get savedConfirmation() {
-    return this.section.getByRole("status");
+    return this.section.getByRole("status").filter({ hasText: "Target saved." });
   }
 }

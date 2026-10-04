@@ -13,6 +13,18 @@ function formatAmount(amountMinor: number): string {
   return nokCurrencyFormatter.format(amountMinor / 100);
 }
 
+function getCategoryLabel(categoryId: string): string {
+  return CATEGORY_OPTIONS.find((category) => category.id === categoryId)?.label ?? categoryId;
+}
+
+function getCategorizationReviewReason(transaction: Transaction): string | undefined {
+  const categorization = transaction.categorization;
+  if (categorization === undefined) return undefined;
+  if (categorization.status === "unmatched") return "No matching rule";
+  if (categorization.status === "ambiguous") return "Conflicting rules";
+  return "Low confidence";
+}
+
 interface CategoryReviewSectionProps {
   refreshKey: number;
   onCategorySaved: () => void;
@@ -130,7 +142,7 @@ export function CategoryReviewSection({
   return (
     <section aria-label="Categorization Review" aria-busy={isLoading}>
       <h2 ref={queueHeadingRef} tabIndex={-1}>Categorization Review</h2>
-      <p className="section-intro">These transactions are in your ledger, but they do not have a category yet.</p>
+      <p className="section-intro">These transactions are uncategorized or need a low-confidence category decision reviewed.</p>
       {isLoading && (
         <p role="status">
           {hasLoaded ? "Updating categorization queue..." : "Loading categorization queue..."}
@@ -154,7 +166,7 @@ export function CategoryReviewSection({
       {hasLoaded && !isLoading && loadError === null && transactions.length === 0 ? (
         <div className="empty-state">
           <strong>Nothing needs your attention.</strong>
-          <p>Uncategorized transactions from CSV/PDF imports or manual entry will appear here.</p>
+          <p>Uncategorized transactions and low-confidence categorizations from CSV/PDF imports or manual entry will appear here.</p>
         </div>
       ) : transactions.length > 0 ? (
         <ul className="review-queue-list">
@@ -163,6 +175,22 @@ export function CategoryReviewSection({
               <div className="review-queue-details">
                 <strong>{transaction.merchantRaw}</strong>
                 <span>{transaction.bookedAtIso.slice(0, 10)} · {formatAmount(transaction.amountMinor)}</span>
+                {transaction.categorization !== undefined && (
+                  <span>
+                    Confidence: {Math.round(transaction.categorization.confidence * 100)}% ·{" "}
+                    {getCategorizationReviewReason(transaction)}
+                  </span>
+                )}
+                {transaction.categorization?.categoryId !== undefined && (
+                  <span>Proposed category: {getCategoryLabel(transaction.categorization.categoryId)}</span>
+                )}
+                {(transaction.categorization?.matchingRules.length ?? 0) > 0 && (
+                  <span>
+                    Matching rules: {transaction.categorization!.matchingRules
+                      .map((rule) => `${rule.ruleId} (${getCategoryLabel(rule.categoryId)})`)
+                      .join(", ")}
+                  </span>
+                )}
               </div>
               <div className="review-queue-action">
                 <label htmlFor={`category-for-${transaction.id}`}>

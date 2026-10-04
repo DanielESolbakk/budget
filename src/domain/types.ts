@@ -30,7 +30,35 @@ export interface Transaction {
   merchantAlias?: string;
   sourceReference?: string;
   categoryId?: string;
+  categorization?: CategorizationDecision;
   importJobId?: string;
+}
+
+export interface CategorizationRule {
+  ruleId: string;
+  merchantAlias: string;
+  categoryId: string;
+  priority: number;
+}
+
+export interface CategorizationRuleProvenance {
+  ruleId: string;
+  merchantAlias: string;
+  categoryId: string;
+  priority: number;
+}
+
+export type CategorizationStatus = "categorized" | "unmatched" | "ambiguous";
+export type CategorizationConfidenceLevel = "high" | "low";
+
+export interface CategorizationDecision {
+  status: CategorizationStatus;
+  categoryId?: string;
+  confidence: number;
+  confidenceLevel: CategorizationConfidenceLevel;
+  requiresReview: boolean;
+  selectedRule?: CategorizationRuleProvenance;
+  matchingRules: CategorizationRuleProvenance[];
 }
 
 export interface MerchantCategoryRule {
@@ -44,6 +72,7 @@ export interface MerchantCorrectionProvenance {
   merchantAlias: string;
   categoryId: string;
   correctedAtIso: string;
+  originalCategorization?: CategorizationDecision;
 }
 
 export interface SameMerchantPropagationChange {

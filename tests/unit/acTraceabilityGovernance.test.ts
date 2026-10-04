@@ -43,6 +43,11 @@ function readMarkdownSection(markdown: string, heading: string): string {
 }
 
 describe("AC traceability governance checks", () => {
+  it("treats Markdown section headings as literal text", () => {
+    const markdown = "## Heading (literal)+\nsection content\n## Next section\nother";
+    expect(readMarkdownSection(markdown, "## Heading (literal)+")).toBe("section content\n");
+  });
+
   it("reads a Markdown section across blank lines and stops at the next heading", () => {
     const markdown = "## Status (accepted)\n\nAccepted\n\n## Date\n\n2026-05-23\n";
 
