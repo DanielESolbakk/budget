@@ -61,6 +61,7 @@ test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () =
     await categoryTarget.editTargetButton("groceries").click();
     await categoryTarget.targetAmountInput.fill("95");
     await categoryTarget.saveButton.click();
+    await expect(categoryTarget.section.getByRole("status")).toHaveCount(2);
     await expect(categoryTarget.savedConfirmation).toContainText("Target saved.");
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
