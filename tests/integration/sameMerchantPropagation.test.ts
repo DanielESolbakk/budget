@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 
@@ -152,6 +153,60 @@ describe("same-merchant correction persistence", () => {
       expect(database.getTransactionById("tx-categorized")?.categoryId).toBe("transport");
       expect(database.listSameMerchantPropagationOperations()).toEqual([]);
     } finally {
+      database.close();
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back every selected row when a SQLite write fails during propagation", () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "budget-same-merchant-write-failure-"));
+    const dbPath = join(temporaryDirectory, "ledger.sqlite");
+    const database = createLocalLedgerDatabase({
+      dbPath,
+      seedData: {
+        household: HOUSEHOLD,
+        accounts: [ACCOUNT],
+        transactions: [
+          SOURCE_TRANSACTION,
+          { ...SOURCE_TRANSACTION, id: "tx-first", merchantRaw: "Rema 1000" },
+          { ...SOURCE_TRANSACTION, id: "tx-second", merchantRaw: "REMA 1000" },
+        ],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+    let failureInjector: DatabaseSync | undefined;
+
+    try {
+      database.updateTransactionCategoryAndRule(SOURCE_TRANSACTION.id, {
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+      });
+
+      failureInjector = new DatabaseSync(dbPath);
+      failureInjector.exec(`
+        CREATE TRIGGER fail_second_propagation_change
+        BEFORE INSERT ON same_merchant_propagation_changes
+        WHEN NEW.transaction_id = 'tx-second'
+        BEGIN
+          SELECT RAISE(ABORT, 'Injected propagation write failure.');
+        END;
+      `);
+      failureInjector.close();
+      failureInjector = undefined;
+
+      expect(() => database.applySameMerchantPropagation({
+        sourceTransactionId: SOURCE_TRANSACTION.id,
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+        transactionIds: ["tx-first", "tx-second"],
+      })).toThrow("Injected propagation write failure.");
+
+      expect(database.getTransactionById("tx-first")?.categoryId).toBeUndefined();
+      expect(database.getTransactionById("tx-second")?.categoryId).toBeUndefined();
+      expect(database.listSameMerchantPropagationOperations()).toEqual([]);
+    } finally {
+      failureInjector?.close();
       database.close();
       rmSync(temporaryDirectory, { recursive: true, force: true });
     }
