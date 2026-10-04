@@ -12,24 +12,28 @@ const CATEGORY_RULES: readonly CategorizationRule[] = [
   { ruleId: "builtin-groceries-dagligvare", merchantAlias: "DAGLIGVARE", categoryId: "groceries", priority: 0 },
 ];
 
+type CategorizationRuleInput = ReadonlyMap<string, string> | readonly CategorizationRule[];
+
 export function categorizeTransaction(
   transaction: Transaction,
-  learnedRules: ReadonlyMap<string, string> = new Map()
+  ruleInput: CategorizationRuleInput = new Map()
 ): Transaction {
   if (transaction.categoryId !== undefined) {
     return transaction;
   }
 
   const merchantAlias = normalizeMerchantName(transaction.merchantRaw);
-  const persistedRules: CategorizationRule[] = [...learnedRules].map(([alias, categoryId]) => ({
-    ruleId: `learned:${alias}`,
-    merchantAlias: alias,
-    categoryId,
-    priority: 100,
-  }));
+  const additionalRules: readonly CategorizationRule[] = "get" in ruleInput
+    ? [...ruleInput].map(([alias, categoryId]) => ({
+        ruleId: `learned:${alias}`,
+        merchantAlias: alias,
+        categoryId,
+        priority: 100,
+      }))
+    : ruleInput;
   const categorization = evaluateCategorizationRule(merchantAlias, [
     ...CATEGORY_RULES,
-    ...persistedRules,
+    ...additionalRules,
   ]);
 
   return {
@@ -42,7 +46,7 @@ export function categorizeTransaction(
 
 export function categorizeTransactions(
   transactions: readonly Transaction[],
-  learnedRules: ReadonlyMap<string, string> = new Map()
+  ruleInput: CategorizationRuleInput = new Map()
 ): Transaction[] {
-  return transactions.map((transaction) => categorizeTransaction(transaction, learnedRules));
+  return transactions.map((transaction) => categorizeTransaction(transaction, ruleInput));
 }

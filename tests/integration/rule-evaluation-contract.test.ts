@@ -101,4 +101,61 @@ describe("rule evaluation import contract", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("persists ambiguous provenance when an imported merchant has equal-priority conflicting rules", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-ambiguous-rule-contract-"));
+    const dbPath = join(tempDir, "ledger.sqlite");
+    const csvPath = join(tempDir, "transactions.csv");
+    const csvText =
+      "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta\n" +
+      "28.05.2026;;FJORD KAFE;;-12.50;NOK\n";
+    const conflictingRules = [
+      { ruleId: "rule-groceries", merchantAlias: "FJORD KAFE", categoryId: "groceries", priority: 10 },
+      { ruleId: "rule-restaurants", merchantAlias: "FJORD KAFE", categoryId: "restaurants", priority: 10 },
+    ];
+
+    try {
+      const mapped = mapCsvRows(parseCsvText(csvText), {
+        householdId: HOUSEHOLD.id,
+        accountId: ACCOUNT.id,
+        importJobId: "import-ambiguous-contract",
+      });
+      expect(mapped.skipped).toEqual([]);
+      const categorized = categorizeTransactions(mapped.transactions, conflictingRules);
+      const database = createLocalLedgerDatabase({ dbPath, seedData: createSeedData() });
+
+      try {
+        database.appendImportJobAndTransactions(
+          {
+            id: "import-ambiguous-contract",
+            householdId: HOUSEHOLD.id,
+            sourceType: "csv",
+            sourceName: csvPath,
+            startedAtIso: "2026-05-28T00:00:00Z",
+          },
+          categorized
+        );
+
+        const [storedTransaction] = database.loadLedgerSnapshotData().transactions;
+        expect(storedTransaction?.categorization).toMatchObject({
+          status: "ambiguous",
+          categoryId: "groceries",
+          confidence: 0.35,
+          confidenceLevel: "low",
+          requiresReview: true,
+          selectedRule: {
+            ruleId: "rule-groceries",
+            merchantAlias: "FJORD KAFE",
+            categoryId: "groceries",
+            priority: 10,
+          },
+          matchingRules: conflictingRules,
+        });
+      } finally {
+        database.close();
+      }
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
