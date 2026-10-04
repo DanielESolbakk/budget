@@ -97,6 +97,7 @@ import {
   type ImportJob,
   type ManualEntryInput,
   type MonthlyCategoryTargetInput,
+  type SameMerchantPropagationInput,
   type Transaction,
 } from "../src/domain/types.js";
 
@@ -252,7 +253,7 @@ function assertTrustedRenderer(event: Electron.IpcMainInvokeEvent): void {
   const packagedRendererUrl = pathToFileURL(join(__dirname, "../renderer/index.html")).href;
   if (senderUrl === packagedRendererUrl) return;
 
-  const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+  const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
   if (senderUrl !== undefined && rendererUrl !== undefined) {
     try {
       if (new URL(senderUrl).origin === new URL(rendererUrl).origin) return;
@@ -269,6 +270,30 @@ function parseNonEmptyString(value: unknown, fieldName: string): string {
     throw new Error(`${fieldName} must be a non-empty string.`);
   }
   return value.trim();
+}
+
+function parseSameMerchantPropagationInput(input: unknown): SameMerchantPropagationInput {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Propagation input must be an object.");
+  }
+
+  const record = input as Record<string, unknown>;
+  if (!Array.isArray(record.transactionIds) || record.transactionIds.length === 0) {
+    throw new Error("transactionIds must contain at least one transaction ID.");
+  }
+  const transactionIds = record.transactionIds.map((transactionId, index) =>
+    parseNonEmptyString(transactionId, `transactionIds[${index}]`)
+  );
+  if (new Set(transactionIds).size !== transactionIds.length) {
+    throw new Error("transactionIds must be unique.");
+  }
+
+  return {
+    sourceTransactionId: parseNonEmptyString(record.sourceTransactionId, "sourceTransactionId"),
+    merchantAlias: parseNonEmptyString(record.merchantAlias, "merchantAlias"),
+    categoryId: parseNonEmptyString(record.categoryId, "categoryId"),
+    transactionIds,
+  };
 }
 
 function parseHouseholdSetupInput(input: unknown): {
@@ -1248,6 +1273,38 @@ app.whenReady().then(async () => {
     assertTrustedRenderer(event);
     await applyTransactionListTestControl("review");
     return listUncategorizedReviewQueue(localLedgerDatabase, sampleHousehold.id);
+  });
+
+  ipcMain.handle("review:correctionHistory:list", (event) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listMerchantCorrectionProvenance();
+  });
+
+  ipcMain.handle("review:propagationHistory:list", (event) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listSameMerchantPropagationOperations();
+  });
+
+  ipcMain.handle("review:propagation:apply", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const propagation = parseSameMerchantPropagationInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const sourceTransaction = localLedgerDatabase.getTransactionById(propagation.sourceTransactionId);
+      if (sourceTransaction === undefined || sourceTransaction.householdId !== sampleHousehold.id) {
+        throw new Error(`Source transaction not found: ${propagation.sourceTransactionId}`);
+      }
+      if (normalizeMerchantName(sourceTransaction.merchantRaw) !== propagation.merchantAlias) {
+        throw new Error("Propagation merchantAlias does not match the source transaction.");
+      }
+      return localLedgerDatabase.applySameMerchantPropagation(propagation);
+    });
+  });
+
+  ipcMain.handle("review:propagation:undo", (event, operationId: unknown) => {
+    assertTrustedRenderer(event);
+    return ledgerOperationCoordinator.runExclusive(() =>
+      localLedgerDatabase.undoSameMerchantPropagation(parseNonEmptyString(operationId, "operationId"))
+    );
   });
 
   ipcMain.handle("transaction:list", async (event, input: unknown = {}) => {
