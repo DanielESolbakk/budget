@@ -8,6 +8,7 @@ import type {
   LedgerSnapshotData,
 } from "../../domain/backup/snapshotContract.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import { normalizeMerchantName } from "../../domain/merchant/normalizeMerchantName.js";
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
 import type { ImportJobHistoryEntry, UndoImportJobResult } from "../../domain/import/importJobHistory.js";
 import {
@@ -1544,7 +1545,9 @@ export function createLocalLedgerDatabase(
         id, source_transaction_id, merchant_alias, category_id, applied_at_iso
       ) VALUES (?, ?, ?, ?, ?)
     `);
-    const getTransactionCategory = db.prepare("SELECT category_id FROM transactions WHERE id = ?");
+    const getTransaction = db.prepare(
+      "SELECT household_id, merchant_raw, category_id FROM transactions WHERE id = ?"
+    );
     const insertChange = db.prepare(`
       INSERT INTO same_merchant_propagation_changes (
         operation_id, transaction_id, before_category_id, after_category_id
@@ -1561,15 +1564,17 @@ export function createLocalLedgerDatabase(
         FROM merchant_correction_provenance
         WHERE source_transaction_id = ? AND merchant_alias = ? AND category_id = ?
       `).get(input.sourceTransactionId, input.merchantAlias, input.categoryId);
-      const sourceTransaction = getTransactionCategory.get(input.sourceTransactionId) as
-        | { category_id: string | null }
+      const sourceTransaction = getTransaction.get(input.sourceTransactionId) as
+        | { household_id: string; merchant_raw: string; category_id: string | null }
         | undefined;
       const sourceRule = db.prepare(
         "SELECT category_id FROM merchant_category_rules WHERE merchant_alias = ?"
       ).get(input.merchantAlias) as { category_id: string } | undefined;
       if (
+        sourceTransaction === undefined ||
         sourceCorrection === undefined ||
-        sourceTransaction?.category_id !== input.categoryId ||
+        sourceTransaction.category_id !== input.categoryId ||
+        normalizeMerchantName(sourceTransaction.merchant_raw) !== input.merchantAlias ||
         sourceRule?.category_id !== input.categoryId
       ) {
         throw new Error(`Source correction not found: ${input.sourceTransactionId}`);
@@ -1583,8 +1588,16 @@ export function createLocalLedgerDatabase(
         operation.appliedAtIso
       );
       for (const transactionId of input.transactionIds) {
-        const row = getTransactionCategory.get(transactionId) as { category_id: string | null } | undefined;
+        const row = getTransaction.get(transactionId) as
+          | { household_id: string; merchant_raw: string; category_id: string | null }
+          | undefined;
         if (row === undefined) throw new Error(`Transaction not found: ${transactionId}`);
+        if (
+          row.household_id !== sourceTransaction.household_id ||
+          normalizeMerchantName(row.merchant_raw) !== input.merchantAlias
+        ) {
+          throw new Error(`Transaction is not eligible for same-merchant propagation: ${transactionId}`);
+        }
         if (row.category_id !== null) throw new Error(`Transaction is already categorized: ${transactionId}`);
 
         const result = updateCategory.run(input.categoryId, transactionId) as { changes: number | bigint };

@@ -188,6 +188,82 @@ describe("same-merchant correction persistence", () => {
     }
   });
 
+  it("rejects an uncategorized transaction with a different normalized merchant", () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "budget-same-merchant-alias-"));
+    const unrelatedTransaction = {
+      ...SOURCE_TRANSACTION,
+      id: "tx-unrelated",
+      merchantRaw: "Stavanger Taxi",
+    };
+    const database = createLocalLedgerDatabase({
+      dbPath: join(temporaryDirectory, "ledger.sqlite"),
+      seedData: {
+        household: HOUSEHOLD,
+        accounts: [ACCOUNT],
+        transactions: [SOURCE_TRANSACTION, unrelatedTransaction],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      database.updateTransactionCategoryAndRule(SOURCE_TRANSACTION.id, {
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+      });
+
+      expect(() => database.applySameMerchantPropagation({
+        sourceTransactionId: SOURCE_TRANSACTION.id,
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+        transactionIds: [unrelatedTransaction.id],
+      })).toThrow(`Transaction is not eligible for same-merchant propagation: ${unrelatedTransaction.id}`);
+      expect(database.getTransactionById(unrelatedTransaction.id)?.categoryId).toBeUndefined();
+      expect(database.listSameMerchantPropagationOperations()).toEqual([]);
+    } finally {
+      database.close();
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a same-merchant transaction from another household", () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "budget-same-merchant-household-"));
+    const otherHouseholdTransaction = {
+      ...SOURCE_TRANSACTION,
+      id: "tx-other-household",
+      householdId: "hh-other",
+    };
+    const database = createLocalLedgerDatabase({
+      dbPath: join(temporaryDirectory, "ledger.sqlite"),
+      seedData: {
+        household: HOUSEHOLD,
+        accounts: [ACCOUNT],
+        transactions: [SOURCE_TRANSACTION, otherHouseholdTransaction],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      database.updateTransactionCategoryAndRule(SOURCE_TRANSACTION.id, {
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+      });
+
+      expect(() => database.applySameMerchantPropagation({
+        sourceTransactionId: SOURCE_TRANSACTION.id,
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+        transactionIds: [otherHouseholdTransaction.id],
+      })).toThrow(`Transaction is not eligible for same-merchant propagation: ${otherHouseholdTransaction.id}`);
+      expect(database.getTransactionById(otherHouseholdTransaction.id)?.categoryId).toBeUndefined();
+      expect(database.listSameMerchantPropagationOperations()).toEqual([]);
+    } finally {
+      database.close();
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("undoes a persisted propagation after reopening without changing the correction or merchant rule", () => {
     const temporaryDirectory = mkdtempSync(join(tmpdir(), "budget-same-merchant-undo-"));
     const dbPath = join(temporaryDirectory, "ledger.sqlite");
