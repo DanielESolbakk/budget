@@ -13,6 +13,10 @@ function formatAmount(amountMinor: number): string {
   return nokCurrencyFormatter.format(amountMinor / 100);
 }
 
+function getCategoryLabel(categoryId: string): string {
+  return CATEGORY_OPTIONS.find((category) => category.id === categoryId)?.label ?? categoryId;
+}
+
 function getCategorizationReviewReason(transaction: Transaction): string | undefined {
   const categorization = transaction.categorization;
   if (categorization === undefined) return undefined;
@@ -177,9 +181,14 @@ export function CategoryReviewSection({
                     {getCategorizationReviewReason(transaction)}
                   </span>
                 )}
+                {transaction.categorization?.categoryId !== undefined && (
+                  <span>Proposed category: {getCategoryLabel(transaction.categorization.categoryId)}</span>
+                )}
                 {(transaction.categorization?.matchingRules.length ?? 0) > 0 && (
                   <span>
-                    Matching rules: {transaction.categorization!.matchingRules.map((rule) => rule.ruleId).join(", ")}
+                    Matching rules: {transaction.categorization!.matchingRules
+                      .map((rule) => `${rule.ruleId} (${getCategoryLabel(rule.categoryId)})`)
+                      .join(", ")}
                   </span>
                 )}
               </div>

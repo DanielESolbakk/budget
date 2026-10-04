@@ -61,3 +61,76 @@ test("unmatched import persists confidence and is available for local review", a
     reopenedDatabase.close();
   }
 });
+
+test("ambiguous decisions show the proposed and competing categories in local review", async ({
+  appShell,
+  databasePath,
+  reviewQueue,
+  window,
+}) => {
+  const merchant = "FJORD KAFE";
+  const database = new DatabaseSync(databasePath);
+
+  try {
+    const account = database.prepare(
+      "SELECT household_id, account_id FROM transactions LIMIT 1"
+    ).get() as { household_id: string; account_id: string } | undefined;
+    expect(account).toBeDefined();
+    if (account === undefined) throw new Error("Expected the test ledger to have a transaction.");
+
+    database.prepare(`
+      INSERT INTO transactions (
+        id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        merchant_search, source_type, category_id, categorization_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      "tx-ambiguous-review",
+      account.household_id,
+      account.account_id,
+      "2026-05-28T00:00:00Z",
+      -1250,
+      merchant,
+      merchant,
+      "csv",
+      "groceries",
+      JSON.stringify({
+        status: "ambiguous",
+        categoryId: "groceries",
+        confidence: 0.35,
+        confidenceLevel: "low",
+        requiresReview: true,
+        selectedRule: {
+          ruleId: "rule-groceries",
+          merchantAlias: merchant,
+          categoryId: "groceries",
+          priority: 10,
+        },
+        matchingRules: [
+          {
+            ruleId: "rule-groceries",
+            merchantAlias: merchant,
+            categoryId: "groceries",
+            priority: 10,
+          },
+          {
+            ruleId: "rule-transport",
+            merchantAlias: merchant,
+            categoryId: "transport",
+            priority: 10,
+          },
+        ],
+      })
+    );
+  } finally {
+    database.close();
+  }
+
+  await window.reload();
+  await appShell.openWorkspace("Transactions");
+
+  await expect(reviewQueue.confidenceLabel(merchant)).toHaveText("Confidence: 35% · Conflicting rules");
+  await expect(reviewQueue.proposedCategoryLabel(merchant)).toHaveText("Proposed category: Groceries & food");
+  await expect(reviewQueue.matchingRulesLabel(merchant)).toHaveText(
+    "Matching rules: rule-groceries (Groceries & food), rule-transport (Transport)"
+  );
+});
