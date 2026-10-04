@@ -12,11 +12,31 @@ Required: repository owner and name. Optional: issues to exclude and an explicit
 - Do not inspect GitHub through browser navigation or automation. A missing issue-linked PR is not a blocker or proof of completion.
 - Resolve the full default-branch `BASE_SHA` through GitHub MCP. Never substitute `main`, `origin/main`, a dirty checkout, or the system date. If the shared SHA cannot be resolved, stop and escalate.
 
+## Bounded Parallel Audit
+
+- Keep the backlog census exhaustive but lightweight. For each planning-label list, request only issue number, title, state, labels, assignees, and `updated_at`; paginate each label to completion, deduplicate, and compute the full-inventory count and newest timestamp. Fetch bodies/comments after the value-based shortlist, not for every issue.
+- Resolve `BASE_SHA` once and reuse that exact hash for every candidate's source/tree audit and any validation claim. Share it with every read-only delegate; never let delegates resolve different branch tips independently.
+- Batch independent GitHub reads with `multi_tool_use.parallel`: first pages for distinct planning labels, bodies/comments for already identified candidates and parents, and deduplicated source paths after issue bodies reveal them. Follow cursor-dependent pages sequentially and do not fetch unrelated paths.
+- When at least three plausible, independent candidate groups remain and subagents are available, delegate read-only audits to at most three subagents. Give each disjoint candidates, the shared `BASE_SHA`, project-value evidence, and a required result of criterion matrix, parent/Test readiness, blocker/entry-point findings, and exact evidence links. Prohibit issue edits, assignment, and unverified completion claims.
+- Keep shared backlog counting, final value ranking, cross-candidate comparison, governance classification, validation claims, and GitHub mutations with the coordinator. Reuse candidate and file evidence already returned; do not repeat the same issue/path audit. A delegate's local test result is usable only when its checkout is verified at the shared `BASE_SHA`; otherwise report `not run`.
+- Parallelism changes elapsed time, not coverage: audit every plausible equal- or higher-value alternative before selecting an assignment. Stop lower-value audits only after those candidates are excluded by direct evidence or the higher-value preparation-only route is explicit.
+
 ## Candidate Set
 
 For a new assignment, exclude every currently assigned or in-progress issue, including one with confirmed work remaining. Do not recommend an already-assigned issue as a new Copilot assignment; its existing assignment must be resolved separately. A recent update is evidence to check for active work, not a reason to discard an older unassigned candidate. If no explicit focus slice was supplied, audit the active slice first but continue across the full backlog when it has no eligible candidate.
 
-Keep these predicates distinct:
+## Value And Sequencing
+
+Establish project value before comparing assignment readiness:
+
+1. Record direct value evidence from the user's stated goal, roadmap rank, launch exit criteria, issue priority, or a documented dependency/critical path. Issue recency, an open test deliverable, and source-code symbols are not value evidence by themselves.
+2. If a high-value Feature owns the outcome, identify the immediate Story or Enabler that owns the remaining implementation. Do not substitute a Test issue for missing product behavior.
+3. Read the Feature's Enablers, the Story's `Blocked by` links, and the immediate parent's current state. For a Test candidate, require the tested product behavior to exist at `BASE_SHA`, or require its immediate implementation Story/Enabler to be actively assigned, implementation-ready, and unblocked. A scaffold, component, API method, or helper alone does not establish that prerequisite.
+4. If the highest-value implementation scope has repairable planning gaps, keep it primary and route it through `issue-planning-governor`; do not prefer a lower-value issue just because it is more groomed. If a real implementation dependency or required entry-point infrastructure is absent, report that exact blocker and its prerequisite. Do not invent an Enabler or issue link.
+
+Governance readiness controls whether assignment may happen, not how valuable the work is. A `planning-invalid` high-value issue can remain the primary preparation recommendation, but it can never be assigned until the issue-planning governor returns `verified`. If the user asks for ready-only work or supplies an explicit focus/exclusion, honor that constraint and state its effect on value ranking.
+
+ Keep these predicates distinct:
 
 - **Eligibility:** issue is open; no unresolved `Blocked by` item; exact paths declared under `Implementation Entry Points` exist. Apply the missing-entry-point blocker only to those declared paths. A file listed only as a Technical Task/test deliverable is the work to create, not missing infrastructure, when its declared entry-point directory exists. Never call such a deliverable a missing entry point. If an exact required `Implementation Entry Points` path is absent, follow repository blocked-work policy and stop for that issue.
 - **Completion:** direct evidence from the exact `BASE_SHA` proves `work-remains`, `satisfied-on-main`, or `unclear`.
@@ -24,7 +44,7 @@ Keep these predicates distinct:
 - **Assignment status:** only `verified` governance permits `assign-now`. `governance-check-required` explicitly means do not assign until `issue-planning-governor` returns `verified`.
 - **Non-overridable gate:** repository owner approval, risk acceptance, deadlines, conditional PR requirements, or substitute labels cannot waive governance. When asked to bypass the gate, still return `governance-check-required`; do not invent an exception, offer conditional assignment, assign first, defer issue-planning-governor, self-assign, or tell Copilot to repair governance after assignment. A policy change must be made through the repository's governing-instructions process before this gate changes.
 
-Candidate-specific uncertainty is local: skip an unclear candidate and continue. Shared missing data, especially `BASE_SHA`, blocks the entire completion audit.
+Skip candidate-specific `unclear` issues for assignment scoring. If one is the highest documented project value and has a concrete evidence or planning-repair path, retain it as `preparation-only`; state `Completion Check: unclear`, name the missing evidence, and give the next action. Do not claim `work-remains` or assign it. Do not silently replace it with a lower-value ready issue unless the user explicitly requested ready-only work. Shared missing data, especially `BASE_SHA`, still blocks the entire completion audit.
 
 ## Completion Audit
 
@@ -46,9 +66,9 @@ Classify completion:
 
 For remaining `work-remains` candidates, check `planning-invalid`, required issue-type template sections, bullet-form issue references, deterministic `Validation Commands`, `Out Of Scope`, `Test Necessity Decision`, hierarchy, blocker consistency, privacy language, and test/implementation boundaries. Use the mini-checklist for the full assign-now gate. `planning-invalid` being absent is only one check, not proof of readiness. If required sections are stated to be incomplete or their evidence is unavailable, governance cannot be `verified`.
 
-Score only eligible `work-remains` candidates using [candidate-scoring-rubric.md](candidate-scoring-rubric.md). Slice continuity is a ranking preference; award it only when issue hierarchy or in-flight evidence supports the connection. Similar topics alone do not establish continuity.
+Score eligible `work-remains` candidates using [candidate-scoring-rubric.md](candidate-scoring-rubric.md), comparing documented project-value tiers before readiness scores. Do not score a Test whose parent-implementation prerequisite is unmet; rank its implementation owner or required planning repair instead.
 
-Before calling a candidate strongest, compare it with the full inventory and assess every plausible equal- or higher-ranked alternative. If alternative issue data cannot be obtained, keep checking or escalate with ranking incomplete. Never stop just because the newest slice is satisfied, assigned, or unclear.
+Before calling a candidate strongest, compare it with the full inventory and assess every plausible equal- or higher-value alternative. If alternative issue data cannot be obtained, keep checking or escalate with ranking incomplete. Never stop just because the newest slice is satisfied, assigned, or unclear. Do not let a lower-value candidate win solely because it is more ready; route repairable planning gaps for the higher-value candidate through the issue-planning governor.
 
 Apply governance after ranking:
 
@@ -66,10 +86,13 @@ Return one primary issue only when full candidate comparison supports it. Return
 ```text
 NEXT ISSUE ADVICE
 Recommended Issue: [#{number}](https://github.com/{owner}/{repo}/issues/{number}) - {exact title}
-Status: [assign-now | governance-check-required]
+Project Value Evidence: [documented priority/outcome and source]
+Issue Role: [implementation | verification]
+Parent Readiness: [delivered at BASE_SHA | actively assigned and implementation-ready | not met; identify parent]
+Status: [assign-now | governance-check-required | preparation-only]
 Confidence: [high | medium | low]
 Data Freshness: [newest updated_at in full candidate set, ISO timestamp]
-Completion Check: work-remains - [specific confirmed gap]
+Completion Check: [work-remains | unclear] - [specific gap or exact evidence still needed]
 Completion Evidence
 - Base SHA: [full BASE_SHA]
 - Criterion matrix: [one row per AC/test criterion: source/test evidence or exact gap]
@@ -88,6 +111,7 @@ Governance Check
 Required Next Action
 - If assign-now: Assign GitHub assigned cloud Copilot to #[number].
 - If governance-check-required: Run issue-planning-governor on #[number], then assign only after verified.
+- If preparation-only: Collect the exact-`BASE_SHA` completion evidence or run `issue-planning-governor`; do not assign until work remains and governance is `verified`.
 
 Fallback
 - [#{number}](https://github.com/{owner}/{repo}/issues/{number}) - {exact title} ([why it ranks next])
@@ -109,6 +133,7 @@ Next step after action: [what will be done]
 | “Recent slice is done, so there is no next issue.” | Continue through the full open backlog unless the user explicitly narrowed it. |
 | “An already-assigned issue still has work, so assign it again.” | Exclude assigned/in-progress issues from a new assignment; resolve existing ownership separately. |
 | “One candidate is unclear, so stop.” | Skip it; only unavailable shared data blocks the whole audit. |
+| “The preparation status is missing from the rubric, so choose a lower-value issue with a supported status.” | Use `preparation-only` consistently for an unclear high-value target; do not demote it to an assignment recommendation or replace it for status convenience. |
 | “Governance is incomplete, so give no recommendation.” | If work and eligibility are confirmed, recommend `governance-check-required`; do not assign yet. |
 | “The missing tests must pass before I can recommend assignment.” | Missing assertions are the test issue's remaining work; only eligibility and governance gates constrain assignment. |
 | “The owner accepts the risk, so assign and repair governance later.” | This is not overridable. Do not use conditional PR gates or alternate labels; only a `verified` issue-planning-governor result authorizes assignment. |
@@ -130,7 +155,10 @@ Next step after action: [what will be done]
 | “A guessed focused command can fill the validation slot.” | Report only an executed command or matching CI evidence; otherwise state not run and apply `unclear` when required. |
 | “The owner said to bypass governance for the deadline.” | No override permits direct assignment without `verified` governance. |
 | “Assign it to myself or add a follow-up to make it fit.” | Preserve the GitHub assigned cloud Copilot handoff and stated scope. |
+| “The highest-value issue needs grooming, so pick the ready issue instead.” | Keep documented value primary; route repairable planning gaps through `issue-planning-governor`. Readiness controls assignment, not priority. |
+| “The test file is missing, so that must be the next issue even though its parent behavior is absent.” | Verify the immediate parent's delivered behavior or active implementation readiness; choose the implementation owner or its preparation action first. |
+| “This can be handled here without subagent delegation.” | When at least three independent candidate groups remain, use up to three bounded read-only audits; the coordinator retains shared SHA, ranking, governance, validation claims, and all writes. |
 
 ## Stop Conditions
 
-Stop and escalate when the full applicable candidate set has no eligible `work-remains` issue, shared required data such as `BASE_SHA` is unavailable, issue/PR data cannot be read, or parent/blocker relationships cannot be verified. Do not infer completion or remaining work from checkboxes, file names alone, PR claims, or activity recency.
+Stop and escalate when the full applicable candidate set has no eligible `work-remains` issue, shared required data such as `BASE_SHA` is unavailable, issue/PR data cannot be read, or parent/blocker relationships cannot be verified. Do not infer completion or remaining work from checkboxes, file names alone, PR claims, or activity recency. If only candidate-specific evidence is missing, preserve the preparation target and say `unclear` without claiming a gap.

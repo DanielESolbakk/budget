@@ -24,6 +24,7 @@ Use this checklist before returning `assign-now`.
 - Test/implementation boundary is clean:
   - story/feature does not absorb dedicated test execution scope when linked test issue exists.
   - test issue remains verification-only.
+  - Test parent behavior is delivered at `BASE_SHA` or its immediate Story/Enabler is actively assigned, implementation-ready, and unblocked; partial source symbols are insufficient.
 - Test Necessity decision is present and consistent with linked test issues.
 
 ## Governance Evidence Levels
