@@ -2,6 +2,17 @@
 
 Score each candidate from 0 to 100.
 
+## Project-Value Tier (Rank Before Score)
+
+Set the tier from explicit evidence in the user's stated goal, roadmap, issue priority, release criteria, or dependency graph:
+
+- P0/critical: release blocker, critical user workflow, privacy/data-integrity risk, or explicit top priority.
+- P1/high: explicit near-term roadmap priority or prerequisite to a critical workflow.
+- Planned: approved user outcome with no stated priority.
+- Optional/unknown: deferred polish, unscheduled idea, or no direct value evidence.
+
+Compare value tiers before the 0-100 score. A higher-value issue remains primary when it needs repairable planning work; do not let readiness or governance evidence promote a lower-value issue. Do not infer a tier from recency, topic similarity, code symbols, or a missing test deliverable.
+
 ## 1) Assignability (0-35)
 
 This score describes the eligibility precheck and candidate ranking; it does not authorize direct assignment. Only status `assign-now` permits assigning Copilot.
@@ -33,24 +44,30 @@ Slice continuity affects ranking only; it is never an eligibility gate or a reas
 ## Governance Gate (Applied after scoring)
 
 - Score only candidates classified `work-remains`; exclude `satisfied-on-main` and do not treat `unclear` as assignable now.
-- `verified`: can be `assign-now`.
-- `unclear` or `missing`: can only be `governance-check-required`.
+- Score a Test only when its parent behavior is delivered at `BASE_SHA`, or its immediate Story/Enabler is actively assigned, implementation-ready, and unblocked. Otherwise rank the implementation owner or its planning repair, not the Test.
+- `verified`: permits `assign-now` only for a candidate with confirmed `work-remains` that passes all other gates.
+- `unclear` or `missing`: use `governance-check-required` only when `work-remains` is confirmed.
+- `preparation-only`: completion is `unclear`; state the evidence or planning action, and do not assign or score the candidate.
 - `planning-invalid` present: not assignable.
 
-Governance evidence selects the recommendation status; it does not erase a confirmed work-remains candidate. `governance-check-required` means no assignment until the issue-planning governor returns `verified`.
+For confirmed `work-remains` candidates, governance evidence selects the assignment status; it does not erase project value. `governance-check-required` means no assignment until the issue-planning governor returns `verified`.
 
-## Tie-Break Order
+## Tie-Break Order Within A Project-Value Tier
 
-1. Governance evidence level (`verified` > `unclear` > `missing`).
-2. Same active slice.
-3. Fewer unresolved dependencies.
+1. Correct implementation sequence: prerequisite/implementation owner before dependent Test.
+2. Fewer real dependencies.
+3. Same evidenced active slice.
 4. Newer `updated_at` timestamp.
+
+Governance evidence determines whether assignment may proceed, not which value tier ranks first.
 
 ## Output Requirements
 
 Always include:
 
-- Recommendation status (`assign-now` or `governance-check-required`).
+- Project-value tier and its direct evidence source.
+- Whether the issue is implementation or verification; for a Test, state parent behavior/readiness.
+- Recommendation status (`assign-now`, `governance-check-required`, or `preparation-only`).
 - Governance evidence level.
 - One concrete next action.
 - Optional fallback issue.
