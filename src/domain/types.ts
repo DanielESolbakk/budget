@@ -216,7 +216,7 @@ export interface MonthlyBreakdown {
   incomeMinor: number;
   /** Sum of absolute values of all negative transaction amounts for the month, in minor units. */
   expenseMinor: number;
-  /** Net result: incomeMinor minus expenseMinor, in minor units. */
+  /** Net result: incomeMinor minus expenseMinor. */
   netMinor: number;
 }
 
@@ -303,7 +303,7 @@ export interface TargetVsActualCategoryRows {
 
 const YEAR_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-/** Returns true when the value matches the canonical YYYY-MM month format (e.g., "2026-05"). */
+/** Returns true when the value matches the canonical YYYY-MM month format (e.g. "2026-05"). */
 export function isYearMonth(value: string): boolean {
   return YEAR_MONTH_PATTERN.test(value);
 }
