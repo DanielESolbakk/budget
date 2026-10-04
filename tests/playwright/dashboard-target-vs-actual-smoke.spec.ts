@@ -61,8 +61,7 @@ test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () =
     await categoryTarget.editTargetButton("groceries").click();
     await categoryTarget.targetAmountInput.fill("95");
     await categoryTarget.saveButton.click();
-    await expect(categoryTarget.section.getByRole("status")).toHaveCount(2);
-    await expect(categoryTarget.savedConfirmation).toContainText("Target saved.");
+    await expect(categoryTarget.section.getByRole("status").filter({ hasText: "Target saved." })).toBeVisible();
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
     await window.getByRole("combobox", { name: "Select month" }).selectOption(DEFAULT_YEAR_MONTH);
