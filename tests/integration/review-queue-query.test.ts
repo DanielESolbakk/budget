@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
-import { listUncategorizedReviewQueue } from "../../src/app/reviewQueue.js";
+import { listCategorizationReviewQueue } from "../../src/app/reviewQueue.js";
 import type { Transaction } from "../../src/domain/types.js";
 
 const household = {
@@ -61,10 +61,44 @@ const transactions: Transaction[] = [
     merchantRaw: "Already categorized",
     categoryId: "transport",
   },
+  {
+    id: "low-confidence",
+    householdId: household.id,
+    accountId: account.id,
+    bookedAtIso: "2026-05-27T00:00:00Z",
+    amountMinor: -2700,
+    merchantRaw: "Uncertain merchant",
+    categoryId: "groceries",
+    categorization: {
+      status: "ambiguous",
+      categoryId: "groceries",
+      confidence: 0.35,
+      confidenceLevel: "low",
+      requiresReview: true,
+      matchingRules: [],
+    },
+  },
+  {
+    id: "high-confidence",
+    householdId: household.id,
+    accountId: account.id,
+    bookedAtIso: "2026-05-26T00:00:00Z",
+    amountMinor: -2600,
+    merchantRaw: "Certain merchant",
+    categoryId: "groceries",
+    categorization: {
+      status: "categorized",
+      categoryId: "groceries",
+      confidence: 0.95,
+      confidenceLevel: "high",
+      requiresReview: false,
+      matchingRules: [],
+    },
+  },
 ];
 
-describe("listUncategorizedReviewQueue", () => {
-  it("filters categorized rows and returns oldest booking date first with ID tie-breaking", () => {
+describe("listCategorizationReviewQueue", () => {
+  it("returns uncategorized and low-confidence rows ordered by confidence and ID", () => {
     const temporaryDirectory = mkdtempSync(join(tmpdir(), "budget-review-queue-query-"));
     const database = createLocalLedgerDatabase({
       dbPath: join(temporaryDirectory, "ledger.sqlite"),
@@ -81,16 +115,19 @@ describe("listUncategorizedReviewQueue", () => {
     try {
       expect(database.loadLedgerSnapshotData().transactions.map((transaction) => transaction.id)).toEqual([
         "a-new",
+        "high-confidence",
+        "low-confidence",
         "m-categorized",
         "same-date-a",
         "same-date-z",
         "z-old",
       ]);
-      expect(listUncategorizedReviewQueue(database, household.id).map((transaction) => transaction.id)).toEqual([
-        "z-old",
+      expect(listCategorizationReviewQueue(database, household.id).map((transaction) => transaction.id)).toEqual([
+        "a-new",
         "same-date-a",
         "same-date-z",
-        "a-new",
+        "z-old",
+        "low-confidence",
       ]);
     } finally {
       database.close();

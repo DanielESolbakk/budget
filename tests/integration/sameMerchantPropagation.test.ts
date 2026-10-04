@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import type { CategorizationDecision } from "../../src/domain/types.js";
 
 const HOUSEHOLD = {
   id: "hh-same-merchant",
@@ -27,14 +28,64 @@ const SOURCE_TRANSACTION = {
   merchantRaw: "REMA 1000 AS",
 };
 
+const ORIGINAL_CATEGORIZATION: CategorizationDecision = {
+  status: "ambiguous",
+  categoryId: "groceries",
+  confidence: 0.35,
+  confidenceLevel: "low",
+  requiresReview: true,
+  selectedRule: {
+    ruleId: "rule-a",
+    merchantAlias: "REMA 1000",
+    categoryId: "groceries",
+    priority: 10,
+  },
+  matchingRules: [
+    {
+      ruleId: "rule-a",
+      merchantAlias: "REMA 1000",
+      categoryId: "groceries",
+      priority: 10,
+    },
+    {
+      ruleId: "rule-b",
+      merchantAlias: "REMA 1000",
+      categoryId: "transport",
+      priority: 10,
+    },
+  ],
+};
+
+const CORRECTED_CATEGORIZATION: CategorizationDecision = {
+  status: "categorized",
+  categoryId: "transport",
+  confidence: 0.95,
+  confidenceLevel: "high",
+  requiresReview: false,
+  selectedRule: {
+    ruleId: "learned:REMA 1000",
+    merchantAlias: "REMA 1000",
+    categoryId: "transport",
+    priority: 100,
+  },
+  matchingRules: [
+    {
+      ruleId: "learned:REMA 1000",
+      merchantAlias: "REMA 1000",
+      categoryId: "transport",
+      priority: 100,
+    },
+  ],
+};
+
 describe("same-merchant correction persistence", () => {
-  it("persists correction provenance with its source category and merchant rule after reopening", () => {
+  it("retains the original categorization decision in correction history after reopening", () => {
     const temporaryDirectory = mkdtempSync(join(tmpdir(), "budget-same-merchant-"));
     const dbPath = join(temporaryDirectory, "ledger.sqlite");
     const seedData = {
       household: HOUSEHOLD,
       accounts: [ACCOUNT],
-      transactions: [SOURCE_TRANSACTION],
+      transactions: [{ ...SOURCE_TRANSACTION, categorization: ORIGINAL_CATEGORIZATION }],
       importJobs: [],
       monthlyCategoryTargets: [],
     };
@@ -43,8 +94,8 @@ describe("same-merchant correction persistence", () => {
     try {
       database.updateTransactionCategoryAndRule(SOURCE_TRANSACTION.id, {
         merchantAlias: "REMA 1000",
-        categoryId: "groceries",
-      });
+        categoryId: "transport",
+      }, CORRECTED_CATEGORIZATION);
       database.close();
 
       database = createLocalLedgerDatabase({ dbPath, seedData });
@@ -53,13 +104,20 @@ describe("same-merchant correction persistence", () => {
         {
           sourceTransactionId: SOURCE_TRANSACTION.id,
           merchantAlias: "REMA 1000",
-          categoryId: "groceries",
+          categoryId: "transport",
+          originalCategorization: ORIGINAL_CATEGORIZATION,
           correctedAtIso: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
         },
       ]);
-      expect(database.getTransactionById(SOURCE_TRANSACTION.id)?.categoryId).toBe("groceries");
+      const correctedTransaction = database.loadLedgerSnapshotData().transactions.find(
+        (transaction) => transaction.id === SOURCE_TRANSACTION.id
+      );
+      expect(correctedTransaction).toMatchObject({
+        categoryId: "transport",
+        categorization: CORRECTED_CATEGORIZATION,
+      });
       expect(database.listMerchantCategoryRules()).toEqual([
-        { merchantAlias: "REMA 1000", categoryId: "groceries" },
+        { merchantAlias: "REMA 1000", categoryId: "transport" },
       ]);
     } finally {
       database.close();

@@ -1,10 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { writeFileSync } from "node:fs";
+import { LedgerPage } from "./pom/LedgerPage.js";
 import { ReviewQueuePage } from "./pom/ReviewQueuePage.js";
 import { test, expect } from "./fixtures/electron.js";
 
-test("unmatched import persists confidence and is available for local review", async ({
+test("corrected unmatched import displays its category in the ledger after reload", async ({
   appShell,
   csvImport,
   databasePath,
@@ -45,6 +46,8 @@ test("unmatched import persists confidence and is available for local review", a
   await window.reload();
   await appShell.openWorkspace("Transactions");
   await expect(reviewQueue.reviewItem(merchant)).not.toBeVisible();
+  const ledger = new LedgerPage(window);
+  await expect(ledger.transaction(merchant).getByRole("cell").nth(3)).toHaveText("Groceries & food");
 
   const reopenedDatabase = new DatabaseSync(databasePath);
   try {

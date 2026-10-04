@@ -27,9 +27,9 @@ import {
   catalogBackupSnapshot,
   createPreRestoreBackupSnapshot,
 } from "../src/app/backup/snapshotCatalog.js";
+import { listCategorizationReviewQueue } from "../src/app/reviewQueue.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
 import { categorizeTransaction, categorizeTransactions } from "../src/domain/categorization/categorizeTransaction.js";
-import { orderReviewQueueTransactions } from "../src/domain/categorization/reviewQueue.js";
 import { normalizeMerchantName } from "../src/domain/merchant/normalizeMerchantName.js";
 import {
   inspectBackupSnapshot,
@@ -1272,13 +1272,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("transaction:listReview", async (event) => {
     assertTrustedRenderer(event);
     await applyTransactionListTestControl("review");
-    const reviewTransactions = localLedgerDatabase
-      .loadLedgerSnapshotData()
-      .transactions.filter((transaction) =>
-        transaction.householdId === sampleHousehold.id &&
-        (transaction.categoryId === undefined || transaction.categorization?.requiresReview === true)
-      );
-    return orderReviewQueueTransactions(reviewTransactions);
+    return listCategorizationReviewQueue(localLedgerDatabase, sampleHousehold.id);
   });
 
   ipcMain.handle("review:correctionHistory:list", (event) => {

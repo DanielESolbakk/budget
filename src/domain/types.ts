@@ -72,6 +72,7 @@ export interface MerchantCorrectionProvenance {
   merchantAlias: string;
   categoryId: string;
   correctedAtIso: string;
+  originalCategorization?: CategorizationDecision;
 }
 
 export interface SameMerchantPropagationChange {

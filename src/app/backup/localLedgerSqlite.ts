@@ -284,7 +284,8 @@ function ensureSchema(db: DatabaseSync): void {
       source_transaction_id TEXT NOT NULL,
       merchant_alias TEXT NOT NULL,
       category_id TEXT NOT NULL,
-      corrected_at_iso TEXT NOT NULL
+      corrected_at_iso TEXT NOT NULL,
+      original_categorization_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS same_merchant_propagation_operations (
@@ -369,6 +370,12 @@ function ensureSchema(db: DatabaseSync): void {
   }
   if (!transactionColumns.some((column) => column.name === "merchant_search")) {
     db.exec("ALTER TABLE transactions ADD COLUMN merchant_search TEXT NOT NULL DEFAULT ''");
+  }
+  const correctionProvenanceColumns = db
+    .prepare("PRAGMA table_info(merchant_correction_provenance)")
+    .all() as Array<{ name: string }>;
+  if (!correctionProvenanceColumns.some((column) => column.name === "original_categorization_json")) {
+    db.exec("ALTER TABLE merchant_correction_provenance ADD COLUMN original_categorization_json TEXT");
   }
   const transactionsWithoutMerchantSearch = db
     .prepare("SELECT id, merchant_raw FROM transactions WHERE merchant_search = ''")
@@ -1502,6 +1509,9 @@ export function createLocalLedgerDatabase(
   ): void {
     db.exec("BEGIN");
     try {
+      const originalCategorizationRow = db
+        .prepare("SELECT categorization_json FROM transactions WHERE id = ?")
+        .get(transactionId) as { categorization_json: string | null } | undefined;
       updateTransactionCategory(transactionId, rule.categoryId);
       if (categorization !== undefined) {
         db.prepare("UPDATE transactions SET categorization_json = ? WHERE id = ?").run(
@@ -1512,9 +1522,17 @@ export function createLocalLedgerDatabase(
       upsertMerchantCategoryRule(rule);
       db.prepare(`
         INSERT INTO merchant_correction_provenance (
-          id, source_transaction_id, merchant_alias, category_id, corrected_at_iso
-        ) VALUES (?, ?, ?, ?, ?)
-      `).run(randomUUID(), transactionId, rule.merchantAlias, rule.categoryId, new Date().toISOString());
+          id, source_transaction_id, merchant_alias, category_id, corrected_at_iso,
+          original_categorization_json
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        randomUUID(),
+        transactionId,
+        rule.merchantAlias,
+        rule.categoryId,
+        new Date().toISOString(),
+        originalCategorizationRow?.categorization_json ?? null
+      );
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
@@ -1525,7 +1543,8 @@ export function createLocalLedgerDatabase(
   function listMerchantCorrectionProvenance(): MerchantCorrectionProvenance[] {
     return db
       .prepare(`
-        SELECT id, source_transaction_id, merchant_alias, category_id, corrected_at_iso
+        SELECT id, source_transaction_id, merchant_alias, category_id, corrected_at_iso,
+          original_categorization_json
         FROM merchant_correction_provenance
         ORDER BY corrected_at_iso, id
       `)
@@ -1537,14 +1556,21 @@ export function createLocalLedgerDatabase(
           merchant_alias: string;
           category_id: string;
           corrected_at_iso: string;
+          original_categorization_json: string | null;
         };
-        return {
+        const provenance: MerchantCorrectionProvenance = {
           id: typedRow.id,
           sourceTransactionId: typedRow.source_transaction_id,
           merchantAlias: typedRow.merchant_alias,
           categoryId: typedRow.category_id,
           correctedAtIso: typedRow.corrected_at_iso,
         };
+        if (typedRow.original_categorization_json !== null) {
+          provenance.originalCategorization = JSON.parse(
+            typedRow.original_categorization_json
+          ) as CategorizationDecision;
+        }
+        return provenance;
       });
   }
 
