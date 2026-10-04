@@ -1,14 +1,16 @@
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { writeFileSync } from "node:fs";
+import { ReviewQueuePage } from "./pom/ReviewQueuePage.js";
 import { test, expect } from "./fixtures/electron.js";
 
 test("unmatched import persists confidence and is available for local review", async ({
+  appShell,
   csvImport,
-  reviewQueue,
   databasePath,
   window,
 }) => {
+  const reviewQueue = new ReviewQueuePage(window);
   const merchant = "UNKNOWN LOCAL MERCHANT";
   const csvPath = join(dirname(databasePath), "confidence-review.csv");
   writeFileSync(
@@ -19,6 +21,7 @@ test("unmatched import persists confidence and is available for local review", a
 
   await csvImport.submitImport(csvPath);
   await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+  await appShell.openWorkspace("Transactions");
   await expect(reviewQueue.reviewItem(merchant)).toBeVisible();
   await expect(reviewQueue.confidenceLabel(merchant)).toHaveText("Confidence: 0% · No matching rule");
 
@@ -40,6 +43,7 @@ test("unmatched import persists confidence and is available for local review", a
   await reviewQueue.categorySelect(merchant).selectOption("groceries");
   await reviewQueue.saveButton(merchant).click();
   await window.reload();
+  await appShell.openWorkspace("Transactions");
   await expect(reviewQueue.reviewItem(merchant)).not.toBeVisible();
 
   const reopenedDatabase = new DatabaseSync(databasePath);

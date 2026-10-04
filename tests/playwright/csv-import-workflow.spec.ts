@@ -175,8 +175,9 @@ test.describe("CSV import renderer workflow", () => {
     await expect(confirmation).toContainText(/later category corrections and unrelated transactions will be kept/i);
     await confirmation.getByRole("button", { name: "Confirm undo" }).click();
 
-    await expect(history.getByRole("status")).toContainText("Removed 1 transaction");
-    await expect(history.getByRole("status")).toContainText("Retained 0 changed transactions");
+    const undoResult = history.getByRole("status", { name: "Import undo result" });
+    await expect(undoResult).toContainText("Removed 1 transaction");
+    await expect(undoResult).toContainText("Retained 0 changed transactions");
   });
 
   test("history keeps repeated imports of the same CSV as separate runs", async ({ csvImport, window }) => {
