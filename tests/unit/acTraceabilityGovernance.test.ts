@@ -9,18 +9,23 @@ function readRepositoryFile(relativePath: string): string {
 }
 
 function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {
   const escapedHeading = escapeRegularExpression(heading);
   const match = markdown.match(
-    new RegExp(`^${escapedHeading}\\\\r?\\\\n([\\\\s\\\\S]*?)(?=^#{1,2}\\\\s|(?![\\\\s\\\\S]))`, "im"),
+    new RegExp(`^${escapedHeading}\\r?\\n([\\s\\S]*?)(?=^#{1,2}\\s|(?![\\s\\S]))`, "im"),
   );
   return match?.[1] ?? "";
 }
 
 describe("AC traceability governance checks", () => {
+  it("treats Markdown section headings as literal text", () => {
+    const markdown = "## Heading (literal)+\nsection content\n## Next section\nother";
+    expect(readMarkdownSection(markdown, "## Heading (literal)+")).toBe("section content\n");
+  });
+
   it("AC-1: ADR records required stack and runtime boundary decisions", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
@@ -45,7 +50,7 @@ describe("AC traceability governance checks", () => {
       "local-first",
       "no-network",
     ]) {
-      expect(adr, `ADR must contain \"${term}\"`).toContain(term);
+      expect(adr, `ADR must contain \\"${term}\\"`).toContain(term);
     }
   });
 
@@ -70,7 +75,7 @@ describe("AC traceability governance checks", () => {
     const glossaryRows = glossary.split(/\\r?\\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
-      expect(row, `Glossary must define \"${term}\"`).not.toBe("");
+      expect(row, `Glossary must define \\"${term}\\"`).not.toBe("");
       expect(row).toContain(`| ${term} | ${fragment}`);
     }
 
@@ -154,8 +159,8 @@ describe("AC traceability governance checks", () => {
     expect(planningSkill).toContain("A pre-existing `planning-invalid` label is not a fresh processing signal.");
     expect(planningSkill).toContain("If no fresh signal appears within 180 seconds, stop and escalate without repair.");
     expect(planningSkill).toContain("Epic issues may be read for hierarchy checks, but do not create, rewrite, validate, or close them.");
-    expect(planningDeepDive).toContain("Test issue's \"Test Scenarios\" section has at least 2 concrete, reproducible scenarios.");
+    expect(planningDeepDive).toContain("Test issue's \\"Test Scenarios\\" section has at least 2 concrete, reproducible scenarios.");
     expect(planningChecklists).toContain("G9 [PASS/FAIL/N/A]");
-    expect((planningSkill.match(/\S+/g) ?? []).length).toBeLessThanOrEqual(500);
+    expect((planningSkill.match(/\\S+/g) ?? []).length).toBeLessThanOrEqual(500);
   });
 });
