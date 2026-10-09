@@ -49,17 +49,6 @@ function writeReviewQueueFixture(): string {
   return filePath;
 }
 
-function writeOutOfOrderReviewQueueFixture(): string {
-  const directory = createTemporaryDirectory();
-  const filePath = join(directory, "out-of-order-review-queue.csv");
-  writeFileSync(
-    filePath,
-    "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta\n30.05.2026;;MERCHANT-005;;-12.00;NOK\n29.05.2026;;MERCHANT-000;;-11.00;NOK\n31.05.2026;;MERCHANT-006;;-13.00;NOK\n",
-    "utf8"
-  );
-  return filePath;
-}
-
 function readCategoryForMerchant(databasePath: string, bookedAtIso: string): string | undefined {
   const database = new DatabaseSync(databasePath);
   try {
@@ -99,25 +88,94 @@ test.describe("Categorization review workflow", () => {
     );
   });
 
-  test("opens the review queue at the oldest booking regardless of import order", async ({
+  test("prioritizes lower-confidence transactions before older bookings", async ({
     appShell,
-    csvImport,
-    ledger,
+    databasePath,
     reviewQueue,
+    window,
   }) => {
-    await appShell.openWorkspace("Import");
-    await csvImport.submitImport(writeOutOfOrderReviewQueueFixture());
-    await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+    const database = new DatabaseSync(databasePath);
+    try {
+      const account = database.prepare(
+        "SELECT household_id, account_id FROM transactions LIMIT 1"
+      ).get() as { household_id: string; account_id: string } | undefined;
+      expect(account).toBeDefined();
+      if (account === undefined) throw new Error("Expected the test ledger to have an account.");
+
+      const insertTransaction = database.prepare(`
+        INSERT INTO transactions (
+          id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+          merchant_search, source_type, category_id, categorization_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      insertTransaction.run(
+        "a-older-ambiguous",
+        account.household_id,
+        account.account_id,
+        "2026-05-29T00:00:00Z",
+        -1100,
+        "OLDER AMBIGUOUS",
+        "OLDER AMBIGUOUS",
+        "csv",
+        "groceries",
+        JSON.stringify({
+          status: "ambiguous",
+          categoryId: "groceries",
+          confidence: 0.35,
+          confidenceLevel: "low",
+          requiresReview: true,
+          selectedRule: {
+            ruleId: "rule-groceries",
+            merchantAlias: "OLDER AMBIGUOUS",
+            categoryId: "groceries",
+            priority: 10,
+          },
+          matchingRules: [
+            {
+              ruleId: "rule-groceries",
+              merchantAlias: "OLDER AMBIGUOUS",
+              categoryId: "groceries",
+              priority: 10,
+            },
+            {
+              ruleId: "rule-transport",
+              merchantAlias: "OLDER AMBIGUOUS",
+              categoryId: "transport",
+              priority: 10,
+            },
+          ],
+        })
+      );
+      insertTransaction.run(
+        "z-newer-unmatched",
+        account.household_id,
+        account.account_id,
+        "2026-05-31T00:00:00Z",
+        -1300,
+        "NEWER UNMATCHED",
+        "NEWER UNMATCHED",
+        "csv",
+        null,
+        JSON.stringify({
+          status: "unmatched",
+          confidence: 0,
+          confidenceLevel: "low",
+          requiresReview: true,
+          matchingRules: [],
+        })
+      );
+    } finally {
+      database.close();
+    }
 
     await appShell.openWorkspace("Transactions");
-    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 3 remaining to review");
-    await ledger.reviewUncategorizedButton.click();
-
+    await window.reload();
+    await appShell.openWorkspace("Transactions");
+    await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
     await expect(reviewQueue.firstCategorySelect).toHaveAttribute(
       "aria-label",
-      "Category for MERCHANT-000"
+      "Category for NEWER UNMATCHED"
     );
-    await expect(reviewQueue.firstCategorySelect).toBeFocused();
   });
 
   test("waits for a fresh queue count before exposing the review action", async ({

@@ -28,7 +28,26 @@ const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2
 const BINARY_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 const temporaryDirectories = new Set<string>();
 
-test.describe("native PDF file selection", () => {
+test.describe("PDF file picker cancellation", () => {
+  test.use({ importFileDialogBehavior: "native" });
+
+  test("keeps the entered path when the picker is canceled", async ({ pdfImport, electronApp }) => {
+    await electronApp.evaluate(({ dialog }) => {
+      dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+    });
+
+    await pdfImport.enterFilePath(FIXTURE_PATH);
+    await expect(pdfImport.importButton).toBeEnabled();
+
+    await pdfImport.chooseFileButton.click();
+
+    await expect(pdfImport.filePathInput).toHaveValue(FIXTURE_PATH);
+    await expect(pdfImport.importButton).toBeEnabled();
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+  });
+});
+
+test.describe("PDF file picker result", () => {
   test.use({ importFileDialogBehavior: "pdf-selected" });
 
   test("disabled confirmation explains how to select a statement before preview", async ({ pdfImport }) => {

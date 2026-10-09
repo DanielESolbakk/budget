@@ -43,7 +43,7 @@ function loadPersistedSnapshot(dbPath: string) {
 }
 
 test.describe("Recovery and portability renderer workflows", () => {
-  test.describe("native backup save-dialog selection", () => {
+  test.describe("backup save-dialog selected result", () => {
     test.use({ backupOutputDialogBehavior: "selected" });
 
     test("choosing a backup destination does not create it before explicit confirmation", async ({
@@ -63,7 +63,7 @@ test.describe("Recovery and portability renderer workflows", () => {
     });
   });
 
-  test.describe("native backup save-dialog cancellation", () => {
+  test.describe("backup save-dialog cancellation result", () => {
     test.use({ backupOutputDialogBehavior: "cancel" });
 
     test("reports cancellation without creating a snapshot", async ({ recovery, databasePath }) => {
@@ -488,7 +488,7 @@ test.describe("Recovery and portability renderer workflows", () => {
     }
   });
 
-  test.describe("native save-dialog selection", () => {
+  test.describe("CSV export save-dialog selected result", () => {
     test.use({ csvExportDialogBehavior: "selected" });
 
     test("uses the selected native path before writing the ledger", async ({
@@ -585,7 +585,7 @@ test.describe("Recovery and portability renderer workflows", () => {
     }
   });
 
-  test.describe("native restore source selection", () => {
+  test.describe("restore open-dialog selected result", () => {
     test.use({ restoreSnapshotDialogBehavior: "selected" });
 
     test("reviews snapshot identity and contents without restoring it", async ({
@@ -721,7 +721,7 @@ test.describe("Recovery and portability renderer workflows", () => {
     }
   });
 
-  test.describe("native save-dialog cancellation", () => {
+  test.describe("CSV export save-dialog cancellation result", () => {
     test.use({ csvExportDialogBehavior: "cancel" });
 
     test("reports cancellation without reporting success", async ({ recovery }) => {

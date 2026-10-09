@@ -314,7 +314,26 @@ test.describe("CSV import renderer workflow", () => {
     });
   });
 
-  test.describe("native CSV file selection", () => {
+  test.describe("CSV file picker cancellation", () => {
+    test.use({ importFileDialogBehavior: "native" });
+
+    test("keeps the entered path when the picker is canceled", async ({ csvImport, electronApp }) => {
+      await electronApp.evaluate(({ dialog }) => {
+        dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+      });
+
+      await csvImport.enterFilePath(FIXTURE_PATH);
+      await expect(csvImport.importButton).toBeEnabled();
+
+      await csvImport.chooseFileButton.click();
+
+      await expect(csvImport.filePathInput).toHaveValue(FIXTURE_PATH);
+      await expect(csvImport.importButton).toBeEnabled();
+      await expect(csvImport.previewRegion).not.toBeVisible();
+    });
+  });
+
+  test.describe("CSV file picker result", () => {
     test.use({ importFileDialogBehavior: "csv-selected" });
 
     test("choosing a CSV file makes it the statement being previewed", async ({ csvImport, window }) => {
@@ -420,7 +439,7 @@ test.describe("CSV import renderer workflow", () => {
   });
 
   test("Scenario 1: importing the supported synthetic CSV reports success and updates dashboard totals", async ({ appShell, csvImport, dashboard }) => {
-    // AC-1: native file selection is primary; direct path entry stays advanced.
+    // AC-1: the file picker is primary; direct path entry stays advanced.
     await expect(csvImport.importSection).toBeVisible();
     await expect(csvImport.importHeading).toBeVisible();
     await expect(csvImport.chooseFileButton).toBeVisible();
