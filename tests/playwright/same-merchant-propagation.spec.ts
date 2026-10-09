@@ -6,7 +6,7 @@ import { test as electronTest, expect } from "./fixtures/electron.js";
 const sameMerchantCsv = [
   "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta",
   "30.05.2026;;PROPAGATION TEST SHOP AS;;-12.00;NOK",
-  "31.05.2026;;Propagation Test Shop;;-13.00;NOK",
+  "31.05.2026;;Propagation Test Shop;;-13.00;USD",
   "01.06.2026;;PROPAGATION TEST SHOP ASA;;-14.00;NOK",
   "02.06.2026;;Stavanger Taxi;;-15.00;NOK",
 ].join("\n");
@@ -72,6 +72,7 @@ test("previews, selectively applies, and undoes same-merchant correction propaga
   const firstCandidate = reviewQueue.propagationCandidate("Propagation Test Shop", "2026-05-31");
   await expect(firstCandidate).toContainText("Brukskonto");
   await expect(firstCandidate).toContainText("13,00");
+  await expect(firstCandidate).toContainText("USD");
   await expect(firstCandidate).toContainText("Groceries & food");
   await reviewQueue.cancelPropagationPreviewButton.click();
   await expect(reviewQueue.propagationPreviewDialog).not.toBeVisible();
@@ -88,6 +89,7 @@ test("previews, selectively applies, and undoes same-merchant correction propaga
   await expect(reviewQueue.propagationConfirmationDialog).toContainText("2026-05-31");
   await expect(reviewQueue.propagationConfirmationDialog).toContainText("Brukskonto");
   await expect(reviewQueue.propagationConfirmationDialog).toContainText("13,00");
+  await expect(reviewQueue.propagationConfirmationDialog).toContainText("USD");
   await expect(reviewQueue.propagationConfirmationDialog).not.toContainText("PROPAGATION TEST SHOP ASA");
   await reviewQueue.confirmPropagationButton.click();
 

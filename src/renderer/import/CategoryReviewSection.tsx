@@ -6,15 +6,20 @@ import type {
 } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "./categoryOptions.js";
 
-const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
-  style: "currency",
-  currency: "NOK",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+const currencyFormatters = new Map<string, Intl.NumberFormat>();
 
-function formatAmount(amountMinor: number): string {
-  return nokCurrencyFormatter.format(amountMinor / 100);
+function formatAmount(amountMinor: number, currencyCode = "NOK"): string {
+  let formatter = currencyFormatters.get(currencyCode);
+  if (formatter === undefined) {
+    formatter = new Intl.NumberFormat("nb-NO", {
+      style: "currency",
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    currencyFormatters.set(currencyCode, formatter);
+  }
+  return formatter.format(amountMinor / 100);
 }
 
 function getCategoryLabel(categoryId: string): string {
@@ -424,7 +429,7 @@ export function CategoryReviewSection({
                   <div className="review-propagation-candidate-details">
                     <strong>{candidate.merchantRaw}</strong>
                     <span>
-                      {candidate.bookedAtIso.slice(0, 10)} · {candidate.accountName} · {formatAmount(candidate.amountMinor)}
+                      {candidate.bookedAtIso.slice(0, 10)} · {candidate.accountName} · {formatAmount(candidate.amountMinor, candidate.currencyCode)}
                     </span>
                     <span>Proposed category: {getCategoryLabel(candidate.proposedCategoryId)}</span>
                   </div>
@@ -458,7 +463,7 @@ export function CategoryReviewSection({
                   <li key={candidate.transactionId}>
                     <strong>{candidate.merchantRaw}</strong>
                     <span>
-                      {candidate.bookedAtIso.slice(0, 10)} · {candidate.accountName} · {formatAmount(candidate.amountMinor)}
+                      {candidate.bookedAtIso.slice(0, 10)} · {candidate.accountName} · {formatAmount(candidate.amountMinor, candidate.currencyCode)}
                     </span>
                   </li>
                 ))}

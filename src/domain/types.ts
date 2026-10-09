@@ -104,6 +104,7 @@ export interface SameMerchantPropagationCandidate {
   merchantRaw: string;
   accountName: string;
   amountMinor: number;
+  currencyCode: CurrencyCode;
   proposedCategoryId: string;
 }
 

@@ -31,7 +31,7 @@ const accounts = [
     id: "account-savings",
     householdId: household.id,
     name: "Sparekonto",
-    currencyCode: "NOK",
+    currencyCode: "EUR",
   },
 ];
 
@@ -43,6 +43,7 @@ const uncategorizedTransactions = [
     bookedAtIso: "2026-05-04T00:00:00Z",
     amountMinor: -890,
     merchantRaw: "REMA 1000 ASA",
+    currencyCode: "USD",
   },
   {
     id: "tx-earlier",
@@ -107,6 +108,7 @@ describe("same-merchant propagation preview", () => {
           merchantRaw: "Rema   1000",
           accountName: "Brukskonto",
           amountMinor: -710,
+          currencyCode: "NOK",
           proposedCategoryId: "groceries",
         },
         {
@@ -115,6 +117,7 @@ describe("same-merchant propagation preview", () => {
           merchantRaw: "REMA 1000 ASA",
           accountName: "Sparekonto",
           amountMinor: -890,
+          currencyCode: "USD",
           proposedCategoryId: "groceries",
         },
       ],

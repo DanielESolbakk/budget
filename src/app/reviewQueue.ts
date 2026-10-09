@@ -47,8 +47,8 @@ export function previewSameMerchantPropagation(
     throw new Error(`Current source correction not found: ${sourceTransactionId}`);
   }
 
-  const accountNames = new Map(
-    database.getAccountsForHousehold(sourceTransaction.householdId).map((account) => [account.id, account.name])
+  const accountsById = new Map(
+    database.getAccountsForHousehold(sourceTransaction.householdId).map((account) => [account.id, account])
   );
   const candidates = database.listUncategorizedTransactions(sourceTransaction.householdId)
     .filter((transaction) =>
@@ -60,14 +60,18 @@ export function previewSameMerchantPropagation(
     .sort((left, right) =>
       left.bookedAtIso.localeCompare(right.bookedAtIso) || left.id.localeCompare(right.id)
     )
-    .map((transaction) => ({
-      transactionId: transaction.id,
-      bookedAtIso: transaction.bookedAtIso,
-      merchantRaw: transaction.merchantRaw,
-      accountName: accountNames.get(transaction.accountId) ?? transaction.accountId,
-      amountMinor: transaction.amountMinor,
-      proposedCategoryId: sourceTransaction.categoryId!,
-    }));
+    .map((transaction) => {
+      const account = accountsById.get(transaction.accountId);
+      return {
+        transactionId: transaction.id,
+        bookedAtIso: transaction.bookedAtIso,
+        merchantRaw: transaction.merchantRaw,
+        accountName: account?.name ?? transaction.accountId,
+        amountMinor: transaction.amountMinor,
+        currencyCode: transaction.currencyCode ?? account?.currencyCode ?? "NOK",
+        proposedCategoryId: sourceTransaction.categoryId!,
+      };
+    });
 
   return {
     sourceTransactionId,
