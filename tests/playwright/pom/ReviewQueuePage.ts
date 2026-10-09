@@ -27,6 +27,42 @@ export class ReviewQueuePage {
     return this.section.getByRole("status", { name: "Category correction result" });
   }
 
+  get propagationPreviewButton() {
+    return this.section.getByRole("button", { name: /^Preview \d+ matching transactions$/ });
+  }
+
+  get propagationPreviewDialog() {
+    return this.section.getByRole("dialog", { name: "Same-merchant transaction preview" });
+  }
+
+  get propagationCandidateRows() {
+    return this.propagationPreviewDialog.getByRole("listitem");
+  }
+
+  get cancelPropagationPreviewButton() {
+    return this.propagationPreviewDialog.getByRole("button", { name: "Cancel" });
+  }
+
+  get continuePropagationButton() {
+    return this.propagationPreviewDialog.getByRole("button", { name: "Continue to confirmation" });
+  }
+
+  get propagationConfirmationDialog() {
+    return this.section.getByRole("alertdialog", { name: "Confirm same-merchant propagation" });
+  }
+
+  get confirmPropagationButton() {
+    return this.propagationConfirmationDialog.getByRole("button", { name: /^Apply category to \d+ transactions?$/ });
+  }
+
+  get propagationResult() {
+    return this.section.getByRole("status", { name: "Propagation result" });
+  }
+
+  get undoPropagationButton() {
+    return this.section.getByRole("button", { name: "Undo propagation" });
+  }
+
   get firstCategorySelect() {
     return this.section.getByRole("combobox").first();
   }
@@ -44,7 +80,17 @@ export class ReviewQueuePage {
   }
 
   reviewItem(merchantRaw: string) {
-    return this.section.getByRole("listitem", { name: `Review ${merchantRaw}` });
+    return this.section.getByRole("listitem", { name: `Review ${merchantRaw}`, exact: true });
+  }
+
+  propagationCandidate(merchantRaw: string, bookedAtDate: string) {
+    return this.propagationCandidateRows
+      .filter({ hasText: merchantRaw })
+      .filter({ hasText: bookedAtDate });
+  }
+
+  propagationCandidateCheckbox(merchantRaw: string, bookedAtDate: string) {
+    return this.propagationCandidate(merchantRaw, bookedAtDate).getByRole("checkbox");
   }
 
   confidenceLabel(merchantRaw: string) {
@@ -62,6 +108,7 @@ export class ReviewQueuePage {
   categorySelect(merchantRaw: string) {
     return this.reviewItem(merchantRaw).getByRole("combobox", {
       name: `Category for ${merchantRaw}`,
+      exact: true,
     });
   }
 

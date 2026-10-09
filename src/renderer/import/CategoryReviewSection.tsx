@@ -1,5 +1,9 @@
 import React from "react";
-import type { Transaction } from "../../domain/types.js";
+import type {
+  SameMerchantPropagationOperation,
+  SameMerchantPropagationPreview,
+  Transaction,
+} from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "./categoryOptions.js";
 
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
@@ -50,10 +54,20 @@ export function CategoryReviewSection({
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
+  const [propagationPreview, setPropagationPreview] = React.useState<SameMerchantPropagationPreview | null>(null);
+  const [propagationDialogMode, setPropagationDialogMode] = React.useState<"preview" | "confirmation" | null>(null);
+  const [selectedPropagationTransactionIds, setSelectedPropagationTransactionIds] = React.useState<string[]>([]);
+  const [propagationError, setPropagationError] = React.useState<string | null>(null);
+  const [propagationResult, setPropagationResult] = React.useState<string | null>(null);
+  const [isApplyingPropagation, setIsApplyingPropagation] = React.useState(false);
+  const [undoPropagationOperation, setUndoPropagationOperation] =
+    React.useState<SameMerchantPropagationOperation | null>(null);
+  const [isUndoingPropagation, setIsUndoingPropagation] = React.useState(false);
   const [reviewedCount, setReviewedCount] = React.useState(0);
   const [savingTransactionId, setSavingTransactionId] = React.useState<string | null>(null);
   const [retryKey, setRetryKey] = React.useState(0);
   const queueHeadingRef = React.useRef<HTMLHeadingElement>(null);
+  const propagationDialogRef = React.useRef<HTMLDialogElement>(null);
   const pendingFocusTransactionId = React.useRef<string | null>(null);
   const focusQueueHeading = React.useRef(false);
   const lastHandledFocusRequest = React.useRef(0);
@@ -109,6 +123,13 @@ export function CategoryReviewSection({
     focusQueueHeading.current = false;
   }, [transactions, focusFirstRequest, hasLoaded, isLoading, loadError]);
 
+  React.useEffect(() => {
+    const dialog = propagationDialogRef.current;
+    if (dialog === null) return;
+    if (propagationDialogMode === null && dialog.open) dialog.close();
+    else if (propagationDialogMode !== null && !dialog.open) dialog.showModal();
+  }, [propagationDialogMode]);
+
   async function saveCategory(transaction: Transaction): Promise<void> {
     const categoryId = selectedCategories[transaction.id]?.trim() ?? "";
     if (!categoryId) return;
@@ -121,6 +142,12 @@ export function CategoryReviewSection({
         transactionId: transaction.id,
         categoryId,
       });
+      setPropagationDialogMode(null);
+      setPropagationPreview(null);
+      setSelectedPropagationTransactionIds([]);
+      setPropagationError(null);
+      setPropagationResult(null);
+      setUndoPropagationOperation(null);
       const transactionIndex = transactions.findIndex((item) => item.id === transaction.id);
       const nextTransaction = transactions[transactionIndex + 1] ?? transactions[transactionIndex - 1];
       pendingFocusTransactionId.current = nextTransaction?.id ?? null;
@@ -132,10 +159,119 @@ export function CategoryReviewSection({
         ? `Category saved. Future matching for this merchant will use ${categoryLabel}.`
         : "Category saved. Future matching was unchanged.");
       onCategorySaved();
+      try {
+        const preview = await window.budgetApi.review.propagation.preview({
+          sourceTransactionId: transaction.id,
+        });
+        setPropagationPreview(preview);
+      } catch (previewError: unknown) {
+        setPropagationError(
+          previewError instanceof Error ? previewError.message : "Unable to preview same-merchant transactions."
+        );
+      }
     } catch (saveError: unknown) {
       setSaveError(saveError instanceof Error ? saveError.message : "Unable to save category.");
     } finally {
       setSavingTransactionId(null);
+    }
+  }
+
+  function openPropagationPreview(): void {
+    if (propagationPreview === null || propagationPreview.candidates.length === 0) return;
+    setSelectedPropagationTransactionIds([]);
+    setPropagationDialogMode("preview");
+  }
+
+  function cancelPropagationPreview(): void {
+    setSelectedPropagationTransactionIds([]);
+    setPropagationDialogMode(null);
+  }
+
+  function togglePropagationCandidate(transactionId: string): void {
+    setSelectedPropagationTransactionIds((current) => current.includes(transactionId)
+      ? current.filter((selectedId) => selectedId !== transactionId)
+      : [...current, transactionId]
+    );
+  }
+
+  async function applyPropagation(): Promise<void> {
+    if (propagationPreview === null || selectedPropagationTransactionIds.length === 0) return;
+
+    const preview = propagationPreview;
+    setPropagationError(null);
+    setIsApplyingPropagation(true);
+    try {
+      const operation = await window.budgetApi.review.propagation.apply({
+        sourceTransactionId: preview.sourceTransactionId,
+        merchantAlias: preview.merchantAlias,
+        categoryId: preview.categoryId,
+        transactionIds: selectedPropagationTransactionIds,
+        confirmed: true,
+      });
+      const changedTransactionIds = new Set(operation.changes.map((change) => change.transactionId));
+      setTransactions((current) => current.filter((transaction) => !changedTransactionIds.has(transaction.id)));
+      setReviewedCount((current) => current + operation.changes.length);
+      setUndoPropagationOperation(operation);
+      setPropagationResult(
+        `Applied ${getCategoryLabel(operation.categoryId)} to ${operation.changes.length} transaction${
+          operation.changes.length === 1 ? "" : "s"
+        }.`
+      );
+      setPropagationDialogMode(null);
+      setSelectedPropagationTransactionIds([]);
+      onCategorySaved();
+      try {
+        setPropagationPreview(await window.budgetApi.review.propagation.preview({
+          sourceTransactionId: preview.sourceTransactionId,
+        }));
+      } catch (previewError: unknown) {
+        setPropagationPreview(null);
+        setPropagationError(
+          previewError instanceof Error ? previewError.message : "Unable to refresh same-merchant transactions."
+        );
+      }
+    } catch (applyError: unknown) {
+      setPropagationError(applyError instanceof Error ? applyError.message : "Unable to apply category propagation.");
+    } finally {
+      setIsApplyingPropagation(false);
+    }
+  }
+
+  async function undoPropagation(): Promise<void> {
+    if (undoPropagationOperation === null) return;
+
+    const operation = undoPropagationOperation;
+    setPropagationError(null);
+    setIsUndoingPropagation(true);
+    try {
+      const wasUndone = await window.budgetApi.review.propagation.undo(operation.id);
+      if (!wasUndone) {
+        setUndoPropagationOperation(null);
+        throw new Error("This propagation is no longer available to undo.");
+      }
+
+      setUndoPropagationOperation(null);
+      setReviewedCount((current) => Math.max(0, current - operation.changes.length));
+      setPropagationResult(
+        `Undo restored ${operation.changes.length} transaction${
+          operation.changes.length === 1 ? "" : "s"
+        }. The original correction and future merchant rule remain unchanged.`
+      );
+      onCategorySaved();
+      try {
+        setPropagationPreview(await window.budgetApi.review.propagation.preview({
+          sourceTransactionId: operation.sourceTransactionId,
+        }));
+      } catch (previewError: unknown) {
+        setPropagationPreview(null);
+        setPropagationError(
+          previewError instanceof Error ? previewError.message : "Unable to refresh same-merchant transactions."
+        );
+      }
+    } catch (undoError: unknown) {
+      setPropagationError(undoError instanceof Error ? undoError.message : "Unable to undo category propagation.");
+    } finally {
+      setIsUndoingPropagation(false);
     }
   }
 
@@ -158,6 +294,30 @@ export function CategoryReviewSection({
       )}
       {saveError !== null && <p role="alert">{saveError}</p>}
       {saveStatus !== null && <p role="status" aria-label="Category correction result">{saveStatus}</p>}
+      {propagationError !== null && propagationDialogMode !== "confirmation" && (
+        <p role="alert">{propagationError}</p>
+      )}
+      {propagationResult !== null && <p role="status" aria-label="Propagation result">{propagationResult}</p>}
+      {propagationPreview !== null && propagationPreview.candidates.length > 0 && (
+        <div className="review-propagation-action">
+          <p>
+            {propagationPreview.candidates.length} uncategorized transactions match {propagationPreview.merchantAlias}.
+          </p>
+          <button type="button" onClick={openPropagationPreview}>
+            Preview {propagationPreview.candidates.length} matching transactions
+          </button>
+        </div>
+      )}
+      {undoPropagationOperation !== null && (
+        <button
+          className="review-propagation-undo"
+          type="button"
+          disabled={isUndoingPropagation}
+          onClick={() => void undoPropagation()}
+        >
+          {isUndoingPropagation ? "Undoing propagation..." : "Undo propagation"}
+        </button>
+      )}
       {hasLoaded && !isLoading && loadError === null && (
         <p role="status" aria-label="Review queue progress">
           {reviewedCount} reviewed this session; {transactions.length} remaining to review
@@ -216,7 +376,10 @@ export function CategoryReviewSection({
                 </label>
                 <button
                   type="button"
-                  disabled={savingTransactionId === transaction.id}
+                  disabled={
+                    savingTransactionId === transaction.id ||
+                    (selectedCategories[transaction.id]?.trim().length ?? 0) === 0
+                  }
                   onClick={() => void saveCategory(transaction)}
                 >
                   {savingTransactionId === transaction.id ? "Saving category..." : "Save category"}
@@ -226,6 +389,100 @@ export function CategoryReviewSection({
           ))}
         </ul>
       ) : null}
+      <dialog
+        ref={propagationDialogRef}
+        className="review-propagation-dialog"
+        role={propagationDialogMode === "confirmation" ? "alertdialog" : undefined}
+        aria-label={propagationDialogMode === "confirmation"
+          ? "Confirm same-merchant propagation"
+          : "Same-merchant transaction preview"}
+        onCancel={(event) => {
+          event.preventDefault();
+          if (propagationDialogMode === "confirmation") setPropagationDialogMode("preview");
+          else cancelPropagationPreview();
+        }}
+      >
+        {propagationDialogMode === "preview" && propagationPreview !== null && (
+          <>
+            <h3>Same-merchant transaction preview</h3>
+            <p>
+              Select uncategorized transactions to categorize as {getCategoryLabel(propagationPreview.categoryId)}.
+            </p>
+            <ul className="review-propagation-candidates">
+              {propagationPreview.candidates.map((candidate) => (
+                <li className="review-propagation-candidate" key={candidate.transactionId}>
+                  <label htmlFor={`propagation-candidate-${candidate.transactionId}`}>
+                    <input
+                      id={`propagation-candidate-${candidate.transactionId}`}
+                      type="checkbox"
+                      aria-label={`Select transaction: ${candidate.merchantRaw}, ${candidate.bookedAtIso.slice(0, 10)}`}
+                      checked={selectedPropagationTransactionIds.includes(candidate.transactionId)}
+                      onChange={() => togglePropagationCandidate(candidate.transactionId)}
+                    />
+                    <span>Select transaction</span>
+                  </label>
+                  <div className="review-propagation-candidate-details">
+                    <strong>{candidate.merchantRaw}</strong>
+                    <span>
+                      {candidate.bookedAtIso.slice(0, 10)} · {candidate.accountName} · {formatAmount(candidate.amountMinor)}
+                    </span>
+                    <span>Proposed category: {getCategoryLabel(candidate.proposedCategoryId)}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="review-propagation-dialog-actions">
+              <button
+                type="button"
+                disabled={selectedPropagationTransactionIds.length === 0}
+                onClick={() => setPropagationDialogMode("confirmation")}
+              >
+                Continue to confirmation
+              </button>
+              <button type="button" onClick={cancelPropagationPreview}>Cancel</button>
+            </div>
+          </>
+        )}
+        {propagationDialogMode === "confirmation" && propagationPreview !== null && (
+          <>
+            <h3>Confirm same-merchant propagation</h3>
+            {propagationError !== null && <p role="alert">{propagationError}</p>}
+            <p>
+              Apply {getCategoryLabel(propagationPreview.categoryId)} to {selectedPropagationTransactionIds.length} selected
+              {selectedPropagationTransactionIds.length === 1 ? " transaction?" : " transactions?"}
+            </p>
+            <ul className="review-propagation-confirmation-list">
+              {propagationPreview.candidates
+                .filter((candidate) => selectedPropagationTransactionIds.includes(candidate.transactionId))
+                .map((candidate) => (
+                  <li key={candidate.transactionId}>
+                    <strong>{candidate.merchantRaw}</strong>
+                    <span>
+                      {candidate.bookedAtIso.slice(0, 10)} · {candidate.accountName} · {formatAmount(candidate.amountMinor)}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+            <div className="review-propagation-dialog-actions">
+              <button
+                type="button"
+                disabled={isApplyingPropagation}
+                onClick={() => void applyPropagation()}
+              >
+                Apply category to {selectedPropagationTransactionIds.length} transaction
+                {selectedPropagationTransactionIds.length === 1 ? "" : "s"}
+              </button>
+              <button
+                type="button"
+                disabled={isApplyingPropagation}
+                onClick={() => setPropagationDialogMode("preview")}
+              >
+                Back to preview
+              </button>
+            </div>
+          </>
+        )}
+      </dialog>
     </section>
   );
 }

@@ -2230,7 +2230,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
   margin-top: 0.3rem;
   color: var(--paper-muted);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
 }
 
 .review-queue-action {
@@ -2251,6 +2251,141 @@ section[aria-label="Category Target Entry"] [role="status"] {
 .review-queue-action button {
   margin: 0;
   white-space: nowrap;
+}
+
+.review-propagation-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  border-left: 3px solid var(--orange);
+  padding: 0.75rem 1rem;
+  background: var(--panel-soft);
+}
+
+.review-propagation-action p {
+  margin: 0;
+  color: var(--paper-muted);
+}
+
+.review-propagation-action button,
+.review-propagation-undo {
+  margin: 0.6rem 0 0;
+}
+
+.review-propagation-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: min(80vh, 46rem);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  padding: 1.25rem;
+  color: var(--paper);
+  background: var(--panel);
+}
+
+.review-propagation-dialog::backdrop {
+  background: rgb(0 0 0 / 68%);
+}
+
+.review-propagation-dialog h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.4rem;
+}
+
+.review-propagation-dialog > p {
+  color: var(--paper-muted);
+}
+
+.review-propagation-confirmation-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.85rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-propagation-confirmation-list li {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.55rem;
+}
+
+.review-propagation-confirmation-list strong,
+.review-propagation-confirmation-list span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.review-propagation-confirmation-list span {
+  margin-top: 0.3rem;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+}
+
+.review-propagation-candidates {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-propagation-candidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: start;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.review-propagation-candidate > label {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+}
+
+.review-propagation-candidate-details strong,
+.review-propagation-candidate-details span {
+  display: block;
+}
+
+.review-propagation-candidate-details strong {
+  overflow-wrap: anywhere;
+}
+
+.review-propagation-candidate-details span {
+  margin-top: 0.3rem;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+}
+
+.review-propagation-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.review-propagation-dialog-actions button {
+  margin: 0;
+}
+
+@media (max-width: 38rem) {
+  .review-propagation-dialog {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    padding: 0.9rem;
+  }
+
+  .review-propagation-candidate {
+    grid-template-columns: 1fr;
+  }
 }
 
 .empty-state {

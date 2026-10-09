@@ -17,7 +17,9 @@ import type {
   MerchantCorrectionProvenance,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
-  SameMerchantPropagationInput,
+  SameMerchantPropagationApplyRequest,
+  SameMerchantPropagationPreview,
+  SameMerchantPropagationPreviewRequest,
   SameMerchantPropagationOperation,
   Transaction,
 } from "../domain/types.js";
@@ -103,7 +105,8 @@ export interface ReviewApi {
     propagations: () => Promise<SameMerchantPropagationOperation[]>;
   };
   propagation: {
-    apply: (input: SameMerchantPropagationInput) => Promise<SameMerchantPropagationOperation>;
+    preview: (input: SameMerchantPropagationPreviewRequest) => Promise<SameMerchantPropagationPreview>;
+    apply: (input: SameMerchantPropagationApplyRequest) => Promise<SameMerchantPropagationOperation>;
     undo: (operationId: string) => Promise<boolean>;
   };
 }
@@ -215,7 +218,9 @@ const budgetApi: BudgetApi = {
         ipcRenderer.invoke("review:propagationHistory:list"),
     },
     propagation: {
-      apply: (input: SameMerchantPropagationInput): Promise<SameMerchantPropagationOperation> =>
+      preview: (input: SameMerchantPropagationPreviewRequest): Promise<SameMerchantPropagationPreview> =>
+        ipcRenderer.invoke("review:propagation:preview", input),
+      apply: (input: SameMerchantPropagationApplyRequest): Promise<SameMerchantPropagationOperation> =>
         ipcRenderer.invoke("review:propagation:apply", input),
       undo: (operationId: string): Promise<boolean> =>
         ipcRenderer.invoke("review:propagation:undo", operationId),

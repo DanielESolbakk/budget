@@ -79,6 +79,8 @@ export interface SameMerchantPropagationChange {
   transactionId: string;
   beforeCategoryId: string | null;
   afterCategoryId: string;
+  beforeCategorization?: CategorizationDecision;
+  afterCategorization?: CategorizationDecision;
 }
 
 export interface SameMerchantPropagationInput {
@@ -86,6 +88,30 @@ export interface SameMerchantPropagationInput {
   merchantAlias: string;
   categoryId: string;
   transactionIds: string[];
+}
+
+export interface SameMerchantPropagationPreviewRequest {
+  sourceTransactionId: string;
+}
+
+export interface SameMerchantPropagationApplyRequest extends SameMerchantPropagationInput {
+  confirmed: true;
+}
+
+export interface SameMerchantPropagationCandidate {
+  transactionId: string;
+  bookedAtIso: string;
+  merchantRaw: string;
+  accountName: string;
+  amountMinor: number;
+  proposedCategoryId: string;
+}
+
+export interface SameMerchantPropagationPreview {
+  sourceTransactionId: string;
+  merchantAlias: string;
+  categoryId: string;
+  candidates: SameMerchantPropagationCandidate[];
 }
 
 export interface SameMerchantPropagationOperation {

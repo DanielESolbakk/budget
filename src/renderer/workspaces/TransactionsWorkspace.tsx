@@ -34,17 +34,17 @@ export function TransactionsWorkspace({
         <p>Search the ledger and resolve entries that still need a category.</p>
       </div>
       <div className="transactions-workspace-grid">
-        <LedgerSection
-          refreshKey={refreshKey}
-          uncategorizedCount={uncategorizedQueueState.count}
-          isUncategorizedQueueReady={uncategorizedQueueState.isReady}
-          onReviewUncategorized={() => setFocusFirstRequest((current) => current + 1)}
-        />
         <CategoryReviewSection
           refreshKey={refreshKey}
           onCategorySaved={onCategorySaved}
           onUncategorizedQueueStateChange={setUncategorizedQueueState}
           focusFirstRequest={focusFirstRequest}
+        />
+        <LedgerSection
+          refreshKey={refreshKey}
+          uncategorizedCount={uncategorizedQueueState.count}
+          isUncategorizedQueueReady={uncategorizedQueueState.isReady}
+          onReviewUncategorized={() => setFocusFirstRequest((current) => current + 1)}
         />
       </div>
     </section>

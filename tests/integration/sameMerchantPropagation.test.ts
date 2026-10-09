@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import {
+  applySameMerchantPropagation,
+  listCategorizationReviewQueue,
+  undoSameMerchantPropagation,
+} from "../../src/app/reviewQueue.js";
 import type { CategorizationDecision } from "../../src/domain/types.js";
 
 const HOUSEHOLD = {
@@ -472,6 +477,116 @@ describe("same-merchant correction persistence", () => {
       expect(database.listMerchantCorrectionProvenance()).toEqual([]);
       expect(database.listSameMerchantPropagationOperations()).toEqual([]);
       expect(database.undoSameMerchantPropagation(operation.id)).toBe(false);
+    } finally {
+      database.close();
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("applies only previewed candidates through the review service and allows one undo", () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "budget-same-merchant-service-"));
+    const database = createLocalLedgerDatabase({
+      dbPath: join(temporaryDirectory, "ledger.sqlite"),
+      seedData: {
+        household: HOUSEHOLD,
+        accounts: [ACCOUNT],
+        transactions: [
+          SOURCE_TRANSACTION,
+          { ...SOURCE_TRANSACTION, id: "tx-selected", merchantRaw: "Rema 1000" },
+          { ...SOURCE_TRANSACTION, id: "tx-unselected", merchantRaw: "REMA 1000 ASA" },
+          { ...SOURCE_TRANSACTION, id: "tx-unrelated", merchantRaw: "Stavanger Taxi" },
+          { ...SOURCE_TRANSACTION, id: "tx-already-categorized", categoryId: "transport" },
+        ],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      database.updateTransactionCategoryAndRule(SOURCE_TRANSACTION.id, {
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+      });
+      const input = {
+        sourceTransactionId: SOURCE_TRANSACTION.id,
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+        transactionIds: ["tx-selected"],
+      };
+
+      expect(() => applySameMerchantPropagation(database, {
+        ...input,
+        transactionIds: ["tx-unrelated"],
+      })).toThrow("Transaction is not in the current same-merchant preview: tx-unrelated");
+      expect(database.listSameMerchantPropagationOperations()).toEqual([]);
+
+      const operation = applySameMerchantPropagation(database, input);
+      expect(operation.changes.map((change) => change.transactionId)).toEqual(["tx-selected"]);
+      expect(database.getTransactionById("tx-selected")?.categoryId).toBe("groceries");
+      expect(database.getTransactionById("tx-unselected")?.categoryId).toBeUndefined();
+
+      expect(undoSameMerchantPropagation(database, operation.id)).toBe(true);
+      expect(undoSameMerchantPropagation(database, operation.id)).toBe(false);
+      expect(database.getTransactionById("tx-selected")?.categoryId).toBeUndefined();
+      expect(database.getTransactionById(SOURCE_TRANSACTION.id)?.categoryId).toBe("groceries");
+      expect(database.listMerchantCategoryRules()).toEqual([
+        { merchantAlias: "REMA 1000", categoryId: "groceries" },
+      ]);
+    } finally {
+      database.close();
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves propagated review metadata and restores it when the propagation is undone", () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "budget-same-merchant-review-state-"));
+    const selectedTransaction = {
+      ...SOURCE_TRANSACTION,
+      id: "tx-needs-review",
+      merchantRaw: "Rema 1000",
+      categorization: ORIGINAL_CATEGORIZATION,
+    };
+    const database = createLocalLedgerDatabase({
+      dbPath: join(temporaryDirectory, "ledger.sqlite"),
+      seedData: {
+        household: HOUSEHOLD,
+        accounts: [ACCOUNT],
+        transactions: [SOURCE_TRANSACTION, selectedTransaction],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      database.updateTransactionCategoryAndRule(SOURCE_TRANSACTION.id, {
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+      }, CORRECTED_CATEGORIZATION);
+      expect(listCategorizationReviewQueue(database, HOUSEHOLD.id).map((transaction) => transaction.id))
+        .toContain(selectedTransaction.id);
+
+      const operation = applySameMerchantPropagation(database, {
+        sourceTransactionId: SOURCE_TRANSACTION.id,
+        merchantAlias: "REMA 1000",
+        categoryId: "groceries",
+        transactionIds: [selectedTransaction.id],
+      });
+
+      expect(listCategorizationReviewQueue(database, HOUSEHOLD.id).map((transaction) => transaction.id))
+        .not.toContain(selectedTransaction.id);
+      const propagatedTransaction = database.loadLedgerSnapshotData().transactions.find(
+        (transaction) => transaction.id === selectedTransaction.id
+      );
+      expect(propagatedTransaction?.categorization?.requiresReview).toBe(false);
+
+      expect(undoSameMerchantPropagation(database, operation.id)).toBe(true);
+      expect(database.getTransactionById(selectedTransaction.id)?.categoryId).toBeUndefined();
+      const undoneTransaction = database.loadLedgerSnapshotData().transactions.find(
+        (transaction) => transaction.id === selectedTransaction.id
+      );
+      expect(undoneTransaction?.categorization).toEqual(ORIGINAL_CATEGORIZATION);
+      expect(listCategorizationReviewQueue(database, HOUSEHOLD.id).map((transaction) => transaction.id))
+        .toContain(selectedTransaction.id);
     } finally {
       database.close();
       rmSync(temporaryDirectory, { recursive: true, force: true });
