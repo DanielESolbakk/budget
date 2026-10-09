@@ -27,7 +27,12 @@ import {
   catalogBackupSnapshot,
   createPreRestoreBackupSnapshot,
 } from "../src/app/backup/snapshotCatalog.js";
-import { listCategorizationReviewQueue } from "../src/app/reviewQueue.js";
+import {
+  applySameMerchantPropagation,
+  listCategorizationReviewQueue,
+  previewSameMerchantPropagation,
+  undoSameMerchantPropagation,
+} from "../src/app/reviewQueue.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
 import { categorizeTransaction, categorizeTransactions } from "../src/domain/categorization/categorizeTransaction.js";
 import { normalizeMerchantName } from "../src/domain/merchant/normalizeMerchantName.js";
@@ -98,6 +103,7 @@ import {
   type ManualEntryInput,
   type MonthlyCategoryTargetInput,
   type SameMerchantPropagationInput,
+  type SameMerchantPropagationPreviewRequest,
   type Transaction,
 } from "../src/domain/types.js";
 
@@ -278,6 +284,9 @@ function parseSameMerchantPropagationInput(input: unknown): SameMerchantPropagat
   }
 
   const record = input as Record<string, unknown>;
+  if (record.confirmed !== true) {
+    throw new Error("Propagation must be explicitly confirmed.");
+  }
   if (!Array.isArray(record.transactionIds) || record.transactionIds.length === 0) {
     throw new Error("transactionIds must contain at least one transaction ID.");
   }
@@ -293,6 +302,19 @@ function parseSameMerchantPropagationInput(input: unknown): SameMerchantPropagat
     merchantAlias: parseNonEmptyString(record.merchantAlias, "merchantAlias"),
     categoryId: parseNonEmptyString(record.categoryId, "categoryId"),
     transactionIds,
+  };
+}
+
+function parseSameMerchantPropagationPreviewRequest(
+  input: unknown
+): SameMerchantPropagationPreviewRequest {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Propagation preview input must be an object.");
+  }
+
+  const record = input as Record<string, unknown>;
+  return {
+    sourceTransactionId: parseNonEmptyString(record.sourceTransactionId, "sourceTransactionId"),
   };
 }
 
@@ -1280,6 +1302,18 @@ app.whenReady().then(async () => {
     return localLedgerDatabase.listMerchantCorrectionProvenance();
   });
 
+  ipcMain.handle("review:propagation:preview", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const request = parseSameMerchantPropagationPreviewRequest(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const sourceTransaction = localLedgerDatabase.getTransactionById(request.sourceTransactionId);
+      if (sourceTransaction === undefined || sourceTransaction.householdId !== sampleHousehold.id) {
+        throw new Error(`Source transaction not found: ${request.sourceTransactionId}`);
+      }
+      return previewSameMerchantPropagation(localLedgerDatabase, request.sourceTransactionId);
+    });
+  });
+
   ipcMain.handle("review:propagationHistory:list", (event) => {
     assertTrustedRenderer(event);
     return localLedgerDatabase.listSameMerchantPropagationOperations();
@@ -1296,14 +1330,17 @@ app.whenReady().then(async () => {
       if (normalizeMerchantName(sourceTransaction.merchantRaw) !== propagation.merchantAlias) {
         throw new Error("Propagation merchantAlias does not match the source transaction.");
       }
-      return localLedgerDatabase.applySameMerchantPropagation(propagation);
+      return applySameMerchantPropagation(localLedgerDatabase, propagation);
     });
   });
 
   ipcMain.handle("review:propagation:undo", (event, operationId: unknown) => {
     assertTrustedRenderer(event);
     return ledgerOperationCoordinator.runExclusive(() =>
-      localLedgerDatabase.undoSameMerchantPropagation(parseNonEmptyString(operationId, "operationId"))
+      undoSameMerchantPropagation(
+        localLedgerDatabase,
+        parseNonEmptyString(operationId, "operationId")
+      )
     );
   });
 

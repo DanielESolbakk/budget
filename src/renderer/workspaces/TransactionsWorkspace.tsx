@@ -33,18 +33,30 @@ export function TransactionsWorkspace({
         <h2>Transactions</h2>
         <p>Search the ledger and resolve entries that still need a category.</p>
       </div>
+      {uncategorizedQueueState.isReady && uncategorizedQueueState.count > 0 && (
+        <div className="ledger-review-action">
+          <button
+            className="ledger-review-uncategorized"
+            type="button"
+            aria-describedby="ledger-review-uncategorized-scope"
+            onClick={() => setFocusFirstRequest((current) => current + 1)}
+          >
+            Review uncategorized ({uncategorizedQueueState.count})
+          </button>
+          <small id="ledger-review-uncategorized-scope">
+            Includes all transactions, regardless of ledger filters.
+          </small>
+        </div>
+      )}
       <div className="transactions-workspace-grid">
-        <LedgerSection
-          refreshKey={refreshKey}
-          uncategorizedCount={uncategorizedQueueState.count}
-          isUncategorizedQueueReady={uncategorizedQueueState.isReady}
-          onReviewUncategorized={() => setFocusFirstRequest((current) => current + 1)}
-        />
         <CategoryReviewSection
           refreshKey={refreshKey}
           onCategorySaved={onCategorySaved}
           onUncategorizedQueueStateChange={setUncategorizedQueueState}
           focusFirstRequest={focusFirstRequest}
+        />
+        <LedgerSection
+          refreshKey={refreshKey}
         />
       </div>
     </section>

@@ -302,6 +302,8 @@ function ensureSchema(db: DatabaseSync): void {
       transaction_id TEXT NOT NULL,
       before_category_id TEXT,
       after_category_id TEXT NOT NULL,
+      before_categorization_json TEXT,
+      after_categorization_json TEXT,
       PRIMARY KEY (operation_id, transaction_id)
     );
 
@@ -376,6 +378,35 @@ function ensureSchema(db: DatabaseSync): void {
     .all() as Array<{ name: string }>;
   if (!correctionProvenanceColumns.some((column) => column.name === "original_categorization_json")) {
     db.exec("ALTER TABLE merchant_correction_provenance ADD COLUMN original_categorization_json TEXT");
+  }
+  const propagationChangeColumns = db
+    .prepare("PRAGMA table_info(same_merchant_propagation_changes)")
+    .all() as Array<{ name: string }>;
+  const propagationCategorizationColumns = [
+    ["before_categorization_json", "TEXT"],
+    ["after_categorization_json", "TEXT"],
+  ] as const;
+  const isLegacyPropagationSchema = propagationCategorizationColumns.some(([columnName]) =>
+    !propagationChangeColumns.some((column) => column.name === columnName)
+  );
+  for (const [columnName, columnType] of propagationCategorizationColumns) {
+    if (!propagationChangeColumns.some((column) => column.name === columnName)) {
+      db.exec(`ALTER TABLE same_merchant_propagation_changes ADD COLUMN ${columnName} ${columnType}`);
+    }
+  }
+  if (isLegacyPropagationSchema) {
+    db.exec(`
+      UPDATE same_merchant_propagation_changes
+      SET before_categorization_json = (
+        SELECT categorization_json FROM transactions
+        WHERE transactions.id = same_merchant_propagation_changes.transaction_id
+      ),
+      after_categorization_json = (
+        SELECT categorization_json FROM transactions
+        WHERE transactions.id = same_merchant_propagation_changes.transaction_id
+      )
+      WHERE before_categorization_json IS NULL AND after_categorization_json IS NULL
+    `);
   }
   const transactionsWithoutMerchantSearch = db
     .prepare("SELECT id, merchant_raw FROM transactions WHERE merchant_search = ''")
@@ -1598,15 +1629,16 @@ export function createLocalLedgerDatabase(
       ) VALUES (?, ?, ?, ?, ?)
     `);
     const getTransaction = db.prepare(
-      "SELECT household_id, merchant_raw, category_id FROM transactions WHERE id = ?"
+      "SELECT household_id, merchant_raw, category_id, categorization_json FROM transactions WHERE id = ?"
     );
     const insertChange = db.prepare(`
       INSERT INTO same_merchant_propagation_changes (
-        operation_id, transaction_id, before_category_id, after_category_id
-      ) VALUES (?, ?, ?, ?)
+        operation_id, transaction_id, before_category_id, after_category_id,
+        before_categorization_json, after_categorization_json
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
     const updateCategory = db.prepare(
-      "UPDATE transactions SET category_id = ? WHERE id = ? AND category_id IS NULL"
+      "UPDATE transactions SET category_id = ?, categorization_json = ? WHERE id = ? AND category_id IS NULL"
     );
 
     db.exec("BEGIN");
@@ -1617,7 +1649,12 @@ export function createLocalLedgerDatabase(
         WHERE source_transaction_id = ? AND merchant_alias = ? AND category_id = ?
       `).get(input.sourceTransactionId, input.merchantAlias, input.categoryId);
       const sourceTransaction = getTransaction.get(input.sourceTransactionId) as
-        | { household_id: string; merchant_raw: string; category_id: string | null }
+        | {
+          household_id: string;
+          merchant_raw: string;
+          category_id: string | null;
+          categorization_json: string | null;
+        }
         | undefined;
       const sourceRule = db.prepare(
         "SELECT category_id FROM merchant_category_rules WHERE merchant_alias = ?"
@@ -1641,7 +1678,12 @@ export function createLocalLedgerDatabase(
       );
       for (const transactionId of input.transactionIds) {
         const row = getTransaction.get(transactionId) as
-          | { household_id: string; merchant_raw: string; category_id: string | null }
+          | {
+            household_id: string;
+            merchant_raw: string;
+            category_id: string | null;
+            categorization_json: string | null;
+          }
           | undefined;
         if (row === undefined) throw new Error(`Transaction not found: ${transactionId}`);
         if (
@@ -1652,13 +1694,30 @@ export function createLocalLedgerDatabase(
         }
         if (row.category_id !== null) throw new Error(`Transaction is already categorized: ${transactionId}`);
 
-        const result = updateCategory.run(input.categoryId, transactionId) as { changes: number | bigint };
+        const result = updateCategory.run(
+          input.categoryId,
+          sourceTransaction.categorization_json,
+          transactionId
+        ) as { changes: number | bigint };
         if (Number(result.changes) !== 1) throw new Error(`Transaction could not be propagated: ${transactionId}`);
-        insertChange.run(operation.id, transactionId, row.category_id, input.categoryId);
+        insertChange.run(
+          operation.id,
+          transactionId,
+          row.category_id,
+          input.categoryId,
+          row.categorization_json,
+          sourceTransaction.categorization_json
+        );
         operation.changes.push({
           transactionId,
           beforeCategoryId: row.category_id,
           afterCategoryId: input.categoryId,
+          ...(row.categorization_json === null
+            ? {}
+            : { beforeCategorization: JSON.parse(row.categorization_json) as CategorizationDecision }),
+          ...(sourceTransaction.categorization_json === null
+            ? {}
+            : { afterCategorization: JSON.parse(sourceTransaction.categorization_json) as CategorizationDecision }),
         });
       }
       db.exec("COMMIT");
@@ -1680,7 +1739,9 @@ export function createLocalLedgerDatabase(
         operation.undone_at_iso,
         change.transaction_id,
         change.before_category_id,
-        change.after_category_id
+        change.after_category_id,
+        change.before_categorization_json,
+        change.after_categorization_json
       FROM same_merchant_propagation_operations AS operation
       LEFT JOIN same_merchant_propagation_changes AS change ON change.operation_id = operation.id
       ORDER BY operation.applied_at_iso, operation.id, change.transaction_id
@@ -1694,6 +1755,8 @@ export function createLocalLedgerDatabase(
       transaction_id: string | null;
       before_category_id: string | null;
       after_category_id: string | null;
+      before_categorization_json: string | null;
+      after_categorization_json: string | null;
     }>;
     const operations = new Map<string, SameMerchantPropagationOperation>();
 
@@ -1716,6 +1779,12 @@ export function createLocalLedgerDatabase(
           transactionId: row.transaction_id,
           beforeCategoryId: row.before_category_id,
           afterCategoryId: row.after_category_id,
+          ...(row.before_categorization_json === null
+            ? {}
+            : { beforeCategorization: JSON.parse(row.before_categorization_json) as CategorizationDecision }),
+          ...(row.after_categorization_json === null
+            ? {}
+            : { afterCategorization: JSON.parse(row.after_categorization_json) as CategorizationDecision }),
         });
       }
     }
@@ -1737,7 +1806,12 @@ export function createLocalLedgerDatabase(
       }
 
       const changes = db.prepare(`
-        SELECT transaction_id, before_category_id, after_category_id
+        SELECT
+          transaction_id,
+          before_category_id,
+          after_category_id,
+          before_categorization_json,
+          after_categorization_json
         FROM same_merchant_propagation_changes
         WHERE operation_id = ?
         ORDER BY transaction_id
@@ -1745,15 +1819,21 @@ export function createLocalLedgerDatabase(
         transaction_id: string;
         before_category_id: string | null;
         after_category_id: string;
+        before_categorization_json: string | null;
+        after_categorization_json: string | null;
       }>;
-      const restoreCategory = db.prepare(
-        "UPDATE transactions SET category_id = ? WHERE id = ? AND category_id = ?"
-      );
+      const restoreCategory = db.prepare(`
+        UPDATE transactions
+        SET category_id = ?, categorization_json = ?
+        WHERE id = ? AND category_id = ? AND categorization_json IS ?
+      `);
       for (const change of changes) {
         const result = restoreCategory.run(
           change.before_category_id,
+          change.before_categorization_json,
           change.transaction_id,
-          change.after_category_id
+          change.after_category_id,
+          change.after_categorization_json
         ) as { changes: number | bigint };
         if (Number(result.changes) !== 1) {
           throw new Error(`Transaction changed since propagation: ${change.transaction_id}`);

@@ -237,6 +237,49 @@ jobs:
         if: steps.detect.outputs.has_package != 'true'
         run: echo "No package.json found. Application CI checks are skipped."
 
+  playwright-windows:
+    name: Playwright Windows Runtime
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.run_ci == 'true' && needs.detect-changes.outputs.run_full == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+
+      - name: Install Electron runtime
+        run: node node_modules/electron/install.js
+
+      - name: Build application
+        run: npm run build
+
+      - name: Playwright runtime tests
+        env:
+          PLAYWRIGHT_OUTPUT_DIR: test-results/windows
+          PLAYWRIGHT_REPORT_DIR: playwright-report/windows
+        run: npm run test:e2e:playwright:ci -- --workers=4
+
+      - name: Upload Playwright Windows artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-windows-artifacts
+          path: |
+            playwright-report/windows
+            test-results/windows
+          if-no-files-found: ignore
+
   pr-guardrails:
     name: PR Guardrails
     needs: [detect-changes]
