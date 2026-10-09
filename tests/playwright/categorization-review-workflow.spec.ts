@@ -279,7 +279,21 @@ test.describe("Categorization review workflow", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
     });
     await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
-    await expect(window).toHaveScreenshot("review-action-desktop.png", {
+    await expect(ledger.reviewUncategorizedScope).toBeVisible();
+    const desktopDimensions = await window.evaluate(() => ({
+      clientHeight: document.documentElement.clientHeight,
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    const desktopActionBounds = await ledger.reviewUncategorizedAction.boundingBox();
+    expect(desktopActionBounds).not.toBeNull();
+    expect(desktopActionBounds!.x).toBeGreaterThanOrEqual(0);
+    expect(desktopActionBounds!.x + desktopActionBounds!.width).toBeLessThanOrEqual(desktopDimensions.clientWidth);
+    expect(desktopActionBounds!.y + desktopActionBounds!.height).toBeLessThanOrEqual(desktopDimensions.clientHeight);
+    expect(desktopDimensions.scrollWidth).toBeLessThanOrEqual(desktopDimensions.clientWidth);
+    const queueTop = await reviewQueue.section.evaluate((element) => element.getBoundingClientRect().top);
+    expect(desktopActionBounds!.y).toBeLessThan(queueTop);
+    await expect(ledger.reviewUncategorizedButton).toHaveScreenshot("review-action-desktop.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.01,
     });
@@ -288,7 +302,12 @@ test.describe("Categorization review workflow", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
     await expect(ledger.reviewUncategorizedButton).toBeInViewport();
-    await expect(window).toHaveScreenshot("review-action-compact.png", {
+    const compactDimensions = await window.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    expect(compactDimensions.scrollWidth).toBeLessThanOrEqual(compactDimensions.clientWidth);
+    await expect(ledger.reviewUncategorizedButton).toHaveScreenshot("review-action-compact.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.015,
     });

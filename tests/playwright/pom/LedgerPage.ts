@@ -121,6 +121,10 @@ export class LedgerPage {
     return this.workspace.getByRole("button", { name: /^Review uncategorized/ });
   }
 
+  get reviewUncategorizedAction() {
+    return this.workspace.locator(".ledger-review-action");
+  }
+
   get reviewUncategorizedScope() {
     return this.workspace.getByText("Includes all transactions, regardless of ledger filters.", { exact: true });
   }
