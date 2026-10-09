@@ -11,6 +11,10 @@ export class LedgerPage {
     return this.page.getByRole("region", { name: "Ledger", exact: true });
   }
 
+  get workspace() {
+    return this.page.getByRole("region", { name: "Transactions workspace", exact: true });
+  }
+
   get filterForm() {
     return this.section.getByRole("form", { name: "Ledger filters" });
   }
@@ -114,11 +118,11 @@ export class LedgerPage {
   }
 
   get reviewUncategorizedButton() {
-    return this.section.getByRole("button", { name: /^Review uncategorized/ });
+    return this.workspace.getByRole("button", { name: /^Review uncategorized/ });
   }
 
   get reviewUncategorizedScope() {
-    return this.section.getByText("Includes all transactions, regardless of ledger filters.", { exact: true });
+    return this.workspace.getByText("Includes all transactions, regardless of ledger filters.", { exact: true });
   }
 
   get loadingStatus() {

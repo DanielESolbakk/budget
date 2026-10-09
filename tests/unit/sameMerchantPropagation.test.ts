@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { previewSameMerchantPropagation } from "../../src/app/reviewQueue.js";
+import {
+  applySameMerchantPropagation,
+  previewSameMerchantPropagation,
+} from "../../src/app/reviewQueue.js";
 
 const household = {
   id: "hh-propagation",
@@ -116,5 +119,59 @@ describe("same-merchant propagation preview", () => {
         },
       ],
     });
+  });
+
+  it("returns no candidates when no uncategorized transactions match", () => {
+    const noMatchDatabase = {
+      ...database,
+      listUncategorizedTransactions: () => [],
+    };
+
+    expect(previewSameMerchantPropagation(noMatchDatabase, sourceTransaction.id).candidates).toEqual([]);
+  });
+
+  it("does not mutate the transactions used to build a preview", () => {
+    const transactions = structuredClone(uncategorizedTransactions);
+    const originalTransactions = structuredClone(transactions);
+    const previewDatabase = {
+      ...database,
+      listUncategorizedTransactions: () => transactions,
+    };
+
+    previewSameMerchantPropagation(previewDatabase, sourceTransaction.id);
+
+    expect(transactions).toEqual(originalTransactions);
+  });
+
+  it("applies only the selected preview candidate", () => {
+    const selectionDatabase = {
+      ...database,
+      applySameMerchantPropagation: (input: {
+        sourceTransactionId: string;
+        merchantAlias: string;
+        categoryId: string;
+        transactionIds: string[];
+      }) => ({
+        id: "operation-selected",
+        sourceTransactionId: input.sourceTransactionId,
+        merchantAlias: input.merchantAlias,
+        categoryId: input.categoryId,
+        appliedAtIso: "2026-05-05T00:00:00Z",
+        changes: input.transactionIds.map((transactionId) => ({
+          transactionId,
+          beforeCategoryId: null,
+          afterCategoryId: input.categoryId,
+        })),
+      }),
+    };
+
+    const operation = applySameMerchantPropagation(selectionDatabase, {
+      sourceTransactionId: sourceTransaction.id,
+      merchantAlias: "REMA 1000",
+      categoryId: "groceries",
+      transactionIds: ["tx-later"],
+    });
+
+    expect(operation.changes.map((change) => change.transactionId)).toEqual(["tx-later"]);
   });
 });
