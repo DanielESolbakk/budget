@@ -6,8 +6,7 @@ import type {
 } from "../../app/import/manualEntry.js";
 import type { Account, ManualEntryInput } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "./categoryOptions.js";
-
-const DEFAULT_HOUSEHOLD_ID = "sample-hh";
+import { toLocalIsoDate } from "../localDate.js";
 
 interface ManualEntryFormValues {
   accountId: string;
@@ -25,18 +24,20 @@ type ManualEntryState =
   | { status: "validation"; code: string; message: string }
   | { status: "error"; message: string };
 
-const initialFormValues: ManualEntryFormValues = {
-  accountId: "",
-  bookedAtIso: "2026-05-23",
-  amountMinor: "",
-  merchantRaw: "",
-  categoryId: "",
-};
+function createInitialFormValues(accountId = ""): ManualEntryFormValues {
+  return {
+    accountId,
+    bookedAtIso: toLocalIsoDate(new Date()),
+    amountMinor: "",
+    merchantRaw: "",
+    categoryId: "",
+  };
+}
 
-function toManualEntryInput(values: ManualEntryFormValues): ManualEntryInput {
+function toManualEntryInput(values: ManualEntryFormValues, householdId: string): ManualEntryInput {
   const categoryId = values.categoryId.trim();
   return {
-    householdId: DEFAULT_HOUSEHOLD_ID,
+    householdId,
     accountId: values.accountId,
     bookedAtIso: values.bookedAtIso,
     amountMinor: Number(values.amountMinor),
@@ -47,18 +48,27 @@ function toManualEntryInput(values: ManualEntryFormValues): ManualEntryInput {
 
 interface ManualEntrySectionProps {
   onEntrySuccess: () => void;
+  onOpenLedger: () => void;
+  onReviewUncategorized: () => void;
 }
 
-export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps): React.JSX.Element {
+export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncategorized }: ManualEntrySectionProps): React.JSX.Element {
+  const [householdId, setHouseholdId] = React.useState<string | null>(null);
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [accountState, setAccountState] = React.useState<"loading" | "ready" | "error">("loading");
-  const [formValues, setFormValues] = React.useState<ManualEntryFormValues>(initialFormValues);
+  const [formValues, setFormValues] = React.useState<ManualEntryFormValues>(() => createInitialFormValues());
   const [entryState, setEntryState] = React.useState<ManualEntryState>({ status: "idle" });
+  const [accountRetryKey, setAccountRetryKey] = React.useState(0);
 
   React.useEffect(() => {
+    let active = true;
+    setAccountState("loading");
     window.budgetApi.accounts
-      .list(DEFAULT_HOUSEHOLD_ID)
-      .then((loadedAccounts) => {
+      .getCurrent()
+      .then((current) => {
+        if (!active) return;
+        const loadedAccounts = current?.accounts ?? [];
+        setHouseholdId(current?.householdId ?? null);
         setAccounts(loadedAccounts);
         setFormValues((current) => ({
           ...current,
@@ -66,8 +76,14 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
         }));
         setAccountState("ready");
       })
-      .catch(() => setAccountState("error"));
-  }, []);
+      .catch(() => {
+        if (active) setAccountState("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accountRetryKey]);
 
   function updateField(field: keyof ManualEntryFormValues, value: string): void {
     setFormValues((current) => ({ ...current, [field]: value }));
@@ -75,14 +91,15 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    if (householdId === null) return;
     setEntryState({ status: "pending" });
 
     window.budgetApi.import
-      .addManualTransaction(toManualEntryInput(formValues))
+      .addManualTransaction(toManualEntryInput(formValues, householdId))
       .then((response: ManualEntryResponse) => {
         if (response.ok) {
           setEntryState({ status: "success", response });
-          setFormValues((current) => ({ ...initialFormValues, accountId: current.accountId }));
+          setFormValues((current) => createInitialFormValues(current.accountId));
           onEntrySuccess();
           return;
         }
@@ -188,14 +205,25 @@ export function ManualEntrySection({ onEntrySuccess }: ManualEntrySectionProps):
 
       {entryState.status === "pending" && <p role="status">Saving transaction...</p>}
       {accountState === "loading" && <p role="status">Loading accounts...</p>}
-      {accountState === "error" && <p role="alert">Accounts could not be loaded.</p>}
+      {accountState === "error" && (
+        <div role="alert">
+          <p>Accounts could not be loaded.</p>
+          <button type="button" onClick={() => setAccountRetryKey((current) => current + 1)}>
+            Retry accounts
+          </button>
+        </div>
+      )}
       {accountState === "ready" && accounts.length === 0 && (
         <p role="alert">No accounts are available for this household.</p>
       )}
       {entryState.status === "success" && (
-        <p role="status">
-          Added {entryState.response.transaction.merchantRaw} to your ledger.
-        </p>
+        <div className="import-success">
+          <p role="status">Added {entryState.response.transaction.merchantRaw} to your ledger.</p>
+          <div className="import-success-actions" aria-label="Next transaction actions">
+            <button type="button" onClick={onReviewUncategorized}>Review uncategorized transactions</button>
+            <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
+          </div>
+        </div>
       )}
       {entryState.status === "duplicate" && (
         <div role="alert">

@@ -138,6 +138,12 @@
       "parentKeys": ["E3"]
     },
     {
+      "key": "S3.3.1",
+      "type": "story",
+      "title": "Preview and undo same-merchant correction propagation",
+      "parentKeys": ["F3.3"]
+    },
+    {
       "key": "EN3.1",
       "type": "enabler",
       "title": "Categorization rule persistence and provenance",
@@ -148,6 +154,24 @@
       "type": "test",
       "title": "Merchant fixture and regression coverage",
       "parentKeys": ["E3"]
+    },
+    {
+      "key": "T3.3.1.1",
+      "type": "test",
+      "title": "Same-merchant correction propagation unit coverage",
+      "parentKeys": ["S3.3.1"]
+    },
+    {
+      "key": "T3.3.1.2",
+      "type": "test",
+      "title": "Same-merchant correction propagation integration coverage",
+      "parentKeys": ["S3.3.1"]
+    },
+    {
+      "key": "T3.3.1.3",
+      "type": "test",
+      "title": "Same-merchant correction propagation runtime coverage",
+      "parentKeys": ["S3.3.1"]
     },
     {
       "key": "E4",
@@ -173,6 +197,12 @@
       "parentKeys": ["E4"]
     },
     {
+      "key": "F4.4",
+      "type": "feature",
+      "title": "Transaction ledger browsing and search",
+      "parentKeys": ["E4"]
+    },
+    {
       "key": "EN4.1",
       "type": "enabler",
       "title": "Aggregation and forecast query layer",
@@ -183,6 +213,36 @@
       "type": "test",
       "title": "Dashboard and forecast end-to-end coverage",
       "parentKeys": ["E4"]
+    },
+    {
+      "key": "S4.1.1",
+      "type": "story",
+      "title": "Aggregation query integration anchor",
+      "parentKeys": ["F4.1"]
+    },
+    {
+      "key": "T4.1.1",
+      "type": "test",
+      "title": "Aggregation query integration coverage",
+      "parentKeys": ["S4.1.1"]
+    },
+    {
+      "key": "S4.1.2",
+      "type": "story",
+      "title": "Use current local date context for monthly review and manual entry",
+      "parentKeys": ["F4.1"]
+    },
+    {
+      "key": "T4.1.2.1",
+      "type": "test",
+      "title": "Unit coverage for current local date defaults",
+      "parentKeys": ["S4.1.2"]
+    },
+    {
+      "key": "T4.1.2.2",
+      "type": "test",
+      "title": "Playwright coverage for current month and manual date defaults",
+      "parentKeys": ["S4.1.2"]
     },
     {
       "key": "E5",
@@ -208,6 +268,42 @@
       "parentKeys": ["E5"]
     },
     {
+      "key": "F5.4",
+      "type": "feature",
+      "title": "Windows installer packaging and distribution",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "F5.5",
+      "type": "feature",
+      "title": "Local diagnostics and log export",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "F5.6",
+      "type": "feature",
+      "title": "Annual summary export for tax preparation (future potential, deferred)",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "F5.7",
+      "type": "feature",
+      "title": "Opt-in auto-update mechanism (future potential, deferred)",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "F5.8",
+      "type": "feature",
+      "title": "Pre-launch interface usability and accessibility",
+      "parentKeys": ["E5"]
+    },
+    {
+      "key": "F5.9",
+      "type": "feature",
+      "title": "Evidence-led post-launch visual improvement decisions",
+      "parentKeys": ["E5"]
+    },
+    {
       "key": "EN5.1",
       "type": "enabler",
       "title": "Performance harness and packaging validation",
@@ -218,6 +314,119 @@
       "type": "test",
       "title": "Backup/export, no-network, and performance coverage",
       "parentKeys": ["E5"]
+    },
+    {
+      "key": "S5.8.1",
+      "type": "story",
+      "title": "Explain local data handling and recovery actions",
+      "parentKeys": ["F5.8"]
+    },
+    {
+      "key": "T5.8.1.1",
+      "type": "test",
+      "title": "Playwright coverage for local-data confidence and recovery entry points",
+      "parentKeys": ["S5.8.1"]
+    },
+    {
+      "key": "S5.8.2",
+      "type": "story",
+      "title": "Preserve financial-value access at compact window widths",
+      "parentKeys": ["F5.8"]
+    },
+    {
+      "key": "T5.8.2.1",
+      "type": "test",
+      "title": "Playwright coverage for compact financial tables",
+      "parentKeys": ["S5.8.2"]
+    },
+    {
+      "key": "S5.8.3",
+      "type": "story",
+      "title": "Compare incumbent and replacement interface directions",
+      "parentKeys": ["F5.8"]
+    },
+    {
+      "key": "S5.8.4",
+      "type": "story",
+      "title": "Close cross-destination keyboard and status-state gaps",
+      "parentKeys": ["F5.8"]
+    },
+    {
+      "key": "T5.8.4.1",
+      "type": "test",
+      "title": "Playwright coverage for cross-destination interaction states",
+      "parentKeys": ["S5.8.4"]
+    },
+    {
+      "key": "S5.9.1",
+      "type": "story",
+      "title": "Collect user evidence before scheduling visual polish",
+      "parentKeys": ["F5.9"]
+    },
+    {
+      "key": "E6",
+      "type": "epic",
+      "title": "Household and account lifecycle"
+    },
+    {
+      "key": "F6.1",
+      "type": "feature",
+      "title": "First-run household and account setup",
+      "parentKeys": ["E6"]
+    },
+    {
+      "key": "S6.1.1",
+      "type": "story",
+      "title": "Create the initial local household and account on first run",
+      "parentKeys": ["F6.1"]
+    },
+    {
+      "key": "T6.1.1.1",
+      "type": "test",
+      "title": "Unit coverage for household and account setup validation",
+      "parentKeys": ["S6.1.1"]
+    },
+    {
+      "key": "T6.1.1.2",
+      "type": "test",
+      "title": "SQLite integration coverage for first-run setup",
+      "parentKeys": ["S6.1.1"]
+    },
+    {
+      "key": "T6.1.1.3",
+      "type": "test",
+      "title": "Playwright coverage for first-run onboarding",
+      "parentKeys": ["S6.1.1"]
+    },
+    {
+      "key": "S6.1.2",
+      "type": "story",
+      "title": "Complete the first statement import through ledger review",
+      "parentKeys": ["F6.1"]
+    },
+    {
+      "key": "T6.1.2.1",
+      "type": "test",
+      "title": "Playwright coverage for first import after setup",
+      "parentKeys": ["S6.1.2"]
+    },
+    {
+      "key": "F6.2",
+      "type": "feature",
+      "title": "Application settings and preferences",
+      "parentKeys": ["E6"]
+    },
+    {
+      "key": "F6.3",
+      "type": "feature",
+      "title": "Account edit, archive, and close",
+      "parentKeys": ["E6"]
+    },
+    {
+      "key": "F6.4",
+      "type": "feature",
+      "title": "Localization (i18n) scaffolding (future potential, deferred)",
+      "parentKeys": ["E6"]
     }
   ]
 }

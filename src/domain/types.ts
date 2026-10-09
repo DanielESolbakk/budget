@@ -30,12 +30,72 @@ export interface Transaction {
   merchantAlias?: string;
   sourceReference?: string;
   categoryId?: string;
+  categorization?: CategorizationDecision;
   importJobId?: string;
+}
+
+export interface CategorizationRule {
+  ruleId: string;
+  merchantAlias: string;
+  categoryId: string;
+  priority: number;
+}
+
+export interface CategorizationRuleProvenance {
+  ruleId: string;
+  merchantAlias: string;
+  categoryId: string;
+  priority: number;
+}
+
+export type CategorizationStatus = "categorized" | "unmatched" | "ambiguous";
+export type CategorizationConfidenceLevel = "high" | "low";
+
+export interface CategorizationDecision {
+  status: CategorizationStatus;
+  categoryId?: string;
+  confidence: number;
+  confidenceLevel: CategorizationConfidenceLevel;
+  requiresReview: boolean;
+  selectedRule?: CategorizationRuleProvenance;
+  matchingRules: CategorizationRuleProvenance[];
 }
 
 export interface MerchantCategoryRule {
   merchantAlias: string;
   categoryId: string;
+}
+
+export interface MerchantCorrectionProvenance {
+  id: string;
+  sourceTransactionId: string;
+  merchantAlias: string;
+  categoryId: string;
+  correctedAtIso: string;
+  originalCategorization?: CategorizationDecision;
+}
+
+export interface SameMerchantPropagationChange {
+  transactionId: string;
+  beforeCategoryId: string | null;
+  afterCategoryId: string;
+}
+
+export interface SameMerchantPropagationInput {
+  sourceTransactionId: string;
+  merchantAlias: string;
+  categoryId: string;
+  transactionIds: string[];
+}
+
+export interface SameMerchantPropagationOperation {
+  id: string;
+  sourceTransactionId: string;
+  merchantAlias: string;
+  categoryId: string;
+  appliedAtIso: string;
+  undoneAtIso?: string;
+  changes: SameMerchantPropagationChange[];
 }
 
 /**
@@ -167,6 +227,8 @@ export interface ImportJobProvenance {
   sourceIdentity: string;
   contentDigest?: string;
   adapterId?: string;
+  accountId?: string;
+  duplicateCount?: number;
   storyAnchor?: ImportJobStoryAnchor;
 }
 

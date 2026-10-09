@@ -1,11 +1,9 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { buildDashboardData, buildDashboardViewContract } from "../../src/app/dashboardApi.js";
+import { buildDashboardData } from "../../src/app/dashboardApi.js";
 import { ForecastSection } from "../../src/renderer/dashboard/ForecastSection.js";
-import { loadDashboardData } from "../../src/renderer/dashboard/loadDashboardData.js";
 import type { MonthlyTotal } from "../../src/domain/types.js";
-import type { BudgetApi } from "../../src/renderer/preload.js";
 
 const monthlyTotals: MonthlyTotal[] = [
   { yearMonth: "2026-03", totalMinor: 48000 },
@@ -13,80 +11,9 @@ const monthlyTotals: MonthlyTotal[] = [
   { yearMonth: "2026-05", totalMinor: 54000 },
 ];
 
-function createFakeBudgetApi(): BudgetApi {
-  const dashboardData = buildDashboardData({ monthlyTotals });
-
-  return {
-    accounts: {
-      list: async () => [{ id: "sample-acc", householdId: "sample-hh", name: "Brukskonto", currencyCode: "NOK" as const }],
-    },
-    dashboard: {
-      getData: async () => dashboardData,
-      getViewData: async (yearMonth: string) =>
-        buildDashboardViewContract({
-          transactions: [],
-          selectedYearMonth: yearMonth,
-        }),
-    },
-    forecast: {
-      getEntries: async () => dashboardData.forecast.entries,
-    },
-    categoryTargets: {
-      upsert: async (input) => ({ ...input }),
-      listByMonth: async () => [],
-    },
-    review: {
-      list: async () => [],
-      updateCategory: async (input) => ({
-        id: input.transactionId,
-        householdId: "sample-hh",
-        accountId: "sample-acc",
-        bookedAtIso: "2026-05-01T00:00:00Z",
-        amountMinor: 0,
-        merchantRaw: "",
-        categoryId: input.categoryId,
-      }),
-    },
-    ledger: {
-      list: async () => [],
-    },
-    export: {
-      writeLedgerCsv: async (outputPath) => ({
-        csvText: "",
-        rowCount: 0,
-        outputPath,
-      }),
-    },
-    backup: {
-      create: async () => ({ outputPath: "", transactionCount: 0, createdAtIso: "" }),
-      restore: async () => ({
-        household: { id: "", name: "", createdAtIso: "" },
-        accounts: [],
-        transactions: [],
-        importJobs: [],
-        monthlyCategoryTargets: [],
-        merchantCategoryRules: [],
-        transactionCount: 0,
-      }),
-    },
-    import: {
-      previewCsv: async () => ({ ok: true as const, previewId: "", headers: [], rows: [], transactions: [] }),
-      importCsv: async () => ({ ok: true as const, importJobId: "", transactionCount: 0, duplicateCount: 0 }),
-      addManualTransaction: async () => ({ ok: false as const, reason: "validation" as const, code: "INVALID_MERCHANT_RAW", message: "" }),
-      previewPdf: async () => ({ ok: true as const, previewId: "", adapterId: "", transactions: [] }),
-      importPdf: async () => ({ ok: true as const, importJobId: "", transactionCount: 0, duplicateCount: 0, adapterId: "" }),
-    },
-    dialogs: {
-      chooseCsvExportPath: async () => null,
-      chooseBackupOutputPath: async () => null,
-      chooseRestoreSnapshotPath: async () => null,
-    },
-  };
-}
-
 describe("forecast display smoke", () => {
   it("AC-1: renderer receives dashboard forecast data and displays projected months", async () => {
-    const dashboardData = await loadDashboardData(createFakeBudgetApi());
+    const dashboardData = buildDashboardData({ monthlyTotals });
     const markup = renderToStaticMarkup(
       React.createElement(ForecastSection, { dashboardData })
     );
@@ -97,8 +24,9 @@ describe("forecast display smoke", () => {
     expect(markup).toContain("2026-08");
   });
 
-  it("AC-2: renderer consumption leaves dashboard monthly totals unchanged", async () => {
-    const dashboardData = await loadDashboardData(createFakeBudgetApi());
+  it("AC-2: rendering forecast leaves dashboard monthly totals unchanged", () => {
+    const dashboardData = buildDashboardData({ monthlyTotals });
+    renderToStaticMarkup(React.createElement(ForecastSection, { dashboardData }));
 
     expect(dashboardData.monthlyTotals).toEqual(monthlyTotals);
   });

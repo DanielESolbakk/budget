@@ -21,11 +21,10 @@ const MOBILE_SCREENSHOT_DIFF_RATIO = process.platform === "linux" ? 0.03 : 0.01;
 
 test.describe("Dashboard renderer smoke", () => {
   test.beforeEach(async ({ dashboard }) => {
-    const initialMonth = await dashboard.monthSelector.inputValue();
-    // Keep each test isolated from month selection side effects.
+    await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
-    await expect(dashboard.monthSelector).toHaveValue(initialMonth);
+    await expect(dashboard.monthSelector).toHaveValue("2026-05");
   });
 
   test("Scenario 1: monthly totals section renders with income, expense, and net values visible", async ({ dashboard }) => {
@@ -82,14 +81,138 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyTotal("Net").getByLabel("Net", { exact: true })).toBeVisible();
   });
 
+  test("Scenario 5: monthly attention status and totals fit the review viewport", async ({
+    dashboard,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
+    });
+
+    await expect(dashboard.monthlyAttention).toContainText("No uncategorized transactions this month.");
+    await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+
+    const totalsPrecedeAttention = await dashboard.monthlyTotalsSection.evaluate((totals) => {
+      const attention = document.querySelector('[aria-label="Monthly attention"]');
+      return attention !== null &&
+        (totals.compareDocumentPosition(attention) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    });
+    expect(totalsPrecedeAttention).toBe(true);
+
+    const attentionBottom = await dashboard.monthlyAttention.evaluate((element) =>
+      element.getBoundingClientRect().bottom
+    );
+    const totalsBottom = await dashboard.monthlyTotalsSection.evaluate((element) =>
+      element.getBoundingClientRect().bottom
+    );
+    const viewportHeight = await window.evaluate(() => document.documentElement.clientHeight);
+
+    expect(attentionBottom).toBeLessThanOrEqual(viewportHeight);
+    expect(totalsBottom).toBeLessThanOrEqual(viewportHeight);
+  });
+
+  test("startup-size review keeps long totals and attention actions within their columns", async ({
+    dashboard,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1200, 800);
+    });
+    await dashboard.monthSelector.selectOption("2026-04");
+    await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
+    await expect(dashboard.reviewQueueAction).toBeVisible();
+
+    const longNokTotal = await window.evaluate(() => new Intl.NumberFormat("nb-NO", {
+      style: "currency",
+      currency: "NOK",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(12_345_678_901.23));
+    await dashboard.incomeValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
+    await dashboard.expenseValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
+    await dashboard.netValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
+
+    const overflowingTotalLabels = await dashboard.monthlyTotalsSection.locator(".monthly-total dd").evaluateAll((values) =>
+      values
+        .filter((value) => value.scrollWidth > value.clientWidth + 1)
+        .map((value) => value.getAttribute("aria-label"))
+    );
+    const overflowingAttentionItems = await dashboard.monthlyAttention.locator(".monthly-attention-item").evaluateAll((items) =>
+      items
+        .filter((item) => item.scrollWidth > item.clientWidth + 1)
+        .map((item) => item.textContent?.trim() ?? "")
+    );
+
+    expect(overflowingTotalLabels).toEqual([]);
+    expect(overflowingAttentionItems).toEqual([]);
+  });
+
+  test("compact Target vs Actual exposes its horizontal scroll and column headers", async ({
+    dashboard,
+    electronApp,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    const headers = dashboard.targetVsActualSection.getByRole("columnheader");
+    await expect(headers).toHaveCount(4);
+    for (const header of await headers.all()) {
+      await expect(header).toHaveAttribute("scope", "col");
+    }
+
+    const scrollState = await dashboard.targetVsActualSection.evaluate((section) => ({
+      clientWidth: section.clientWidth,
+      scrollWidth: section.scrollWidth,
+      scrollbarHeight: getComputedStyle(section, "::-webkit-scrollbar").height,
+    }));
+    expect(scrollState.scrollWidth).toBeGreaterThan(scrollState.clientWidth);
+    expect(scrollState.scrollbarHeight).toBe("10px");
+  });
+
+  test("Scenario 6: target overruns link to their monthly details", async ({ dashboard }) => {
+    await dashboard.monthSelector.selectOption("2026-04");
+
+    await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
+    await expect(dashboard.overTargetLink).toHaveAttribute("href", "#target-vs-actual");
+  });
+
+  test("Regression: failed month changes preserve review data and explain retry", async ({
+    dashboard,
+    electronApp,
+  }) => {
+    const originalIncome = await dashboard.incomeValue.textContent();
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+    });
+
+    await dashboard.monthSelector.selectOption("2026-04");
+
+    await expect(dashboard.monthChangeError).toContainText(
+      "Your current review remains visible. Select a month again to retry."
+    );
+    await expect(dashboard.monthSelector).toHaveValue("2026-05");
+    await expect(dashboard.incomeValue).toHaveText(originalIncome ?? "");
+
+    await electronApp.evaluate(() => {
+      delete process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"];
+    });
+    await dashboard.monthSelector.selectOption("2026-04");
+    await expect(dashboard.monthSelector).toHaveValue("2026-04");
+    await expect(dashboard.incomeValue).toContainText("510");
+  });
+
   test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) => {
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-04";
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
     });
 
-    await dashboard.monthFrame("2026-04").click();
-    await dashboard.monthFrame("2026-05").click();
+    await dashboard.monthSelector.selectOption("2026-04");
+    await dashboard.monthSelector.selectOption("2026-05");
 
     await expect(dashboard.monthSelector).toHaveValue("2026-05", { timeout: 10_000 });
     await expect(dashboard.incomeValue).toContainText("540");
@@ -106,10 +229,31 @@ test.describe("Dashboard renderer smoke", () => {
     });
   });
 
-  test("@visual Visual: mobile dashboard preserves the horizontal month rail", async ({ window, electronApp }) => {
+  test("compact review action buttons meet 44px touch targets", async ({ window, electronApp }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
+
+    const undersizedButtons = await window.getByRole("button").evaluateAll((buttons) =>
+      buttons
+        .map((button) => ({
+          label: button.textContent?.trim() ?? "",
+          height: button.getBoundingClientRect().height,
+        }))
+        .filter((button) => button.height < 44)
+    );
+
+    expect(undersizedButtons).toEqual([]);
+  });
+
+  test("@visual Visual: compact dashboard preserves primary workspace navigation", async ({ window, electronApp }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    const documentWidth = await window.evaluate(() => document.documentElement.scrollWidth);
+    const viewportWidth = await window.evaluate(() => document.documentElement.clientWidth);
+    expect(documentWidth).toBeLessThanOrEqual(viewportWidth);
 
     await expect(window).toHaveScreenshot("dashboard-mobile.png", {
       animations: "disabled",

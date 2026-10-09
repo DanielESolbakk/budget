@@ -16,6 +16,26 @@ describe("categorizeTransaction", () => {
     expect(categorizeTransaction(baseTransaction)).toMatchObject({
       categoryId: "groceries",
       merchantAlias: "REMA 1000",
+      categorization: {
+        status: "categorized",
+        confidence: 0.95,
+        confidenceLevel: "high",
+        requiresReview: false,
+        selectedRule: {
+          ruleId: "builtin-groceries-rema-1000",
+          merchantAlias: "REMA 1000",
+          categoryId: "groceries",
+          priority: 0,
+        },
+        matchingRules: [
+          {
+            ruleId: "builtin-groceries-rema-1000",
+            merchantAlias: "REMA 1000",
+            categoryId: "groceries",
+            priority: 0,
+          },
+        ],
+      },
     });
   });
 
@@ -24,6 +44,13 @@ describe("categorizeTransaction", () => {
 
     expect(result.categoryId).toBeUndefined();
     expect(result.merchantAlias).toBe("UNKNOWN HOUSEHOLD MERCHANT");
+    expect(result.categorization).toMatchObject({
+      status: "unmatched",
+      confidence: 0,
+      confidenceLevel: "low",
+      requiresReview: true,
+      matchingRules: [],
+    });
   });
 
   it("does not overwrite a user-provided category", () => {

@@ -49,6 +49,19 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 
 ---
 
+## Step 4 Guardrails (G1-G9)
+
+- **G1:** Required template headings match the supported issue type.
+- **G2:** Structured issue references use `- #NUMBER` bullets only.
+- **G3:** Technical Tasks, Acceptance Criteria, and Validation Commands contain no uncertainty wording.
+- **G4:** Feature/Story implementation scope stays separate from linked test execution; Test issues contain verification work only.
+- **G5:** Test Necessity is explicit and consistent with the issue body.
+- **G6:** Required test issues cover every parent AC and declare Unit (Vitest), Integration (Vitest), and runtime end-to-end (Playwright), or link follow-up issues for deferred layers.
+- **G6a:** Test mappings name the immediate parent issue as the AC source; feature mappings distinguish feature ACs from child-story evidence.
+- **G7:** Blockers are open, relevant, and non-circular; completion claims agree with linked issue status.
+- **G8:** Assignable entry points exist; new files are listed as Technical Tasks.
+- **G9:** Renderer-visible work states design direction, design-system preservation, responsive behavior, accessibility, and visual-validation intent. Mark G9 not applicable only when there is no renderer-visible work.
+
 ## Enabler-Specific Checks
 
 ### Technical Tasks Are Concrete, Not Requirements
@@ -74,7 +87,7 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 
 ### Test Scenarios Are Explicit
 
-- [ ] "Test Scenarios" section exists with at least 2 concrete scenarios (for Story/Test).
+- [ ] The Test issue's "Test Scenarios" section has at least 2 concrete, reproducible scenarios.
 - [ ] Each scenario is a specific, reproducible test case:
   - ✅ "Scenario 1: buildMonthBuckets([tx1_Jan, tx2_Jan, tx3_Feb]) returns {Jan: [tx1, tx2], Feb: [tx3]}"
   - ❌ "Scenario 1: Test with multiple transactions" (too vague)
@@ -100,7 +113,7 @@ Load this checklist for the identified issue type. Review first 3 sections (Univ
 
 ### Step 4 Readiness Gate
 
-After template validation passes, run the full deep-dive checklist.
+After template validation passes, run G1-G9 and the full deep-dive checklist. Mark G9 not applicable only when the issue has no renderer-visible work.
 
 **Evidence capture protocol (mandatory):**
 
@@ -109,6 +122,7 @@ After template validation passes, run the full deep-dive checklist.
   - exact quoted snippet from issue body
   - one-line rationale connecting snippet to the checklist item
 - Do not report PASS with generic statements like "looks good" or "is clear" without quoted proof.
+- For G9 marked not applicable, quote the issue scope or entry points showing no renderer-visible work.
 - If quoted proof is missing for any item, that item is FAIL and the gate is not complete.
 
 **Gate decision logic:**

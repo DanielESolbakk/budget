@@ -1,7 +1,8 @@
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import {
@@ -29,7 +30,7 @@ const SAMPLE_ACCOUNT: Account = {
   currencyCode: "NOK",
 };
 
-function makeTestLedger(suffix: string) {
+function makeTestLedger(suffix: string, cleanupOnClose = true) {
   const dir = join(tmpdir(), `budget-integration-${suffix}`);
   mkdirSync(dir, { recursive: true });
   const dbPath = join(dir, "test.sqlite");
@@ -47,13 +48,60 @@ function makeTestLedger(suffix: string) {
 
   return {
     ...ledger,
+    dbPath,
     close() {
       try {
         ledger.close();
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        if (cleanupOnClose) rmSync(dir, { recursive: true, force: true });
       }
     },
+  };
+}
+
+function openTestLedger(dbPath: string) {
+  return createLocalLedgerDatabase({
+    dbPath,
+    seedData: {
+      household: SAMPLE_HOUSEHOLD,
+      accounts: [SAMPLE_ACCOUNT],
+      transactions: [],
+      importJobs: [],
+      monthlyCategoryTargets: [],
+    },
+  });
+}
+
+interface TestCsvImportProfile {
+  id: string;
+  householdId: string;
+  name: string;
+  accountId: string;
+  columnMapping: Record<string, string>;
+  createdAtIso: string;
+  updatedAtIso: string;
+}
+
+interface TestCsvImportProfileStore {
+  saveCsvImportProfile: (profile: TestCsvImportProfile) => void;
+  listCsvImportProfiles: (householdId: string) => TestCsvImportProfile[];
+  deleteCsvImportProfile: (householdId: string, profileId: string) => boolean;
+}
+
+interface TestImportJobHistoryStore {
+  listImportJobHistory: (householdId: string) => Array<{
+    id: string;
+    accountId: string | null;
+    candidateCount: number;
+    importedCount: number;
+    duplicateCount: number;
+    undoAvailable: boolean;
+  }>;
+  undoImportJob: (importJobId: string) => {
+    importJobId: string;
+    removedCount: number;
+    retainedCount: number;
+    alreadyUndone: boolean;
   };
 }
 
@@ -101,6 +149,189 @@ function runImportOrchestration(
 }
 
 describe("csv-import-runtime-contract", () => {
+  it("preserves legacy imported rows when undo baselines are unavailable", () => {
+    const ledger = makeTestLedger(randomUUID(), false);
+    const dbPath = ledger.dbPath;
+    const importJob: ImportJob = {
+      id: "legacy-history-job",
+      householdId: SAMPLE_HOUSEHOLD.id,
+      sourceType: "csv",
+      sourceName: "legacy.csv",
+      candidateCount: 1,
+      startedAtIso: "2026-09-01T10:00:00.000Z",
+    };
+    const importedTransaction: Transaction = {
+      id: "legacy-history-row",
+      householdId: SAMPLE_HOUSEHOLD.id,
+      accountId: SAMPLE_ACCOUNT.id,
+      bookedAtIso: "2026-09-01T00:00:00Z",
+      amountMinor: -500,
+      merchantRaw: "Legacy Store",
+      sourceType: "csv",
+      importJobId: importJob.id,
+    };
+    let originalConnectionOpen = true;
+
+    try {
+      ledger.appendImportJobAndTransactions(importJob, [importedTransaction]);
+      const database = new DatabaseSync(dbPath);
+      database.prepare("DELETE FROM import_job_transaction_baselines").run();
+      database.prepare("DELETE FROM import_job_operations").run();
+      database.close();
+      ledger.close();
+      originalConnectionOpen = false;
+
+      const reopenedLedger = openTestLedger(dbPath);
+      try {
+        const store = reopenedLedger as unknown as TestImportJobHistoryStore;
+        let result: unknown;
+        try {
+          result = store.undoImportJob(importJob.id);
+        } catch (error: unknown) {
+          result = error;
+        }
+        expect(store.listImportJobHistory(SAMPLE_HOUSEHOLD.id)[0]).toMatchObject({ undoAvailable: false });
+        expect(result).toMatchObject({ removedCount: 0, retainedCount: 1, alreadyUndone: false });
+        expect(reopenedLedger.loadLedgerSnapshotData().transactions).toEqual([importedTransaction]);
+      } finally {
+        reopenedLedger.close();
+      }
+    } finally {
+      if (originalConnectionOpen) ledger.close();
+      rmSync(dirname(dbPath), { recursive: true, force: true });
+    }
+  });
+
+  it("undoes only unchanged transactions from a job and reports retained corrections", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const importJob: ImportJob = {
+      id: "job-history-undo",
+      householdId: SAMPLE_HOUSEHOLD.id,
+      sourceType: "csv",
+      sourceName: "coffee-export.csv",
+      candidateCount: 2,
+      startedAtIso: "2026-10-03T10:00:00.000Z",
+      finishedAtIso: "2026-10-03T10:01:00.000Z",
+    };
+    const unchangedTransaction: Transaction = {
+      id: "job-history-unchanged",
+      householdId: SAMPLE_HOUSEHOLD.id,
+      accountId: SAMPLE_ACCOUNT.id,
+      bookedAtIso: "2026-10-01T00:00:00Z",
+      amountMinor: -450,
+      merchantRaw: "Coffee Shop",
+      sourceType: "csv",
+      importJobId: importJob.id,
+    };
+    const correctedTransaction: Transaction = {
+      ...unchangedTransaction,
+      id: "job-history-corrected",
+      bookedAtIso: "2026-10-02T00:00:00Z",
+      merchantRaw: "Coffee Roaster",
+    };
+    const unrelatedTransaction: Transaction = {
+      ...unchangedTransaction,
+      id: "unrelated-transaction",
+      importJobId: "unrelated-job",
+      merchantRaw: "Bus ticket",
+    };
+    const historyStore = ledger as unknown as Partial<TestImportJobHistoryStore>;
+
+    try {
+      ledger.appendImportJobAndTransactions(importJob, [unchangedTransaction, correctedTransaction]);
+      ledger.updateTransactionCategoryAndRule(correctedTransaction.id, {
+        merchantAlias: "coffee roaster",
+        categoryId: "groceries",
+      });
+      ledger.appendTransactions([unrelatedTransaction]);
+
+      expect(historyStore.listImportJobHistory?.(SAMPLE_HOUSEHOLD.id)?.[0]).toMatchObject({
+        id: importJob.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        candidateCount: 2,
+        importedCount: 2,
+        duplicateCount: 0,
+      });
+      expect(historyStore.undoImportJob?.(importJob.id)).toMatchObject({
+        importJobId: importJob.id,
+        removedCount: 1,
+        retainedCount: 1,
+        alreadyUndone: false,
+      });
+      expect(ledger.loadLedgerSnapshotData().transactions).toEqual([
+        { ...correctedTransaction, categoryId: "groceries" },
+        unrelatedTransaction,
+      ]);
+      expect(ledger.listMerchantCategoryRules()).toEqual([
+        { merchantAlias: "coffee roaster", categoryId: "groceries" },
+      ]);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("creates, edits, deletes, and retains CSV import profiles across a database restart", () => {
+    const ledger = makeTestLedger(randomUUID(), false);
+    const profileStore = ledger as unknown as Partial<TestCsvImportProfileStore>;
+    const profile: TestCsvImportProfile = {
+      id: "csv-profile-groceries",
+      householdId: SAMPLE_HOUSEHOLD.id,
+      name: "Groceries export",
+      accountId: SAMPLE_ACCOUNT.id,
+      columnMapping: { description: "Merchant", amountOut: "Debit" },
+      createdAtIso: "2026-10-03T10:00:00.000Z",
+      updatedAtIso: "2026-10-03T10:00:00.000Z",
+    };
+    let originalConnectionOpen = true;
+
+    try {
+      profileStore.saveCsvImportProfile?.(profile);
+      expect(profileStore.listCsvImportProfiles?.(SAMPLE_HOUSEHOLD.id)).toEqual([profile]);
+
+      const editedProfile = {
+        ...profile,
+        name: "Updated groceries export",
+        columnMapping: { description: "Payee", amountOut: "Debit" },
+        updatedAtIso: "2026-10-03T11:00:00.000Z",
+      };
+      profileStore.saveCsvImportProfile?.(editedProfile);
+      expect(profileStore.listCsvImportProfiles?.(SAMPLE_HOUSEHOLD.id)).toEqual([editedProfile]);
+
+      const dbPath = ledger.dbPath;
+      ledger.close();
+      originalConnectionOpen = false;
+
+      const reopenedLedger = openTestLedger(dbPath);
+      try {
+        const reopenedProfiles = reopenedLedger as unknown as TestCsvImportProfileStore;
+        expect(reopenedProfiles.listCsvImportProfiles(SAMPLE_HOUSEHOLD.id)).toEqual([editedProfile]);
+        expect(reopenedProfiles.deleteCsvImportProfile(SAMPLE_HOUSEHOLD.id, profile.id)).toBe(true);
+        expect(reopenedProfiles.listCsvImportProfiles(SAMPLE_HOUSEHOLD.id)).toEqual([]);
+      } finally {
+        reopenedLedger.close();
+      }
+    } finally {
+      if (originalConnectionOpen) ledger.close();
+      rmSync(dirname(ledger.dbPath), { recursive: true, force: true });
+    }
+  });
+
+  it("creates durable local storage for CSV import profiles", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const database = new DatabaseSync(ledger.dbPath);
+
+    try {
+      const profileTable = database.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'csv_import_profiles'"
+      ).get();
+
+      expect(profileTable).toBeDefined();
+    } finally {
+      database.close();
+      ledger.close();
+    }
+  });
+
   it("removes temporary ledger files after closing the test database", () => {
     const suffix = randomUUID();
     const tempDir = join(tmpdir(), `budget-integration-${suffix}`);

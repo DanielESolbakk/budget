@@ -9,7 +9,29 @@ function readRepositoryFile(relativePath: string): string {
 }
 
 function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapeCharacter = "\\";
+  const specialCharacters = new Set([
+    ".",
+    "*",
+    "+",
+    "?",
+    "^",
+    "$",
+    "{",
+    "}",
+    "(",
+    ")",
+    "|",
+    "[",
+    "]",
+    escapeCharacter,
+  ]);
+
+  return [...value]
+    .map((character) =>
+      specialCharacters.has(character) ? escapeCharacter + character : character,
+    )
+    .join("");
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {
@@ -21,6 +43,20 @@ function readMarkdownSection(markdown: string, heading: string): string {
 }
 
 describe("AC traceability governance checks", () => {
+  it("treats Markdown section headings as literal text", () => {
+    const markdown = "## Heading (literal)+\nsection content\n## Next section\nother";
+    expect(readMarkdownSection(markdown, "## Heading (literal)+")).toBe("section content\n");
+  });
+
+  it("reads a Markdown section across blank lines and stops at the next heading", () => {
+    const markdown = "## Status (accepted)\n\nAccepted\n\n## Date\n\n2026-05-23\n";
+
+    const section = readMarkdownSection(markdown, "## Status (accepted)");
+
+    expect(section).toContain("Accepted");
+    expect(section).not.toContain("## Date");
+  });
+
   it("AC-1: ADR records required stack and runtime boundary decisions", () => {
     const adr = readRepositoryFile(
       "docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md",
@@ -92,6 +128,9 @@ describe("AC traceability governance checks", () => {
     const copilotInstructions = readRepositoryFile(".github/copilot-instructions.md");
     const agentInstructions = readRepositoryFile("AGENTS.md");
     const planningSkill = readRepositoryFile(".agents/skills/issue-planning-governor/SKILL.md");
+    const planningDeepDive = readRepositoryFile(
+      ".agents/skills/issue-planning-governor/references/assignment-readiness-deep-dive.md",
+    );
 
     for (const content of [copilotInstructions, agentInstructions]) {
       expect(content).toContain("Frontend Design Governance (Opt-In)");
@@ -102,10 +141,9 @@ describe("AC traceability governance checks", () => {
     expect(copilotInstructions).toContain("Node 22.12 or newer");
     expect(agentInstructions).toContain("v22.12.0 or newer");
 
-    expect(planningSkill).toContain("R16 Frontend planning completeness");
-    expect(planningSkill).toContain("G9 Frontend planning completeness");
-    expect(planningSkill).toContain("Issues without renderer entry points or UI changes are exempt from R16");
-    expect(planningSkill).toContain("If the issue has no renderer entry points or UI changes, G9 is not applicable");
+    expect(planningSkill).toContain("Apply R16/G9 to visible UI");
+    expect(planningDeepDive).toContain("**G9:** Renderer-visible work");
+    expect(planningDeepDive).toContain("Mark G9 not applicable only when there is no renderer-visible work.");
     for (const requirement of [
       "design direction",
       "design-system preservation",
@@ -113,7 +151,7 @@ describe("AC traceability governance checks", () => {
       "accessibility",
       "visual-validation intent",
     ]) {
-      expect(planningSkill).toContain(requirement);
+      expect(planningDeepDive).toContain(requirement);
     }
   });
 
@@ -136,5 +174,24 @@ describe("AC traceability governance checks", () => {
       expect(governedFiles[0]).toContain(generatedArtifact);
     }
     expect(governedFiles[1]).toContain("Do NOT commit generated files");
+  });
+
+  it("keeps issue-planning scope and readiness gates internally consistent", () => {
+    const planningSkill = readRepositoryFile(".agents/skills/issue-planning-governor/SKILL.md");
+    const planningDeepDive = readRepositoryFile(
+      ".agents/skills/issue-planning-governor/references/assignment-readiness-deep-dive.md",
+    );
+    const planningChecklists = readRepositoryFile(
+      ".agents/skills/issue-planning-governor/references/checklists.md",
+    );
+
+    expect(planningSkill).toContain("Run G1-G9 from the deep-dive.");
+    expect(planningSkill).toContain("Quote each pass");
+    expect(planningSkill).toContain("`planning-invalid` blocks readiness.");
+    expect(planningSkill).toContain("After 180 seconds without one, stop without repair.");
+    expect(planningSkill).toContain("Epics are read-only hierarchy context.");
+    expect(planningDeepDive).toContain("Test issue's \"Test Scenarios\" section has at least 2 concrete, reproducible scenarios.");
+    expect(planningChecklists).toContain("G9 [PASS/FAIL/N/A]");
+    expect((planningSkill.match(/\S+/g) ?? []).length).toBeLessThanOrEqual(500);
   });
 });

@@ -33,10 +33,7 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "CI Fast"
-          },
-          {
-            "context": "CI Full"
+            "context": "CI"
           },
           {
             "context": "PR Guardrails"

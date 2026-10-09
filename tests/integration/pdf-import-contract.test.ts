@@ -387,8 +387,9 @@ describe("pdf import contract", () => {
         validationFailureCount: 0,
         provenance: {
           sourceIdentity: ROGALAND_SOURCE_ID,
-            contentDigest: buildRogalandImportJobId(text, MAPPING_OPTIONS),
+          contentDigest: buildRogalandImportJobId(text, MAPPING_OPTIONS),
           adapterId: ROGALAND_ADAPTER_ID,
+          accountId: SAMPLE_ACCOUNT.id,
           storyAnchor: {
             enablerIssueId: "32",
             featureIssueId: "15",
