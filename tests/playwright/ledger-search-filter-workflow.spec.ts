@@ -619,6 +619,8 @@ test.describe("Ledger search and filter workflow", () => {
         viewportWidth: document.documentElement.clientWidth,
       }));
       expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
       await expect(page).toHaveScreenshot("ledger-filters-expanded-compact.png", {
         animations: "disabled",
         maxDiffPixelRatio: 0.015,

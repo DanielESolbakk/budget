@@ -69,17 +69,9 @@ function getActiveFilters(filters: TransactionFilters, accounts: Account[]): Act
 
 interface LedgerSectionProps {
   refreshKey: number;
-  uncategorizedCount: number;
-  isUncategorizedQueueReady: boolean;
-  onReviewUncategorized: () => void;
 }
 
-export function LedgerSection({
-  refreshKey,
-  uncategorizedCount,
-  isUncategorizedQueueReady,
-  onReviewUncategorized,
-}: LedgerSectionProps): React.JSX.Element {
+export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Element {
   const [amountFrom, setAmountFrom] = React.useState("");
   const [amountTo, setAmountTo] = React.useState("");
   const [filters, setFilterState] = React.useState<TransactionFilters>({});
@@ -323,21 +315,6 @@ export function LedgerSection({
   return (
     <section aria-label="Ledger" aria-busy={isLoading || isFilterPending}>
       <h2>Ledger</h2>
-      {isUncategorizedQueueReady && uncategorizedCount > 0 && (
-        <div className="ledger-review-action">
-          <button
-            className="ledger-review-uncategorized"
-            type="button"
-            aria-describedby="ledger-review-uncategorized-scope"
-            onClick={onReviewUncategorized}
-          >
-            Review uncategorized ({uncategorizedCount})
-          </button>
-          <small id="ledger-review-uncategorized-scope">
-            Includes all transactions, regardless of ledger filters.
-          </small>
-        </div>
-      )}
       <form className="ledger-filters" aria-label="Ledger filters" onSubmit={(event) => event.preventDefault()}>
         <div className="ledger-quick-filters">
           <button type="button" aria-label="Quick filter Uncategorized" aria-pressed={filters.uncategorizedOnly === true} onClick={() => toggleBooleanQuickFilter("uncategorizedOnly")}>Uncategorized</button>
