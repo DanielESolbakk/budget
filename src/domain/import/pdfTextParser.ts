@@ -17,6 +17,10 @@ const TRANSACTION_LINE_PATTERN =
   /^(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+([+-]?\d[\d\s]*,\d{2})\s+([+-]?\d[\d\s]*,\d{2})\s*$/;
 const VALID_TRANSACTION_DATE_PREFIX_PATTERN = /^\s*\d{2}\.\d{2}\.\d{4}(?=\s)/;
 const TRANSACTION_DATE_LIKE_PREFIX_PATTERN = /^\s*\d{1,4}[./-]\d{1,4}[./-]\d{1,4}(?=\s)/;
+const BANK_EXPORT_TABLE_HEADER_PATTERN = /^Dato\s+Type\s+Fra konto\b/;
+const BANK_EXPORT_TRANSACTION_DATE_PATTERN = /^\s*(\d{2}\.\d{2}\.\d{4})(?=\s)/;
+const BANK_EXPORT_PAGE_FOOTER_PATTERN = /^\s*\d+\s*\/\s*\d+\s+Rogaland Sparebank\s*$/i;
+const BANK_EXPORT_SUMMARY_PATTERN = /^\s*(?:Total beløp|Totalt beløp|Inngående saldo|Utgående\s+saldo)\b/i;
 
 export type PdfTextValidationErrorCode =
   | "UNSUPPORTED_LAYOUT"
@@ -118,6 +122,142 @@ export function isRogalandStatementText(text: string): boolean {
   return text.includes(ROGALAND_HEADER_TOKEN);
 }
 
+interface BankExportRow {
+  lineNumber: number;
+  text: string;
+}
+
+function collectBankExportRows(lines: readonly string[], tableHeaderIndex: number): BankExportRow[] {
+  const rows: BankExportRow[] = [];
+  let currentRow: BankExportRow | undefined;
+
+  const finishCurrentRow = (): void => {
+    if (currentRow !== undefined) {
+      rows.push(currentRow);
+      currentRow = undefined;
+    }
+  };
+
+  for (const [index, line] of lines.slice(tableHeaderIndex + 1).entries()) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.length === 0) continue;
+    if (
+      BANK_EXPORT_TABLE_HEADER_PATTERN.test(trimmedLine) ||
+      /^Transaksjoner\b/i.test(trimmedLine) ||
+      /^Kontonummer\s*:/i.test(trimmedLine) ||
+      BANK_EXPORT_PAGE_FOOTER_PATTERN.test(trimmedLine) ||
+      BANK_EXPORT_SUMMARY_PATTERN.test(trimmedLine)
+    ) {
+      continue;
+    }
+
+    if (BANK_EXPORT_TRANSACTION_DATE_PATTERN.test(line)) {
+      finishCurrentRow();
+      currentRow = { lineNumber: tableHeaderIndex + index + 2, text: trimmedLine };
+    } else if (currentRow !== undefined) {
+      currentRow.text = `${currentRow.text} ${trimmedLine}`;
+    }
+  }
+
+  finishCurrentRow();
+  return rows;
+}
+
+function parseRogalandBankExport(
+  lines: readonly string[],
+  tableHeaderIndex: number,
+  options: PdfTextParseOptions
+): PdfTextParseResult {
+  const rows = collectBankExportRows(lines, tableHeaderIndex);
+  const idPrefix = options.idPrefix ?? "pdf";
+  const transactions: Transaction[] = [];
+  const errors: PdfTextValidationError[] = [];
+  const bankExportRowPattern =
+    /^(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+([+-]?\d[\d ]*,\d{2})\s+([A-Z]{3})\s+(Bokført|Reservert|Bekreftet)\s*(.*)$/i;
+
+  for (const row of rows) {
+    const match = bankExportRowPattern.exec(row.text);
+    if (match === null) {
+      errors.push({
+        code: "INVALID_AMOUNT_FORMAT",
+        message: `Could not parse bank-export transaction row at line ${row.lineNumber}.`,
+        lineNumber: row.lineNumber,
+        field: "amount",
+      });
+      continue;
+    }
+
+    const [, rawDate = "", prefix = "", rawAmount = "", currencyCode = "NOK", , rawMessage = ""] = match;
+    const bookedAtIso = parseNorwegianDate(rawDate);
+    if (bookedAtIso === null) {
+      errors.push({
+        code: "INVALID_DATE_FORMAT",
+        message: `Invalid bank-export transaction date at line ${row.lineNumber}.`,
+        lineNumber: row.lineNumber,
+        field: "date",
+      });
+      continue;
+    }
+
+    const amount = parseNorwegianAmount(rawAmount);
+    if (amount === null) {
+      errors.push({
+        code: "INVALID_AMOUNT_FORMAT",
+        message: `Invalid bank-export amount at line ${row.lineNumber}.`,
+        lineNumber: row.lineNumber,
+        field: "amount",
+      });
+      continue;
+    }
+
+    const merchantRaw = rawMessage.trim().replace(/\s+/g, " ") || prefix.trim().replace(/\s+/g, " ");
+    if (merchantRaw.length === 0) {
+      errors.push({
+        code: "MISSING_DESCRIPTION",
+        message: `Missing bank-export description at line ${row.lineNumber}.`,
+        lineNumber: row.lineNumber,
+        field: "description",
+      });
+      continue;
+    }
+
+    const transaction: Transaction = {
+      id: `${idPrefix}-${transactions.length + 1}`,
+      householdId: options.householdId,
+      accountId: options.accountId,
+      bookedAtIso,
+      amountMinor: toMinorUnits(amount),
+      merchantRaw,
+      currencyCode,
+      sourceType: "pdf",
+    };
+    if (options.importJobId !== undefined) transaction.importJobId = options.importJobId;
+    transactions.push(transaction);
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+  if (transactions.length === 0) {
+    return {
+      ok: false,
+      errors: [{
+        code: "MISSING_TRANSACTION_SECTION",
+        message: "No bank-export transaction rows were found in the statement.",
+      }],
+    };
+  }
+
+  transactions.sort((left, right) =>
+    right.bookedAtIso.localeCompare(left.bookedAtIso) ||
+    left.amountMinor - right.amountMinor ||
+    left.merchantRaw.localeCompare(right.merchantRaw)
+  );
+  transactions.forEach((transaction, index) => {
+    transaction.id = `${idPrefix}-${index + 1}`;
+  });
+
+  return { ok: true, adapterId: ROGALAND_ADAPTER_ID, transactions };
+}
+
 /**
  * Parses a Rogaland Sparebank digital text PDF statement into domain Transaction candidates.
  *
@@ -143,6 +283,12 @@ export function parseRogalandStatementText(
   }
 
   const lines = text.split(/\r?\n/);
+  const bankExportHeaderIndex = lines.findIndex((line) =>
+    BANK_EXPORT_TABLE_HEADER_PATTERN.test(line.trim())
+  );
+  if (bankExportHeaderIndex !== -1) {
+    return parseRogalandBankExport(lines, bankExportHeaderIndex, options);
+  }
 
   // Find the header row that starts the transaction table.
   const tableHeaderIndex = lines.findIndex((line) => /^Dato\s+Beskrivelse/.test(line.trim()));

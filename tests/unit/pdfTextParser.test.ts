@@ -19,6 +19,7 @@ import {
 } from "../../src/domain/import/pdfTextParser.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-statement.txt";
+const PAGINATED_EXPORT_FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-paginated-export.txt";
 
 const BASE_OPTIONS = {
   householdId: "hh-test",
@@ -162,6 +163,26 @@ describe("pdfTextParser unit tests", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.transactions.length).toBeGreaterThan(0);
+    });
+
+    it("parses repeated page headers and joins wrapped descriptions in the bank export layout", () => {
+      const text = readFileSync(PAGINATED_EXPORT_FIXTURE_PATH, "utf8");
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transactions).toMatchObject([
+        {
+          bookedAtIso: "2026-05-28T00:00:00Z",
+          amountMinor: -9770,
+          merchantRaw: "27.05 SYNTHETIC MARKET 7 SANDNES",
+        },
+        {
+          bookedAtIso: "2026-05-27T00:00:00Z",
+          amountMinor: 5_000_000,
+          merchantRaw: "Fra: SYNTHETIC EMPLOYER",
+        },
+      ]);
     });
 
     it("all transactions have required domain fields set correctly", () => {

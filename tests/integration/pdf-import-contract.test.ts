@@ -36,6 +36,7 @@ import {
 import type { Account, Household, ImportJob, Transaction } from "../../src/domain/types.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-statement.txt";
+const PAGINATED_EXPORT_FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-paginated-export.txt";
 
 const MAPPING_OPTIONS = {
   householdId: "hh-test",
@@ -360,6 +361,41 @@ describe("pdf import contract", () => {
   });
 
   describe("Scenario 1: SQLite persistence – fixture creates expected transactions and import-job provenance", () => {
+    it("persists the paginated bank export through the adapter and import workflow", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const text = readFileSync(PAGINATED_EXPORT_FIXTURE_PATH, "utf8");
+
+      try {
+        const response = runPdfImportOrchestration(text, ledger, {
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          sourceName: "rogaland-paginated-export.txt",
+        });
+
+        expect(response).toMatchObject({
+          ok: true,
+          transactionCount: 2,
+          adapterId: ROGALAND_ADAPTER_ID,
+        });
+        const snapshot = ledger.loadLedgerSnapshotData();
+        expect(snapshot.transactions).toMatchObject([
+          {
+            bookedAtIso: "2026-05-28T00:00:00Z",
+            amountMinor: -9770,
+            merchantRaw: "27.05 SYNTHETIC MARKET 7 SANDNES",
+          },
+          {
+            bookedAtIso: "2026-05-27T00:00:00Z",
+            amountMinor: 5_000_000,
+            merchantRaw: "Fra: SYNTHETIC EMPLOYER",
+          },
+        ]);
+        expect(snapshot.importJobs[0]?.adapterId).toBe(ROGALAND_ADAPTER_ID);
+      } finally {
+        ledger.close();
+      }
+    });
+
     it("writes one import_jobs record and expected transaction rows for the synthetic fixture", () => {
       const ledger = makeTestLedger(randomUUID());
       const text = loadFixture();
