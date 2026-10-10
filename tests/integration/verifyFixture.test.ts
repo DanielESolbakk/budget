@@ -1,16 +1,19 @@
+import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { verifyFixture } from "../../src/tooling/fixtures/verifyFixture.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+const tsxCliPath = fileURLToPath(new URL("../../node_modules/tsx/dist/cli.mjs", import.meta.url));
 const expectedFixtureReportPath =
   "tests/fixtures/verification-reports/rogaland-2026-05-synthetic.verification-report.json";
 const expectedHeaders = [
@@ -216,6 +219,57 @@ describe("verifyFixture", () => {
     });
   });
 
+  it("fails batch verification and retains a report for invalid fixtures", () => {
+    const invalidFixturePath = writeTemporaryFixtureFile(
+      "invalid-data.csv",
+      [
+        expectedHeaders.join(";"),
+        [
+          "32.05.2026",
+          "29.05.2026",
+          "29.05.2026",
+          "MERCHANT_001",
+          "Varekjøp",
+          "Debetkort",
+          "ACCT-001",
+          "",
+          "",
+          "USER_1",
+          "",
+          "-45.00",
+          "NOK",
+          "Bokført",
+          "TXN-001"
+        ].join(";")
+      ].join("\n")
+    );
+    const reportDirectory = join(dirname(invalidFixturePath), "reports");
+    const reportPath = join(reportDirectory, "invalid-data.verification-report.json");
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        tsxCliPath,
+        "scripts/verify-fixtures.ts",
+        "--input-dir",
+        dirname(invalidFixturePath),
+        "--report-dir",
+        reportDirectory
+      ],
+      { cwd: repositoryRoot, encoding: "utf8" }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(existsSync(reportPath)).toBe(true);
+    const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
+      ok: boolean;
+      errors: string[];
+    };
+    expect(report.ok).toBe(false);
+    expect(report.errors).toContain("Row 2: Utført dato is not a valid dd.MM.yyyy date.");
+  });
+
   it("tracks reserved and hold coverage separately", () => {
     const fixturePath = writeTemporaryFixtureFile(
       "reserved-and-hold.csv",
@@ -264,6 +318,54 @@ describe("verifyFixture", () => {
 
     expect(report.stats.reservedRowCount).toBe(1);
     expect(report.stats.holdRowCount).toBe(1);
+  });
+
+  it("does not count a blank currency as FX coverage", () => {
+    const fixturePath = writeTemporaryFixtureFile(
+      "blank-currency.csv",
+      [
+        expectedHeaders.join(";"),
+        [
+          "29.05.2026",
+          "29.05.2026",
+          "29.05.2026",
+          "MERCHANT_GBP",
+          "Varekjøp",
+          "Debetkort",
+          "ACCT-001",
+          "",
+          "",
+          "USER_1",
+          "",
+          "-45.00",
+          "GBP",
+          "Bokført",
+          "TXN-001"
+        ].join(";"),
+        [
+          "28.05.2026",
+          "28.05.2026",
+          "28.05.2026",
+          "MERCHANT_EMPTY_CURRENCY",
+          "Varekjøp",
+          "Debetkort",
+          "ACCT-001",
+          "",
+          "",
+          "USER_1",
+          "",
+          "-15.00",
+          "",
+          "Bokført",
+          "TXN-002"
+        ].join(";")
+      ].join("\n")
+    );
+
+    const report = verifyFixture({ inputPath: fixturePath });
+
+    expect(report.stats.nonNokRowCount).toBe(1);
+    expect(report.stats.fxRowCount).toBe(1);
   });
 
   it("verifies ADR and glossary artifacts are present and linked from plan.md", () => {

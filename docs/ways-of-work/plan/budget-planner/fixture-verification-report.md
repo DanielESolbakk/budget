@@ -43,7 +43,7 @@ Define the machine-readable JSON contract emitted by `npm run verify-fixture` an
 - `stats.reservedRowCount`: rows flagged as reserved through `Status`.
 - `stats.holdRowCount`: rows flagged through hold-specific `Status` or `Undertype` signals.
 - `stats.transferRowCount`: rows whose type or reference indicates a transfer or payment flow.
-- `stats.fxRowCount`: rows signalling foreign-exchange coverage through non-`NOK` currency, foreign undertype, or `FX-` reference.
+- `stats.fxRowCount`: rows signalling foreign-exchange coverage through a non-empty, non-`NOK` currency, foreign undertype, or `FX-` reference; an empty currency alone is not a signal.
 - `stats.kidReferenceCount`: rows whose reference field contains `KID` or invoice markers.
 - `stats.uniqueMerchantCount`: count of normalized merchant keys after whitespace and punctuation normalization.
 - `stats.merchantTokenDistribution`: normalized merchant-token frequency map sorted by token so repeated runs emit stable JSON.

@@ -33,6 +33,7 @@
     "validate:packaged-runtime": "tsx scripts/validate-packaged-runtime.ts",
     "sanitizer": "tsx scripts/sanitize-csv.ts",
     "verify-fixture": "tsx scripts/verify-fixture.ts",
+    "verify-fixtures": "tsx scripts/verify-fixtures.ts",
     "eval:skill": "tsx scripts/run-skill-evals.ts",
     "postinstall": "node scripts/postinstall-electron.mjs"
   },

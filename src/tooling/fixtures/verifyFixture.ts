@@ -210,7 +210,9 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
     }
 
     const currencyCode = record["Valuta"];
-    if (currencyCode && currencyCode !== "NOK") {
+    const normalizedCurrencyCode = currencyCode?.trim().toUpperCase() ?? "";
+    const hasForeignCurrency = normalizedCurrencyCode.length > 0 && normalizedCurrencyCode !== "NOK";
+    if (hasForeignCurrency) {
       stats.nonNokRowCount += 1;
     }
 
@@ -228,7 +230,7 @@ export function verifyFixture(options: VerifyFixtureOptions): VerificationReport
     }
 
     if (
-      currencyCode !== "NOK" ||
+      hasForeignCurrency ||
       undertype.includes("UTLANDET") ||
       reference.includes("FX-")
     ) {
