@@ -8,6 +8,7 @@ import type {
   LedgerSnapshotData,
 } from "../../domain/backup/snapshotContract.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import { createCorrectionProvenance } from "../../domain/review/correction.js";
 import { normalizeMerchantName } from "../../domain/merchant/normalizeMerchantName.js";
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
 import type { ImportJobHistoryEntry, UndoImportJobResult } from "../../domain/import/importJobHistory.js";
@@ -284,6 +285,7 @@ function ensureSchema(db: DatabaseSync): void {
       source_transaction_id TEXT NOT NULL,
       merchant_alias TEXT NOT NULL,
       category_id TEXT NOT NULL,
+      actor TEXT NOT NULL DEFAULT 'local-user',
       corrected_at_iso TEXT NOT NULL,
       original_categorization_json TEXT
     );
@@ -378,6 +380,9 @@ function ensureSchema(db: DatabaseSync): void {
     .all() as Array<{ name: string }>;
   if (!correctionProvenanceColumns.some((column) => column.name === "original_categorization_json")) {
     db.exec("ALTER TABLE merchant_correction_provenance ADD COLUMN original_categorization_json TEXT");
+  }
+  if (!correctionProvenanceColumns.some((column) => column.name === "actor")) {
+    db.exec("ALTER TABLE merchant_correction_provenance ADD COLUMN actor TEXT NOT NULL DEFAULT 'local-user'");
   }
   const propagationChangeColumns = db
     .prepare("PRAGMA table_info(same_merchant_propagation_changes)")
@@ -1543,6 +1548,21 @@ export function createLocalLedgerDatabase(
       const originalCategorizationRow = db
         .prepare("SELECT categorization_json FROM transactions WHERE id = ?")
         .get(transactionId) as { categorization_json: string | null } | undefined;
+      const correctionProvenance = createCorrectionProvenance({
+        id: randomUUID(),
+        sourceTransactionId: transactionId,
+        merchantAlias: rule.merchantAlias,
+        categoryId: rule.categoryId,
+        actor: "local-user",
+        correctedAtIso: new Date().toISOString(),
+        ...(originalCategorizationRow?.categorization_json == null
+          ? {}
+          : {
+              originalCategorization: JSON.parse(
+                originalCategorizationRow.categorization_json
+              ) as CategorizationDecision,
+            }),
+      });
       updateTransactionCategory(transactionId, rule.categoryId);
       if (categorization !== undefined) {
         db.prepare("UPDATE transactions SET categorization_json = ? WHERE id = ?").run(
@@ -1553,16 +1573,19 @@ export function createLocalLedgerDatabase(
       upsertMerchantCategoryRule(rule);
       db.prepare(`
         INSERT INTO merchant_correction_provenance (
-          id, source_transaction_id, merchant_alias, category_id, corrected_at_iso,
+          id, source_transaction_id, merchant_alias, category_id, actor, corrected_at_iso,
           original_categorization_json
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
-        randomUUID(),
-        transactionId,
-        rule.merchantAlias,
-        rule.categoryId,
-        new Date().toISOString(),
-        originalCategorizationRow?.categorization_json ?? null
+        correctionProvenance.id,
+        correctionProvenance.sourceTransactionId,
+        correctionProvenance.merchantAlias,
+        correctionProvenance.categoryId,
+        correctionProvenance.actor,
+        correctionProvenance.correctedAtIso,
+        correctionProvenance.originalCategorization === undefined
+          ? null
+          : JSON.stringify(correctionProvenance.originalCategorization)
       );
       db.exec("COMMIT");
     } catch (error) {
@@ -1574,7 +1597,7 @@ export function createLocalLedgerDatabase(
   function listMerchantCorrectionProvenance(): MerchantCorrectionProvenance[] {
     return db
       .prepare(`
-        SELECT id, source_transaction_id, merchant_alias, category_id, corrected_at_iso,
+        SELECT id, source_transaction_id, merchant_alias, category_id, actor, corrected_at_iso,
           original_categorization_json
         FROM merchant_correction_provenance
         ORDER BY corrected_at_iso, id
@@ -1586,6 +1609,7 @@ export function createLocalLedgerDatabase(
           source_transaction_id: string;
           merchant_alias: string;
           category_id: string;
+          actor: "local-user";
           corrected_at_iso: string;
           original_categorization_json: string | null;
         };
@@ -1594,6 +1618,7 @@ export function createLocalLedgerDatabase(
           sourceTransactionId: typedRow.source_transaction_id,
           merchantAlias: typedRow.merchant_alias,
           categoryId: typedRow.category_id,
+          actor: typedRow.actor,
           correctedAtIso: typedRow.corrected_at_iso,
         };
         if (typedRow.original_categorization_json !== null) {

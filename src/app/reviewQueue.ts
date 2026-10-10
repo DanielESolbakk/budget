@@ -1,5 +1,4 @@
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
-import { orderReviewQueueTransactions } from "../domain/categorization/reviewQueue.js";
 import { normalizeMerchantName } from "../domain/merchant/normalizeMerchantName.js";
 import type {
   SameMerchantPropagationInput,
@@ -7,16 +6,7 @@ import type {
   SameMerchantPropagationPreview,
 } from "../domain/types.js";
 
-export function listCategorizationReviewQueue(
-  database: Pick<LocalLedgerDatabase, "loadLedgerSnapshotData">,
-  householdId: string
-) {
-  const reviewTransactions = database.loadLedgerSnapshotData().transactions.filter((transaction) =>
-    transaction.householdId === householdId &&
-    (transaction.categoryId === undefined || transaction.categorization?.requiresReview === true)
-  );
-  return orderReviewQueueTransactions(reviewTransactions);
-}
+export { listCategorizationReviewQueue } from "./reviewService.js";
 
 export function previewSameMerchantPropagation(
   database: Pick<

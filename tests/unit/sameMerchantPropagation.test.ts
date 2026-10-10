@@ -88,6 +88,7 @@ const database = {
     sourceTransactionId: sourceTransaction.id,
     merchantAlias: "REMA 1000",
     categoryId: "groceries",
+    actor: "local-user" as const,
     correctedAtIso: "2026-05-05T00:00:00Z",
   }],
   listMerchantCategoryRules: () => [{ merchantAlias: "REMA 1000", categoryId: "groceries" }],
