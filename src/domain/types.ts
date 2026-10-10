@@ -66,11 +66,14 @@ export interface MerchantCategoryRule {
   categoryId: string;
 }
 
+export type CorrectionActor = "local-user";
+
 export interface MerchantCorrectionProvenance {
   id: string;
   sourceTransactionId: string;
   merchantAlias: string;
   categoryId: string;
+  actor: CorrectionActor;
   correctedAtIso: string;
   originalCategorization?: CategorizationDecision;
 }

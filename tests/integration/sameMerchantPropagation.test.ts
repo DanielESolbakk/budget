@@ -110,6 +110,7 @@ describe("same-merchant correction persistence", () => {
           sourceTransactionId: SOURCE_TRANSACTION.id,
           merchantAlias: "REMA 1000",
           categoryId: "transport",
+          actor: "local-user",
           originalCategorization: ORIGINAL_CATEGORIZATION,
           correctedAtIso: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
         },

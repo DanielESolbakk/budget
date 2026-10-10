@@ -11,7 +11,7 @@ export interface CategorizationConfidence {
   requiresReview: boolean;
 }
 
-const REVIEW_THRESHOLD = 0.75;
+export const CATEGORIZATION_REVIEW_THRESHOLD = 0.75;
 
 export function scoreCategorizationConfidence(
   input: CategorizationConfidenceInput
@@ -24,7 +24,7 @@ export function scoreCategorizationConfidence(
 
   return {
     score,
-    level: score >= REVIEW_THRESHOLD ? "high" : "low",
-    requiresReview: score < REVIEW_THRESHOLD,
+    level: score >= CATEGORIZATION_REVIEW_THRESHOLD ? "high" : "low",
+    requiresReview: score < CATEGORIZATION_REVIEW_THRESHOLD,
   };
 }

@@ -29,12 +29,15 @@ import {
 } from "../src/app/backup/snapshotCatalog.js";
 import {
   applySameMerchantPropagation,
-  listCategorizationReviewQueue,
   previewSameMerchantPropagation,
   undoSameMerchantPropagation,
 } from "../src/app/reviewQueue.js";
+import {
+  applyCategorizationCorrection,
+  listCategorizationReviewQueue,
+} from "../src/app/reviewService.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
-import { categorizeTransaction, categorizeTransactions } from "../src/domain/categorization/categorizeTransaction.js";
+import { categorizeTransactions } from "../src/domain/categorization/categorizeTransaction.js";
 import { normalizeMerchantName } from "../src/domain/merchant/normalizeMerchantName.js";
 import {
   inspectBackupSnapshot,
@@ -1390,35 +1393,12 @@ app.whenReady().then(async () => {
       const record = input as Record<string, unknown>;
       const transactionId = parseNonEmptyString(record.transactionId, "transactionId");
       const categoryId = parseNonEmptyString(record.categoryId, "categoryId");
-
-      const transaction = localLedgerDatabase.getTransactionById(transactionId);
-      if (transaction === undefined) {
-        throw new Error(`Transaction not found: ${transactionId}`);
-      }
-
-      const merchantAlias = normalizeMerchantName(transaction.merchantRaw);
-      const futureMatchingChanged = learnedCategoryRules.get(merchantAlias) !== categoryId;
-      const updatedLearnedCategoryRules = new Map(learnedCategoryRules);
-      updatedLearnedCategoryRules.set(merchantAlias, categoryId);
-      const uncategorizedTransaction = { ...transaction };
-      delete uncategorizedTransaction.categoryId;
-      const correctedCategorization = categorizeTransaction(
-        uncategorizedTransaction,
-        updatedLearnedCategoryRules
-      ).categorization;
-      if (correctedCategorization === undefined) {
-        throw new Error("Corrected transaction did not produce categorization metadata.");
-      }
-      localLedgerDatabase.updateTransactionCategoryAndRule(
+      return applyCategorizationCorrection(
+        localLedgerDatabase,
+        learnedCategoryRules,
         transactionId,
-        { merchantAlias, categoryId },
-        correctedCategorization
+        categoryId
       );
-      learnedCategoryRules.set(merchantAlias, categoryId);
-      return {
-        transaction: { ...transaction, categoryId, categorization: correctedCategorization },
-        futureMatchingChanged,
-      };
       });
     }
   );
