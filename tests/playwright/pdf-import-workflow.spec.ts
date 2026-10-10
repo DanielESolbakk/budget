@@ -186,7 +186,7 @@ test.describe("PDF import renderer workflow", () => {
     await pdfImport.importButton.click();
 
     const progress = pdfImport.importSection.getByRole("status", { name: "Import preflight progress" });
-    await expect(progress).toBeVisible();
+    await expect(progress).toContainText(/Validating statement rows: \d{3,4} of 10[\s\u00a0\u202f]?000 rows/);
     await expect(pdfImport.importSection.getByRole("button", { name: "Cancel preview", exact: true })).toBeEnabled();
     await pdfImport.importSection.getByRole("button", { name: "Cancel preview", exact: true }).click();
 
