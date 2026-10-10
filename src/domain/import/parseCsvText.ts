@@ -1,27 +1,41 @@
+import { parse } from "csv-parse/sync";
+
+const ROGALAND_SUMMARY_PREFIXES = [
+  "Total beløp inn på konto:",
+  "Totalt beløp ut av konto:",
+  "Inngående saldo pr.",
+  "Utgående saldo pr.",
+];
+
+export function decodeCsvBytes(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
 /**
  * Parses a semicolon-delimited CSV text string into an array of row objects.
  *
  * Supports the Norwegian bank CSV export format with a semicolon delimiter.
- * Strips the optional UTF-8 BOM and ignores empty lines.
+ * Handles quoted delimiters and multiline fields, and ignores empty lines.
  */
 export function parseCsvText(text: string): Array<Record<string, string>> {
-  const normalized = text.replace(/^\uFEFF/, "").trim();
-  const lines = normalized.split(/\r?\n/).filter((line) => line.length > 0);
-
-  if (lines.length === 0) {
+  if (text.trim().length === 0) {
     return [];
   }
 
-  const header = lines[0]!.split(";");
+  const records = parse(text, {
+    bom: true,
+    columns: true,
+    delimiter: ";",
+    skip_empty_lines: true,
+  }) as Array<Record<string, string>>;
 
-  return lines.slice(1).map((line) => {
-    const cells = line.split(";");
-    const record: Record<string, string> = {};
-
-    header.forEach((columnName, index) => {
-      record[columnName] = cells[index] ?? "";
-    });
-
-    return record;
+  return records.filter((record) => {
+    const summaryLabel = (record["Utført dato"] ?? "").trim().replace(/\s+/g, " ");
+    return Object.values(record).some((value) => value.trim().length > 0) &&
+      !ROGALAND_SUMMARY_PREFIXES.some((prefix) => summaryLabel.startsWith(prefix));
   });
 }

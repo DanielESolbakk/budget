@@ -1,0 +1,9 @@
+Utført dato;Bokført dato;Rentedato;Beskrivelse;Type;Undertype;Fra konto;Avsender;Til konto;Mottakernavn;Beløp inn;Beløp ut;Valuta;Status;Melding/KID/Fakt.nr
+29.05.2026;;29.05.2026;SYNTHETIC MARKET 7;Varekjøp;Debetkort;ACCT-001;;;LOCAL_USER;;-45.00;NOK;Reservert;REF-PENDING
+28.05.2026;28.05.2026;28.05.2026;"SYNTHETIC SHOP; ""WEST"" WING";Varekjøp;Debetkort;ACCT-001;;;LOCAL_USER;;-97.70;NOK;Bokført;"REF-001; FIRST LINE
+SECOND LINE"
+;;;;;;;;;;;;;;
+Total beløp inn på konto:;;123.45 NOK;;;;;;;;;;;;
+Totalt beløp ut av konto:;;-123.45 NOK;;;;;;;;;;;;
+Inngående saldo pr. 29.05.2025:;;100.00 NOK;;;;;;;;;;;;
+Utgående  saldo pr. 29.05.2026:;;99.99 NOK;;;;;;;;;;;;

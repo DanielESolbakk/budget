@@ -70,7 +70,7 @@ import {
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
 import { extractPdfTextFromBuffer } from "../src/app/import/extractPdfText.js";
-import { parseCsvText } from "../src/domain/import/parseCsvText.js";
+import { decodeCsvBytes, parseCsvText } from "../src/domain/import/parseCsvText.js";
 import type { CsvImportProfile } from "../src/domain/import/csvImportProfile.js";
 import type { ImportJobHistoryEntry } from "../src/domain/import/importJobHistory.js";
 import type { ImportPreflightProgress } from "../src/app/import/importPreflight.js";
@@ -998,7 +998,7 @@ app.whenReady().then(async () => {
         }
         if (preflight.cancelled) return csvPreviewFailure("PREVIEW_CANCELLED", "Preview cancelled. No transactions were saved.");
 
-        const csvText = csvBytes.toString("utf8");
+        const csvText = decodeCsvBytes(csvBytes);
         const rows = parseCsvText(csvText);
         reportProgress("Validating rows", 0, rows.length);
         const preview = await previewCsvRowsWithProgress(rows, {
@@ -1114,7 +1114,7 @@ app.whenReady().then(async () => {
         throw error;
       }
 
-      const csvText = csvBytes.toString("utf8");
+      const csvText = decodeCsvBytes(csvBytes);
       const rows = parseCsvText(csvText);
       const canonicalPath = process.platform === "win32" ? resolve(request.filePath).toLowerCase() : resolve(request.filePath);
       const importJobId = `import-csv-${randomUUID()}`;
