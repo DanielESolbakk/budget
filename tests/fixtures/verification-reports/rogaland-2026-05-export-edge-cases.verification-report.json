@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [],
+  "stats": {
+    "rowCount": 2,
+    "nonNokRowCount": 1,
+    "reservedRowCount": 1,
+    "holdRowCount": 0,
+    "transferRowCount": 0,
+    "fxRowCount": 1,
+    "kidReferenceCount": 0,
+    "uniqueMerchantCount": 2,
+    "merchantTokenDistribution": {
+      "7": 1,
+      "MARKET": 1,
+      "SHOP": 1,
+      "SYNTHETIC": 2,
+      "WEST": 1,
+      "WING": 1
+    }
+  }
+}

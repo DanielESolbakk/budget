@@ -1,27 +1,47 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { parse } from "csv-parse/sync";
 
 export interface ParsedFixtureCsv {
   header: string[];
   rows: string[][];
 }
 
+const summaryRowPrefixes = [
+  "Total beløp inn på konto:",
+  "Totalt beløp ut av konto:",
+  "Inngående saldo pr.",
+  "Utgående saldo pr.",
+];
+
 export function parseFixtureCsv(text: string): ParsedFixtureCsv {
   const normalizedText = text.replace(/^\uFEFF/, "").trim();
-  const lines = normalizedText.split(/\r?\n/).filter((line) => line.length > 0);
 
-  if (lines.length === 0) {
+  if (normalizedText.length === 0) {
     throw new Error("CSV file is empty.");
   }
 
-  const header = lines[0]!.split(";");
-  const rows = lines.slice(1).map((line, index) => {
-    const cells = line.split(";");
+  const records = parse(normalizedText, {
+    bom: true,
+    delimiter: ";",
+    relax_column_count: true,
+    skip_empty_lines: true,
+  }) as string[][];
+  const header = records[0] ?? [];
+  const rows = records.slice(1).flatMap((cells, index) => {
+    const rowLabel = (cells[0] ?? "").trim().replace(/\s+/g, " ");
+    const isEmptyRow = cells.every((cell) => cell.trim().length === 0);
+    const isSummaryRow = summaryRowPrefixes.some((prefix) => rowLabel.startsWith(prefix));
+
+    if (isEmptyRow || isSummaryRow) {
+      return [];
+    }
+
     if (cells.length !== header.length) {
       throw new Error(
         `Row ${index + 2} has ${cells.length} cells, expected ${header.length}.`
       );
     }
-    return cells;
+    return [cells];
   });
 
   return { header, rows };
