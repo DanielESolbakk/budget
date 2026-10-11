@@ -32,6 +32,7 @@ const CSV_COLUMN_ALIASES: Record<CsvColumnName, readonly string[]> = {
 
 export type CsvRowValidationErrorCode =
   | "EMPTY_CSV"
+  | "INVALID_ROW_SHAPE"
   | "MISSING_DATE"
   | "INVALID_DATE_FORMAT"
   | "MISSING_DESCRIPTION"
@@ -165,6 +166,15 @@ export function validateCsvRow(
 ): CsvRowValidationError[] {
   const normalizedRow = normalizeCsvRow(row, columnMapping);
   const errors: CsvRowValidationError[] = [];
+  const rowShapeError = normalizedRow.__csvRowShapeError?.trim();
+
+  if (rowShapeError) {
+    errors.push({
+      code: "INVALID_ROW_SHAPE",
+      message: rowShapeError,
+      field: "row",
+    });
+  }
 
   const executionDate = (normalizedRow[CSV_COLUMN_NAMES.executionDate] ?? "").trim();
   const bookedDate = (normalizedRow[CSV_COLUMN_NAMES.bookedDate] ?? "").trim();

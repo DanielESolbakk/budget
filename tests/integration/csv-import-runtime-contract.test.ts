@@ -9,6 +9,7 @@ import {
   buildCsvImportRequest,
   filterPreviouslyImportedCsvTransactions,
   normalizeCsvImportErrors,
+  previewCsvRowsWithProgress,
 } from "../../src/app/import/importCsv.js";
 import { parseCsvText } from "../../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../../src/domain/import/csvRowMapper.js";
@@ -149,6 +150,41 @@ function runImportOrchestration(
 }
 
 describe("csv-import-runtime-contract", () => {
+  it("returns identical ordered source metadata for repeated previews before duplicate classification", async () => {
+    const rows = parseCsvText([
+      "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Melding/KID/Fakt.nr",
+      "23.05.2026;;KIWI;;-12.50;NOK;KID-100",
+      "23.05.2026;;KIWI;;-12.50;NOK;KID-200",
+    ].join("\n"));
+    const options = {
+      householdId: SAMPLE_HOUSEHOLD.id,
+      accountId: SAMPLE_ACCOUNT.id,
+      sourceScope: "same-source.csv",
+    };
+    const callbacks = {
+      isCancelled: () => false,
+      onProgress: () => undefined,
+    };
+
+    const firstPreview = await previewCsvRowsWithProgress(rows, options, callbacks);
+    const repeatedPreview = await previewCsvRowsWithProgress(rows, options, callbacks);
+
+    expect(firstPreview).not.toBeNull();
+    expect(repeatedPreview).not.toBeNull();
+    if (firstPreview === null || repeatedPreview === null) return;
+
+    expect(firstPreview).toEqual(repeatedPreview);
+    expect(firstPreview.rows.map((row) => row.rowIndex)).toEqual([0, 1]);
+    expect(firstPreview.transactions.map(({ sourceType, sourceReference, accountId }) => ({
+      sourceType,
+      sourceReference,
+      accountId,
+    }))).toEqual([
+      { sourceType: "csv", sourceReference: "KID-100", accountId: SAMPLE_ACCOUNT.id },
+      { sourceType: "csv", sourceReference: "KID-200", accountId: SAMPLE_ACCOUNT.id },
+    ]);
+  });
+
   it("preserves legacy imported rows when undo baselines are unavailable", () => {
     const ledger = makeTestLedger(randomUUID(), false);
     const dbPath = ledger.dbPath;

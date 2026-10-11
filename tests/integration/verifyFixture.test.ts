@@ -76,6 +76,73 @@ describe("verifyFixture", () => {
     expect(writtenReport).toEqual(expectedReport);
   });
 
+  it("verifies quoted bank rows without counting separator or balance-summary rows", () => {
+    const fixturePath = writeTemporaryFixtureFile(
+      "bank-export-edge-cases.csv",
+      [
+        expectedHeaders.join(";"),
+        [
+          "29.05.2026",
+          "",
+          "29.05.2026",
+          "SYNTHETIC MARKET 7",
+          "Varekjøp",
+          "Debetkort",
+          "ACCT-001",
+          "",
+          "",
+          "LOCAL_USER",
+          "",
+          "-45.00",
+          "GBP",
+          "Reservert",
+          "REF-PENDING",
+        ].join(";"),
+        [
+          "28.05.2026",
+          "28.05.2026",
+          "28.05.2026",
+          '"SYNTHETIC SHOP; ""WEST"" WING"',
+          "Varekjøp",
+          "Debetkort",
+          "ACCT-001",
+          "",
+          "",
+          "LOCAL_USER",
+          "",
+          "-97.70",
+          "NOK",
+          "Bokført",
+          '"REF-001; FIRST LINE\nSECOND LINE"',
+        ].join(";"),
+        ";;;;;;;;;;;;;;",
+        "Total beløp inn på konto:;;123.45 NOK;;;;;;;;;;;;",
+        "Totalt beløp ut av konto:;;-123.45 NOK;;;;;;;;;;;;",
+        "Inngående saldo pr. 29.05.2025:;;100.00 NOK;;;;;;;;;;;;",
+        "Utgående saldo pr. 29.05.2026:;;99.99 NOK;;;;;;;;;;;;",
+      ].join("\n")
+    );
+
+    const report = verifyFixture({ inputPath: fixturePath });
+
+    expect(report.ok).toBe(true);
+    expect(report.errors).toEqual([]);
+    expect(report.stats.rowCount).toBe(2);
+    expect(report.stats.reservedRowCount).toBe(1);
+    expect(report.stats.fxRowCount).toBe(1);
+    expect(report.stats.uniqueMerchantCount).toBe(2);
+  });
+
+  it("keeps the committed bank parser fixture eligible for fixture verification", () => {
+    const report = verifyFixture({
+      inputPath: "tests/fixtures/synthetic/rogaland-2026-05-export-edge-cases.csv",
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.stats.rowCount).toBe(2);
+    expect(report.stats.fxRowCount).toBe(1);
+  });
+
   it("returns deterministic structural errors for comma-delimited fixture input", () => {
     const invalidFixturePath = writeTemporaryFixtureFile(
       "invalid-delimiter.csv",
@@ -291,26 +358,29 @@ describe("verifyFixture", () => {
           "NOK",
           "Reservert",
           "TXN-001"
-        ].join(";"),
-        [
-          "28.05.2026",
-          "28.05.2026",
-          "28.05.2026",
-          "MERCHANT_002",
-          "Varekjøp",
-          "Holdt kortkjøp",
-          "ACCT-001",
-          "",
-          "",
-          "USER_1",
-          "",
-          "-15.00",
-          "GBP",
-          "Bokført",
-          "FX-001"
         ].join(";")
       ].join("\n")
     );
+    const records = [
+      [
+        "28.05.2026",
+        "28.05.2026",
+        "28.05.2026",
+        "MERCHANT_002",
+        "Varekjøp",
+        "Holdt kortkjøp",
+        "ACCT-001",
+        "",
+        "",
+        "USER_1",
+        "",
+        "-15.00",
+        "GBP",
+        "Bokført",
+        "FX-001"
+      ].join(";")
+    ];
+    writeFileSync(fixturePath, `${readFileSync(fixturePath, "utf8")}\n${records.join("\n")}\n`, "utf8");
 
     const report = verifyFixture({
       inputPath: fixturePath
@@ -341,26 +411,27 @@ describe("verifyFixture", () => {
           "GBP",
           "Bokført",
           "TXN-001"
-        ].join(";"),
-        [
-          "28.05.2026",
-          "28.05.2026",
-          "28.05.2026",
-          "MERCHANT_EMPTY_CURRENCY",
-          "Varekjøp",
-          "Debetkort",
-          "ACCT-001",
-          "",
-          "",
-          "USER_1",
-          "",
-          "-15.00",
-          "",
-          "Bokført",
-          "TXN-002"
         ].join(";")
       ].join("\n")
     );
+    const blankCurrencyRecord = [
+      "28.05.2026",
+      "28.05.2026",
+      "28.05.2026",
+      "MERCHANT_EMPTY_CURRENCY",
+      "Varekjøp",
+      "Debetkort",
+      "ACCT-001",
+      "",
+      "",
+      "USER_1",
+      "",
+      "-15.00",
+      "",
+      "Bokført",
+      "TXN-002"
+    ];
+    writeFileSync(fixturePath, `${readFileSync(fixturePath, "utf8")}\n${blankCurrencyRecord.join(";")}\n`, "utf8");
 
     const report = verifyFixture({ inputPath: fixturePath });
 
