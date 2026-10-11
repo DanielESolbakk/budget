@@ -15,27 +15,47 @@ export function decodeCsvBytes(bytes: Uint8Array): string {
   }
 }
 
-/**
- * Parses a semicolon-delimited CSV text string into an array of row objects.
- *
- * Supports the Norwegian bank CSV export format with a semicolon delimiter.
- * Handles quoted delimiters and multiline fields, and ignores empty lines.
- */
+/** Parses semicolon-delimited CSV text without applying bank-specific row rules. */
 export function parseCsvText(text: string): Array<Record<string, string>> {
+  return parseCsvTextWithSummaryPrefixes(text, []);
+}
+
+/** Parses the Rogaland export format and excludes its recognized balance-summary rows. */
+export function parseRogalandCsvText(text: string): Array<Record<string, string>> {
+  return parseCsvTextWithSummaryPrefixes(text, ROGALAND_SUMMARY_PREFIXES);
+}
+
+function parseCsvTextWithSummaryPrefixes(
+  text: string,
+  summaryRowPrefixes: readonly string[]
+): Array<Record<string, string>> {
   if (text.trim().length === 0) {
     return [];
   }
 
   const records = parse(text, {
     bom: true,
-    columns: true,
     delimiter: ";",
+    relax_column_count: true,
     skip_empty_lines: true,
-  }) as Array<Record<string, string>>;
+  }) as string[][];
+  const header = records[0] ?? [];
 
-  return records.filter((record) => {
+  return records.slice(1).flatMap((cells, index) => {
+    const record: Record<string, string> = {};
+    header.forEach((columnName, columnIndex) => {
+      record[columnName] = cells[columnIndex] ?? "";
+    });
+
     const summaryLabel = (record["Utført dato"] ?? "").trim().replace(/\s+/g, " ");
-    return Object.values(record).some((value) => value.trim().length > 0) &&
-      !ROGALAND_SUMMARY_PREFIXES.some((prefix) => summaryLabel.startsWith(prefix));
+    const isEmptyRow = cells.every((cell) => cell.trim().length === 0);
+    const isSummaryRow = summaryRowPrefixes.some((prefix) => summaryLabel.startsWith(prefix));
+    if (isEmptyRow || isSummaryRow) return [];
+
+    if (cells.length !== header.length) {
+      record.__csvRowShapeError = `Row ${index + 2} has ${cells.length} cells, expected ${header.length}.`;
+    }
+
+    return [record];
   });
 }

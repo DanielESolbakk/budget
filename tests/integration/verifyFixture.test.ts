@@ -380,7 +380,7 @@ describe("verifyFixture", () => {
         "FX-001"
       ].join(";")
     ];
-    writeFileSync(fixturePath, `${[expectedHeaders.join(";"), ...records].join("\n")}\n`, "utf8");
+    writeFileSync(fixturePath, `${readFileSync(fixturePath, "utf8")}\n${records.join("\n")}\n`, "utf8");
 
     const report = verifyFixture({
       inputPath: fixturePath
@@ -431,7 +431,7 @@ describe("verifyFixture", () => {
       "Bokført",
       "TXN-002"
     ];
-    writeFileSync(fixturePath, `${[expectedHeaders.join(";"), blankCurrencyRecord.join(";")].join("\n")}\n`, "utf8");
+    writeFileSync(fixturePath, `${readFileSync(fixturePath, "utf8")}\n${blankCurrencyRecord.join(";")}\n`, "utf8");
 
     const report = verifyFixture({ inputPath: fixturePath });
 
@@ -478,7 +478,7 @@ describe("verifyFixture", () => {
     const glossaryRows = glossary.split(/\r?\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
-      expect(row, `Glossary must define \"${term}\"`).not.toBe("");
+      expect(row, `Glossary must define "${term}"`).not.toBe("");
       expect(row).toContain(`| ${term} | ${fragment}`);
     }
   });

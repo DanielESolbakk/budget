@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { mapCsvRows } from "../../src/domain/import/csvRowMapper.js";
-import { decodeCsvBytes, parseCsvText } from "../../src/domain/import/parseCsvText.js";
+import { mapCsvRows, previewCsvRows } from "../../src/domain/import/csvRowMapper.js";
+import {
+  decodeCsvBytes,
+  parseCsvText,
+  parseRogalandCsvText,
+} from "../../src/domain/import/parseCsvText.js";
 
 describe("parseCsvText", () => {
   it("preserves delimiters, escaped quotes, and line breaks inside quoted cells", () => {
@@ -18,6 +22,41 @@ describe("parseCsvText", () => {
         "Melding/KID/Fakt.nr": "REF-001",
       },
     ]);
+  });
+
+  it("keeps valid rows previewable when other rows have inconsistent cell counts", () => {
+    const csvText = [
+      "Utført dato;Beskrivelse;Beløp ut;Valuta",
+      "28.05.2026;SYNTHETIC VALID;-10.00;NOK",
+      "29.05.2026;SYNTHETIC SHORT",
+      "27.05.2026;SYNTHETIC EXTRA;-5.00;NOK;UNEXPECTED",
+    ].join("\n");
+
+    const preview = previewCsvRows(parseCsvText(csvText), {
+      householdId: "hh-fixture",
+      accountId: "acc-fixture",
+    });
+
+    expect(preview.rows).toHaveLength(3);
+    expect(preview.rows[0]?.transaction).toMatchObject({
+      merchantRaw: "SYNTHETIC VALID",
+      amountMinor: -1000,
+    });
+    expect(preview.rows[1]?.errors).toEqual([
+      {
+        code: "INVALID_ROW_SHAPE",
+        message: "Row 3 has 2 cells, expected 4.",
+        field: "row",
+      },
+    ]);
+    expect(preview.rows[2]?.errors).toEqual([
+      {
+        code: "INVALID_ROW_SHAPE",
+        message: "Row 4 has 5 cells, expected 4.",
+        field: "row",
+      },
+    ]);
+    expect(preview.transactions).toHaveLength(1);
   });
 
   it("decodes legacy Windows-1252 bytes without corrupting Norwegian characters", () => {
@@ -43,13 +82,28 @@ describe("parseCsvText", () => {
       "Totalt beløp ut av konto:;;-123,45 NOK;;;;;;;;;;;;",
     ].join("\n");
 
-    const rows = parseCsvText(csvText);
+    const rows = parseRogalandCsvText(csvText);
 
     expect(rows.map((row) => row["Beskrivelse"])).toEqual([
       "SYNTHETIC PENDING SHOP",
       "SYNTHETIC BOOKED SHOP",
     ]);
     expect(rows.map((row) => row["Status"])).toEqual(["Reservert", "Bokført"]);
+  });
+
+  it("leaves bank-specific footer filtering out of the generic CSV parser", () => {
+    const csvText = [
+      "Utført dato;Beskrivelse;Beløp inn",
+      "Total beløp inn på konto:;SYNTHETIC IMPORT NOTE;10.00",
+    ].join("\n");
+
+    expect(parseCsvText(csvText)).toEqual([
+      {
+        "Utført dato": "Total beløp inn på konto:",
+        Beskrivelse: "SYNTHETIC IMPORT NOTE",
+        "Beløp inn": "10.00",
+      },
+    ]);
   });
 
   it("ignores delimiter-only separator rows", () => {
@@ -71,7 +125,7 @@ describe("parseCsvText", () => {
       "Utgående  saldo pr. 29.05.2026:;;108 991,81 NOK;;;",
     ].join("\n");
 
-    expect(parseCsvText(csvText)).toEqual([
+    expect(parseRogalandCsvText(csvText)).toEqual([
       {
         "Utført dato": "28.05.2026",
         "Bokført dato": "28.05.2026",
@@ -89,7 +143,7 @@ describe("parseCsvText", () => {
       "utf8"
     );
 
-    const rows = parseCsvText(fixture);
+    const rows = parseRogalandCsvText(fixture);
 
     expect(rows).toHaveLength(2);
     expect(rows.map((row) => row["Status"])).toEqual(["Reservert", "Bokført"]);
@@ -104,7 +158,7 @@ describe("parseCsvText", () => {
       "tests/fixtures/synthetic/rogaland-2026-05-export-edge-cases.csv",
       "utf8"
     );
-    const result = mapCsvRows(parseCsvText(fixture), {
+    const result = mapCsvRows(parseRogalandCsvText(fixture), {
       householdId: "hh-fixture",
       accountId: "acc-fixture",
     });
