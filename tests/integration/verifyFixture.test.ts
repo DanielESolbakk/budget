@@ -48,7 +48,7 @@ function writeTemporaryFixtureFile(fileName: string, content: string): string {
 }
 
 function readMarkdownSection(markdown: string, heading: string): string {
-  const escapedHeading = heading.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = markdown.match(
     new RegExp(`^${escapedHeading}\\r?\\n([\\s\\S]*?)(?=^#{1,2}\\s|(?![\\s\\S]))`, "im"),
   );
@@ -102,7 +102,7 @@ describe("verifyFixture", () => {
           "28.05.2026",
           "28.05.2026",
           "28.05.2026",
-          '\"SYNTHETIC SHOP; \"\"WEST\"\" WING\"',
+          '"SYNTHETIC SHOP; ""WEST"" WING"',
           "Varekjøp",
           "Debetkort",
           "ACCT-001",
@@ -113,14 +113,14 @@ describe("verifyFixture", () => {
           "-97.70",
           "NOK",
           "Bokført",
-          '\"REF-001; FIRST LINE\\nSECOND LINE\"',
+          '"REF-001; FIRST LINE\nSECOND LINE"',
         ].join(";"),
         ";;;;;;;;;;;;;;",
         "Total beløp inn på konto:;;123.45 NOK;;;;;;;;;;;;",
         "Totalt beløp ut av konto:;;-123.45 NOK;;;;;;;;;;;;",
         "Inngående saldo pr. 29.05.2025:;;100.00 NOK;;;;;;;;;;;;",
         "Utgående saldo pr. 29.05.2026:;;99.99 NOK;;;;;;;;;;;;",
-      ].join("\\n")
+      ].join("\n")
     );
 
     const report = verifyFixture({ inputPath: fixturePath });
@@ -165,7 +165,7 @@ describe("verifyFixture", () => {
           "Reservert",
           "TXN-001"
         ].join(",")
-      ].join("\\n")
+      ].join("\n")
     );
 
     const report = verifyFixture({
@@ -215,7 +215,7 @@ describe("verifyFixture", () => {
           "Bokført",
           "TXN-001"
         ].join(";")
-      ].join("\\n")
+      ].join("\n")
     );
 
     const report = verifyFixture({
@@ -255,7 +255,7 @@ describe("verifyFixture", () => {
       [
         expectedHeaders.join(";"),
         "29.05.2026;;29.05.2026;MERCHANT_001;Varekjøp"
-      ].join("\\n")
+      ].join("\n")
     );
 
     expect(() =>
@@ -308,7 +308,7 @@ describe("verifyFixture", () => {
           "Bokført",
           "TXN-001"
         ].join(";")
-      ].join("\\n")
+      ].join("\n")
     );
     const reportDirectory = join(dirname(invalidFixturePath), "reports");
     const reportPath = join(reportDirectory, "invalid-data.verification-report.json");
@@ -359,7 +359,7 @@ describe("verifyFixture", () => {
           "Reservert",
           "TXN-001"
         ].join(";")
-      ].join("\\n")
+      ].join("\n")
     );
     const records = [
       [
@@ -380,7 +380,7 @@ describe("verifyFixture", () => {
         "FX-001"
       ].join(";")
     ];
-    writeFileSync(fixturePath, `${[expectedHeaders.join(";"), ...records].join("\\n")}\\n`, "utf8");
+    writeFileSync(fixturePath, `${[expectedHeaders.join(";"), ...records].join("\n")}\n`, "utf8");
 
     const report = verifyFixture({
       inputPath: fixturePath
@@ -412,7 +412,7 @@ describe("verifyFixture", () => {
           "Bokført",
           "TXN-001"
         ].join(";")
-      ].join("\\n")
+      ].join("\n")
     );
     const blankCurrencyRecord = [
       "28.05.2026",
@@ -431,7 +431,7 @@ describe("verifyFixture", () => {
       "Bokført",
       "TXN-002"
     ];
-    writeFileSync(fixturePath, `${[expectedHeaders.join(";"), blankCurrencyRecord.join(";")].join("\\n")}\\n`, "utf8");
+    writeFileSync(fixturePath, `${[expectedHeaders.join(";"), blankCurrencyRecord.join(";")].join("\n")}\n`, "utf8");
 
     const report = verifyFixture({ inputPath: fixturePath });
 
@@ -448,7 +448,7 @@ describe("verifyFixture", () => {
     );
     const planMd = readRepositoryFile("plan.md");
 
-    expect(adr).toMatch(/^## Status\\s+Accepted$/m);
+    expect(adr).toMatch(/^## Status\s+Accepted$/m);
     const parserSection = readMarkdownSection(adr, "### Import and Parser Layer");
     expect(parserSection).toContain("source-aware parser adapters");
     expect(parserSection).toContain("parser-specific logic isolated");
@@ -475,7 +475,7 @@ describe("verifyFixture", () => {
       "forecast assumption": "An explicit input used by forecasting logic",
       "backup snapshot": "A user-initiated exportable backup",
     };
-    const glossaryRows = glossary.split(/\\r?\\n/);
+    const glossaryRows = glossary.split(/\r?\n/);
     for (const [term, fragment] of Object.entries(definitionFragments)) {
       const row = glossaryRows.find((line) => line.startsWith(`| ${term} |`)) ?? "";
       expect(row, `Glossary must define \"${term}\"`).not.toBe("");
