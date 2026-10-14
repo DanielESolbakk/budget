@@ -19,11 +19,15 @@ const VALID_TRANSACTION_DATE_PREFIX_PATTERN = /^\s*\d{2}\.\d{2}\.\d{4}(?=\s)/;
 const TRANSACTION_DATE_LIKE_PREFIX_PATTERN = /^\s*\d{1,4}[./-]\d{1,4}[./-]\d{1,4}(?=\s)/;
 const BANK_EXPORT_TABLE_HEADER_PATTERN = /^Dato\s+Type\s+Fra konto\b/;
 const BANK_EXPORT_TRANSACTION_DATE_PATTERN = /^\s*(\d{2}\.\d{2}\.\d{4})(?=\s)/;
+const BANK_EXPORT_DATE_LIKE_PREFIX_PATTERN = /^\s*\d{1,4}[./-]\d{1,4}[./-]\d{1,4}(?=\s)/;
+const BANK_EXPORT_CONTINUATION_COLUMN_TOLERANCE = 8;
 const BANK_EXPORT_PAGE_FOOTER_PATTERN = /^\s*\d+\s*\/\s*\d+\s+Rogaland Sparebank\s*$/i;
 const BANK_EXPORT_SUMMARY_PATTERN = /^\s*(?:Total beløp|Totalt beløp|Inngående saldo|Utgående\s+saldo)\b/i;
 
 export type PdfTextValidationErrorCode =
   | "UNSUPPORTED_LAYOUT"
+  | "INVALID_TRANSACTION_ROW"
+  | "UNSUPPORTED_TRANSACTION_STATUS"
   | "MISSING_TRANSACTION_SECTION"
   | "INVALID_DATE_FORMAT"
   | "INVALID_AMOUNT_FORMAT"
@@ -129,6 +133,7 @@ interface BankExportRow {
 
 function collectBankExportRows(lines: readonly string[], tableHeaderIndex: number): BankExportRow[] {
   const rows: BankExportRow[] = [];
+  const messageColumnStart = lines[tableHeaderIndex]?.indexOf("Melding/KID/Fakt.nr") ?? -1;
   let currentRow: BankExportRow | undefined;
 
   const finishCurrentRow = (): void => {
@@ -151,11 +156,22 @@ function collectBankExportRows(lines: readonly string[], tableHeaderIndex: numbe
       continue;
     }
 
+    const lineNumber = tableHeaderIndex + index + 2;
     if (BANK_EXPORT_TRANSACTION_DATE_PATTERN.test(line)) {
       finishCurrentRow();
-      currentRow = { lineNumber: tableHeaderIndex + index + 2, text: trimmedLine };
-    } else if (currentRow !== undefined) {
+      currentRow = { lineNumber, text: trimmedLine };
+    } else if (BANK_EXPORT_DATE_LIKE_PREFIX_PATTERN.test(line)) {
+      finishCurrentRow();
+      currentRow = { lineNumber, text: trimmedLine };
+    } else if (
+      currentRow !== undefined &&
+      messageColumnStart !== -1 &&
+      line.search(/\S/) >= messageColumnStart - BANK_EXPORT_CONTINUATION_COLUMN_TOLERANCE
+    ) {
       currentRow.text = `${currentRow.text} ${trimmedLine}`;
+    } else {
+      finishCurrentRow();
+      rows.push({ lineNumber, text: trimmedLine });
     }
   }
 
@@ -178,16 +194,42 @@ function parseRogalandBankExport(
   for (const row of rows) {
     const match = bankExportRowPattern.exec(row.text);
     if (match === null) {
+      const hasDateLikePrefix = BANK_EXPORT_DATE_LIKE_PREFIX_PATTERN.test(row.text);
+      const hasValidDatePrefix = BANK_EXPORT_TRANSACTION_DATE_PATTERN.test(row.text);
+      if (hasDateLikePrefix && !hasValidDatePrefix) {
+        errors.push({
+          code: "INVALID_DATE_FORMAT",
+          message: `Could not parse bank-export transaction date at line ${row.lineNumber}.`,
+          lineNumber: row.lineNumber,
+          field: "date",
+        });
+      } else if (hasValidDatePrefix) {
+        errors.push({
+          code: "INVALID_AMOUNT_FORMAT",
+          message: `Could not parse bank-export transaction amount at line ${row.lineNumber}.`,
+          lineNumber: row.lineNumber,
+          field: "amount",
+        });
+      } else {
+        errors.push({
+          code: "INVALID_TRANSACTION_ROW",
+          message: `Could not parse bank-export transaction row at line ${row.lineNumber}.`,
+          lineNumber: row.lineNumber,
+        });
+      }
+      continue;
+    }
+
+    const [, rawDate = "", prefix = "", rawAmount = "", currencyCode = "NOK", status = "", rawMessage = ""] = match;
+    if (status.toLowerCase() !== "bokført") {
       errors.push({
-        code: "INVALID_AMOUNT_FORMAT",
-        message: `Could not parse bank-export transaction row at line ${row.lineNumber}.`,
+        code: "UNSUPPORTED_TRANSACTION_STATUS",
+        message: `Transaction status "${status}" at line ${row.lineNumber} is not supported as a booked transaction.`,
         lineNumber: row.lineNumber,
-        field: "amount",
       });
       continue;
     }
 
-    const [, rawDate = "", prefix = "", rawAmount = "", currencyCode = "NOK", , rawMessage = ""] = match;
     const bookedAtIso = parseNorwegianDate(rawDate);
     if (bookedAtIso === null) {
       errors.push({
@@ -435,6 +477,66 @@ export async function parseRogalandStatementTextInBatches(
   if (!isRogalandStatementText(text)) return parseRogalandStatementText(text, options);
 
   const lines = text.split(/\r?\n/);
+  const bankExportHeaderIndex = lines.findIndex((line) =>
+    BANK_EXPORT_TABLE_HEADER_PATTERN.test(line.trim())
+  );
+  if (bankExportHeaderIndex !== -1) {
+    const rows = collectBankExportRows(lines, bankExportHeaderIndex);
+    if (rows.length === 0) return parseRogalandStatementText(text, options);
+
+    const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
+    const headerText = lines.slice(0, bankExportHeaderIndex + 1).join("\n");
+    const transactions: Transaction[] = [];
+    const errors: PdfTextValidationError[] = [];
+
+    for (let start = 0; start < rows.length; start += batchSize) {
+      if (callbacks.isCancelled()) return null;
+      const end = Math.min(start + batchSize, rows.length);
+      const batchRows = rows.slice(start, end);
+      const batchText = `${headerText}\n${batchRows.map((row) => row.text).join("\n")}`;
+      const result = parseRogalandStatementText(batchText, {
+        ...options,
+        idPrefix: `${options.idPrefix ?? "pdf"}-batch-${start}`,
+      });
+
+      if (result.ok) {
+        transactions.push(...result.transactions);
+      } else {
+        errors.push(...result.errors
+          .filter((error) => error.code !== "MISSING_TRANSACTION_SECTION")
+          .map((error) => {
+            const batchRowIndex = error.lineNumber === undefined
+              ? undefined
+              : error.lineNumber - bankExportHeaderIndex - 2;
+            const sourceRow = batchRowIndex === undefined ? undefined : rows[start + batchRowIndex];
+            return {
+              ...error,
+              ...(sourceRow === undefined ? {} : { lineNumber: sourceRow.lineNumber }),
+            };
+          }));
+      }
+
+      callbacks.onProgress(end, rows.length);
+      await new Promise<void>((resolveBatch) => setImmediate(resolveBatch));
+    }
+
+    if (callbacks.isCancelled()) return null;
+    if (errors.length > 0) return { ok: false, errors };
+    if (transactions.length === 0) return parseRogalandStatementText(text, options);
+
+    transactions.sort((left, right) =>
+      right.bookedAtIso.localeCompare(left.bookedAtIso) ||
+      left.amountMinor - right.amountMinor ||
+      left.merchantRaw.localeCompare(right.merchantRaw)
+    );
+    const idPrefix = options.idPrefix ?? "pdf";
+    transactions.forEach((transaction, index) => {
+      transaction.id = `${idPrefix}-${index + 1}`;
+    });
+
+    return { ok: true, adapterId: ROGALAND_ADAPTER_ID, transactions };
+  }
+
   const tableHeaderIndex = lines.findIndex((line) => /^Dato\s+Beskrivelse/.test(line.trim()));
   if (tableHeaderIndex === -1) return parseRogalandStatementText(text, options);
 

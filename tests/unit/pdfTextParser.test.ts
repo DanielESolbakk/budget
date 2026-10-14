@@ -72,6 +72,33 @@ describe("pdfTextParser unit tests", () => {
     });
   });
 
+  it("reports progress and cancels between paginated export batches", async () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -97,70 NOK Bokført 27.05 MARKET",
+      "1/2 Rogaland Sparebank",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "27.05.2026 Lønn SYNTHETIC EMPLOYER 50 000,00 NOK Bokført Fra: EMPLOYER",
+      "2/2 Rogaland Sparebank",
+    ].join("\n");
+    const progress: Array<[number, number]> = [];
+    let cancellationChecks = 0;
+
+    const result = await pdfTextParser.parseRogalandStatementTextInBatches(text, BASE_OPTIONS, {
+      batchSize: 1,
+      isCancelled: () => ++cancellationChecks > 1,
+      onProgress: (completedRows, totalRows) => progress.push([completedRows, totalRows]),
+    });
+
+    expect(result).toBeNull();
+    expect(progress).toEqual([[1, 2]]);
+  });
+
   it("builds the same import job ID for identical content and context", () => {
     const text = loadFixture();
 
@@ -152,6 +179,112 @@ describe("pdfTextParser unit tests", () => {
       code: "INVALID_AMOUNT_FORMAT",
       lineNumber: 3,
       field: "amount",
+    });
+  });
+
+  it("reports a malformed bank-export row before the first transaction", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "BAD ROW WITHOUT A DATE",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -97,70 NOK Bokført 27.05 MARKET",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: "INVALID_TRANSACTION_ROW", lineNumber: 4 }],
+    });
+  });
+
+  it("reports an unindented malformed row after a bank-export transaction", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -97,70 NOK Bokført 27.05 MARKET",
+      "BROKEN ROW WITHOUT A DATE",
+      "27.05.2026 Lønn SYNTHETIC EMPLOYER 50 000,00 NOK Bokført Fra: EMPLOYER",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: "INVALID_TRANSACTION_ROW", lineNumber: 5 }],
+    });
+  });
+
+  it("does not merge a malformed line outside the message column into a transaction", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -97,70 NOK Bokført 27.05 MARKET",
+      "    BROKEN ROW WITHOUT A DATE",
+      "27.05.2026 Lønn SYNTHETIC EMPLOYER 50 000,00 NOK Bokført Fra: EMPLOYER",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: "INVALID_TRANSACTION_ROW", lineNumber: 5 }],
+    });
+  });
+
+  it("reports a malformed bank-export amount as an amount error", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 1",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER invalid NOK Bokført 27.05 MARKET",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: "INVALID_AMOUNT_FORMAT", lineNumber: 4, field: "amount" }],
+    });
+  });
+
+  it("rejects reserved bank-export rows instead of importing them as booked", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 1",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -97,70 NOK Reservert 27.05 MARKET",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: "UNSUPPORTED_TRANSACTION_STATUS", lineNumber: 4 }],
+    });
+  });
+
+  it("parses wrapped descriptions across repeated bank-export page headers", () => {
+    const text = readFileSync(PAGINATED_EXPORT_FIXTURE_PATH, "utf8");
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result).toMatchObject({
+      ok: true,
+      transactions: [
+        {
+          bookedAtIso: "2026-05-28T00:00:00Z",
+          amountMinor: -9770,
+          merchantRaw: "27.05 SYNTHETIC MARKET 7 SANDNES",
+        },
+        {
+          bookedAtIso: "2026-05-27T00:00:00Z",
+          amountMinor: 5_000_000,
+          merchantRaw: "Fra: SYNTHETIC EMPLOYER",
+        },
+      ],
     });
   });
 
