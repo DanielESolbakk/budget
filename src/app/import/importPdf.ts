@@ -1,4 +1,4 @@
-import type { PdfTextParseBatchCallbacks, PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import type { PdfTextExcludedRow, PdfTextParseBatchCallbacks, PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
 import { randomUUID } from "node:crypto";
 import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
@@ -22,6 +22,7 @@ export interface PdfImportSuccess {
   importJobId: string;
   transactionCount: number;
   duplicateCount: number;
+  excludedRowCount: number;
   adapterId: string;
 }
 
@@ -44,6 +45,8 @@ export interface PdfImportPreviewSuccess {
   previewId: string;
   adapterId: string;
   transactions: Transaction[];
+  excludedRowCount: number;
+  excludedRows: PdfTextExcludedRow[];
   duplicateCandidates?: Array<{
     rowIndex: number;
     transactionId: string;
@@ -63,6 +66,7 @@ export interface PdfImportWorkflowInput extends PdfImportRequest {
   finishedAtIso: string;
   categoryRules?: ReadonlyMap<string, string>;
   duplicateDecisions?: DuplicateImportDecision[];
+  acknowledgeExcludedRows?: boolean;
 }
 
 export interface PdfImportWorkflowDependencies {
@@ -178,6 +182,8 @@ export function previewPdfImportWorkflow(
   return {
     ok: true,
     adapterId: parseResult.adapterId,
+    excludedRowCount: parseResult.excludedRows?.length ?? 0,
+    excludedRows: parseResult.excludedRows ?? [],
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
       canonicalSourceScope(input.filePath)
@@ -200,6 +206,8 @@ export async function previewPdfImportWorkflowInBatches(
   return {
     ok: true,
     adapterId: parseResult.adapterId,
+    excludedRowCount: parseResult.excludedRows?.length ?? 0,
+    excludedRows: parseResult.excludedRows ?? [],
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
       canonicalSourceScope(input.filePath)
@@ -219,6 +227,17 @@ export function runPdfImportWorkflow(
 
   if (!parseResult.ok) {
     return normalizePdfImportErrors(parseResult.errors);
+  }
+
+  const excludedRowCount = parseResult.excludedRows?.length ?? 0;
+  if (excludedRowCount > 0 && input.acknowledgeExcludedRows !== true) {
+    return {
+      ok: false,
+      errors: [{
+        code: "PENDING_ROWS_ACKNOWLEDGEMENT_REQUIRED",
+        message: "This statement contains reserved or confirmed rows that are not booked. Acknowledge that they will be excluded before importing booked transactions.",
+      }],
+    };
   }
 
   const transactions = assignImportedTransactionIds(
@@ -312,6 +331,7 @@ export function runPdfImportWorkflow(
     importJobId: input.importJobId,
     transactionCount: insertedCount,
     duplicateCount: reportedDuplicateCount,
+    excludedRowCount,
     adapterId: parseResult.adapterId,
   };
 }

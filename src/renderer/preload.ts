@@ -94,7 +94,7 @@ export interface ImportApi {
   importCsv: (input: { filePath: string; previewId: string; accountId?: string; columnMapping?: CsvColumnMapping; duplicateDecisions?: DuplicateImportDecision[] }) => Promise<CsvImportResponse>;
   addManualTransaction: (input: ManualEntryInput) => Promise<ManualEntryResponse>;
   previewPdf: (input: { filePath: string; requestId?: string; accountId?: string }) => Promise<PdfImportPreviewResponse>;
-  importPdf: (input: { filePath: string; previewId: string; accountId?: string; duplicateDecisions?: DuplicateImportDecision[] }) => Promise<PdfImportResponse>;
+  importPdf: (input: { filePath: string; previewId: string; accountId?: string; duplicateDecisions?: DuplicateImportDecision[]; acknowledgeExcludedRows?: boolean }) => Promise<PdfImportResponse>;
 }
 
 export interface ReviewApi {
@@ -204,7 +204,7 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("transaction:addManual", input),
     previewPdf: (input: { filePath: string; requestId?: string; accountId?: string }): Promise<PdfImportPreviewResponse> =>
       ipcRenderer.invoke("import:pdfPreview", input),
-    importPdf: (input: { filePath: string; previewId: string; accountId?: string; duplicateDecisions?: DuplicateImportDecision[] }): Promise<PdfImportResponse> =>
+    importPdf: (input: { filePath: string; previewId: string; accountId?: string; duplicateDecisions?: DuplicateImportDecision[]; acknowledgeExcludedRows?: boolean }): Promise<PdfImportResponse> =>
       ipcRenderer.invoke("import:pdf", input),
   },
   review: {

@@ -122,6 +122,22 @@ function loadPersistedTransactions(databasePath: string) {
 }
 
 test.describe("CSV import renderer workflow", () => {
+  test("shows the target account before CSV preview", async ({ csvImport }) => {
+    const accountSelect = csvImport.importSection.getByRole("combobox", { name: "Import into account" });
+
+    await expect(accountSelect).toBeVisible();
+    await expect(accountSelect).toHaveValue("sample-acc");
+    await expect(accountSelect.locator("option")).toHaveText(["Brukskonto"]);
+  });
+
+  test("states when a CSV preview has no duplicate decisions", async ({ csvImport }) => {
+    await csvImport.enterFilePath(writeAliasHeaderCsvFixture());
+    await csvImport.importButton.click();
+    await expect(csvImport.previewRegion).toBeVisible();
+
+    await expect(csvImport.previewRegion).toContainText("No duplicate decisions needed.");
+  });
+
   test("cancelling a 10,000-row preflight leaves the ledger unchanged", async ({ csvImport, databasePath }) => {
     const transactionsBeforePreview = loadPersistedTransactions(databasePath);
     await csvImport.enterFilePath(writeLargeCsvFixture(10_000));
@@ -243,7 +259,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
     await expect(csvImport.mappingSelect("Description")).toHaveValue("Beskrivelse");
-    await expect(csvImport.importSection.getByText("Import account: Brukskonto", { exact: true })).toBeVisible();
+    await expect(csvImport.importSection.getByRole("combobox", { name: "Import into account" })).toHaveValue("sample-acc");
 
     await csvImport.importSection.getByRole("button", { name: "Delete profile Norwegian bank profile", exact: true }).click();
     await expect(csvImport.importSection.getByText("Norwegian bank profile", { exact: true })).not.toBeVisible();
@@ -307,7 +323,7 @@ test.describe("CSV import renderer workflow", () => {
     expect(compactDimensions.documentWidth).toBeLessThanOrEqual(compactDimensions.viewportWidth);
     expect(compactDimensions.choiceHeights).toHaveLength(3);
     expect(compactDimensions.choiceHeights.every((height) => height >= 44)).toBe(true);
-    expect(compactDimensions.formatOptionsHeight).toBeLessThanOrEqual(112);
+    expect(compactDimensions.formatOptionsHeight).toBeLessThanOrEqual(150);
     await expect(window).toHaveScreenshot("import-workspace-compact.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.015,

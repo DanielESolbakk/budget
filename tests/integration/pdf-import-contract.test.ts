@@ -31,11 +31,13 @@ import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
   appendUniqueTransactions,
+  previewPdfImportWorkflow,
   runPdfImportWorkflow,
 } from "../../src/app/import/importPdf.js";
 import type { Account, Household, ImportJob, Transaction } from "../../src/domain/types.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-statement.txt";
+const PAGINATED_EXPORT_FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-paginated-export.txt";
 
 const MAPPING_OPTIONS = {
   householdId: "hh-test",
@@ -115,6 +117,118 @@ function runPdfImportOrchestration(
   );
 }
 describe("pdf import contract", () => {
+  describe("booked-only import acknowledgement", () => {
+    const mixedStatusText = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 3",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "29.05.2026 Varekjøp ACCT-001 SYNTHETIC -45,00 NOK Reservert SYNTHETIC TRANSIT",
+      "29.05.2026 Betaling ACCT-001 SYNTHETIC -350,00 NOK Bekreftet SYNTHETIC BILL",
+      "28.05.2026 Varekjøp ACCT-001 SYNTHETIC -20,00 NOK Bokført SYNTHETIC SHOP",
+    ].join("\n");
+
+    function makeDependencies(ledger: ReturnType<typeof makeTestLedger>) {
+      return {
+        parserRegistry: defaultParserAdapterRegistry,
+        appendImportJob: ledger.appendImportJob,
+        appendTransactions: ledger.appendTransactions,
+        appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      };
+    }
+
+    it("reports excluded rows in the PDF preview before confirmation", () => {
+      const preview = previewPdfImportWorkflow({
+        pdfText: mixedStatusText,
+        filePath: "mixed-status-statement.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+      }, defaultParserAdapterRegistry);
+
+      expect(preview).toMatchObject({
+        ok: true,
+        transactions: [{ merchantRaw: "SYNTHETIC SHOP" }],
+        excludedRowCount: 2,
+        excludedRows: [
+          {
+            lineNumber: 4,
+            status: "Reservert",
+            date: "29.05.2026",
+            amount: "-45,00",
+            currencyCode: "NOK",
+            description: "SYNTHETIC TRANSIT",
+          },
+          {
+            lineNumber: 5,
+            status: "Bekreftet",
+            date: "29.05.2026",
+            amount: "-350,00",
+            currencyCode: "NOK",
+            description: "SYNTHETIC BILL",
+          },
+        ],
+      });
+    });
+
+    it("requires explicit acknowledgement before importing when pending rows are excluded", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const input = {
+        pdfText: mixedStatusText,
+        filePath: "mixed-status-statement.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        importJobId: "mixed-status-job",
+        startedAtIso: "2026-05-29T00:00:00Z",
+        finishedAtIso: "2026-05-29T00:00:00Z",
+      };
+
+      try {
+        const response = runPdfImportWorkflow(input, makeDependencies(ledger));
+
+        expect(response).toMatchObject({
+          ok: false,
+          errors: [{ code: "PENDING_ROWS_ACKNOWLEDGEMENT_REQUIRED" }],
+        });
+        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(0);
+        expect(ledger.loadLedgerSnapshotData().importJobs).toHaveLength(0);
+      } finally {
+        ledger.close();
+      }
+    });
+
+    it("imports only booked candidates after acknowledging excluded pending rows", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const input = {
+        pdfText: mixedStatusText,
+        filePath: "mixed-status-statement.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        importJobId: "mixed-status-acknowledged-job",
+        startedAtIso: "2026-05-29T00:00:00Z",
+        finishedAtIso: "2026-05-29T00:00:00Z",
+        acknowledgeExcludedRows: true,
+      };
+
+      try {
+        const response = runPdfImportWorkflow(input, makeDependencies(ledger));
+
+        expect(response).toMatchObject({
+          ok: true,
+          transactionCount: 1,
+          excludedRowCount: 2,
+        });
+        expect(ledger.loadLedgerSnapshotData().transactions).toMatchObject([
+          {
+            bookedAtIso: "2026-05-28T00:00:00Z",
+            amountMinor: -2000,
+            merchantRaw: "SYNTHETIC SHOP",
+          },
+        ]);
+      } finally {
+        ledger.close();
+      }
+    });
+  });
+
   it("removes temporary ledger files after closing the test database", () => {
     const suffix = randomUUID();
     const tempDir = join(tmpdir(), `budget-pdf-integration-${suffix}`);
@@ -360,6 +474,41 @@ describe("pdf import contract", () => {
   });
 
   describe("Scenario 1: SQLite persistence – fixture creates expected transactions and import-job provenance", () => {
+    it("persists the paginated bank export through the adapter and import workflow", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const text = readFileSync(PAGINATED_EXPORT_FIXTURE_PATH, "utf8");
+
+      try {
+        const response = runPdfImportOrchestration(text, ledger, {
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          sourceName: "rogaland-paginated-export.txt",
+        });
+
+        expect(response).toMatchObject({
+          ok: true,
+          transactionCount: 2,
+          adapterId: ROGALAND_ADAPTER_ID,
+        });
+        const snapshot = ledger.loadLedgerSnapshotData();
+        expect(snapshot.transactions).toMatchObject([
+          {
+            bookedAtIso: "2026-05-28T00:00:00Z",
+            amountMinor: -9770,
+            merchantRaw: "27.05 SYNTHETIC MARKET 7 SANDNES",
+          },
+          {
+            bookedAtIso: "2026-05-27T00:00:00Z",
+            amountMinor: 5_000_000,
+            merchantRaw: "Fra: SYNTHETIC EMPLOYER",
+          },
+        ]);
+        expect(snapshot.importJobs[0]?.adapterId).toBe(ROGALAND_ADAPTER_ID);
+      } finally {
+        ledger.close();
+      }
+    });
+
     it("writes one import_jobs record and expected transaction rows for the synthetic fixture", () => {
       const ledger = makeTestLedger(randomUUID());
       const text = loadFixture();

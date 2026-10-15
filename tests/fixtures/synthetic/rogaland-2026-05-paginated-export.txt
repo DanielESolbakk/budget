@@ -1,0 +1,15 @@
+ROGALAND SPAREBANK
+Transaksjoner                       Antall: 2               Utskriftsdato: 29.05.2026
+Kontonummer:                         ACCT-001
+
+Dato       Type          Fra konto      Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr
+28.05.2026 Varekjøp      ACCT-001       LOCAL_USER                                          -97,70   NOK      Bokført    27.05 SYNTHETIC MARKET 7
+                                                                                                                    SANDNES
+1/2 Rogaland Sparebank
+
+Transaksjoner                       Antall: 2               Utskriftsdato: 29.05.2026
+Kontonummer:                         ACCT-001
+
+Dato       Type          Fra konto      Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr
+27.05.2026 Lønn                         SYNTHETIC EMPLOYER ACCT-001    LOCAL_USER          50 000,00 NOK      Bokført    Fra: SYNTHETIC EMPLOYER
+2/2 Rogaland Sparebank
