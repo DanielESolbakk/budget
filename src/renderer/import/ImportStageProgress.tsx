@@ -7,6 +7,10 @@ export type ImportWorkflowStage =
   | "confirm"
   | "complete";
 
+export function getImportPendingMessage(stage: ImportWorkflowStage): string {
+  return stage === "confirm" ? "Importing transactions..." : "Checking the file...";
+}
+
 interface ImportStageProgressProps {
   format: "CSV" | "PDF";
   stage: ImportWorkflowStage;

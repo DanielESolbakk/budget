@@ -267,8 +267,22 @@ describe("pdfTextParser unit tests", () => {
       ok: true,
       transactions: [{ bookedAtIso: "2026-05-27T00:00:00Z", amountMinor: -2000 }],
       excludedRows: [
-        { lineNumber: 4, status: "Reservert" },
-        { lineNumber: 5, status: "Bekreftet" },
+        {
+          lineNumber: 4,
+          status: "Reservert",
+          date: "28.05.2026",
+          amount: "-97,70",
+          currencyCode: "NOK",
+          description: "27.05 MARKET",
+        },
+        {
+          lineNumber: 5,
+          status: "Bekreftet",
+          date: "28.05.2026",
+          amount: "-350,00",
+          currencyCode: "NOK",
+          description: "27.05 BILL",
+        },
       ],
     });
   });

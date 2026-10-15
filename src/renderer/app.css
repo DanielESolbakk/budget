@@ -906,7 +906,7 @@ section[aria-label].destination-workspace {
 
 .import-excluded-summary {
   margin: 0.65rem 0;
-  border-left: 2px solid var(--orange);
+  border-left: 1px solid var(--orange);
   padding: 0.5rem 0.7rem;
   color: var(--paper);
   background: var(--panel-soft);
@@ -930,6 +930,10 @@ section[aria-label].destination-workspace {
   gap: 0.25rem;
   margin: 0.5rem 0 0;
   padding-left: 1.1rem;
+}
+
+.import-excluded-rows li {
+  overflow-wrap: anywhere;
 }
 
 .import-excluded-acknowledgement {

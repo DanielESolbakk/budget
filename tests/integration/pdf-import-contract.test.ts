@@ -149,8 +149,22 @@ describe("pdf import contract", () => {
         transactions: [{ merchantRaw: "SYNTHETIC SHOP" }],
         excludedRowCount: 2,
         excludedRows: [
-          { lineNumber: 4, status: "Reservert" },
-          { lineNumber: 5, status: "Bekreftet" },
+          {
+            lineNumber: 4,
+            status: "Reservert",
+            date: "29.05.2026",
+            amount: "-45,00",
+            currencyCode: "NOK",
+            description: "SYNTHETIC TRANSIT",
+          },
+          {
+            lineNumber: 5,
+            status: "Bekreftet",
+            date: "29.05.2026",
+            amount: "-350,00",
+            currencyCode: "NOK",
+            description: "SYNTHETIC BILL",
+          },
         ],
       });
     });

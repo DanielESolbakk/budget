@@ -7,7 +7,7 @@ import type { CsvColumnKey, CsvColumnMapping } from "../../domain/import/csvRowM
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
 import type { DuplicateImportDecision } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import type { Account } from "../../domain/types.js";
-import { ImportStageProgress, type ImportWorkflowStage } from "./ImportStageProgress.js";
+import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage } from "./ImportStageProgress.js";
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
 
 type ImportState =
@@ -480,7 +480,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
       </button>
       <p id="csv-confirm-help" className="import-action-help">
         {importState.status === "pending"
-          ? "Wait for the current import operation to finish."
+          ? getImportPendingMessage(stage)
           : preview === null
             ? filePath
               ? <>The selected file has not passed validation. <a href="#csv-preview-button">Preview CSV</a>.</>

@@ -51,6 +51,10 @@ export interface PdfTextParseSuccess {
 export interface PdfTextExcludedRow {
   lineNumber: number;
   status: "Reservert" | "Bekreftet";
+  date: string;
+  amount: string;
+  currencyCode: string;
+  description: string;
 }
 
 export interface PdfTextParseFailure {
@@ -243,7 +247,15 @@ function parseRogalandBankExport(
 
     const [, rawDate = "", prefix = "", rawAmount = "", currencyCode = "NOK", status = "", rawMessage = ""] = match;
     if (status.toLowerCase() !== "bokført") {
-      excludedRows.push({ lineNumber: row.lineNumber, status: status as PdfTextExcludedRow["status"] });
+      const description = rawMessage.trim().replace(/\s+/g, " ") || prefix.trim().replace(/\s+/g, " ");
+      excludedRows.push({
+        lineNumber: row.lineNumber,
+        status: status as PdfTextExcludedRow["status"],
+        date: rawDate,
+        amount: rawAmount,
+        currencyCode,
+        description,
+      });
       continue;
     }
 
