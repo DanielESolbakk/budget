@@ -156,6 +156,7 @@ test.describe("PDF file picker result", () => {
     const stages = pdfImport.importSection.getByRole("list", { name: "PDF import progress" }).getByRole("listitem");
     await expect(stages).toHaveCount(4);
     await expect(stages.nth(0)).toHaveAttribute("data-state", "complete");
+    await expect(stages.nth(1)).toContainText("Extract and validate");
     await expect(stages.nth(1)).toHaveAttribute("data-state", "complete");
     await expect(stages.nth(2)).toHaveAttribute("aria-current", "step");
     expect(loadPersistedSnapshot(databasePath).transactions).toEqual(transactionsBeforePreview);
@@ -236,6 +237,22 @@ function loadPersistedSnapshot(databasePath: string) {
 }
 
 test.describe("PDF import renderer workflow", () => {
+  test("shows the target account before PDF preview", async ({ pdfImport }) => {
+    const accountSelect = pdfImport.importSection.getByRole("combobox", { name: "Import into account" });
+
+    await expect(accountSelect).toBeVisible();
+    await expect(accountSelect).toHaveValue("sample-acc");
+    await expect(accountSelect.locator("option")).toHaveText(["Brukskonto"]);
+  });
+
+  test("states when a PDF preview has no duplicate decisions", async ({ pdfImport }) => {
+    await pdfImport.enterFilePath(BINARY_FIXTURE_PATH);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    await expect(pdfImport.previewRegion).toContainText("No possible duplicates found.");
+  });
+
   test("acknowledges excluded status rows before importing booked transactions", async ({ pdfImport, databasePath }) => {
     const fixturePath = writeMixedStatusPdfFixture();
     await pdfImport.enterFilePath(fixturePath);
@@ -243,6 +260,13 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.previewRegion).toBeVisible();
 
     await expect(pdfImport.previewRegion).toContainText("2 non-booked rows will not be imported.");
+    const excludedRowsDisclosure = pdfImport.previewRegion.getByText("Excluded rows (2)", { exact: true });
+    await expect(excludedRowsDisclosure).toBeVisible();
+    await excludedRowsDisclosure.click();
+    const excludedRows = pdfImport.previewRegion.getByRole("list", { name: "Excluded rows" });
+    await expect(excludedRows.getByRole("listitem")).toHaveCount(2);
+    await expect(excludedRows).toContainText("Line 4 · Reservert");
+    await expect(excludedRows).toContainText("Line 5 · Bekreftet");
     const acknowledgement = pdfImport.importSection.getByRole("checkbox", {
       name: "I acknowledge that 2 reserved or confirmed rows will be excluded from this import.",
     });
@@ -263,6 +287,34 @@ test.describe("PDF import renderer workflow", () => {
       merchantRaw: "SYNTHETIC SHOP",
       sourceType: "pdf",
     });
+  });
+
+  test("keeps the excluded-row acknowledgement readable at narrow width", async ({ pdfImport, window }) => {
+    await window.setViewportSize({ width: 390, height: 844 });
+    await pdfImport.enterFilePath(writeMixedStatusPdfFixture());
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    const label = pdfImport.importSection.locator("label.import-excluded-acknowledgement");
+    const geometry = await label.evaluate((element) => {
+      const checkbox = element.querySelector("input[type=checkbox]");
+      const textWidths: number[] = [];
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const textNode = walker.currentNode;
+        if (!textNode.textContent?.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(textNode);
+        textWidths.push(...Array.from(range.getClientRects(), (rect) => rect.width));
+      }
+      return {
+        checkboxWidth: checkbox?.getBoundingClientRect().width ?? 0,
+        widestTextLine: Math.max(...textWidths, 0),
+      };
+    });
+
+    expect(geometry.checkboxWidth).toBeLessThan(32);
+    expect(geometry.widestTextLine).toBeGreaterThan(120);
   });
 
   test("rejects a non-boolean excluded-row acknowledgement at the IPC boundary", async ({ window }) => {

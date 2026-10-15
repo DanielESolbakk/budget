@@ -1,4 +1,4 @@
-import type { PdfTextParseBatchCallbacks, PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import type { PdfTextExcludedRow, PdfTextParseBatchCallbacks, PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
 import { randomUUID } from "node:crypto";
 import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
@@ -46,6 +46,7 @@ export interface PdfImportPreviewSuccess {
   adapterId: string;
   transactions: Transaction[];
   excludedRowCount: number;
+  excludedRows: PdfTextExcludedRow[];
   duplicateCandidates?: Array<{
     rowIndex: number;
     transactionId: string;
@@ -182,6 +183,7 @@ export function previewPdfImportWorkflow(
     ok: true,
     adapterId: parseResult.adapterId,
     excludedRowCount: parseResult.excludedRows?.length ?? 0,
+    excludedRows: parseResult.excludedRows ?? [],
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
       canonicalSourceScope(input.filePath)
@@ -205,6 +207,7 @@ export async function previewPdfImportWorkflowInBatches(
     ok: true,
     adapterId: parseResult.adapterId,
     excludedRowCount: parseResult.excludedRows?.length ?? 0,
+    excludedRows: parseResult.excludedRows ?? [],
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
       canonicalSourceScope(input.filePath)

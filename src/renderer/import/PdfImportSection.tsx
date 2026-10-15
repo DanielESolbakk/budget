@@ -3,8 +3,10 @@ import type {
   PdfImportPreviewSuccess,
   PdfImportResponse,
 } from "../../app/import/importPdf.js";
+import type { Account } from "../../domain/types.js";
 import type { DuplicateImportDecision } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { ImportStageProgress, type ImportWorkflowStage } from "./ImportStageProgress.js";
+import { ImportAccountSelect } from "./ImportAccountSelect.js";
 
 type ImportState =
   | { status: "idle" }
@@ -47,6 +49,10 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
   const [preview, setPreview] = React.useState<PdfImportPreviewSuccess | null>(null);
   const [previewPage, setPreviewPage] = React.useState(0);
   const [validationReportPage, setValidationReportPage] = React.useState(0);
+  const [accounts, setAccounts] = React.useState<Account[]>([]);
+  const [accountId, setAccountId] = React.useState("");
+  const [accountLoadState, setAccountLoadState] = React.useState<"loading" | "ready" | "error">("loading");
+  const [accountRefreshKey, setAccountRefreshKey] = React.useState(0);
   const [acknowledgeExcludedRows, setAcknowledgeExcludedRows] = React.useState(false);
   const [duplicateDecisions, setDuplicateDecisions] = React.useState<Record<number, DuplicateImportDecision["action"]>>({});
   const duplicateCandidates = preview?.duplicateCandidates ?? [];
@@ -67,6 +73,23 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     (validationReportPage + 1) * PREVIEW_PAGE_SIZE
   );
 
+  React.useEffect(() => {
+    let active = true;
+    setAccountLoadState("loading");
+    window.budgetApi.accounts.getCurrent().then((current) => {
+      if (!active) return;
+      const availableAccounts = current?.accounts ?? [];
+      setAccounts(availableAccounts);
+      setAccountId((selectedAccountId) => selectedAccountId || availableAccounts[0]?.id || "");
+      setAccountLoadState(availableAccounts.length > 0 ? "ready" : "error");
+    }).catch(() => {
+      if (active) setAccountLoadState("error");
+    });
+    return () => {
+      active = false;
+    };
+  }, [accountRefreshKey]);
+
   React.useEffect(() => window.budgetApi.import.onPreflightProgress((progress) => {
     if (progress.format !== "pdf") return;
     setPreflightProgress((current) => current?.requestId === progress.requestId
@@ -76,7 +99,7 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
 
   async function handlePreview(): Promise<void> {
     const trimmedPath = filePath.trim();
-    if (!trimmedPath) return;
+    if (!trimmedPath || !accountId || accountLoadState !== "ready") return;
 
     const requestId = crypto.randomUUID();
     setActivePreflightRequestId(requestId);
@@ -89,7 +112,7 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     let wasCancelled = false;
 
     try {
-      const response = await window.budgetApi.import.previewPdf({ filePath: trimmedPath, requestId });
+      const response = await window.budgetApi.import.previewPdf({ filePath: trimmedPath, requestId, accountId });
       if (response.ok) {
         setPreview(response);
         setPreviewPage(0);
@@ -139,6 +162,17 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     setStage("select-file");
   }
 
+  function updateAccountId(nextAccountId: string): void {
+    setAccountId(nextAccountId);
+    setPreview(null);
+    setPreviewPage(0);
+    setValidationReportPage(0);
+    setDuplicateDecisions({});
+    setAcknowledgeExcludedRows(false);
+    setImportState({ status: "idle" });
+    setStage(filePath.trim() ? "map-and-validate" : "select-file");
+  }
+
   async function handleChooseFile(): Promise<void> {
     try {
       const selectedPath = await window.budgetApi.dialogs.choosePdfImportPath();
@@ -153,7 +187,7 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
 
   function handleImport(): void {
     const trimmedPath = filePath.trim();
-    if (!trimmedPath || preview === null || unresolvedDuplicateCandidates.length > 0 || excludedRowsAcknowledgementRequired) return;
+    if (!trimmedPath || !accountId || preview === null || unresolvedDuplicateCandidates.length > 0 || excludedRowsAcknowledgementRequired) return;
 
     setImportState({ status: "pending" });
     setStage("confirm");
@@ -161,6 +195,7 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
       .importPdf({
         filePath: trimmedPath,
         previewId: preview.previewId,
+        accountId,
         acknowledgeExcludedRows,
         duplicateDecisions: Object.entries(duplicateDecisions).map(([rowIndex, action]) => ({
           rowIndex: Number(rowIndex),
@@ -206,6 +241,23 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     <section aria-label="PDF Import">
       <h2>Import PDF Statement</h2>
       <p className="section-intro">Use this for a digital bank statement ending in <strong>.pdf</strong>. Scanned image statements are not supported yet.</p>
+      {accountLoadState === "loading" && <p role="status">Loading accounts...</p>}
+      {accountLoadState === "error" && (
+        <div role="alert">
+          <p>Available accounts could not be loaded.</p>
+          <button type="button" onClick={() => setAccountRefreshKey((key) => key + 1)}>Retry account loading</button>
+        </div>
+      )}
+      {accountLoadState === "ready" && (
+        <ImportAccountSelect
+          id="pdf-import-account"
+          label="Import into account"
+          accounts={accounts}
+          value={accountId}
+          onChange={updateAccountId}
+          disabled={importState.status === "pending"}
+        />
+      )}
       <ImportStageProgress format="PDF" stage={stage} />
       <div className="import-file-source">
         <button id="pdf-file-picker-button" type="button" className="import-file-choice-primary" onClick={() => void handleChooseFile()} disabled={importState.status === "pending"}>
@@ -231,7 +283,7 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
         id="pdf-preview-button"
         type="button"
         onClick={() => void handlePreview()}
-        disabled={importState.status === "pending" || !filePath.trim()}
+        disabled={importState.status === "pending" || !filePath.trim() || accountLoadState !== "ready" || !accountId}
       >
         Preview PDF
       </button>
@@ -326,21 +378,35 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
         <section aria-label="PDF import preview">
           <h3>PDF import preview</h3>
           <p className="preview-summary" aria-live="polite">
-            <strong>{preview.transactions.length} transaction{preview.transactions.length === 1 ? "" : "s"} in this statement.</strong>{" "}
-            {duplicateCandidates.length} possible duplicate{duplicateCandidates.length === 1 ? "" : "s"} require a decision.
+            <strong>{preview.transactions.length} booked transaction{preview.transactions.length === 1 ? "" : "s"} ready for import.</strong>{" "}
+            {duplicateCandidates.length === 0
+              ? "No possible duplicates found."
+              : `${duplicateCandidates.length} possible duplicate${duplicateCandidates.length === 1 ? "" : "s"} found; ${unresolvedDuplicateCandidates.length} decision${unresolvedDuplicateCandidates.length === 1 ? "" : "s"} remain.`}
           </p>
           {preview.excludedRowCount > 0 && (
             <>
               <p className="import-excluded-summary">
                 {preview.excludedRowCount} non-booked row{preview.excludedRowCount === 1 ? "" : "s"} will not be imported.
               </p>
+              <details className="import-excluded-rows">
+                <summary>Excluded rows ({preview.excludedRows.length})</summary>
+                <ul aria-label="Excluded rows">
+                  {preview.excludedRows.map((row, index) => (
+                    <li key={`${row.lineNumber}-${row.status}-${index}`}>
+                      Line {row.lineNumber} · {row.status}
+                    </li>
+                  ))}
+                </ul>
+              </details>
               <label className="import-excluded-acknowledgement">
                 <input
                   type="checkbox"
                   checked={acknowledgeExcludedRows}
                   onChange={(event) => setAcknowledgeExcludedRows(event.target.checked)}
                 />
-                I acknowledge that {preview.excludedRowCount} reserved or confirmed row{preview.excludedRowCount === 1 ? "" : "s"} will be excluded from this import.
+                <span>
+                  I acknowledge that {preview.excludedRowCount} reserved or confirmed row{preview.excludedRowCount === 1 ? "" : "s"} will be excluded from this import.
+                </span>
               </label>
             </>
           )}

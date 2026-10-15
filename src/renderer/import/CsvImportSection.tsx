@@ -8,6 +8,7 @@ import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
 import type { DuplicateImportDecision } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import type { Account } from "../../domain/types.js";
 import { ImportStageProgress, type ImportWorkflowStage } from "./ImportStageProgress.js";
+import { ImportAccountSelect } from "./ImportAccountSelect.js";
 
 type ImportState =
   | { status: "idle" }
@@ -62,6 +63,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
   const [duplicateDecisions, setDuplicateDecisions] = React.useState<Record<number, DuplicateImportDecision["action"]>>({});
   const [columnMapping, setColumnMapping] = React.useState<CsvColumnMapping>({});
   const [previewMapping, setPreviewMapping] = React.useState<CsvColumnMapping | null>(null);
+  const effectiveImportAccountId = importAccountId ?? accounts[0]?.id;
   const validPreviewRowCount = preview?.rows.filter((row) => row.transaction !== undefined).length ?? 0;
   const invalidPreviewRowCount = preview?.rows.length === undefined
     ? 0
@@ -83,7 +85,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
   const isMappingCurrent = preview !== null && previewMapping !== null &&
     JSON.stringify(previewMapping) === JSON.stringify(columnMapping);
   const firstInvalidRow = preview?.rows.find((row) => row.errors.length > 0);
-  const confirmationDisabled = importState.status === "pending" || preview === null ||
+  const confirmationDisabled = profileLoadState !== "ready" || effectiveImportAccountId === undefined || importState.status === "pending" || preview === null ||
     !isMappingCurrent || invalidPreviewRowCount > 0 || unresolvedDuplicateRows.length > 0;
 
   React.useEffect(() => {
@@ -136,7 +138,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
 
   async function handlePreview(): Promise<void> {
     const trimmedPath = filePath.trim();
-    if (!trimmedPath) return;
+    if (!trimmedPath || effectiveImportAccountId === undefined || profileLoadState !== "ready") return;
 
     const requestId = crypto.randomUUID();
     setActivePreflightRequestId(requestId);
@@ -150,7 +152,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
         filePath: trimmedPath,
         requestId,
         columnMapping,
-        ...(importAccountId === undefined ? {} : { accountId: importAccountId }),
+        accountId: effectiveImportAccountId,
       });
       if (response.ok) {
         setPreview(response);
@@ -211,6 +213,18 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     setValidationReportPage(0);
     setImportState({ status: "idle" });
     setStage("select-file");
+  }
+
+  function updateImportAccountId(nextAccountId: string): void {
+    if (nextAccountId === effectiveImportAccountId) return;
+    setImportAccountId(nextAccountId);
+    setPreview(null);
+    setPreviewMapping(null);
+    setDuplicateDecisions({});
+    setPreviewPage(0);
+    setValidationReportPage(0);
+    setImportState({ status: "idle" });
+    setStage(filePath ? "map-and-validate" : "select-file");
   }
 
   async function handleChooseFile(): Promise<void> {
@@ -288,7 +302,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
 
   function handleImport(): void {
     const trimmedPath = filePath.trim();
-    if (!trimmedPath || preview === null || previewMapping === null) return;
+    if (!trimmedPath || effectiveImportAccountId === undefined || preview === null || previewMapping === null) return;
     if (JSON.stringify(previewMapping) !== JSON.stringify(columnMapping)) return;
     if (preview.rows.some((row) => row.errors.length > 0)) return;
 
@@ -300,7 +314,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
         filePath: trimmedPath,
         previewId: preview.previewId,
         columnMapping,
-        ...(importAccountId === undefined ? {} : { accountId: importAccountId }),
+        accountId: effectiveImportAccountId,
         duplicateDecisions: Object.entries(duplicateDecisions).map(([rowIndex, action]) => ({
           rowIndex: Number(rowIndex),
           action,
@@ -339,8 +353,17 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     <section aria-label="CSV Import">
       <h2>Import CSV</h2>
       <p className="section-intro">Use this for a bank export ending in <strong>.csv</strong>. Preview it first; nothing is saved until you confirm.</p>
-      {importAccountId !== undefined && (
-        <p className="import-profile-account">Import account: {accounts.find((account) => account.id === importAccountId)?.name ?? "Unavailable"}</p>
+      {profileLoadState === "loading" && <p role="status">Loading accounts...</p>}
+      {profileLoadState === "error" && <p role="alert">Available accounts could not be loaded. Open CSV profiles to retry.</p>}
+      {profileLoadState === "ready" && accounts.length > 0 && effectiveImportAccountId !== undefined && (
+        <ImportAccountSelect
+          id="csv-import-account"
+          label="Import into account"
+          accounts={accounts}
+          value={effectiveImportAccountId}
+          onChange={updateImportAccountId}
+          disabled={importState.status === "pending"}
+        />
       )}
       <details className="csv-import-profiles">
         <summary aria-label="Manage CSV profiles">Manage CSV profiles ({profiles.length})</summary>
@@ -360,15 +383,15 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
               value={profileName}
               onChange={(event) => setProfileName(event.target.value)}
             />
-            <label htmlFor="csv-profile-account">Profile account</label>
-            <select
+            <ImportAccountSelect
               id="csv-profile-account"
+              label="Profile account"
+              accounts={accounts}
               value={profileAccountId}
-              onChange={(event) => setProfileAccountId(event.target.value)}
-            >
-              <option value="">Choose an account</option>
-              {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
-            </select>
+              onChange={setProfileAccountId}
+              disabled={profileLoadState !== "ready"}
+              emptyOption="Choose an account"
+            />
             <p className="field-help">Saving a profile stores this account and the current column mapping. Applying it explicitly selects that account for the next preview.</p>
             <div className="csv-profile-form-actions">
               <button type="button" disabled={!profileName.trim() || !profileAccountId || profileLoadState !== "ready"} onClick={() => void saveProfile()}>
@@ -428,7 +451,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
         id="csv-preview-button"
         type="button"
         onClick={handlePreview}
-        disabled={importState.status === "pending" || !filePath.trim()}
+        disabled={importState.status === "pending" || !filePath.trim() || profileLoadState !== "ready" || effectiveImportAccountId === undefined}
       >
         Preview CSV
       </button>
@@ -542,7 +565,10 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
             <strong>{validPreviewRowCount} of {preview.rows.length} rows ready.</strong>{" "}
             {invalidPreviewRowCount > 0
               ? `${invalidPreviewRowCount} row${invalidPreviewRowCount === 1 ? "" : "s"} need${invalidPreviewRowCount === 1 ? "s" : ""} attention before import.`
-              : "Everything in this preview can be imported."}
+              : "No validation issues."}{" "}
+            {unresolvedDuplicateRows.length === 0
+              ? "No duplicate decisions needed."
+              : `${unresolvedDuplicateRows.length} duplicate decision${unresolvedDuplicateRows.length === 1 ? "" : "s"} remain.`}
           </p>
           {preview.rows.some((row) => row.errors.length > 0) && (
             <div role="alert">

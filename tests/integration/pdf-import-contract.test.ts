@@ -148,6 +148,10 @@ describe("pdf import contract", () => {
         ok: true,
         transactions: [{ merchantRaw: "SYNTHETIC SHOP" }],
         excludedRowCount: 2,
+        excludedRows: [
+          { lineNumber: 4, status: "Reservert" },
+          { lineNumber: 5, status: "Bekreftet" },
+        ],
       });
     });
 
