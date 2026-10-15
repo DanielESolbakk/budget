@@ -1,77 +1,41 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const pdfParseMocks = vi.hoisted(() => ({
-  getText: vi.fn(),
-  destroy: vi.fn(),
-  recordInput: vi.fn()
-}));
-
-vi.mock("pdf-parse", () => ({
-  PDFParse: class {
-    constructor(options: { data: Buffer }) {
-      pdfParseMocks.recordInput(options.data);
-    }
-
-    getText() {
-      return pdfParseMocks.getText();
-    }
-
-    destroy() {
-      return pdfParseMocks.destroy();
-    }
-  }
-}));
+import { join, resolve } from "node:path";
+import { describe, expect, it } from "vitest";
 
 import {
   extractPdfTextFromBuffer,
   extractPdfTextFromFile
 } from "../../src/app/import/extractPdfText.js";
 
-describe("PDF text extraction service", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    pdfParseMocks.getText.mockResolvedValue({ text: "Extracted statement text" });
-    pdfParseMocks.destroy.mockResolvedValue(undefined);
-  });
+const BINARY_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 
+describe("PDF text extraction service", () => {
   it("passes through buffers that are not PDFs as UTF-8 text", async () => {
     const textBuffer = Buffer.from("synthetic statement text", "utf8");
 
     await expect(extractPdfTextFromBuffer(textBuffer)).resolves.toBe("synthetic statement text");
-    expect(pdfParseMocks.recordInput).not.toHaveBeenCalled();
   });
 
-  it("returns parsed text and destroys the parser after success", async () => {
-    const pdfBuffer = Buffer.from("%PDF-synthetic", "ascii");
+  it("extracts positioned text from the synthetic binary PDF fixture", async () => {
+    const pdfBuffer = readFileSync(BINARY_FIXTURE_PATH);
+    const extractedText = await extractPdfTextFromBuffer(pdfBuffer);
 
-    await expect(extractPdfTextFromBuffer(pdfBuffer)).resolves.toBe("Extracted statement text");
-    expect(pdfParseMocks.recordInput).toHaveBeenCalledWith(pdfBuffer);
-    expect(pdfParseMocks.destroy).toHaveBeenCalledOnce();
-  });
-
-  it("destroys the parser and propagates parsing failures", async () => {
-    const parserError = new Error("Synthetic parser failure");
-    pdfParseMocks.getText.mockRejectedValueOnce(parserError);
-
-    await expect(
-      extractPdfTextFromBuffer(Buffer.from("%PDF-synthetic", "ascii"))
-    ).rejects.toBe(parserError);
-    expect(pdfParseMocks.destroy).toHaveBeenCalledOnce();
+    expect(extractedText).toContain("ROGALAND SPAREBANK");
+    expect(extractedText).toContain("27.05.2026");
+    expect(extractedText).toContain("SALARY");
   });
 
   it("reads file bytes before extracting PDF text", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-pdf-text-"));
     const filePath = join(tempDir, "synthetic.pdf");
-    const pdfBuffer = Buffer.from("%PDF-synthetic-file", "ascii");
+    const pdfBuffer = readFileSync(BINARY_FIXTURE_PATH);
 
     try {
       writeFileSync(filePath, pdfBuffer);
 
-      await expect(extractPdfTextFromFile(filePath)).resolves.toBe("Extracted statement text");
-      expect(pdfParseMocks.recordInput).toHaveBeenCalledWith(pdfBuffer);
+      const extractedText = await extractPdfTextFromFile(filePath);
+      expect(extractedText).toContain("MERCHANT-005 Butikkjop");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -83,7 +47,6 @@ describe("PDF text extraction service", () => {
 
     try {
       await expect(extractPdfTextFromFile(missingPath)).rejects.toMatchObject({ code: "ENOENT" });
-      expect(pdfParseMocks.recordInput).not.toHaveBeenCalled();
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

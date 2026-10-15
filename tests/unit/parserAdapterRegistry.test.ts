@@ -193,6 +193,25 @@ describe("ParserAdapterRegistry", () => {
   });
 
   describe("default registry", () => {
+    it("preserves excluded bank-export statuses through the adapter", () => {
+      const text = [
+        "ROGALAND SPAREBANK",
+        "Transaksjoner Antall: 3",
+        "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+        "29.05.2026 Varekjøp ACCT-001 SYNTHETIC -45,00 NOK Reservert SYNTHETIC TRANSIT",
+        "29.05.2026 Betaling ACCT-001 SYNTHETIC -350,00 NOK Bekreftet SYNTHETIC BILL",
+        "28.05.2026 Varekjøp ACCT-001 SYNTHETIC -20,00 NOK Bokført SYNTHETIC SHOP",
+      ].join("\n");
+
+      const result = defaultParserAdapterRegistry.parse(text, BASE_OPTIONS);
+
+      expect(result).toMatchObject({
+        ok: true,
+        candidates: [{ merchantRaw: "SYNTHETIC SHOP" }],
+        excludedRows: [{ status: "Reservert" }, { status: "Bekreftet" }],
+      });
+    });
+
     it("includes the Rogaland adapter", () => {
       expect(defaultParserAdapterRegistry.registeredIds()).toContain(ROGALAND_ADAPTER_ID);
     });

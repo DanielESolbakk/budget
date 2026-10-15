@@ -251,19 +251,25 @@ describe("pdfTextParser unit tests", () => {
     });
   });
 
-  it("rejects reserved bank-export rows instead of importing them as booked", () => {
+  it("keeps booked rows and reports reserved and confirmed rows as excluded", () => {
     const text = [
       "ROGALAND SPAREBANK",
-      "Transaksjoner Antall: 1",
+      "Transaksjoner Antall: 3",
       "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
       "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -97,70 NOK Reservert 27.05 MARKET",
+      "28.05.2026 Betaling ACCT-001 LOCAL_USER -350,00 NOK Bekreftet 27.05 BILL",
+      "27.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført 26.05 SHOP",
     ].join("\n");
 
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
     expect(result).toMatchObject({
-      ok: false,
-      errors: [{ code: "UNSUPPORTED_TRANSACTION_STATUS", lineNumber: 4 }],
+      ok: true,
+      transactions: [{ bookedAtIso: "2026-05-27T00:00:00Z", amountMinor: -2000 }],
+      excludedRows: [
+        { lineNumber: 4, status: "Reservert" },
+        { lineNumber: 5, status: "Bekreftet" },
+      ],
     });
   });
 
@@ -285,6 +291,27 @@ describe("pdfTextParser unit tests", () => {
           merchantRaw: "Fra: SYNTHETIC EMPLOYER",
         },
       ],
+    });
+  });
+
+  it.each([
+    { firstTypeLine: "Betaling", typeContinuation: "innland", amount: "-100,00", merchant: "SYNTHETIC BILL", amountMinor: -10_000 },
+    { firstTypeLine: "Omkostnin", typeContinuation: "g", amount: "-350,00", merchant: "SYNTHETIC FEE", amountMinor: -35_000 },
+  ])("joins wrapped transaction type '$typeContinuation' without changing the message", ({ firstTypeLine, typeContinuation, amount, merchant, amountMinor }) => {
+    const tableHeader = "Dato       Type          Fra konto       Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+    const wrappedTypeLine = `${" ".repeat(tableHeader.indexOf("Type"))}${typeContinuation}`;
+    const text = [
+      "ROGALAND SPAREBANK",
+      tableHeader,
+      `28.05.2026 ${firstTypeLine} ACCT-001 LOCAL_USER ${amount} NOK Bokført ${merchant}`,
+      wrappedTypeLine,
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result).toMatchObject({
+      ok: true,
+      transactions: [{ merchantRaw: merchant, amountMinor }],
     });
   });
 

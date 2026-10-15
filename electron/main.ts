@@ -509,6 +509,7 @@ interface RendererImportInput {
   columnMapping?: CsvColumnMapping;
   previewId?: string;
   duplicateDecisions?: DuplicateImportDecision[];
+  acknowledgeExcludedRows?: boolean;
 }
 
 function parseRendererImportInput(
@@ -531,6 +532,9 @@ function parseRendererImportInput(
   }
   if (record.requestId !== undefined && (typeof record.requestId !== "string" || record.requestId.trim().length === 0)) {
     throw new Error("requestId must be a non-empty string when provided.");
+  }
+  if (record.acknowledgeExcludedRows !== undefined && typeof record.acknowledgeExcludedRows !== "boolean") {
+    throw new Error("acknowledgeExcludedRows must be a boolean when provided.");
   }
 
   let columnMapping: CsvColumnMapping | undefined;
@@ -580,6 +584,7 @@ function parseRendererImportInput(
     ...(columnMapping === undefined ? {} : { columnMapping }),
     ...(record.previewId === undefined ? {} : { previewId: (record.previewId as string).trim() }),
     ...(duplicateDecisions === undefined ? {} : { duplicateDecisions }),
+    ...(record.acknowledgeExcludedRows === undefined ? {} : { acknowledgeExcludedRows: record.acknowledgeExcludedRows }),
   };
 }
 
@@ -1571,6 +1576,7 @@ app.whenReady().then(async () => {
           importJobId,
           categoryRules: learnedCategoryRules,
           ...(parsedInput.duplicateDecisions === undefined ? {} : { duplicateDecisions: parsedInput.duplicateDecisions }),
+          ...(parsedInput.acknowledgeExcludedRows === undefined ? {} : { acknowledgeExcludedRows: parsedInput.acknowledgeExcludedRows }),
           startedAtIso: now,
           finishedAtIso: now,
         }, {

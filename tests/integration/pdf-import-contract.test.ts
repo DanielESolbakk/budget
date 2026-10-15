@@ -31,6 +31,7 @@ import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
   appendUniqueTransactions,
+  previewPdfImportWorkflow,
   runPdfImportWorkflow,
 } from "../../src/app/import/importPdf.js";
 import type { Account, Household, ImportJob, Transaction } from "../../src/domain/types.js";
@@ -116,6 +117,100 @@ function runPdfImportOrchestration(
   );
 }
 describe("pdf import contract", () => {
+  describe("booked-only import acknowledgement", () => {
+    const mixedStatusText = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 3",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "29.05.2026 Varekjøp ACCT-001 SYNTHETIC -45,00 NOK Reservert SYNTHETIC TRANSIT",
+      "29.05.2026 Betaling ACCT-001 SYNTHETIC -350,00 NOK Bekreftet SYNTHETIC BILL",
+      "28.05.2026 Varekjøp ACCT-001 SYNTHETIC -20,00 NOK Bokført SYNTHETIC SHOP",
+    ].join("\n");
+
+    function makeDependencies(ledger: ReturnType<typeof makeTestLedger>) {
+      return {
+        parserRegistry: defaultParserAdapterRegistry,
+        appendImportJob: ledger.appendImportJob,
+        appendTransactions: ledger.appendTransactions,
+        appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      };
+    }
+
+    it("reports excluded rows in the PDF preview before confirmation", () => {
+      const preview = previewPdfImportWorkflow({
+        pdfText: mixedStatusText,
+        filePath: "mixed-status-statement.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+      }, defaultParserAdapterRegistry);
+
+      expect(preview).toMatchObject({
+        ok: true,
+        transactions: [{ merchantRaw: "SYNTHETIC SHOP" }],
+        excludedRowCount: 2,
+      });
+    });
+
+    it("requires explicit acknowledgement before importing when pending rows are excluded", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const input = {
+        pdfText: mixedStatusText,
+        filePath: "mixed-status-statement.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        importJobId: "mixed-status-job",
+        startedAtIso: "2026-05-29T00:00:00Z",
+        finishedAtIso: "2026-05-29T00:00:00Z",
+      };
+
+      try {
+        const response = runPdfImportWorkflow(input, makeDependencies(ledger));
+
+        expect(response).toMatchObject({
+          ok: false,
+          errors: [{ code: "PENDING_ROWS_ACKNOWLEDGEMENT_REQUIRED" }],
+        });
+        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(0);
+        expect(ledger.loadLedgerSnapshotData().importJobs).toHaveLength(0);
+      } finally {
+        ledger.close();
+      }
+    });
+
+    it("imports only booked candidates after acknowledging excluded pending rows", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const input = {
+        pdfText: mixedStatusText,
+        filePath: "mixed-status-statement.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        importJobId: "mixed-status-acknowledged-job",
+        startedAtIso: "2026-05-29T00:00:00Z",
+        finishedAtIso: "2026-05-29T00:00:00Z",
+        acknowledgeExcludedRows: true,
+      };
+
+      try {
+        const response = runPdfImportWorkflow(input, makeDependencies(ledger));
+
+        expect(response).toMatchObject({
+          ok: true,
+          transactionCount: 1,
+          excludedRowCount: 2,
+        });
+        expect(ledger.loadLedgerSnapshotData().transactions).toMatchObject([
+          {
+            bookedAtIso: "2026-05-28T00:00:00Z",
+            amountMinor: -2000,
+            merchantRaw: "SYNTHETIC SHOP",
+          },
+        ]);
+      } finally {
+        ledger.close();
+      }
+    });
+  });
+
   it("removes temporary ledger files after closing the test database", () => {
     const suffix = randomUUID();
     const tempDir = join(tmpdir(), `budget-pdf-integration-${suffix}`);

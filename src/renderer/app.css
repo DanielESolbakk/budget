@@ -897,6 +897,31 @@ section[aria-label].destination-workspace {
   line-height: 1.4;
 }
 
+.import-excluded-summary {
+  margin: 0.65rem 0;
+  border-left: 2px solid var(--orange);
+  padding: 0.5rem 0.7rem;
+  color: var(--paper);
+  background: var(--panel-soft);
+  font-size: 0.82rem;
+}
+
+.import-excluded-acknowledgement {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0.5rem 0 0.85rem;
+  color: var(--paper);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.import-excluded-acknowledgement input {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+}
+
 .import-preview-pagination {
   display: flex;
   flex-wrap: wrap;

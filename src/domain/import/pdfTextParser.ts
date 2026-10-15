@@ -45,6 +45,12 @@ export interface PdfTextParseSuccess {
   ok: true;
   adapterId: string;
   transactions: Transaction[];
+  excludedRows?: PdfTextExcludedRow[];
+}
+
+export interface PdfTextExcludedRow {
+  lineNumber: number;
+  status: "Reservert" | "Bekreftet";
 }
 
 export interface PdfTextParseFailure {
@@ -133,6 +139,8 @@ interface BankExportRow {
 
 function collectBankExportRows(lines: readonly string[], tableHeaderIndex: number): BankExportRow[] {
   const rows: BankExportRow[] = [];
+  const typeColumnStart = lines[tableHeaderIndex]?.indexOf("Type") ?? -1;
+  const fromAccountColumnStart = lines[tableHeaderIndex]?.indexOf("Fra konto") ?? -1;
   const messageColumnStart = lines[tableHeaderIndex]?.indexOf("Melding/KID/Fakt.nr") ?? -1;
   let currentRow: BankExportRow | undefined;
 
@@ -157,12 +165,24 @@ function collectBankExportRows(lines: readonly string[], tableHeaderIndex: numbe
     }
 
     const lineNumber = tableHeaderIndex + index + 2;
+    const firstNonWhitespaceIndex = line.search(/\S/);
     if (BANK_EXPORT_TRANSACTION_DATE_PATTERN.test(line)) {
       finishCurrentRow();
       currentRow = { lineNumber, text: trimmedLine };
     } else if (BANK_EXPORT_DATE_LIKE_PREFIX_PATTERN.test(line)) {
       finishCurrentRow();
       currentRow = { lineNumber, text: trimmedLine };
+    } else if (
+      currentRow !== undefined &&
+      typeColumnStart !== -1 &&
+      fromAccountColumnStart !== -1 &&
+      firstNonWhitespaceIndex >= typeColumnStart &&
+      firstNonWhitespaceIndex < fromAccountColumnStart - BANK_EXPORT_CONTINUATION_COLUMN_TOLERANCE
+    ) {
+      currentRow.text = currentRow.text.replace(
+        /^(\d{2}\.\d{2}\.\d{4}\s+\S+)(?=\s)/,
+        `$1 ${trimmedLine}`
+      );
     } else if (
       currentRow !== undefined &&
       messageColumnStart !== -1 &&
@@ -187,6 +207,7 @@ function parseRogalandBankExport(
   const rows = collectBankExportRows(lines, tableHeaderIndex);
   const idPrefix = options.idPrefix ?? "pdf";
   const transactions: Transaction[] = [];
+  const excludedRows: PdfTextExcludedRow[] = [];
   const errors: PdfTextValidationError[] = [];
   const bankExportRowPattern =
     /^(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+([+-]?\d[\d ]*,\d{2})\s+([A-Z]{3})\s+(Bokført|Reservert|Bekreftet)\s*(.*)$/i;
@@ -222,11 +243,7 @@ function parseRogalandBankExport(
 
     const [, rawDate = "", prefix = "", rawAmount = "", currencyCode = "NOK", status = "", rawMessage = ""] = match;
     if (status.toLowerCase() !== "bokført") {
-      errors.push({
-        code: "UNSUPPORTED_TRANSACTION_STATUS",
-        message: `Transaction status "${status}" at line ${row.lineNumber} is not supported as a booked transaction.`,
-        lineNumber: row.lineNumber,
-      });
+      excludedRows.push({ lineNumber: row.lineNumber, status: status as PdfTextExcludedRow["status"] });
       continue;
     }
 
@@ -297,7 +314,12 @@ function parseRogalandBankExport(
     transaction.id = `${idPrefix}-${index + 1}`;
   });
 
-  return { ok: true, adapterId: ROGALAND_ADAPTER_ID, transactions };
+  return {
+    ok: true,
+    adapterId: ROGALAND_ADAPTER_ID,
+    transactions,
+    ...(excludedRows.length === 0 ? {} : { excludedRows }),
+  };
 }
 
 /**
@@ -487,6 +509,7 @@ export async function parseRogalandStatementTextInBatches(
     const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
     const headerText = lines.slice(0, bankExportHeaderIndex + 1).join("\n");
     const transactions: Transaction[] = [];
+    const excludedRows: PdfTextExcludedRow[] = [];
     const errors: PdfTextValidationError[] = [];
 
     for (let start = 0; start < rows.length; start += batchSize) {
@@ -501,6 +524,14 @@ export async function parseRogalandStatementTextInBatches(
 
       if (result.ok) {
         transactions.push(...result.transactions);
+        for (const excludedRow of result.excludedRows ?? []) {
+          const batchRowIndex = excludedRow.lineNumber - bankExportHeaderIndex - 2;
+          const sourceRow = rows[start + batchRowIndex];
+          excludedRows.push({
+            ...excludedRow,
+            ...(sourceRow === undefined ? {} : { lineNumber: sourceRow.lineNumber }),
+          });
+        }
       } else {
         errors.push(...result.errors
           .filter((error) => error.code !== "MISSING_TRANSACTION_SECTION")
@@ -534,7 +565,12 @@ export async function parseRogalandStatementTextInBatches(
       transaction.id = `${idPrefix}-${index + 1}`;
     });
 
-    return { ok: true, adapterId: ROGALAND_ADAPTER_ID, transactions };
+    return {
+      ok: true,
+      adapterId: ROGALAND_ADAPTER_ID,
+      transactions,
+      ...(excludedRows.length === 0 ? {} : { excludedRows }),
+    };
   }
 
   const tableHeaderIndex = lines.findIndex((line) => /^Dato\s+Beskrivelse/.test(line.trim()));

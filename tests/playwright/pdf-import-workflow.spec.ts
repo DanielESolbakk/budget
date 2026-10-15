@@ -28,6 +28,86 @@ const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2
 const BINARY_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 const temporaryDirectories = new Set<string>();
 
+interface PdfTextPlacement {
+  x: number;
+  y: number;
+  text: string;
+}
+
+function encodePdfText(value: string): string {
+  return `<${Array.from(Buffer.from(value, "latin1"), (byte) => byte.toString(16).padStart(2, "0")).join("")}>`;
+}
+
+function createMixedStatusPdf(): Buffer {
+  const columns = [
+    { x: 20, label: "Dato" },
+    { x: 95, label: "Type" },
+    { x: 170, label: "Fra konto" },
+    { x: 270, label: "Avsender" },
+    { x: 370, label: "Til konto" },
+    { x: 455, label: "Mottakernavn" },
+    { x: 565, label: "Beløp" },
+    { x: 635, label: "Valuta" },
+    { x: 695, label: "Status" },
+    { x: 760, label: "Melding/KID/Fakt.nr" },
+  ];
+  const placements: PdfTextPlacement[] = [
+    { x: 20, y: 570, text: "ROGALAND SPAREBANK" },
+    ...columns.map(({ x, label }) => ({ x, y: 520, text: label })),
+    { x: 20, y: 475, text: "29.05.2026" },
+    { x: 95, y: 475, text: "Purchase" },
+    { x: 170, y: 475, text: "ACCT-001" },
+    { x: 565, y: 475, text: "-45,00" },
+    { x: 635, y: 475, text: "NOK" },
+    { x: 695, y: 475, text: "Reservert" },
+    { x: 760, y: 475, text: "SYNTHETIC TRANSIT" },
+    { x: 20, y: 445, text: "29.05.2026" },
+    { x: 95, y: 445, text: "Payment" },
+    { x: 170, y: 445, text: "ACCT-001" },
+    { x: 565, y: 445, text: "-350,00" },
+    { x: 635, y: 445, text: "NOK" },
+    { x: 695, y: 445, text: "Bekreftet" },
+    { x: 760, y: 445, text: "SYNTHETIC BILL" },
+    { x: 20, y: 415, text: "28.05.2026" },
+    { x: 95, y: 415, text: "Purchase" },
+    { x: 170, y: 415, text: "ACCT-001" },
+    { x: 565, y: 415, text: "-20,00" },
+    { x: 635, y: 415, text: "NOK" },
+    { x: 695, y: 415, text: "Bokført" },
+    { x: 760, y: 415, text: "SYNTHETIC SHOP" },
+  ];
+  const content = placements.map(({ x, y, text }) =>
+    `BT /F1 10 Tf 1 0 0 1 ${x} ${y} Tm ${encodePdfText(text)} Tj ET`
+  ).join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 900 600] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    `<< /Length ${Buffer.byteLength(content, "ascii")} >>\nstream\n${content}\nendstream`,
+  ];
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf, "ascii"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const crossReferenceOffset = Buffer.byteLength(pdf, "ascii");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) {
+    pdf += `${offset.toString().padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${crossReferenceOffset}\n%%EOF`;
+  return Buffer.from(pdf, "ascii");
+}
+
+function writeMixedStatusPdfFixture(): string {
+  const path = join(createTemporaryDirectory(), `mixed-status-${randomUUID()}.pdf`);
+  writeFileSync(path, createMixedStatusPdf());
+  return path;
+}
+
 test.describe("PDF file picker cancellation", () => {
   test.use({ importFileDialogBehavior: "native" });
 
@@ -156,6 +236,52 @@ function loadPersistedSnapshot(databasePath: string) {
 }
 
 test.describe("PDF import renderer workflow", () => {
+  test("acknowledges excluded status rows before importing booked transactions", async ({ pdfImport, databasePath }) => {
+    const fixturePath = writeMixedStatusPdfFixture();
+    await pdfImport.enterFilePath(fixturePath);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    await expect(pdfImport.previewRegion).toContainText("2 non-booked rows will not be imported.");
+    const acknowledgement = pdfImport.importSection.getByRole("checkbox", {
+      name: "I acknowledge that 2 reserved or confirmed rows will be excluded from this import.",
+    });
+    await expect(acknowledgement).not.toBeChecked();
+    await expect(pdfImport.confirmImportButton).toBeDisabled();
+
+    await acknowledgement.check();
+    await expect(pdfImport.confirmImportButton).toBeEnabled();
+    await pdfImport.confirmImportButton.click();
+
+    await expect(pdfImport.successStatus).toContainText("Added 1 transaction to your ledger.");
+    await expect(pdfImport.importSection.getByText("2 non-booked rows excluded.", { exact: true })).toBeVisible();
+    const pdfTransactions = loadPersistedSnapshot(databasePath).transactions.filter((transaction) => transaction.sourceType === "pdf");
+    expect(pdfTransactions).toHaveLength(1);
+    expect(pdfTransactions[0]).toMatchObject({
+      bookedAtIso: "2026-05-28T00:00:00Z",
+      amountMinor: -2000,
+      merchantRaw: "SYNTHETIC SHOP",
+      sourceType: "pdf",
+    });
+  });
+
+  test("rejects a non-boolean excluded-row acknowledgement at the IPC boundary", async ({ window }) => {
+    const result = await window.evaluate(async (filePath) => {
+      try {
+        const response = await (globalThis as unknown as Window).budgetApi.import.importPdf({
+          filePath,
+          previewId: "unused-preview",
+          acknowledgeExcludedRows: "yes",
+        } as never);
+        return response.ok ? "imported" : response.errors[0]?.code ?? "failed";
+      } catch (error: unknown) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    }, FIXTURE_PATH);
+
+    expect(result).toContain("acknowledgeExcludedRows must be a boolean when provided.");
+  });
+
   test("10,000-row PDF preview renders a bounded page with navigation", async ({ pdfImport }) => {
     await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
     await pdfImport.importButton.click();
@@ -186,7 +312,7 @@ test.describe("PDF import renderer workflow", () => {
     await pdfImport.importButton.click();
 
     const progress = pdfImport.importSection.getByRole("status", { name: "Import preflight progress" });
-    await expect(progress).toContainText(/Validating statement rows: \d{3,4} of 10[\s\u00a0\u202f]?000 rows/);
+    await expect(progress).toContainText(/Validating statement rows: \d+(?:[\s\u00a0\u202f]\d{3})? of 10[\s\u00a0\u202f]?000 rows/);
     await expect(pdfImport.importSection.getByRole("button", { name: "Cancel preview", exact: true })).toBeEnabled();
     await pdfImport.importSection.getByRole("button", { name: "Cancel preview", exact: true }).click();
 
