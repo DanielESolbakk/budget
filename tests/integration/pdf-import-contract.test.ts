@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildRogalandImportJobId,
@@ -24,14 +24,9 @@ import {
   ROGALAND_SOURCE_ID,
 } from "../../src/domain/import/pdfTextParser.js";
 import { buildTransactionFingerprint } from "../../src/domain/import/buildTransactionFingerprint.js";
-import {
-  defaultParserAdapterRegistry,
-  ParserAdapterRegistry,
-} from "../../src/domain/import/parserAdapterRegistry.js";
-import type { SourceDocument } from "../../src/domain/import/sourceDocument.js";
+import { defaultParserAdapterRegistry } from "../../src/domain/import/parserAdapterRegistry.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { buildDashboardViewContract } from "../../src/app/dashboardApi.js";
-import { createTextSourceDocument } from "../../src/domain/import/sourceDocument.js";
 import {
   buildPdfImportRequest,
   normalizePdfImportErrors,
@@ -122,177 +117,6 @@ function runPdfImportOrchestration(
   );
 }
 describe("pdf import contract", () => {
-  it("returns unknown layout source evidence with explicit diagnostics", () => {
-    const unresolvedText = "UNKNOWN BANK\nUnrecognized statement row";
-    const sourceDocument = createTextSourceDocument(unresolvedText);
-    const preview = previewPdfImportWorkflow({
-      pdfText: unresolvedText,
-      sourceDocument,
-      filePath: "unknown-statement.txt",
-      householdId: SAMPLE_HOUSEHOLD.id,
-      accountId: SAMPLE_ACCOUNT.id,
-    }, defaultParserAdapterRegistry);
-
-    expect(preview).toMatchObject({
-      ok: false,
-      errors: [{ code: "UNSUPPORTED_LAYOUT" }],
-      unresolvedInput: {
-        sourceName: "unknown-statement.txt",
-        sourceDocument: {
-          format: "text",
-          pages: [{
-            pageNumber: 1,
-            sourceText: unresolvedText,
-            sourceLines: expect.arrayContaining([
-              expect.objectContaining({ lineNumber: 2, rawText: "Unrecognized statement row" }),
-            ]),
-          }],
-        },
-      },
-    });
-  });
-
-  it("returns malformed extracted row evidence with explicit diagnostics", () => {
-    const malformedRow = "29.05.2026 Varekjop ACCT-001 SYNTHETIC DEST-001 SYNTHETIC SHOP not-an-amount NOK Bokført INVALID ROW";
-    const malformedText = [
-      "ROGALAND SPAREBANK",
-      "Transaksjoner Antall: 1",
-      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
-      malformedRow,
-    ].join("\n");
-    const preview = previewPdfImportWorkflow({
-      pdfText: malformedText,
-      sourceDocument: createTextSourceDocument(malformedText),
-      filePath: "malformed-statement.txt",
-      householdId: SAMPLE_HOUSEHOLD.id,
-      accountId: SAMPLE_ACCOUNT.id,
-    }, defaultParserAdapterRegistry);
-
-    expect(preview).toMatchObject({
-      ok: false,
-      errors: [{ code: "INVALID_AMOUNT_FORMAT", lineNumber: 4 }],
-      unresolvedInput: {
-        sourceDocument: {
-          pages: [{
-            sourceLines: expect.arrayContaining([expect.objectContaining({ lineNumber: 4, rawText: malformedRow })]),
-          }],
-        },
-      },
-    });
-  });
-
-  it("passes the structured source document through preview adapter selection", () => {
-    const registry = new ParserAdapterRegistry();
-    registry.register({
-      id: "bank-b-pdf-v1",
-      sourceIdentity: "no.bank-b.statement-pdf",
-      requiredCapabilities: ["binary-pdf"],
-      canHandle: (source) => source.text.includes("BANK-B"),
-      parse: () => ({
-        ok: true,
-        adapterId: "bank-b-pdf-v1",
-        sourceIdentity: "no.bank-b.statement-pdf",
-        candidates: [],
-      }),
-    });
-    const sourceDocument: SourceDocument = {
-      format: "pdf",
-      text: "BANK-B statement",
-      capabilities: ["plain-text", "ordered-pages", "source-offsets", "positioned-text", "binary-pdf"],
-      pages: [{
-        pageNumber: 1,
-        text: "BANK-B statement",
-        sourceText: "BANK-B statement",
-        sourceLines: [],
-      }],
-    };
-
-    const preview = previewPdfImportWorkflow({
-      pdfText: sourceDocument.text,
-      sourceDocument,
-      filePath: "bank-b-statement.pdf",
-      householdId: SAMPLE_HOUSEHOLD.id,
-      accountId: SAMPLE_ACCOUNT.id,
-    }, registry);
-
-    expect(preview).toMatchObject({ ok: true, adapterId: "bank-b-pdf-v1" });
-  });
-
-  it("uses PDF capabilities through final import and records the adapter identity", () => {
-    const registry = new ParserAdapterRegistry();
-    const candidate: Transaction = {
-      id: "bank-b-candidate",
-      householdId: SAMPLE_HOUSEHOLD.id,
-      accountId: SAMPLE_ACCOUNT.id,
-      bookedAtIso: "2026-05-28T00:00:00Z",
-      amountMinor: -1200,
-      merchantRaw: "BANK-B SHOP",
-      currencyCode: "NOK",
-      sourceType: "pdf",
-    };
-    registry.register({
-      id: "bank-b-pdf-v1",
-      sourceIdentity: "no.bank-b.statement-pdf",
-      requiredCapabilities: ["binary-pdf"],
-      canHandle: (source) => source.text.includes("BANK-B"),
-      parse: () => ({
-        ok: true,
-        adapterId: "bank-b-pdf-v1",
-        sourceIdentity: "no.bank-b.statement-pdf",
-        candidates: [candidate],
-      }),
-    });
-    const sourceDocument: SourceDocument = {
-      format: "pdf",
-      text: "BANK-B statement",
-      capabilities: ["plain-text", "ordered-pages", "source-offsets", "positioned-text", "binary-pdf"],
-      pages: [{
-        pageNumber: 1,
-        text: "BANK-B statement",
-        sourceText: "BANK-B statement",
-        sourceLines: [],
-      }],
-    };
-    const importJobs: ImportJob[] = [];
-    const importedTransactions: Transaction[] = [];
-    let lookedUpContentDigest: string | undefined;
-
-    const response = runPdfImportWorkflow({
-      pdfText: sourceDocument.text,
-      sourceDocument,
-      filePath: "bank-b-statement.pdf",
-      householdId: SAMPLE_HOUSEHOLD.id,
-      accountId: SAMPLE_ACCOUNT.id,
-      importJobId: "bank-b-import-job",
-      startedAtIso: "2026-05-28T00:00:00Z",
-      finishedAtIso: "2026-05-28T00:00:00Z",
-    }, {
-      parserRegistry: registry,
-      getImportedTransactionsForSource: (_sourceType, _sourceName, _accountId, contentDigest) => {
-        lookedUpContentDigest = contentDigest;
-        return [];
-      },
-      appendImportJob: (importJob) => importJobs.push(importJob),
-      appendTransactions: (transactions) => {
-        importedTransactions.push(...transactions);
-        return transactions.length;
-      },
-    });
-
-    expect(response).toMatchObject({ ok: true, adapterId: "bank-b-pdf-v1", transactionCount: 1 });
-    expect(importJobs[0]).toMatchObject({
-      adapterId: "bank-b-pdf-v1",
-      provenance: { sourceIdentity: "no.bank-b.statement-pdf" },
-    });
-    const expectedContentDigest = `import-pdf-${createHash("sha256")
-      .update(["bank-b-pdf-v1", SAMPLE_HOUSEHOLD.id, SAMPLE_ACCOUNT.id, sourceDocument.text].join("|"), "utf8")
-      .digest("hex")
-      .slice(0, 24)}`;
-    expect(lookedUpContentDigest).toBe(expectedContentDigest);
-    expect(importJobs[0]?.provenance?.contentDigest).toBe(expectedContentDigest);
-    expect(importedTransactions).toMatchObject([{ merchantRaw: "BANK-B SHOP", sourceType: "pdf" }]);
-  });
-
   describe("booked-only import acknowledgement", () => {
     const mixedStatusText = [
       "ROGALAND SPAREBANK",

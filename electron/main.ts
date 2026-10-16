@@ -69,7 +69,7 @@ import {
   type PdfImportPreviewResponse,
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
-import { extractSourceDocumentFromBuffer } from "../src/app/import/extractPdfText.js";
+import { extractPdfTextFromBuffer } from "../src/app/import/extractPdfText.js";
 import { decodeCsvBytes, parseRogalandCsvText } from "../src/domain/import/parseCsvText.js";
 import type { CsvImportProfile } from "../src/domain/import/csvImportProfile.js";
 import type { ImportJobHistoryEntry } from "../src/domain/import/importJobHistory.js";
@@ -1444,23 +1444,14 @@ app.whenReady().then(async () => {
           return normalizePdfImportErrors([{
             code: "FILE_READ_ERROR",
             message: fileError instanceof Error ? fileError.message : "Could not read PDF text file.",
-          }], { sourceName: request.filePath });
+          }]);
         }
         if (preflight.cancelled) {
           return { ok: false, errors: [{ code: "PREVIEW_CANCELLED", message: "Preview cancelled. No transactions were saved." }] };
         }
 
         reportProgress("Extracting statement text", 0, 0);
-        let sourceDocument: Awaited<ReturnType<typeof extractSourceDocumentFromBuffer>>;
-        try {
-          sourceDocument = await extractSourceDocumentFromBuffer(pdfBytes);
-        } catch (error) {
-          return normalizePdfImportErrors([{
-            code: "FILE_READ_ERROR",
-            message: error instanceof Error ? error.message : "Could not extract PDF text.",
-          }], { sourceName: request.filePath });
-        }
-        const pdfText = sourceDocument.text;
+        const pdfText = await extractPdfTextFromBuffer(pdfBytes);
         if (preflight.cancelled) {
           return { ok: false, errors: [{ code: "PREVIEW_CANCELLED", message: "Preview cancelled. No transactions were saved." }] };
         }
@@ -1469,7 +1460,6 @@ app.whenReady().then(async () => {
         const preview = await previewPdfImportWorkflowInBatches(
           {
             pdfText,
-            sourceDocument,
             filePath: request.filePath,
             householdId: request.householdId,
             accountId: request.accountId,
@@ -1546,7 +1536,7 @@ app.whenReady().then(async () => {
       } catch (fileError) {
         const message =
           fileError instanceof Error ? fileError.message : "Could not read PDF text file.";
-        return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }], { sourceName: request.filePath });
+        return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
       }
 
       try {
@@ -1564,15 +1554,14 @@ app.whenReady().then(async () => {
         throw error;
       }
 
-      let sourceDocument: Awaited<ReturnType<typeof extractSourceDocumentFromBuffer>>;
+      let pdfText: string;
       try {
-        sourceDocument = await extractSourceDocumentFromBuffer(pdfBytes);
+        pdfText = await extractPdfTextFromBuffer(pdfBytes);
       } catch (error) {
         importPreviewRegistry.release(parsedInput.previewId!);
         const message = error instanceof Error ? error.message : "Could not extract PDF text.";
-        return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }], { sourceName: request.filePath });
+        return normalizePdfImportErrors([{ code: "FILE_READ_ERROR", message }]);
       }
-      const pdfText = sourceDocument.text;
 
       const importJobId = `import-pdf-${randomUUID()}`;
       const now = new Date().toISOString();
@@ -1581,7 +1570,6 @@ app.whenReady().then(async () => {
       try {
         response = runPdfImportWorkflow({
           pdfText,
-          sourceDocument,
           filePath: request.filePath,
           householdId: request.householdId,
           accountId: request.accountId,

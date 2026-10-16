@@ -82,16 +82,8 @@ export function buildRogalandImportJobId(
   text: string,
   options: Pick<PdfTextParseOptions, "householdId" | "accountId">
 ): string {
-  return buildPdfImportContentDigest(text, options, ROGALAND_ADAPTER_ID);
-}
-
-export function buildPdfImportContentDigest(
-  text: string,
-  options: Pick<PdfTextParseOptions, "householdId" | "accountId">,
-  adapterId: string
-): string {
   const canonical = [
-    adapterId,
+    ROGALAND_ADAPTER_ID,
     options.householdId.trim(),
     options.accountId.trim(),
     text,

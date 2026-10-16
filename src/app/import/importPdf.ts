@@ -3,11 +3,9 @@ import { randomUUID } from "node:crypto";
 import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { classifyDuplicateCandidates, type DuplicateImportDecision, type DuplicateTransactionMatch } from "../../domain/import/filterPreviouslyImportedTransactions.js";
-import { buildPdfImportContentDigest } from "../../domain/import/pdfTextParser.js";
+import { buildRogalandImportJobId } from "../../domain/import/pdfTextParser.js";
 import { categorizeTransaction } from "../../domain/categorization/categorizeTransaction.js";
 import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
-import { createTextSourceDocument } from "../../domain/import/sourceDocument.js";
-import type { SourceDocument } from "../../domain/import/sourceDocument.js";
 import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
 import { resolve } from "node:path";
 
@@ -37,10 +35,6 @@ export interface PdfImportFailure {
     lineNumber?: number;
     field?: string;
   }>;
-  unresolvedInput?: {
-    sourceName: string;
-    sourceDocument?: SourceDocument;
-  };
 }
 
 /** Discriminated union returned by the `import:pdf` IPC channel. */
@@ -67,7 +61,6 @@ export type PdfImportPreviewWorkflowResponse =
 
 export interface PdfImportWorkflowInput extends PdfImportRequest {
   pdfText: string;
-  sourceDocument?: SourceDocument;
   importJobId: string;
   startedAtIso: string;
   finishedAtIso: string;
@@ -129,8 +122,7 @@ export function buildPdfImportRequest(
  * PdfImportFailure shape returned over IPC.
  */
 export function normalizePdfImportErrors(
-  errors: PdfTextValidationError[],
-  unresolvedInput?: PdfImportFailure["unresolvedInput"]
+  errors: PdfTextValidationError[]
 ): PdfImportFailure {
   return {
     ok: false,
@@ -140,7 +132,6 @@ export function normalizePdfImportErrors(
       ...(error.lineNumber === undefined ? {} : { lineNumber: error.lineNumber }),
       ...(error.field === undefined ? {} : { field: error.field }),
     })),
-    ...(unresolvedInput === undefined ? {} : { unresolvedInput }),
   };
 }
 
@@ -176,20 +167,16 @@ function canonicalSourceScope(filePath: string): string {
 }
 
 export function previewPdfImportWorkflow(
-  input: Pick<PdfImportWorkflowInput, "pdfText" | "filePath" | "householdId" | "accountId" | "sourceDocument">,
+  input: Pick<PdfImportWorkflowInput, "pdfText" | "filePath" | "householdId" | "accountId">,
   parserRegistry: Pick<ParserAdapterRegistry, "parse">
 ): PdfImportPreviewWorkflowResponse {
-  const sourceDocument = input.sourceDocument ?? createTextSourceDocument(input.pdfText);
-  const parseResult = parserRegistry.parse(sourceDocument, {
+  const parseResult = parserRegistry.parse(input.pdfText, {
     householdId: input.householdId,
     accountId: input.accountId,
   });
 
   if (!parseResult.ok) {
-    return normalizePdfImportErrors(parseResult.errors, {
-      sourceName: input.filePath,
-      sourceDocument,
-    });
+    return normalizePdfImportErrors(parseResult.errors);
   }
 
   return {
@@ -205,22 +192,16 @@ export function previewPdfImportWorkflow(
 }
 
 export async function previewPdfImportWorkflowInBatches(
-  input: Pick<PdfImportWorkflowInput, "pdfText" | "filePath" | "householdId" | "accountId" | "sourceDocument">,
+  input: Pick<PdfImportWorkflowInput, "pdfText" | "filePath" | "householdId" | "accountId">,
   parserRegistry: Pick<ParserAdapterRegistry, "parseInBatches">,
   callbacks: PdfTextParseBatchCallbacks
 ): Promise<PdfImportPreviewWorkflowResponse | null> {
-  const sourceDocument = input.sourceDocument ?? createTextSourceDocument(input.pdfText);
-  const parseResult = await parserRegistry.parseInBatches(sourceDocument, {
+  const parseResult = await parserRegistry.parseInBatches(input.pdfText, {
     householdId: input.householdId,
     accountId: input.accountId,
   }, callbacks);
   if (parseResult === null) return null;
-  if (!parseResult.ok) {
-    return normalizePdfImportErrors(parseResult.errors, {
-      sourceName: input.filePath,
-      sourceDocument,
-    });
-  }
+  if (!parseResult.ok) return normalizePdfImportErrors(parseResult.errors);
 
   return {
     ok: true,
@@ -238,18 +219,14 @@ export function runPdfImportWorkflow(
   input: PdfImportWorkflowInput,
   dependencies: PdfImportWorkflowDependencies
 ): PdfImportResponse {
-  const sourceDocument = input.sourceDocument ?? createTextSourceDocument(input.pdfText);
-  const parseResult = dependencies.parserRegistry.parse(sourceDocument, {
+  const parseResult = dependencies.parserRegistry.parse(input.pdfText, {
     householdId: input.householdId,
     accountId: input.accountId,
     importJobId: input.importJobId,
   });
 
   if (!parseResult.ok) {
-    return normalizePdfImportErrors(parseResult.errors, {
-      sourceName: input.filePath,
-      sourceDocument,
-    });
+    return normalizePdfImportErrors(parseResult.errors);
   }
 
   const excludedRowCount = parseResult.excludedRows?.length ?? 0;
@@ -276,7 +253,7 @@ export function runPdfImportWorkflow(
       "pdf",
       input.filePath,
       input.accountId,
-      buildPdfImportContentDigest(input.pdfText, input, parseResult.adapterId)
+      buildRogalandImportJobId(input.pdfText, input)
     ) ?? []),
   ].filter((transaction, index, all) =>
     all.findIndex((candidate) => candidate.id === transaction.id) === index
@@ -330,7 +307,7 @@ export function runPdfImportWorkflow(
     finishedAtIso: input.finishedAtIso,
     provenance: {
       sourceIdentity: parseResult.sourceIdentity,
-      contentDigest: buildPdfImportContentDigest(input.pdfText, input, parseResult.adapterId),
+      contentDigest: buildRogalandImportJobId(input.pdfText, input),
       adapterId: parseResult.adapterId,
       accountId: input.accountId,
       ...(input.duplicateDecisions === undefined ? {} : { duplicateCount }),

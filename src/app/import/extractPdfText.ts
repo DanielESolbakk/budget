@@ -2,13 +2,6 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { createTextSourceDocument } from "../../domain/import/sourceDocument.js";
-import type {
-  SourceDocument,
-  SourceDocumentPage,
-  SourceTextLineClassification,
-  SourceTextLineEvidence,
-} from "../../domain/import/sourceDocument.js";
 
 const PDF_ROW_HEADERS = [
   "Dato",
@@ -158,82 +151,9 @@ function renderPageText(lines: readonly PositionedTextLine[], pageNumber: number
   return [`Transaksjoner ${pageNumber}`, ...rendered];
 }
 
-function classifySourceLines(
-  lines: readonly PositionedTextLine[]
-): SourceTextLineClassification[] {
-  const tableHeaderIndex = lines.findIndex((line) => findPdfColumnAnchors(line) !== null);
-  const columns = tableHeaderIndex === -1 ? null : findPdfColumnAnchors(lines[tableHeaderIndex]!);
-  let transactionActive = false;
-
-  return lines.map((line, lineIndex) => {
-    if (findPdfColumnAnchors(line) !== null) {
-      transactionActive = false;
-      return "column-header";
-    }
-    if (isDocumentDecoration(line)) {
-      transactionActive = false;
-      return "document-decoration";
-    }
-    if (line.items.some((item) => isTransactionDate(item.text))) {
-      transactionActive = true;
-      return "transaction";
-    }
-
-    const firstItemX = line.items[0]?.x;
-    if (
-      lineIndex > tableHeaderIndex &&
-      transactionActive &&
-      columns !== null &&
-      firstItemX !== undefined &&
-      firstItemX >= columns[0]!.x + PDF_CONTINUATION_X_TOLERANCE
-    ) {
-      return "continuation";
-    }
-
-    transactionActive = false;
-    return tableHeaderIndex === -1 || lineIndex < tableHeaderIndex
-      ? "document-metadata"
-      : "unclassified";
-  });
-}
-
-function createPdfSourcePage(
-  pageNumber: number,
-  lines: readonly PositionedTextLine[]
-): SourceDocumentPage {
-  const sourceLineTexts = lines.map((line) =>
-    line.items.map((item) => item.text.trim()).filter(Boolean).join(" ")
-  );
-  const sourceText = sourceLineTexts.join("\n");
-  const classifications = classifySourceLines(lines);
-  let startOffset = 0;
-  const sourceLines = lines.map((line, index): SourceTextLineEvidence => {
-    const rawText = sourceLineTexts[index] ?? "";
-    const endOffset = startOffset + rawText.length;
-    const sourceLine: SourceTextLineEvidence = {
-      pageNumber,
-      lineNumber: index + 1,
-      startOffset,
-      endOffset,
-      rawText,
-      classification: classifications[index] ?? "unclassified",
-      items: line.items.map(({ text, x, y }) => ({ text: text.trim(), x, y })),
-    };
-    startOffset = endOffset + 1;
-    return sourceLine;
-  });
-
-  return {
-    pageNumber,
-    text: renderPageText(lines, pageNumber).join("\n"),
-    sourceText,
-    sourceLines,
-  };
-}
-
-export async function extractSourceDocumentFromBuffer(data: Buffer): Promise<SourceDocument> {
+export async function extractPdfTextFromBuffer(data: Buffer): Promise<string> {
   if (data.subarray(0, 5).toString("ascii") !== "%PDF-") {
-    return createTextSourceDocument(data.toString("utf8"));
+    return data.toString("utf8");
   }
 
   const require = createRequire(import.meta.url);
@@ -242,7 +162,7 @@ export async function extractSourceDocumentFromBuffer(data: Buffer): Promise<Sou
   const document = await getDocument({ data: new Uint8Array(data), standardFontDataUrl }).promise;
 
   try {
-    const pages: SourceDocumentPage[] = [];
+    const pageTexts: string[] = [];
     let hasRogalandSource = false;
 
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
@@ -259,30 +179,17 @@ export async function extractSourceDocumentFromBuffer(data: Buffer): Promise<Sou
         if (positionedItems.some((item) => item.text.toUpperCase().includes("ROGALAND SPAREBANK"))) {
           hasRogalandSource = true;
         }
-        pages.push(createPdfSourcePage(pageNumber, groupTextItemsByBaseline(positionedItems)));
+        pageTexts.push(...renderPageText(groupTextItemsByBaseline(positionedItems), pageNumber));
       } finally {
         page.cleanup();
       }
     }
 
-    const pageText = pages.flatMap((page) => page.text.split("\n"));
-    const text = hasRogalandSource
-      ? [`ROGALAND SPAREBANK`, ...pageText].join("\n")
-      : pageText.join("\n");
-
-    return {
-      format: "pdf",
-      text,
-      capabilities: ["plain-text", "ordered-pages", "source-offsets", "positioned-text", "binary-pdf"],
-      pages,
-    };
+    if (hasRogalandSource) return [`ROGALAND SPAREBANK`, ...pageTexts].join("\n");
+    return pageTexts.join("\n");
   } finally {
     await document.destroy();
   }
-}
-
-export async function extractPdfTextFromBuffer(data: Buffer): Promise<string> {
-  return (await extractSourceDocumentFromBuffer(data)).text;
 }
 
 export async function extractPdfTextFromFile(filePath: string): Promise<string> {

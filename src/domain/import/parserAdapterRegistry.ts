@@ -1,9 +1,4 @@
 import type { Transaction } from "../types.js";
-import {
-  createTextSourceDocument,
-  type SourceDocument,
-  type SourceDocumentCapability,
-} from "./sourceDocument.js";
 import type { PdfTextExcludedRow, PdfTextParseBatchCallbacks, PdfTextParseOptions, PdfTextValidationError } from "./pdfTextParser.js";
 import {
   isRogalandStatementText,
@@ -43,15 +38,13 @@ export interface ParserAdapter {
   readonly id: string;
   /** Stable identity for the source layout handled by this adapter. */
   readonly sourceIdentity: string;
-  /** Capabilities required from a source document before this adapter is considered. */
-  readonly requiredCapabilities?: readonly SourceDocumentCapability[];
-  /** Returns true when this adapter recognises the source document. */
-  canHandle(source: SourceDocument): boolean;
-  /** Parses a source document into ordered transaction candidates. */
-  parse(source: SourceDocument, options: PdfTextParseOptions): AdapterParseResult;
+  /** Returns true when this adapter recognises the source text. */
+  canHandle(text: string): boolean;
+  /** Parses the source text into ordered transaction candidates. */
+  parse(text: string, options: PdfTextParseOptions): AdapterParseResult;
   /** Parses large sources in cancellable batches when the adapter supports it. */
   parseInBatches?: (
-    source: SourceDocument,
+    text: string,
     options: PdfTextParseOptions,
     callbacks: PdfTextParseBatchCallbacks
   ) => Promise<AdapterParseResult | null>;
@@ -75,10 +68,6 @@ export type RegistryParseResult = AdapterParseResult | UnsupportedSourceFailure;
 export class ParserAdapterRegistry {
   private readonly adapters: ParserAdapter[] = [];
 
-  private toSourceDocument(source: string | SourceDocument): SourceDocument {
-    return typeof source === "string" ? createTextSourceDocument(source) : source;
-  }
-
   /** Registers an adapter. Adapters with identical ids are deduplicated (first registration wins). */
   register(adapter: ParserAdapter): void {
     if (!this.adapters.some((a) => a.id === adapter.id)) {
@@ -87,18 +76,13 @@ export class ParserAdapterRegistry {
   }
 
   /** Returns the registered adapter that can handle the text, or undefined when none match. */
-  selectAdapter(source: string | SourceDocument): ParserAdapter | undefined {
-    const document = this.toSourceDocument(source);
-    return this.adapters.find((adapter) =>
-      (adapter.requiredCapabilities ?? []).every((capability) => document.capabilities.includes(capability)) &&
-      adapter.canHandle(document)
-    );
+  selectAdapter(text: string): ParserAdapter | undefined {
+    return this.adapters.find((a) => a.canHandle(text));
   }
 
   /** Selects and runs the appropriate adapter, or returns an explicit unsupported-source failure. */
-  parse(source: string | SourceDocument, options: PdfTextParseOptions): RegistryParseResult {
-    const document = this.toSourceDocument(source);
-    const adapter = this.selectAdapter(document);
+  parse(text: string, options: PdfTextParseOptions): RegistryParseResult {
+    const adapter = this.selectAdapter(text);
 
     if (!adapter) {
       return {
@@ -114,16 +98,15 @@ export class ParserAdapterRegistry {
       };
     }
 
-    return adapter.parse(document, options);
+    return adapter.parse(text, options);
   }
 
   async parseInBatches(
-    source: string | SourceDocument,
+    text: string,
     options: PdfTextParseOptions,
     callbacks: PdfTextParseBatchCallbacks
   ): Promise<RegistryParseResult | null> {
-    const document = this.toSourceDocument(source);
-    const adapter = this.selectAdapter(document);
+    const adapter = this.selectAdapter(text);
     if (!adapter) {
       return {
         ok: false,
@@ -135,9 +118,9 @@ export class ParserAdapterRegistry {
       };
     }
     if (adapter.parseInBatches !== undefined) {
-      return adapter.parseInBatches(document, options, callbacks);
+      return adapter.parseInBatches(text, options, callbacks);
     }
-    const result = adapter.parse(document, options);
+    const result = adapter.parse(text, options);
     callbacks.onProgress(1, 1);
     return result;
   }
@@ -151,12 +134,11 @@ export class ParserAdapterRegistry {
 const rogalandAdapter: ParserAdapter = {
   id: ROGALAND_ADAPTER_ID,
   sourceIdentity: ROGALAND_SOURCE_ID,
-  requiredCapabilities: ["plain-text"],
-  canHandle(source: SourceDocument): boolean {
-    return isRogalandStatementText(source.text);
+  canHandle(text: string): boolean {
+    return isRogalandStatementText(text);
   },
-  parse(source: SourceDocument, options: PdfTextParseOptions): AdapterParseResult {
-    const result = parseRogalandStatementText(source.text, options);
+  parse(text: string, options: PdfTextParseOptions): AdapterParseResult {
+    const result = parseRogalandStatementText(text, options);
     if (result.ok) {
       return {
         ok: true,
@@ -168,8 +150,8 @@ const rogalandAdapter: ParserAdapter = {
     }
     return { ok: false, adapterId: ROGALAND_ADAPTER_ID, errors: result.errors };
   },
-  async parseInBatches(source, options, callbacks): Promise<AdapterParseResult | null> {
-    const result = await parseRogalandStatementTextInBatches(source.text, options, callbacks);
+  async parseInBatches(text, options, callbacks): Promise<AdapterParseResult | null> {
+    const result = await parseRogalandStatementTextInBatches(text, options, callbacks);
     if (result === null) return null;
     if (result.ok) {
       return {

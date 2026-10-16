@@ -14,10 +14,6 @@ import {
   defaultParserAdapterRegistry,
   type ParserAdapter,
 } from "../../src/domain/import/parserAdapterRegistry.js";
-import {
-  createTextSourceDocument,
-  type SourceDocument,
-} from "../../src/domain/import/sourceDocument.js";
 import { ROGALAND_ADAPTER_ID } from "../../src/domain/import/pdfTextParser.js";
 
 const BASE_OPTIONS = {
@@ -26,58 +22,6 @@ const BASE_OPTIONS = {
 };
 
 describe("ParserAdapterRegistry", () => {
-  it("selects a stable adapter only when the source provides its required capabilities", () => {
-    const registry = new ParserAdapterRegistry();
-    const textOnlyAdapter = {
-      id: "bank-b-text-v1",
-      sourceIdentity: "no.bank-b.statement-text",
-      requiredCapabilities: ["standalone-text"] as const,
-      canHandle: (source: SourceDocument) => source.text.includes("BANK-B"),
-      parse: () => ({
-        ok: true as const,
-        adapterId: "bank-b-text-v1",
-        sourceIdentity: "no.bank-b.statement-text",
-        candidates: [],
-      }),
-    };
-    const positionedPdfAdapter = {
-      id: "bank-b-positioned-v1",
-      sourceIdentity: "no.bank-b.statement-pdf",
-      requiredCapabilities: ["positioned-text"] as const,
-      canHandle: (source: SourceDocument) => source.text.includes("BANK-B"),
-      parse: () => ({
-        ok: true as const,
-        adapterId: "bank-b-positioned-v1",
-        sourceIdentity: "no.bank-b.statement-pdf",
-        candidates: [],
-      }),
-    };
-    registry.register(textOnlyAdapter);
-    registry.register(positionedPdfAdapter);
-
-    const textResult = registry.parse(createTextSourceDocument("BANK-B statement"), BASE_OPTIONS);
-    expect(textResult).toMatchObject({
-      ok: true,
-      adapterId: "bank-b-text-v1",
-      sourceIdentity: "no.bank-b.statement-text",
-    });
-
-    const source: SourceDocument = {
-      format: "pdf",
-      text: "BANK-B statement",
-      capabilities: ["plain-text", "ordered-pages", "source-offsets", "positioned-text"],
-      pages: [{ pageNumber: 1, text: "BANK-B statement", sourceText: "BANK-B statement", sourceLines: [] }],
-    };
-
-    const result = registry.parse(source, BASE_OPTIONS);
-
-    expect(result).toMatchObject({
-      ok: true,
-      adapterId: "bank-b-positioned-v1",
-      sourceIdentity: "no.bank-b.statement-pdf",
-    });
-  });
-
   it("forwards progress through the selected adapter's batched parse", async () => {
     const registryWithBatches = defaultParserAdapterRegistry as unknown as {
       parseInBatches?: (
@@ -157,7 +101,7 @@ describe("ParserAdapterRegistry", () => {
       const a: ParserAdapter = {
         id: "a-v1",
         sourceIdentity: "source-a",
-        canHandle: (source) => source.text.includes("TOKEN_A"),
+        canHandle: (text) => text.includes("TOKEN_A"),
         parse: () => ({
           ok: true,
           adapterId: "a-v1",
@@ -168,7 +112,7 @@ describe("ParserAdapterRegistry", () => {
       const b: ParserAdapter = {
         id: "b-v1",
         sourceIdentity: "source-b",
-        canHandle: (source) => source.text.includes("TOKEN_B"),
+        canHandle: (text) => text.includes("TOKEN_B"),
         parse: () => ({
           ok: true,
           adapterId: "b-v1",
