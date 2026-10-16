@@ -185,6 +185,13 @@ function writeUnsupportedFixture(): string {
   return path;
 }
 
+function writeUnreadablePdfFixture(): string {
+  const dir = createTemporaryDirectory();
+  const path = join(dir, `unreadable-${randomUUID()}.pdf`);
+  writeFileSync(path, Buffer.from("%PDF-1.7\nnot a valid PDF document", "ascii"));
+  return path;
+}
+
 function writeMalformedTransactionStatementFixture(): { path: string; lineNumber: number } {
   const directory = createTemporaryDirectory();
   const path = join(directory, `malformed-row-${randomUUID()}.txt`);
@@ -422,6 +429,38 @@ test.describe("PDF import renderer workflow", () => {
     await report.getByText("PDF validation report", { exact: false }).click();
     await expect(report).toContainText(`Line ${invalidStatement.lineNumber}`);
     await expect(report).toContainText("amount");
+  });
+
+  test("unsupported layouts retain the original source text for review", async ({ pdfImport, databasePath }) => {
+    const transactionsBeforePreview = loadPersistedSnapshot(databasePath).transactions;
+    await pdfImport.enterFilePath(writeUnsupportedFixture());
+    await pdfImport.importButton.click();
+
+    await expect(pdfImport.errorAlert).toBeVisible();
+    const sourceEvidenceSummary = pdfImport.importSection.getByText("Unresolved source evidence", { exact: true });
+    await expect(sourceEvidenceSummary).toBeVisible();
+    await sourceEvidenceSummary.click();
+    await expect(pdfImport.importSection).toContainText("Not a supported bank statement format.");
+    await expect(pdfImport.importSection).toContainText("Some other bank");
+    expect(loadPersistedSnapshot(databasePath).transactions).toEqual(transactionsBeforePreview);
+  });
+
+  test("unreadable PDFs report extraction errors and identify the selected source", async ({ pdfImport }) => {
+    const unreadablePath = writeUnreadablePdfFixture();
+    await pdfImport.enterFilePath(unreadablePath);
+    await pdfImport.importButton.click();
+
+    await expect(pdfImport.errorAlert).toBeVisible();
+    await expect(pdfImport.errorAlert).toContainText("Import validation failed:");
+    const validationReport = pdfImport.importSection.locator("details.import-validation-report");
+    await validationReport.getByText("PDF validation report", { exact: false }).click();
+    await expect(validationReport).toContainText("FILE_READ_ERROR");
+
+    const sourceEvidence = pdfImport.importSection.getByText("Unresolved source evidence", { exact: true });
+    await expect(sourceEvidence).toBeVisible();
+    await sourceEvidence.click();
+    await expect(pdfImport.importSection).toContainText(`Source: ${basename(unreadablePath)}`);
+    await expect(pdfImport.importSection).toContainText("No page text was extracted.");
   });
 
   test("cancelling a 10,000-row PDF preflight leaves the ledger unchanged", async ({ pdfImport, databasePath }) => {

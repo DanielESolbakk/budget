@@ -1032,6 +1032,63 @@ section[aria-label].destination-workspace {
   background: transparent;
 }
 
+.import-unresolved-source {
+  margin: 0.75rem 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+
+.import-unresolved-source summary {
+  width: fit-content;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.import-unresolved-source > p {
+  margin: 0.55rem 0;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.import-source-page {
+  margin-top: 0.7rem;
+}
+
+.import-source-page h4 {
+  margin: 0;
+  color: var(--paper);
+  font-size: 0.8rem;
+}
+
+.import-source-page ol {
+  display: grid;
+  gap: 0.45rem;
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0.45rem 0 0;
+  padding-left: 1.3rem;
+}
+
+.import-source-page li {
+  min-width: 0;
+  color: var(--paper-muted);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.import-source-page pre {
+  margin: 0.2rem 0 0;
+  color: var(--paper);
+  font-family: inherit;
+  font-size: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .import-action-help a,
 section[aria-label="CSV Import"] [role="alert"] a {
   color: var(--orange);

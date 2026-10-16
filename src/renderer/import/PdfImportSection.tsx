@@ -73,6 +73,7 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     (previewPage + 1) * PREVIEW_PAGE_SIZE
   ) ?? [];
   const validationErrors = importState.status === "validation" ? importState.errors.errors : [];
+  const unresolvedInput = importState.status === "validation" ? importState.errors.unresolvedInput : undefined;
   const validationReportPageCount = Math.max(1, Math.ceil(validationErrors.length / PREVIEW_PAGE_SIZE));
   const visibleValidationErrors = validationErrors.slice(
     validationReportPage * PREVIEW_PAGE_SIZE,
@@ -368,6 +369,30 @@ export function PdfImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
               </div>
             )}
           </details>
+          {unresolvedInput !== undefined && (
+            <details className="import-unresolved-source">
+              <summary>Unresolved source evidence</summary>
+              <p>Source: {fileNameFromPath(unresolvedInput.sourceName)}</p>
+              {unresolvedInput.sourceDocument === undefined ? (
+                <p>No page text was extracted. Review the diagnostic above and the selected file.</p>
+              ) : unresolvedInput.sourceDocument.pages.map((page) => (
+                <section className="import-source-page" aria-label={`Page ${page.pageNumber} source evidence`} key={page.pageNumber}>
+                  <h4>Page {page.pageNumber}</h4>
+                  <ol aria-label={`Page ${page.pageNumber} source lines`}>
+                    {page.sourceLines.map((line) => (
+                      <li key={`${page.pageNumber}-${line.lineNumber}-${line.startOffset}`}>
+                        <span>
+                          Line {line.lineNumber} · offsets {line.startOffset}-{line.endOffset}
+                          {line.classification === undefined ? "" : ` · ${line.classification}`}
+                        </span>
+                        <pre>{line.rawText || "(blank line)"}</pre>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ))}
+            </details>
+          )}
         </div>
       )}
       {preview !== null && (
