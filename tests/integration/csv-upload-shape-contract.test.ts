@@ -9,7 +9,7 @@ const CSV_FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-upload-shape
 
 describe("sanitized CSV upload-shape fixture", () => {
   it("preserves the real CSV structure and maps every eligible row", async () => {
-    const compressedFixture = Buffer.from(readFileSync(CSV_FIXTURE_PATH, "utf8").replace(/\\s+/g, ""), "base64");
+    const compressedFixture = Buffer.from(readFileSync(CSV_FIXTURE_PATH, "utf8").replace(/\s+/g, ""), "base64");
     const fixtureText = gunzipSync(compressedFixture).toString("utf8");
     const bytes = Buffer.from(fixtureText, "latin1");
     const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
@@ -43,10 +43,10 @@ describe("sanitized CSV upload-shape fixture", () => {
     ]);
     expect(dataRows).toHaveLength(784);
     expect(dataRows.every((row) => row.length === 15)).toBe(true);
-    expect(dataRows.filter((row) => row.some((cell) => /[\\r\\n]/.test(cell)))).toHaveLength(22);
-    expect([...bytes.toString("latin1")].filter((character) => character === "\\\"")).toHaveLength(44);
-    expect((fixtureText.match(/\\r\\n/g) ?? [])).toHaveLength(0);
-    expect((fixtureText.match(/\\n/g) ?? []).length).toBe(807);
+    expect(dataRows.filter((row) => row.some((cell) => /[\r\n]/.test(cell)))).toHaveLength(22);
+    expect([...bytes.toString("latin1")].filter((character) => character.charCodeAt(0) === 34)).toHaveLength(44);
+    expect((fixtureText.match(/\r\n/g) ?? [])).toHaveLength(0);
+    expect((fixtureText.match(/\n/g) ?? []).length).toBe(807);
 
     const rows = parseRogalandCsvText(text);
     expect(rows).toHaveLength(776);
@@ -68,7 +68,7 @@ describe("sanitized CSV upload-shape fixture", () => {
     expect(preview.rows.every((row) => row.errors.length === 0)).toBe(true);
     expect(preview.transactions.every((transaction) =>
       transaction.sourceType === "csv" && Number.isInteger(transaction.amountMinor) &&
-      /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/.test(transaction.bookedAtIso)
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(transaction.bookedAtIso)
     )).toBe(true);
     expect(preview.transactions.some((transaction) => transaction.amountMinor > 0)).toBe(true);
     expect(preview.transactions.some((transaction) => transaction.amountMinor < 0)).toBe(true);

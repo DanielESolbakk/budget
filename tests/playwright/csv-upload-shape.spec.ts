@@ -41,7 +41,7 @@ test("imports every eligible row from a sanitized Windows-1252 upload-shape CSV"
   const csvPath = join(directory, `statement-${randomUUID()}.csv`);
 
   try {
-    const compressedFixture = Buffer.from(readFileSync(FIXTURE_PATH, "utf8").replace(/\\s+/g, ""), "base64");
+    const compressedFixture = Buffer.from(readFileSync(FIXTURE_PATH, "utf8").replace(/\s+/g, ""), "base64");
     const fixtureText = gunzipSync(compressedFixture).toString("utf8");
     writeFileSync(csvPath, Buffer.from(fixtureText, "latin1"));
 
@@ -57,7 +57,7 @@ test("imports every eligible row from a sanitized Windows-1252 upload-shape CSV"
     expect(transactions.every((transaction) =>
       Number.isInteger(transaction.amountMinor) &&
       transaction.currencyCode?.length === 3 &&
-      /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/.test(transaction.bookedAtIso)
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(transaction.bookedAtIso)
     )).toBe(true);
     expect(transactions.some((transaction) => transaction.amountMinor > 0)).toBe(true);
     expect(transactions.some((transaction) => transaction.amountMinor < 0)).toBe(true);
