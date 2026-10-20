@@ -37,7 +37,6 @@ import {
   listCategorizationReviewQueue,
 } from "../src/app/reviewService.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
-import { categorizeTransactions } from "../src/domain/categorization/categorizeTransaction.js";
 import { normalizeMerchantName } from "../src/domain/merchant/normalizeMerchantName.js";
 import {
   inspectBackupSnapshot,
@@ -48,6 +47,7 @@ import {
   classifyPreviouslyImportedCsvCandidates,
   normalizeCsvImportErrors,
   previewCsvRowsWithProgress,
+  runCsvImportWorkflow,
   type CsvImportPreviewFailure,
   type CsvImportPreviewResponse,
   type CsvImportResponse,
@@ -76,7 +76,6 @@ import type { ImportJobHistoryEntry } from "../src/domain/import/importJobHistor
 import type { ImportPreflightProgress } from "../src/app/import/importPreflight.js";
 import { classifyDuplicateCandidates, type DuplicateImportDecision } from "../src/domain/import/filterPreviouslyImportedTransactions.js";
 import {
-  mapCsvRows,
   CSV_COLUMN_NAMES,
   type CsvColumnKey,
   type CsvColumnMapping,
@@ -102,7 +101,6 @@ import {
   validateMonthlyCategoryTargetInput,
   type Household,
   type Account,
-  type ImportJob,
   type ManualEntryInput,
   type MonthlyCategoryTargetInput,
   type SameMerchantPropagationInput,
@@ -1124,97 +1122,30 @@ app.whenReady().then(async () => {
       const canonicalPath = process.platform === "win32" ? resolve(request.filePath).toLowerCase() : resolve(request.filePath);
       const importJobId = `import-csv-${randomUUID()}`;
       const now = new Date().toISOString();
-
-      const result = mapCsvRows(rows, {
-        householdId: request.householdId,
-        accountId: request.accountId,
-        importJobId,
-        idPrefix: importJobId,
-        columnMapping: request.columnMapping,
-        sourceIdentity: digestImportBytes(csvBytes),
-        sourceScope: canonicalPath,
-      });
-
-      if (result.skipped.length > 0) {
-        importPreviewRegistry.release(parsedInput.previewId!);
-        return normalizeCsvImportErrors(result.skipped);
-      }
+      const sourceIdentity = digestImportBytes(csvBytes);
 
       try {
-        const categorizedTransactions = categorizeTransactions(result.transactions, learnedCategoryRules);
-        const snapshot = localLedgerDatabase.loadLedgerSnapshotData();
-        const previouslyImported = localLedgerDatabase.getImportedTransactionsForSource(
-          "csv",
-          request.filePath,
-          request.accountId,
-          digestImportBytes(csvBytes)
-        );
-        const classifiedCandidates = classifyPreviouslyImportedCsvCandidates(
-          categorizedTransactions,
-          previouslyImported,
-          snapshot,
-          { filePath: request.filePath, accountId: request.accountId, sourceIdentity: digestImportBytes(csvBytes) }
-        );
-        const decisions = new Map((parsedInput.duplicateDecisions ?? []).map((decision) => [decision.rowIndex, decision.action]));
-        const duplicateRowIndices = new Set(classifiedCandidates.flatMap((candidate, index) =>
-          candidate.duplicateMatch === undefined ? [] : [index]
-        ));
-        const missingDecisionIndex = Array.from(duplicateRowIndices).find((rowIndex) => !decisions.has(rowIndex));
-        const unexpectedDecisionIndex = Array.from(decisions.keys()).find((rowIndex) => !duplicateRowIndices.has(rowIndex));
-        if (missingDecisionIndex !== undefined || unexpectedDecisionIndex !== undefined) {
-          importPreviewRegistry.release(parsedInput.previewId!);
-          const rowIndex = missingDecisionIndex ?? unexpectedDecisionIndex ?? -1;
-          return {
-            ok: false,
-            errors: [{
-              rowIndex,
-              fields: ["duplicateDecision"],
-              codes: ["DUPLICATE_DECISION_REQUIRED"],
-              messages: ["Preview the current ledger state and explicitly choose whether to skip or import each duplicate candidate."],
-            }],
-          };
-        }
-
-        const pendingTransactions: Transaction[] = [];
-        let skippedDuplicateCount = 0;
-        for (const [rowIndex, candidate] of classifiedCandidates.entries()) {
-          if (candidate.duplicateMatch === undefined) {
-            pendingTransactions.push(candidate.candidate);
-            continue;
-          }
-          if (decisions.get(rowIndex) === "skip") {
-            skippedDuplicateCount += 1;
-            continue;
-          }
-          pendingTransactions.push({ ...candidate.candidate, id: randomUUID() });
-        }
-        const importJob: ImportJob = {
-          id: importJobId,
-          householdId: request.householdId,
-          sourceType: "csv",
-          sourceName: request.filePath,
-          candidateCount: result.transactions.length,
+        const response = runCsvImportWorkflow({
+          ...request,
+          rows,
+          importJobId,
           startedAtIso: now,
           finishedAtIso: now,
-          provenance: {
-            sourceIdentity: digestImportBytes(csvBytes),
-            accountId: request.accountId,
-            duplicateCount: skippedDuplicateCount,
-          },
-        };
-        const insertedCount = localLedgerDatabase.appendImportJobAndTransactions(
-          importJob,
-          pendingTransactions
-        );
-
-        importPreviewRegistry.complete(parsedInput.previewId!);
-
-        return {
-          ok: true,
-          importJobId,
-          transactionCount: insertedCount,
-          duplicateCount: skippedDuplicateCount,
-        };
+          sourceIdentity,
+          sourceScope: canonicalPath,
+          ...(parsedInput.duplicateDecisions === undefined ? {} : { duplicateDecisions: parsedInput.duplicateDecisions }),
+        }, {
+          categoryRules: learnedCategoryRules,
+          loadLedgerSnapshotData: localLedgerDatabase.loadLedgerSnapshotData,
+          getImportedTransactionsForSource: localLedgerDatabase.getImportedTransactionsForSource,
+          appendImportJobAndTransactions: localLedgerDatabase.appendImportJobAndTransactions,
+        });
+        if (response.ok) {
+          importPreviewRegistry.complete(parsedInput.previewId!);
+        } else {
+          importPreviewRegistry.release(parsedInput.previewId!);
+        }
+        return response;
       } catch (error) {
         importPreviewRegistry.release(parsedInput.previewId!);
         throw error;

@@ -88,7 +88,13 @@ describe("csvRowMapper adversarial edge cases", () => {
     });
 
     const errors = validateCsvRow(row);
-    expect(errors.some((error) => error.code === "INVALID_DATE_FORMAT")).toBe(true);
+    expect(errors).toEqual([
+      {
+        code: "INVALID_DATE_FORMAT",
+        message: 'Date value "29.02.2025" is not in dd.MM.yyyy format.',
+        field: CSV_COLUMN_NAMES.executionDate,
+      },
+    ]);
   });
 
   it("flags invalid amount-in format", () => {
@@ -110,7 +116,13 @@ describe("csvRowMapper adversarial edge cases", () => {
     });
 
     const errors = validateCsvRow(row);
-    expect(errors.some((error) => error.code === "INVALID_AMOUNT_FORMAT")).toBe(true);
+    expect(errors).toEqual([
+      {
+        code: "INVALID_AMOUNT_FORMAT",
+        message: 'Amount-in value "12,25" is not a valid number.',
+        field: CSV_COLUMN_NAMES.amountIn,
+      },
+    ]);
   });
 
   it("reports multiple validation errors for malformed rows", () => {
@@ -167,13 +179,20 @@ describe("csvRowMapper adversarial edge cases", () => {
     });
 
     const errors = validateCsvRow(row);
-    expect(errors.some((error) => error.code === "AMBIGUOUS_AMOUNT")).toBe(true);
+    expect(errors).toEqual([
+      {
+        code: "AMBIGUOUS_AMOUNT",
+        message: "Row has both Beløp inn (12.25) and Beløp ut (5.00) populated with non-zero values.",
+        field: CSV_COLUMN_NAMES.amountIn,
+      },
+    ]);
   });
 
-  it("normalizes negative amount-out values to negative minor units", () => {
-    const row = withOverrides({
-      [CSV_COLUMN_NAMES.amountOut]: "-45.55",
-    });
+  it.each([
+    { amountOut: "-45.55", expectedAmountMinor: -4555 },
+    { amountOut: "45.55", expectedAmountMinor: -4555 },
+  ])("maps debit Beløp ut $amountOut to negative minor units", ({ amountOut, expectedAmountMinor }) => {
+    const row = withOverrides({ [CSV_COLUMN_NAMES.amountOut]: amountOut });
 
     const mapped = mapCsvRowToTransaction(row, 0, mappingOptions);
     expect(mapped.ok).toBe(true);
@@ -181,7 +200,11 @@ describe("csvRowMapper adversarial edge cases", () => {
       return;
     }
 
-    expect(mapped.transaction.amountMinor).toBe(-4555);
+    expect(mapped.transaction).toMatchObject({
+      bookedAtIso: "2026-05-01T00:00:00Z",
+      amountMinor: expectedAmountMinor,
+      merchantRaw: "Rema 1000",
+    });
   });
 
   it("maps amount-in rows to positive minor units", () => {
@@ -196,7 +219,11 @@ describe("csvRowMapper adversarial edge cases", () => {
       return;
     }
 
-    expect(mapped.transaction.amountMinor).toBe(12_525);
+    expect(mapped.transaction).toMatchObject({
+      bookedAtIso: "2026-05-01T00:00:00Z",
+      amountMinor: 12_525,
+      merchantRaw: "Rema 1000",
+    });
   });
 
   it("adds importJobId when mapping options include it", () => {

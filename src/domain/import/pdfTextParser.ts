@@ -214,7 +214,8 @@ function collectBankExportRows(lines: readonly string[], tableHeaderIndex: numbe
 function parseRogalandBankExport(
   lines: readonly string[],
   tableHeaderIndex: number,
-  options: PdfTextParseOptions
+  options: PdfTextParseOptions,
+  allowExcludedOnly = false
 ): PdfTextParseResult {
   const rows = collectBankExportRows(lines, tableHeaderIndex);
   const idPrefix = options.idPrefix ?? "pdf";
@@ -315,7 +316,7 @@ function parseRogalandBankExport(
   }
 
   if (errors.length > 0) return { ok: false, errors };
-  if (transactions.length === 0) {
+  if (transactions.length === 0 && !(allowExcludedOnly && excludedRows.length > 0)) {
     return {
       ok: false,
       errors: [{
@@ -527,7 +528,6 @@ export async function parseRogalandStatementTextInBatches(
     if (rows.length === 0) return parseRogalandStatementText(text, options);
 
     const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
-    const headerText = lines.slice(0, bankExportHeaderIndex + 1).join("\n");
     const transactions: Transaction[] = [];
     const excludedRows: PdfTextExcludedRow[] = [];
     const errors: PdfTextValidationError[] = [];
@@ -536,11 +536,14 @@ export async function parseRogalandStatementTextInBatches(
       if (callbacks.isCancelled()) return null;
       const end = Math.min(start + batchSize, rows.length);
       const batchRows = rows.slice(start, end);
-      const batchText = `${headerText}\n${batchRows.map((row) => row.text).join("\n")}`;
-      const result = parseRogalandStatementText(batchText, {
+      const batchLines = [
+        ...lines.slice(0, bankExportHeaderIndex + 1),
+        ...batchRows.map((row) => row.text),
+      ];
+      const result = parseRogalandBankExport(batchLines, bankExportHeaderIndex, {
         ...options,
         idPrefix: `${options.idPrefix ?? "pdf"}-batch-${start}`,
-      });
+      }, true);
 
       if (result.ok) {
         transactions.push(...result.transactions);

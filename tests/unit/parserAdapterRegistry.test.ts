@@ -78,6 +78,36 @@ describe("ParserAdapterRegistry", () => {
     });
   });
 
+  it("does not select a recognizable adapter when a required source capability is missing", () => {
+    const registry = new ParserAdapterRegistry();
+    registry.register({
+      id: "bank-b-positioned-v1",
+      sourceIdentity: "no.bank-b.statement-pdf",
+      requiredCapabilities: ["positioned-text"],
+      canHandle: (source) => source.text.includes("BANK-B"),
+      parse: () => ({
+        ok: true,
+        adapterId: "bank-b-positioned-v1",
+        sourceIdentity: "no.bank-b.statement-pdf",
+        candidates: [],
+      }),
+    });
+    const source: SourceDocument = {
+      format: "pdf",
+      text: "BANK-B statement",
+      capabilities: ["plain-text", "ordered-pages", "source-offsets"],
+      pages: [{ pageNumber: 1, text: "BANK-B statement", sourceText: "BANK-B statement", sourceLines: [] }],
+    };
+
+    const result = registry.parse(source, BASE_OPTIONS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      adapterId: null,
+      errors: [{ code: "UNSUPPORTED_LAYOUT" }],
+    });
+  });
+
   it("forwards progress through the selected adapter's batched parse", async () => {
     const registryWithBatches = defaultParserAdapterRegistry as unknown as {
       parseInBatches?: (

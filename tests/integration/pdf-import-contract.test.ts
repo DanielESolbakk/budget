@@ -37,6 +37,7 @@ import {
   normalizePdfImportErrors,
   appendUniqueTransactions,
   previewPdfImportWorkflow,
+  previewPdfImportWorkflowInBatches,
   runPdfImportWorkflow,
 } from "../../src/app/import/importPdf.js";
 import type { Account, Household, ImportJob, Transaction } from "../../src/domain/types.js";
@@ -68,7 +69,7 @@ function loadFixture(): string {
   return readFileSync(FIXTURE_PATH, "utf8");
 }
 
-function makeTestLedger(suffix = randomUUID()) {
+function makeTestLedger(suffix = randomUUID(), accounts: Account[] = [SAMPLE_ACCOUNT]) {
   const dir = join(tmpdir(), `budget-pdf-integration-${suffix}`);
   mkdirSync(dir, { recursive: true });
   const dbPath = join(dir, "test.sqlite");
@@ -77,7 +78,7 @@ function makeTestLedger(suffix = randomUUID()) {
     dbPath,
     seedData: {
       household: SAMPLE_HOUSEHOLD,
-      accounts: [SAMPLE_ACCOUNT],
+      accounts,
       transactions: [],
       importJobs: [],
       monthlyCategoryTargets: [],
@@ -179,6 +180,69 @@ describe("pdf import contract", () => {
         },
       },
     });
+  });
+
+  it("previews exact candidates without mutating the seeded SQLite ledger", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const existingTransaction: Transaction = {
+      id: "preview-existing-row",
+      householdId: SAMPLE_HOUSEHOLD.id,
+      accountId: SAMPLE_ACCOUNT.id,
+      bookedAtIso: "2026-05-20T00:00:00Z",
+      amountMinor: -8100,
+      merchantRaw: "SYNTHETIC EXISTING ROW",
+      sourceType: "manual",
+    };
+    const pdfText = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -12,50 NOK Bokført SYNTHETIC PREVIEW SHOP",
+      "27.05.2026 Refusjon ACCT-001 LOCAL_USER 3,25 NOK Bokført SYNTHETIC PREVIEW REFUND",
+    ].join("\n");
+
+    try {
+      ledger.appendTransactions([existingTransaction]);
+      const beforePreview = structuredClone(ledger.loadLedgerSnapshotData());
+
+      const preview = previewPdfImportWorkflow({
+        pdfText,
+        filePath: "preview-isolation.pdf",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+      }, defaultParserAdapterRegistry);
+
+      expect(preview.ok).toBe(true);
+      if (!preview.ok) return;
+      expect(preview.adapterId).toBe(ROGALAND_ADAPTER_ID);
+      expect(preview.transactions).toHaveLength(2);
+      expect(preview.transactions.map(({ householdId, accountId, bookedAtIso, amountMinor, merchantRaw }) => ({
+        householdId,
+        accountId,
+        bookedAtIso,
+        amountMinor,
+        merchantRaw,
+      }))).toEqual([
+        {
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          bookedAtIso: "2026-05-28T00:00:00Z",
+          amountMinor: -1250,
+          merchantRaw: "SYNTHETIC PREVIEW SHOP",
+        },
+        {
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          bookedAtIso: "2026-05-27T00:00:00Z",
+          amountMinor: 325,
+          merchantRaw: "SYNTHETIC PREVIEW REFUND",
+        },
+      ]);
+      expect(ledger.loadLedgerSnapshotData()).toEqual(beforePreview);
+    } finally {
+      ledger.close();
+    }
   });
 
   it("passes the structured source document through preview adapter selection", () => {
@@ -343,6 +407,161 @@ describe("pdf import contract", () => {
           },
         ],
       });
+    });
+
+    it("preserves paginated preview exclusions through acknowledgement and booked-only persistence", async () => {
+      const ledger = makeTestLedger(randomUUID());
+      const existingTransaction: Transaction = {
+        id: "existing-acknowledgement-ledger-row",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        bookedAtIso: "2026-05-20T00:00:00Z",
+        amountMinor: -8100,
+        merchantRaw: "SYNTHETIC EXISTING ROW",
+        sourceType: "manual",
+      };
+      const tableHeader = "Dato       Type          Fra konto      Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+      const pdfText = [
+        "ROGALAND SPAREBANK",
+        "Transaksjoner Antall: 5",
+        "Kontonummer: ACCT-001",
+        tableHeader,
+        "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -11,00 NOK Reservert SYNTHETIC RESERVED FIRST",
+        "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -12,50 NOK Bokført SYNTHETIC BOOKED FIRST",
+        "1/3 Rogaland Sparebank",
+        "Transaksjoner Antall: 5",
+        "Kontonummer: ACCT-001",
+        tableHeader,
+        "30.05.2026 Betaling ACCT-001 LOCAL_USER -350,00 NOK Bekreftet SYNTHETIC CONFIRMED MIDDLE",
+        "27.05.2026 Lønn ACCT-001 SYNTHETIC EMPLOYER 50 000,00 NOK Bokført Fra: SYNTHETIC PAYROLL",
+        "2/3 Rogaland Sparebank",
+        "Transaksjoner Antall: 5",
+        "Kontonummer: ACCT-001",
+        tableHeader,
+        "26.05.2026 Varekjøp ACCT-001 LOCAL_USER -41,00 NOK Reservert SYNTHETIC RESERVED LAST",
+        "3/3 Rogaland Sparebank",
+      ].join("\n");
+      const filePath = "paginated-status-statement.pdf";
+      const importInput = {
+        pdfText,
+        filePath,
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        startedAtIso: "2026-05-31T00:00:00Z",
+        finishedAtIso: "2026-05-31T00:00:00Z",
+      };
+
+      try {
+        ledger.appendTransactions([existingTransaction]);
+        const beforeImport = structuredClone(ledger.loadLedgerSnapshotData());
+        const preview = await previewPdfImportWorkflowInBatches({
+          pdfText,
+          filePath,
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+        }, defaultParserAdapterRegistry, {
+          batchSize: 1,
+          isCancelled: () => false,
+          onProgress: () => undefined,
+        });
+
+        expect(preview).toMatchObject({
+          ok: true,
+          adapterId: ROGALAND_ADAPTER_ID,
+          excludedRowCount: 3,
+          transactions: [
+            {
+              bookedAtIso: "2026-05-28T00:00:00Z",
+              amountMinor: -1250,
+              merchantRaw: "SYNTHETIC BOOKED FIRST",
+            },
+            {
+              bookedAtIso: "2026-05-27T00:00:00Z",
+              amountMinor: 5_000_000,
+              merchantRaw: "Fra: SYNTHETIC PAYROLL",
+            },
+          ],
+          excludedRows: [
+            {
+              lineNumber: 5,
+              status: "Reservert",
+              amount: "-11,00",
+              description: "SYNTHETIC RESERVED FIRST",
+            },
+            {
+              lineNumber: 11,
+              status: "Bekreftet",
+              amount: "-350,00",
+              description: "SYNTHETIC CONFIRMED MIDDLE",
+            },
+            {
+              lineNumber: 17,
+              status: "Reservert",
+              amount: "-41,00",
+              description: "SYNTHETIC RESERVED LAST",
+            },
+          ],
+        });
+        if (preview === null || !preview.ok) throw new Error("Expected a valid batched PDF preview");
+        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
+
+        const dependencies = {
+          parserRegistry: defaultParserAdapterRegistry,
+          appendImportJob: ledger.appendImportJob,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          appendTransactions: ledger.appendTransactions,
+        };
+        const rejected = runPdfImportWorkflow({
+          ...importInput,
+          importJobId: "paginated-status-no-ack-job",
+        }, dependencies);
+        expect(rejected).toMatchObject({
+          ok: false,
+          errors: [{ code: "PENDING_ROWS_ACKNOWLEDGEMENT_REQUIRED" }],
+        });
+        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
+
+        const accepted = runPdfImportWorkflow({
+          ...importInput,
+          importJobId: "paginated-status-ack-job",
+          acknowledgeExcludedRows: true,
+        }, dependencies);
+        expect(accepted).toMatchObject({
+          ok: true,
+          transactionCount: 2,
+          duplicateCount: 0,
+          excludedRowCount: 3,
+        });
+        const afterAcknowledgedImport = ledger.loadLedgerSnapshotData();
+        expect(afterAcknowledgedImport.transactions).toHaveLength(beforeImport.transactions.length + 2);
+        expect(afterAcknowledgedImport.transactions.filter((transaction) => transaction.id === existingTransaction.id))
+          .toEqual([existingTransaction]);
+        expect(afterAcknowledgedImport.transactions.filter((transaction) => transaction.sourceType === "pdf")
+          .map(({ householdId, accountId, bookedAtIso, amountMinor, merchantRaw }) => ({
+            householdId,
+            accountId,
+            bookedAtIso,
+            amountMinor,
+            merchantRaw,
+          })).sort((left, right) => left.bookedAtIso.localeCompare(right.bookedAtIso))).toEqual([
+          {
+            householdId: SAMPLE_HOUSEHOLD.id,
+            accountId: SAMPLE_ACCOUNT.id,
+            bookedAtIso: "2026-05-27T00:00:00Z",
+            amountMinor: 5_000_000,
+            merchantRaw: "Fra: SYNTHETIC PAYROLL",
+          },
+          {
+            householdId: SAMPLE_HOUSEHOLD.id,
+            accountId: SAMPLE_ACCOUNT.id,
+            bookedAtIso: "2026-05-28T00:00:00Z",
+            amountMinor: -1250,
+            merchantRaw: "SYNTHETIC BOOKED FIRST",
+          },
+        ]);
+      } finally {
+        ledger.close();
+      }
     });
 
     it("requires explicit acknowledgement before importing when pending rows are excluded", () => {
@@ -556,6 +775,96 @@ describe("pdf import contract", () => {
   });
 
   describe("AC-3: invalid or unsupported input returns explicit errors with no partial transactions", () => {
+    it("leaves the ledger unchanged when a malformed middle row sits between valid rows", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const existingTransaction: Transaction = {
+        id: "existing-ledger-row",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        bookedAtIso: "2026-05-25T00:00:00Z",
+        amountMinor: -501,
+        merchantRaw: "SYNTHETIC EXISTING PURCHASE",
+        sourceType: "csv",
+      };
+      const text = [
+        "ROGALAND SPAREBANK",
+        "Transaksjoner Antall: 3",
+        "Kontonummer: ACCT-001",
+        "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+        "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -97,70 NOK Bokført SYNTHETIC FIRST",
+        "27.05.2026 Varekjøp ACCT-001 LOCAL_USER not-an-amount NOK Bokført SYNTHETIC BROKEN",
+        "26.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført SYNTHETIC LAST",
+      ].join("\n");
+
+      try {
+        ledger.appendTransactions([existingTransaction]);
+        const beforeImport = structuredClone(ledger.loadLedgerSnapshotData());
+
+        const response = runPdfImportOrchestration(text, ledger, {
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          sourceName: "mixed-validity-statement.pdf",
+        });
+
+        expect(response).toMatchObject({
+          ok: false,
+          errors: [{ code: "INVALID_AMOUNT_FORMAT", field: "amount", lineNumber: 6 }],
+        });
+        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
+      } finally {
+        ledger.close();
+      }
+    });
+
+    it("preserves the original line for a malformed transaction after a page break", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const existingTransaction: Transaction = {
+        id: "existing-paginated-ledger-row",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        bookedAtIso: "2026-05-25T00:00:00Z",
+        amountMinor: -501,
+        merchantRaw: "SYNTHETIC EXISTING PURCHASE",
+        sourceType: "csv",
+      };
+      const tableHeader = "Dato       Type          Fra konto      Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+      const continuationColumn = tableHeader.indexOf("Melding/KID/Fakt.nr") - 8;
+      const text = [
+        "ROGALAND SPAREBANK",
+        "Transaksjoner Antall: 3",
+        "Kontonummer: ACCT-001",
+        tableHeader,
+        "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -10,00 NOK Bokført SYNTHETIC FIRST",
+        `${" ".repeat(continuationColumn)}CONTINUED MESSAGE`,
+        "1/2 Rogaland Sparebank",
+        "Transaksjoner Antall: 3",
+        "Kontonummer: ACCT-001",
+        tableHeader,
+        "27.05.2026 Varekjøp ACCT-001 LOCAL_USER not-an-amount NOK Bokført SYNTHETIC BROKEN",
+        "26.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført SYNTHETIC LAST",
+      ].join("\n");
+
+      try {
+        ledger.appendTransactions([existingTransaction]);
+        const beforeImport = structuredClone(ledger.loadLedgerSnapshotData());
+
+        const response = runPdfImportOrchestration(text, ledger, {
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          sourceName: "paginated-malformed-statement.pdf",
+        });
+
+        expect(response.ok).toBe(false);
+        if (response.ok) return;
+        expect(response.errors.map(({ code, field, lineNumber }) => ({ code, field, lineNumber }))).toEqual([
+          { code: "INVALID_AMOUNT_FORMAT", field: "amount", lineNumber: 11 },
+        ]);
+        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
+      } finally {
+        ledger.close();
+      }
+    });
+
     it("rejects unsupported layout with UNSUPPORTED_LAYOUT and no transactions", () => {
       const result = parseRogalandStatementText("Not a supported bank statement.", MAPPING_OPTIONS);
 
@@ -784,57 +1093,234 @@ describe("pdf import contract", () => {
   });
 
   describe("Scenario 2: duplicate-safe re-import – second import of same fixture leaves ledger row count unchanged", () => {
-    it("persists identical rows in one PDF batch and reports zero inserts on unchanged re-import", () => {
+    it("imports identical statement content once and preserves stored records on re-import", () => {
       const ledger = makeTestLedger(randomUUID());
-      const candidate: Transaction = {
-        id: "candidate-one",
-        householdId: SAMPLE_HOUSEHOLD.id,
-        accountId: SAMPLE_ACCOUNT.id,
-        bookedAtIso: "2026-05-23T00:00:00Z",
-        amountMinor: -1250,
-        merchantRaw: "Same merchant",
-      };
-      const parserRegistry = {
-        parse: () => ({
-          ok: true as const,
-          adapterId: "identical-row-test-adapter",
-          sourceIdentity: "identical-row-test-source",
-          candidates: [candidate, { ...candidate, id: "candidate-two" }],
-        }),
-      };
-      const input = {
-        pdfText: "stable synthetic duplicate PDF content",
-        filePath: "identical-purchases.pdf",
-        householdId: SAMPLE_HOUSEHOLD.id,
-        accountId: SAMPLE_ACCOUNT.id,
-        importJobId: "identical-pdf-job",
-        startedAtIso: "2026-05-23T00:00:00Z",
-        finishedAtIso: "2026-05-23T00:00:00Z",
-      };
+      const pdfText = [
+        "ROGALAND SPAREBANK",
+        "Transaksjoner Antall: 2",
+        "Kontonummer: ACCT-001",
+        "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+        "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -12,50 NOK Bokført SYNTHETIC MARKET",
+        "27.05.2026 Refusjon ACCT-001 LOCAL_USER 3,25 NOK Bokført SYNTHETIC REFUND",
+      ].join("\n");
+      const filePath = "identical-purchases.pdf";
       const dependencies = {
-        parserRegistry,
+        parserRegistry: defaultParserAdapterRegistry,
+        getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+        getExistingTransactionsForAccount: ledger.getTransactionsForAccount,
         appendImportJob: ledger.appendImportJob,
-        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
         appendTransactions: ledger.appendTransactions,
       };
 
       try {
-        const first = runPdfImportWorkflow(input, dependencies);
-        expect(first).toMatchObject({ ok: true, transactionCount: 2, duplicateCount: 0 });
-        const storedTransactions = ledger.loadLedgerSnapshotData().transactions;
-        expect(storedTransactions).toHaveLength(2);
-        expect(storedTransactions[0]).toMatchObject({
+        const first = runPdfImportWorkflow({
+          pdfText,
+          filePath,
+          householdId: SAMPLE_HOUSEHOLD.id,
           accountId: SAMPLE_ACCOUNT.id,
-          bookedAtIso: storedTransactions[1]?.bookedAtIso,
-          amountMinor: storedTransactions[1]?.amountMinor,
-          merchantRaw: storedTransactions[1]?.merchantRaw,
+          importJobId: "identical-pdf-first-job",
+          startedAtIso: "2026-05-29T00:00:00Z",
+          finishedAtIso: "2026-05-29T00:00:00Z",
+        }, dependencies);
+        expect(first).toMatchObject({ ok: true, transactionCount: 2, duplicateCount: 0 });
+        if (!first.ok) throw new Error("Expected the first import to succeed");
+        const firstSnapshot = structuredClone(ledger.loadLedgerSnapshotData());
+        const storedTransactions = firstSnapshot.transactions;
+        expect(storedTransactions).toHaveLength(2);
+        expect(storedTransactions.map(({
+          householdId,
+          accountId,
+          bookedAtIso,
+          amountMinor,
+          merchantRaw,
+          sourceType,
+          importJobId,
+        }) => ({
+          householdId,
+          accountId,
+          bookedAtIso,
+          amountMinor,
+          merchantRaw,
+          sourceType,
+          importJobId,
+        })).sort((left, right) => left.bookedAtIso.localeCompare(right.bookedAtIso))).toEqual([
+          {
+            householdId: SAMPLE_HOUSEHOLD.id,
+            accountId: SAMPLE_ACCOUNT.id,
+            bookedAtIso: "2026-05-27T00:00:00Z",
+            amountMinor: 325,
+            merchantRaw: "SYNTHETIC REFUND",
+            sourceType: "pdf",
+            importJobId: "identical-pdf-first-job",
+          },
+          {
+            householdId: SAMPLE_HOUSEHOLD.id,
+            accountId: SAMPLE_ACCOUNT.id,
+            bookedAtIso: "2026-05-28T00:00:00Z",
+            amountMinor: -1250,
+            merchantRaw: "SYNTHETIC MARKET",
+            sourceType: "pdf",
+            importJobId: "identical-pdf-first-job",
+          },
+        ]);
+        const firstImportJob = firstSnapshot.importJobs.find((job) => job.id === first.importJobId);
+        expect(firstImportJob).toMatchObject({
+          sourceType: "pdf",
+          sourceName: filePath,
+          adapterId: ROGALAND_ADAPTER_ID,
+          provenance: {
+            sourceIdentity: ROGALAND_SOURCE_ID,
+            adapterId: ROGALAND_ADAPTER_ID,
+            accountId: SAMPLE_ACCOUNT.id,
+            contentDigest: expect.any(String),
+          },
         });
-        expect(storedTransactions[0]?.id).not.toBe(storedTransactions[1]?.id);
 
-        const retry = runPdfImportWorkflow(input, dependencies);
+        const retry = runPdfImportWorkflow({
+          pdfText,
+          filePath,
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          importJobId: "identical-pdf-retry-job",
+          startedAtIso: "2026-05-30T00:00:00Z",
+          finishedAtIso: "2026-05-30T00:00:00Z",
+        }, dependencies);
         expect(retry).toMatchObject({ ok: true, transactionCount: 0, duplicateCount: 2 });
-        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(2);
+        const afterRetry = ledger.loadLedgerSnapshotData();
+        expect(afterRetry.transactions).toEqual(firstSnapshot.transactions);
+        expect(afterRetry.importJobs.find((job) => job.id === firstImportJob?.id)).toEqual(firstImportJob);
+      } finally {
+        ledger.close();
+      }
+    });
+
+    it("imports into account B without changing unrelated transactions in accounts A or B", () => {
+      const accountA: Account = {
+        id: "account-a",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        name: "Account A",
+        currencyCode: "NOK",
+      };
+      const accountB: Account = {
+        id: "account-b",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        name: "Account B",
+        currencyCode: "NOK",
+      };
+      const ledger = makeTestLedger(randomUUID(), [accountA, accountB]);
+      const existingAccountATransaction: Transaction = {
+        id: "existing-account-a-row",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: accountA.id,
+        bookedAtIso: "2026-05-20T00:00:00Z",
+        amountMinor: -7100,
+        merchantRaw: "SYNTHETIC ACCOUNT A PURCHASE",
+        sourceType: "manual",
+      };
+      const existingAccountBTransaction: Transaction = {
+        id: "existing-account-b-row",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: accountB.id,
+        bookedAtIso: "2026-05-21T00:00:00Z",
+        amountMinor: 8200,
+        merchantRaw: "SYNTHETIC ACCOUNT B INCOME",
+        sourceType: "manual",
+      };
+      const pdfText = [
+        "ROGALAND SPAREBANK",
+        "Transaksjoner Antall: 2",
+        "Kontonummer: ACCT-002",
+        "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+        "28.05.2026 Varekjøp ACCT-002 LOCAL_USER -12,50 NOK Bokført SYNTHETIC B PURCHASE",
+        "27.05.2026 Refusjon ACCT-002 LOCAL_USER 3,25 NOK Bokført SYNTHETIC B REFUND",
+      ].join("\n");
+      const importJobId = "account-b-import-job";
+
+      try {
+        ledger.appendTransactions([existingAccountATransaction, existingAccountBTransaction]);
+        const beforeSnapshot = structuredClone(ledger.loadLedgerSnapshotData());
+        const response = runPdfImportWorkflow({
+          pdfText,
+          filePath: "account-b-statement.pdf",
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: accountB.id,
+          importJobId,
+          startedAtIso: "2026-05-29T00:00:00Z",
+          finishedAtIso: "2026-05-29T00:00:00Z",
+        }, {
+          parserRegistry: defaultParserAdapterRegistry,
+          getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+          getExistingTransactionsForAccount: ledger.getTransactionsForAccount,
+          appendImportJob: ledger.appendImportJob,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          appendTransactions: ledger.appendTransactions,
+        });
+
+        expect(response).toMatchObject({ ok: true, transactionCount: 2, duplicateCount: 0 });
+        const afterSnapshot = ledger.loadLedgerSnapshotData();
+        const existingIds = new Set(beforeSnapshot.transactions.map((transaction) => transaction.id));
+        const unchangedTransactions = afterSnapshot.transactions
+          .filter((transaction) => existingIds.has(transaction.id))
+          .sort((left, right) => left.id.localeCompare(right.id));
+        expect(unchangedTransactions).toEqual(
+          [...beforeSnapshot.transactions].sort((left, right) => left.id.localeCompare(right.id))
+        );
+
+        const importedTransactions = afterSnapshot.transactions.filter(
+          (transaction) => !existingIds.has(transaction.id)
+        );
+        expect(importedTransactions).toHaveLength(2);
+        expect(importedTransactions.map(({
+          householdId,
+          accountId,
+          bookedAtIso,
+          amountMinor,
+          merchantRaw,
+          sourceType,
+          importJobId: transactionImportJobId,
+        }) => ({
+          householdId,
+          accountId,
+          bookedAtIso,
+          amountMinor,
+          merchantRaw,
+          sourceType,
+          importJobId: transactionImportJobId,
+        })).sort((left, right) => left.bookedAtIso.localeCompare(right.bookedAtIso))).toEqual([
+          {
+            householdId: SAMPLE_HOUSEHOLD.id,
+            accountId: accountB.id,
+            bookedAtIso: "2026-05-27T00:00:00Z",
+            amountMinor: 325,
+            merchantRaw: "SYNTHETIC B REFUND",
+            sourceType: "pdf",
+            importJobId,
+          },
+          {
+            householdId: SAMPLE_HOUSEHOLD.id,
+            accountId: accountB.id,
+            bookedAtIso: "2026-05-28T00:00:00Z",
+            amountMinor: -1250,
+            merchantRaw: "SYNTHETIC B PURCHASE",
+            sourceType: "pdf",
+            importJobId,
+          },
+        ]);
+        expect(afterSnapshot.transactions.filter((transaction) => transaction.accountId === accountA.id))
+          .toEqual([existingAccountATransaction]);
+        expect(afterSnapshot.importJobs.find((job) => job.id === importJobId)).toMatchObject({
+          householdId: SAMPLE_HOUSEHOLD.id,
+          sourceType: "pdf",
+          sourceName: "account-b-statement.pdf",
+          adapterId: ROGALAND_ADAPTER_ID,
+          provenance: {
+            sourceIdentity: ROGALAND_SOURCE_ID,
+            adapterId: ROGALAND_ADAPTER_ID,
+            accountId: accountB.id,
+            contentDigest: expect.any(String),
+          },
+        });
       } finally {
         ledger.close();
       }

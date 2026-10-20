@@ -17,6 +17,7 @@
     "test:coverage:signal": "npm run test:coverage:unit",
     "test:mutation:signal": "stryker run",
     "test:mutation:unit-integration:signal": "stryker run stryker.unit-integration.config.json",
+    "test:mutation:import:signal": "stryker run stryker.import.config.json",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:coverage:integration": "vitest run --config vitest.integration.config.ts --coverage.enabled true",
     "test:e2e:vitest": "vitest run --config vitest.e2e.config.ts",
