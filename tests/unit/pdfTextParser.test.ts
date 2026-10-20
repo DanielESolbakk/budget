@@ -72,6 +72,158 @@ describe("pdfTextParser unit tests", () => {
     });
   });
 
+  it.each([1, 5, 7])("preserves excluded-only page batches at batch size %i", async (batchSize) => {
+    const tableHeader = "Dato       Type          Fra konto      Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+    const continuationColumn = tableHeader.indexOf("Melding/KID/Fakt.nr") - 8;
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 5",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -11,00 NOK Reservert SYNTHETIC RESERVED FIRST",
+      "27.05.2026 Lønn ACCT-001 SYNTHETIC EMPLOYER 50 000,00 NOK Bokført Fra: SYNTHETIC PAYROLL",
+      "1/2 Rogaland Sparebank",
+      "Transaksjoner Antall: 5",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      "30.05.2026 Betaling ACCT-001 LOCAL_USER -350,00 NOK Bekreftet SYNTHETIC CONFIRMED MIDDLE",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -12,50 NOK Bokført SYNTHETIC FIRST",
+      `${" ".repeat(continuationColumn)}WRAPPED   MESSAGE`,
+      "2/2 Rogaland Sparebank",
+      "Transaksjoner Antall: 5",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      "26.05.2026 Varekjøp ACCT-001 LOCAL_USER -41,00 NOK Reservert SYNTHETIC RESERVED LAST",
+      "3/3 Rogaland Sparebank",
+    ].join("\n");
+    const synchronous = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(synchronous.ok).toBe(true);
+    if (!synchronous.ok) return;
+    expect(synchronous).toEqual({
+      ok: true,
+      adapterId: ROGALAND_ADAPTER_ID,
+      transactions: [
+        {
+          id: "pdf-1",
+          householdId: "hh-test",
+          accountId: "acc-test",
+          bookedAtIso: "2026-05-28T00:00:00Z",
+          amountMinor: -1250,
+          merchantRaw: "SYNTHETIC FIRST WRAPPED MESSAGE",
+          currencyCode: "NOK",
+          sourceType: "pdf",
+        },
+        {
+          id: "pdf-2",
+          householdId: "hh-test",
+          accountId: "acc-test",
+          bookedAtIso: "2026-05-27T00:00:00Z",
+          amountMinor: 5_000_000,
+          merchantRaw: "Fra: SYNTHETIC PAYROLL",
+          currencyCode: "NOK",
+          sourceType: "pdf",
+        },
+      ],
+      excludedRows: [
+        {
+          lineNumber: 5,
+          status: "Reservert",
+          date: "28.05.2026",
+          amount: "-11,00",
+          currencyCode: "NOK",
+          description: "SYNTHETIC RESERVED FIRST",
+        },
+        {
+          lineNumber: 11,
+          status: "Bekreftet",
+          date: "30.05.2026",
+          amount: "-350,00",
+          currencyCode: "NOK",
+          description: "SYNTHETIC CONFIRMED MIDDLE",
+        },
+        {
+          lineNumber: 18,
+          status: "Reservert",
+          date: "26.05.2026",
+          amount: "-41,00",
+          currencyCode: "NOK",
+          description: "SYNTHETIC RESERVED LAST",
+        },
+      ],
+    });
+
+    const batched = await pdfTextParser.parseRogalandStatementTextInBatches(text, BASE_OPTIONS, {
+      batchSize,
+      isCancelled: () => false,
+      onProgress: () => undefined,
+    });
+
+    expect(batched).toEqual(synchronous);
+  });
+
+  it("preserves a reserved transaction after ten booked rows in the production-sized batch", async () => {
+    const tableHeader = "Dato       Type          Fra konto      Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+    const bookedRows = [
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -1,00 NOK Bokført SYNTHETIC BOOKED 01",
+      "27.05.2026 Varekjøp ACCT-001 LOCAL_USER -2,00 NOK Bokført SYNTHETIC BOOKED 02",
+      "26.05.2026 Varekjøp ACCT-001 LOCAL_USER -3,00 NOK Bokført SYNTHETIC BOOKED 03",
+      "25.05.2026 Varekjøp ACCT-001 LOCAL_USER -4,00 NOK Bokført SYNTHETIC BOOKED 04",
+      "24.05.2026 Varekjøp ACCT-001 LOCAL_USER -5,00 NOK Bokført SYNTHETIC BOOKED 05",
+      "23.05.2026 Varekjøp ACCT-001 LOCAL_USER -6,00 NOK Bokført SYNTHETIC BOOKED 06",
+      "22.05.2026 Varekjøp ACCT-001 LOCAL_USER -7,00 NOK Bokført SYNTHETIC BOOKED 07",
+      "21.05.2026 Varekjøp ACCT-001 LOCAL_USER -8,00 NOK Bokført SYNTHETIC BOOKED 08",
+      "20.05.2026 Varekjøp ACCT-001 LOCAL_USER -9,00 NOK Bokført SYNTHETIC BOOKED 09",
+      "19.05.2026 Varekjøp ACCT-001 LOCAL_USER -10,00 NOK Bokført SYNTHETIC BOOKED 10",
+      "18.05.2026 Varekjøp ACCT-001 LOCAL_USER -350,00 NOK Reservert SYNTHETIC RESERVED 11",
+    ];
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 11",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      ...bookedRows,
+    ].join("\n");
+    const progress: Array<[number, number]> = [];
+
+    const result = await pdfTextParser.parseRogalandStatementTextInBatches(text, BASE_OPTIONS, {
+      batchSize: 10,
+      isCancelled: () => false,
+      onProgress: (completedRows, totalRows) => progress.push([completedRows, totalRows]),
+    });
+
+    expect(result).toMatchObject({ ok: true, adapterId: ROGALAND_ADAPTER_ID });
+    if (result === null || !result.ok) return;
+    expect(result.transactions).toHaveLength(10);
+    expect(result.transactions.map(({ bookedAtIso, amountMinor, merchantRaw }) => ({
+      bookedAtIso,
+      amountMinor,
+      merchantRaw,
+    }))).toEqual([
+      { bookedAtIso: "2026-05-28T00:00:00Z", amountMinor: -100, merchantRaw: "SYNTHETIC BOOKED 01" },
+      { bookedAtIso: "2026-05-27T00:00:00Z", amountMinor: -200, merchantRaw: "SYNTHETIC BOOKED 02" },
+      { bookedAtIso: "2026-05-26T00:00:00Z", amountMinor: -300, merchantRaw: "SYNTHETIC BOOKED 03" },
+      { bookedAtIso: "2026-05-25T00:00:00Z", amountMinor: -400, merchantRaw: "SYNTHETIC BOOKED 04" },
+      { bookedAtIso: "2026-05-24T00:00:00Z", amountMinor: -500, merchantRaw: "SYNTHETIC BOOKED 05" },
+      { bookedAtIso: "2026-05-23T00:00:00Z", amountMinor: -600, merchantRaw: "SYNTHETIC BOOKED 06" },
+      { bookedAtIso: "2026-05-22T00:00:00Z", amountMinor: -700, merchantRaw: "SYNTHETIC BOOKED 07" },
+      { bookedAtIso: "2026-05-21T00:00:00Z", amountMinor: -800, merchantRaw: "SYNTHETIC BOOKED 08" },
+      { bookedAtIso: "2026-05-20T00:00:00Z", amountMinor: -900, merchantRaw: "SYNTHETIC BOOKED 09" },
+      { bookedAtIso: "2026-05-19T00:00:00Z", amountMinor: -1000, merchantRaw: "SYNTHETIC BOOKED 10" },
+    ]);
+    expect(result.excludedRows).toEqual([
+      {
+        lineNumber: 15,
+        status: "Reservert",
+        date: "18.05.2026",
+        amount: "-350,00",
+        currencyCode: "NOK",
+        description: "SYNTHETIC RESERVED 11",
+      },
+    ]);
+    expect(progress).toEqual([[10, 11], [11, 11]]);
+  });
+
   it("reports progress and cancels between paginated export batches", async () => {
     const text = [
       "ROGALAND SPAREBANK",
@@ -87,16 +239,50 @@ describe("pdfTextParser unit tests", () => {
       "2/2 Rogaland Sparebank",
     ].join("\n");
     const progress: Array<[number, number]> = [];
-    let cancellationChecks = 0;
+    let cancellationObserved = false;
+    const progressAfterCancellation: Array<[number, number]> = [];
 
     const result = await pdfTextParser.parseRogalandStatementTextInBatches(text, BASE_OPTIONS, {
       batchSize: 1,
-      isCancelled: () => ++cancellationChecks > 1,
+      isCancelled: () => {
+        if (progress.length === 1) {
+          cancellationObserved = true;
+          return true;
+        }
+        return false;
+      },
+      onProgress: (completedRows, totalRows) => {
+        const update: [number, number] = [completedRows, totalRows];
+        if (cancellationObserved) progressAfterCancellation.push(update);
+        progress.push(update);
+      },
+    });
+
+    expect(result).toBeNull();
+    expect(cancellationObserved).toBe(true);
+    expect(progress).toEqual([[1, 2]]);
+    expect(progressAfterCancellation).toEqual([]);
+  });
+
+  it("cancels a paginated parse before processing any rows", async () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 1",
+      "Kontonummer: ACCT-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -10,00 NOK Bokført SYNTHETIC SHOP",
+      "1/1 Rogaland Sparebank",
+    ].join("\n");
+    const progress: Array<[number, number]> = [];
+
+    const result = await pdfTextParser.parseRogalandStatementTextInBatches(text, BASE_OPTIONS, {
+      batchSize: 1,
+      isCancelled: () => true,
       onProgress: (completedRows, totalRows) => progress.push([completedRows, totalRows]),
     });
 
     expect(result).toBeNull();
-    expect(progress).toEqual([[1, 2]]);
+    expect(progress).toEqual([]);
   });
 
   it("builds the same import job ID for identical content and context", () => {
@@ -105,6 +291,21 @@ describe("pdfTextParser unit tests", () => {
     expect(buildRogalandImportJobId(text, BASE_OPTIONS)).toBe(
       buildRogalandImportJobId(text, BASE_OPTIONS)
     );
+  });
+
+  it("separates the public import identity when account, household, or content changes", () => {
+    const text = loadFixture();
+    const identity = buildRogalandImportJobId(text, BASE_OPTIONS);
+
+    expect(identity).not.toBe(buildRogalandImportJobId(text, {
+      householdId: BASE_OPTIONS.householdId,
+      accountId: "acc-other",
+    }));
+    expect(identity).not.toBe(buildRogalandImportJobId(text, {
+      householdId: "hh-other",
+      accountId: BASE_OPTIONS.accountId,
+    }));
+    expect(identity).not.toBe(buildRogalandImportJobId(`${text}\nchanged source content`, BASE_OPTIONS));
   });
   describe("isRogalandStatementText", () => {
     it("returns true for text containing ROGALAND SPAREBANK header token", () => {
@@ -182,6 +383,31 @@ describe("pdfTextParser unit tests", () => {
     });
   });
 
+  it("maps the transaction amount instead of the distinct running balance", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Dato         Beskrivelse                              Beløp          Saldo",
+      "26.05.2026   SYNTHETIC MARKET                         -97,70      24 902,30",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.transactions).toHaveLength(1);
+    expect(result.transactions.map(({ bookedAtIso, amountMinor, merchantRaw }) => ({
+      bookedAtIso,
+      amountMinor,
+      merchantRaw,
+    }))).toEqual([
+      {
+        bookedAtIso: "2026-05-26T00:00:00Z",
+        amountMinor: -9770,
+        merchantRaw: "SYNTHETIC MARKET",
+      },
+    ]);
+  });
+
   it("reports a malformed bank-export row before the first transaction", () => {
     const text = [
       "ROGALAND SPAREBANK",
@@ -235,6 +461,158 @@ describe("pdfTextParser unit tests", () => {
     });
   });
 
+  it("joins a message continuation at the supported column boundary exactly once", () => {
+    const tableHeader = "Dato       Type          Fra konto       Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+    const continuationColumn = tableHeader.indexOf("Melding/KID/Fakt.nr") - 8;
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -10,00 NOK Bokført SYNTHETIC SHOP",
+      `${" ".repeat(continuationColumn)}SECOND   LINE`,
+      "27.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført SYNTHETIC NEXT SHOP",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions.map(({ bookedAtIso, amountMinor, merchantRaw }) => ({
+      bookedAtIso,
+      amountMinor,
+      merchantRaw,
+    }))).toEqual([
+      {
+        bookedAtIso: "2026-05-28T00:00:00Z",
+        amountMinor: -1000,
+        merchantRaw: "SYNTHETIC SHOP SECOND LINE",
+      },
+      {
+        bookedAtIso: "2026-05-27T00:00:00Z",
+        amountMinor: -2000,
+        merchantRaw: "SYNTHETIC NEXT SHOP",
+      },
+    ]);
+  });
+
+  it("rejects malformed text one column outside the message continuation boundary", () => {
+    const tableHeader = "Dato       Type          Fra konto       Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+    const continuationColumn = tableHeader.indexOf("Melding/KID/Fakt.nr") - 9;
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -10,00 NOK Bokført SYNTHETIC SHOP",
+      `${" ".repeat(continuationColumn)}MALFORMED OUTSIDE TEXT`,
+      "27.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført SYNTHETIC NEXT SHOP",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.map(({ code, lineNumber }) => ({ code, lineNumber }))).toEqual([
+      { code: "INVALID_TRANSACTION_ROW", lineNumber: 6 },
+    ]);
+  });
+
+  it("joins a wrapped transaction type just inside its column boundary", () => {
+    const tableHeader = "Dato       Type          Fra konto       Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+    const continuationColumn = tableHeader.indexOf("Fra konto") - 9;
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      "28.05.2026 Betaling ACCT-001 LOCAL_USER -10,00 NOK Bokført SYNTHETIC BILL",
+      `${" ".repeat(continuationColumn)}innland`,
+      "27.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført SYNTHETIC NEXT SHOP",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions.map(({ bookedAtIso, amountMinor, merchantRaw }) => ({
+      bookedAtIso,
+      amountMinor,
+      merchantRaw,
+    }))).toEqual([
+      {
+        bookedAtIso: "2026-05-28T00:00:00Z",
+        amountMinor: -1000,
+        merchantRaw: "SYNTHETIC BILL",
+      },
+      {
+        bookedAtIso: "2026-05-27T00:00:00Z",
+        amountMinor: -2000,
+        merchantRaw: "SYNTHETIC NEXT SHOP",
+      },
+    ]);
+  });
+
+  it("preserves a wrapped type once in the fallback description when the message is empty", () => {
+    const tableHeader = "Dato       Type          Fra konto       Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+    const continuationColumn = tableHeader.indexOf("Fra konto") - 9;
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      "28.05.2026 Betaling ACCT-001 LOCAL_USER -10,00 NOK Bokført",
+      `${" ".repeat(continuationColumn)}innland`,
+      "27.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført SYNTHETIC NEXT SHOP",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions.map(({ bookedAtIso, amountMinor, merchantRaw }) => ({
+      bookedAtIso,
+      amountMinor,
+      merchantRaw,
+    }))).toEqual([
+      {
+        bookedAtIso: "2026-05-28T00:00:00Z",
+        amountMinor: -1000,
+        merchantRaw: "Betaling innland ACCT-001 LOCAL_USER",
+      },
+      {
+        bookedAtIso: "2026-05-27T00:00:00Z",
+        amountMinor: -2000,
+        merchantRaw: "SYNTHETIC NEXT SHOP",
+      },
+    ]);
+  });
+
+  it("rejects malformed text at the unsupported side of the transaction-type boundary", () => {
+    const tableHeader = "Dato       Type          Fra konto       Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
+    const continuationColumn = tableHeader.indexOf("Fra konto") - 8;
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      tableHeader,
+      "28.05.2026 Betaling ACCT-001 LOCAL_USER -10,00 NOK Bokført SYNTHETIC BILL",
+      `${" ".repeat(continuationColumn)}MALFORMED OUTSIDE TYPE TEXT`,
+      "27.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført SYNTHETIC NEXT SHOP",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.map(({ code, lineNumber }) => ({ code, lineNumber }))).toEqual([
+      { code: "INVALID_TRANSACTION_ROW", lineNumber: 6 },
+    ]);
+  });
+
   it("reports a malformed bank-export amount as an amount error", () => {
     const text = [
       "ROGALAND SPAREBANK",
@@ -255,57 +633,112 @@ describe("pdfTextParser unit tests", () => {
     const text = [
       "ROGALAND SPAREBANK",
       "Transaksjoner Antall: 3",
+      "Kontonummer: ACCT-001",
       "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
       "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -97,70 NOK Reservert 27.05 MARKET",
+      "1/3 Rogaland Sparebank",
+      "Transaksjoner Antall: 3",
+      "Kontonummer: ACCT-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
       "28.05.2026 Betaling ACCT-001 LOCAL_USER -350,00 NOK Bekreftet 27.05 BILL",
+      "2/3 Rogaland Sparebank",
+      "Transaksjoner Antall: 3",
+      "Kontonummer: ACCT-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
       "27.05.2026 Varekjøp ACCT-001 LOCAL_USER -20,00 NOK Bokført 26.05 SHOP",
     ].join("\n");
 
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-    expect(result).toMatchObject({
-      ok: true,
-      transactions: [{ bookedAtIso: "2026-05-27T00:00:00Z", amountMinor: -2000 }],
-      excludedRows: [
-        {
-          lineNumber: 4,
-          status: "Reservert",
-          date: "28.05.2026",
-          amount: "-97,70",
-          currencyCode: "NOK",
-          description: "27.05 MARKET",
-        },
-        {
-          lineNumber: 5,
-          status: "Bekreftet",
-          date: "28.05.2026",
-          amount: "-350,00",
-          currencyCode: "NOK",
-          description: "27.05 BILL",
-        },
-      ],
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.transactions).toHaveLength(1);
+    expect(result.transactions.map(({ bookedAtIso, amountMinor, merchantRaw }) => ({
+      bookedAtIso,
+      amountMinor,
+      merchantRaw,
+    }))).toEqual([
+      {
+        bookedAtIso: "2026-05-27T00:00:00Z",
+        amountMinor: -2000,
+        merchantRaw: "26.05 SHOP",
+      },
+    ]);
+    expect(result.excludedRows).toEqual([
+      {
+        lineNumber: 5,
+        status: "Reservert",
+        date: "28.05.2026",
+        amount: "-97,70",
+        currencyCode: "NOK",
+        description: "27.05 MARKET",
+      },
+      {
+        lineNumber: 10,
+        status: "Bekreftet",
+        date: "28.05.2026",
+        amount: "-350,00",
+        currencyCode: "NOK",
+        description: "27.05 BILL",
+      },
+    ]);
+  });
+
+  it("keeps the synchronous no-booked-rows failure for a wholly unbooked statement", () => {
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjøp ACCT-001 LOCAL_USER -11,00 NOK Reservert SYNTHETIC RESERVED",
+      "1/2 Rogaland Sparebank",
+      "Transaksjoner Antall: 2",
+      "Kontonummer: ACCT-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "27.05.2026 Betaling ACCT-001 LOCAL_USER -350,00 NOK Bekreftet SYNTHETIC CONFIRMED",
+      "2/2 Rogaland Sparebank",
+    ].join("\n");
+
+    const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [{
+        code: "MISSING_TRANSACTION_SECTION",
+        message: "No bank-export transaction rows were found in the statement.",
+      }],
     });
   });
 
   it("parses wrapped descriptions across repeated bank-export page headers", () => {
-    const text = readFileSync(PAGINATED_EXPORT_FIXTURE_PATH, "utf8");
+    const text = readFileSync(PAGINATED_EXPORT_FIXTURE_PATH, "utf8").replace(
+      "1/2 Rogaland Sparebank",
+      "Utgående saldo pr. 28.05.2026: 900 000,00 NOK\n1/2 Rogaland Sparebank"
+    );
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-    expect(result).toMatchObject({
-      ok: true,
-      transactions: [
-        {
-          bookedAtIso: "2026-05-28T00:00:00Z",
-          amountMinor: -9770,
-          merchantRaw: "27.05 SYNTHETIC MARKET 7 SANDNES",
-        },
-        {
-          bookedAtIso: "2026-05-27T00:00:00Z",
-          amountMinor: 5_000_000,
-          merchantRaw: "Fra: SYNTHETIC EMPLOYER",
-        },
-      ],
-    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions.map(({ id, bookedAtIso, amountMinor, merchantRaw }) => ({
+      id,
+      bookedAtIso,
+      amountMinor,
+      merchantRaw,
+    }))).toEqual([
+      {
+        id: "pdf-1",
+        bookedAtIso: "2026-05-28T00:00:00Z",
+        amountMinor: -9770,
+        merchantRaw: "27.05 SYNTHETIC MARKET 7 SANDNES",
+      },
+      {
+        id: "pdf-2",
+        bookedAtIso: "2026-05-27T00:00:00Z",
+        amountMinor: 5_000_000,
+        merchantRaw: "Fra: SYNTHETIC EMPLOYER",
+      },
+    ]);
   });
 
   it.each([
@@ -428,6 +861,49 @@ describe("pdfTextParser unit tests", () => {
       expect(tx!.amountMinor).toBe(-9770);
     });
 
+    const amountPrecisionCases = [
+      { layout: "classic", rawAmount: "0,01", balance: "900,00", expectedAmountMinor: 1 },
+      { layout: "classic", rawAmount: "-0,01", balance: "800,00", expectedAmountMinor: -1 },
+      { layout: "classic", rawAmount: "+97,70", balance: "700,00", expectedAmountMinor: 9770 },
+      { layout: "classic", rawAmount: "50 000,00", balance: "75 000,00", expectedAmountMinor: 5_000_000 },
+      { layout: "bank-export", rawAmount: "0,01", balance: "", expectedAmountMinor: 1 },
+      { layout: "bank-export", rawAmount: "-0,01", balance: "", expectedAmountMinor: -1 },
+      { layout: "bank-export", rawAmount: "+97,70", balance: "", expectedAmountMinor: 9770 },
+      { layout: "bank-export", rawAmount: "50 000,00", balance: "", expectedAmountMinor: 5_000_000 },
+    ] as const;
+
+    it.each(amountPrecisionCases)("maps $rawAmount to $expectedAmountMinor minor units in the $layout layout", ({
+      layout,
+      rawAmount,
+      balance,
+      expectedAmountMinor,
+    }) => {
+      const text = layout === "classic"
+        ? [
+            "ROGALAND SPAREBANK",
+            "Dato         Beskrivelse                              Beløp          Saldo",
+            `28.05.2026   SYNTHETIC AMOUNT                         ${rawAmount}     ${balance}`,
+          ].join("\n")
+        : [
+            "ROGALAND SPAREBANK",
+            "Transaksjoner Antall: 1",
+            "Kontonummer: ACCT-001",
+            "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+            `28.05.2026 Varekjøp ACCT-001 LOCAL_USER ${rawAmount} NOK Bokført SYNTHETIC AMOUNT`,
+          ].join("\n");
+
+      const result = parseRogalandStatementText(text, BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.transactions).toHaveLength(1);
+      expect(result.transactions[0]).toMatchObject({
+        bookedAtIso: "2026-05-28T00:00:00Z",
+        amountMinor: expectedAmountMinor,
+        merchantRaw: "SYNTHETIC AMOUNT",
+      });
+    });
+
     it("importJobId is propagated to all transactions when provided", () => {
       const text = loadFixture();
       const result = parseRogalandStatementText(text, { ...BASE_OPTIONS, importJobId: "job-42" });
@@ -487,32 +963,91 @@ describe("pdfTextParser unit tests", () => {
   });
 
   describe("AC-3: invalid amount format in a transaction line produces error", () => {
-    it("returns INVALID_AMOUNT_FORMAT for a line with unparseable amount", () => {
+    const invalidRow = "27.05.2026   BROKEN AMOUNT                            invalid-amount  75 000,00";
+    const firstValidRow = "28.05.2026   SYNTHETIC FIRST                         -10,00          200,00";
+    const secondValidRow = "26.05.2026   SYNTHETIC SECOND                        -20,00          300,00";
+
+    it.each([
+      { placement: "before", rows: [invalidRow, firstValidRow, secondValidRow], lineNumber: 3 },
+      { placement: "between", rows: [firstValidRow, invalidRow, secondValidRow], lineNumber: 4 },
+      { placement: "after", rows: [firstValidRow, secondValidRow, invalidRow], lineNumber: 5 },
+    ])("rejects an invalid amount $placement valid rows without returning partial transactions", ({ rows, lineNumber }) => {
       const text = [
         "ROGALAND SPAREBANK",
-        "",
         "Dato         Beskrivelse                              Beløp          Saldo",
-        "27.05.2026   SALARY                                  invalid-amount  75 000,00",
-      ].join("\n");
-
-      const result = parseRogalandStatementText(text, BASE_OPTIONS);
-
-      expect(result.ok).toBe(false);
-    });
-
-    it("returns INVALID_DATE_FORMAT for an impossible calendar date (31 February)", () => {
-      const text = [
-        "ROGALAND SPAREBANK",
-        "",
-        "Dato         Beskrivelse                              Beløp          Saldo",
-        "31.02.2026   SALARY                                  +50 000,00     75 000,00 ",
+        ...rows,
       ].join("\n");
 
       const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
       expect(result.ok).toBe(false);
       if (result.ok) return;
-      expect(result.errors[0]?.code).toBe("INVALID_DATE_FORMAT");
+      expect(result.errors.map(({ code, field, lineNumber: errorLineNumber }) => ({
+        code,
+        field,
+        lineNumber: errorLineNumber,
+      }))).toEqual([
+        { code: "INVALID_AMOUNT_FORMAT", field: "amount", lineNumber },
+      ]);
+      expect("transactions" in result).toBe(false);
+    });
+
+    const dateInput = (layout: "classic" | "bank-export", rawDate: string): string => layout === "classic"
+      ? [
+          "ROGALAND SPAREBANK",
+          "Dato         Beskrivelse                              Beløp          Saldo",
+          `${rawDate}   SYNTHETIC DATE                           -1,00          900,00`,
+        ].join("\n")
+      : [
+          "ROGALAND SPAREBANK",
+          "Transaksjoner Antall: 1",
+          "Kontonummer: ACCT-001",
+          "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+          `${rawDate} Varekjøp ACCT-001 LOCAL_USER -1,00 NOK Bokført SYNTHETIC DATE`,
+        ].join("\n");
+
+    it.each([
+      { layout: "classic", rawDate: "29.02.2024", expectedDate: "2024-02-29T00:00:00Z" },
+      { layout: "bank-export", rawDate: "29.02.2024", expectedDate: "2024-02-29T00:00:00Z" },
+    ] as const)("maps valid leap day $rawDate in the $layout layout without rollover", ({
+      layout,
+      rawDate,
+      expectedDate,
+    }) => {
+      const result = parseRogalandStatementText(dateInput(layout, rawDate), BASE_OPTIONS);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("Expected a valid leap-day transaction");
+      expect(result.transactions).toHaveLength(1);
+      expect(result.transactions[0]).toMatchObject({
+        bookedAtIso: expectedDate,
+        amountMinor: -100,
+        merchantRaw: "SYNTHETIC DATE",
+      });
+    });
+
+    it.each([
+      { layout: "classic", rawDate: "29.02.2025", lineNumber: 3 },
+      { layout: "classic", rawDate: "31.04.2026", lineNumber: 3 },
+      { layout: "bank-export", rawDate: "29.02.2025", lineNumber: 5 },
+      { layout: "bank-export", rawDate: "31.04.2026", lineNumber: 5 },
+    ] as const)("rejects invalid date $rawDate in the $layout layout without rollover", ({
+      layout,
+      rawDate,
+      lineNumber,
+    }) => {
+      const result = parseRogalandStatementText(dateInput(layout, rawDate), BASE_OPTIONS);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("Expected an invalid calendar date to fail");
+      expect(result.errors.map(({ code, field, lineNumber: errorLineNumber }) => ({
+        code,
+        field,
+        lineNumber: errorLineNumber,
+      }))).toEqual([
+        { code: "INVALID_DATE_FORMAT", field: "date", lineNumber },
+      ]);
+      expect("transactions" in result).toBe(false);
     });
   });
 

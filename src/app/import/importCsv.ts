@@ -6,20 +6,24 @@ import type {
 } from "../../domain/import/csvRowMapper.js";
 import {
   CSV_COLUMN_NAMES,
+  mapCsvRows,
   mapCsvRowToTransaction,
   normalizeCsvRow,
 } from "../../domain/import/csvRowMapper.js";
-import type { Transaction } from "../../domain/types.js";
+import type { ImportJob, Transaction } from "../../domain/types.js";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import {
   classifyDuplicateCandidates,
   type ClassifiedDuplicateCandidate,
+  type DuplicateImportDecision,
   type DuplicateTransactionMatch,
 } from "../../domain/import/filterPreviouslyImportedTransactions.js";
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { buildTransactionFingerprint } from "../../domain/import/buildTransactionFingerprint.js";
+import { categorizeTransactions } from "../../domain/categorization/categorizeTransaction.js";
 
 /** Shape of a normalized import request passed from the renderer to the main process via IPC. */
 export interface CsvImportRequest {
@@ -50,6 +54,28 @@ export interface CsvImportFailure {
 
 /** Discriminated union returned by the `import:csv` IPC channel. */
 export type CsvImportResponse = CsvImportSuccess | CsvImportFailure;
+
+export interface CsvImportWorkflowInput extends CsvImportRequest {
+  rows: Array<Record<string, string>>;
+  importJobId: string;
+  startedAtIso: string;
+  finishedAtIso: string;
+  sourceIdentity: string;
+  sourceScope: string;
+  duplicateDecisions?: DuplicateImportDecision[];
+}
+
+export interface CsvImportWorkflowDependencies {
+  categoryRules: ReadonlyMap<string, string>;
+  loadLedgerSnapshotData: () => LedgerSnapshotData;
+  getImportedTransactionsForSource: (
+    sourceType: "csv",
+    sourceName: string,
+    accountId: string,
+    sourceIdentity: string
+  ) => Transaction[];
+  appendImportJobAndTransactions: (importJob: ImportJob, transactions: Transaction[]) => number;
+}
 
 export interface CsvImportPreviewRow extends CsvRowPreview {
   duplicateMatch?: DuplicateTransactionMatch;
@@ -279,5 +305,95 @@ export function normalizeCsvImportErrors(
       codes: errors.map((e) => e.code),
       messages: errors.map((e) => e.message),
     })),
+  };
+}
+
+/** Runs the production CSV mapping, duplicate-decision, and persistence workflow. */
+export function runCsvImportWorkflow(
+  input: CsvImportWorkflowInput,
+  dependencies: CsvImportWorkflowDependencies
+): CsvImportResponse {
+  const result = mapCsvRows(input.rows, {
+    householdId: input.householdId,
+    accountId: input.accountId,
+    importJobId: input.importJobId,
+    idPrefix: input.importJobId,
+    ...(input.columnMapping === undefined ? {} : { columnMapping: input.columnMapping }),
+    sourceIdentity: input.sourceIdentity,
+    sourceScope: input.sourceScope,
+  });
+
+  if (result.skipped.length > 0) {
+    return normalizeCsvImportErrors(result.skipped);
+  }
+
+  const categorizedTransactions = categorizeTransactions(result.transactions, dependencies.categoryRules);
+  const snapshot = dependencies.loadLedgerSnapshotData();
+  const previouslyImported = dependencies.getImportedTransactionsForSource(
+    "csv",
+    input.filePath,
+    input.accountId,
+    input.sourceIdentity
+  );
+  const classifiedCandidates = classifyPreviouslyImportedCsvCandidates(
+    categorizedTransactions,
+    previouslyImported,
+    snapshot,
+    { filePath: input.filePath, accountId: input.accountId, sourceIdentity: input.sourceIdentity }
+  );
+  const decisions = new Map((input.duplicateDecisions ?? []).map((decision) => [decision.rowIndex, decision.action]));
+  const duplicateRowIndices = new Set(classifiedCandidates.flatMap((candidate, index) =>
+    candidate.duplicateMatch === undefined ? [] : [index]
+  ));
+  const missingDecisionIndex = Array.from(duplicateRowIndices).find((rowIndex) => !decisions.has(rowIndex));
+  const unexpectedDecisionIndex = Array.from(decisions.keys()).find((rowIndex) => !duplicateRowIndices.has(rowIndex));
+  if (missingDecisionIndex !== undefined || unexpectedDecisionIndex !== undefined) {
+    const rowIndex = missingDecisionIndex ?? unexpectedDecisionIndex ?? -1;
+    return {
+      ok: false,
+      errors: [{
+        rowIndex,
+        fields: ["duplicateDecision"],
+        codes: ["DUPLICATE_DECISION_REQUIRED"],
+        messages: ["Preview the current ledger state and explicitly choose whether to skip or import each duplicate candidate."],
+      }],
+    };
+  }
+
+  const pendingTransactions: Transaction[] = [];
+  let skippedDuplicateCount = 0;
+  for (const [rowIndex, candidate] of classifiedCandidates.entries()) {
+    if (candidate.duplicateMatch === undefined) {
+      pendingTransactions.push(candidate.candidate);
+      continue;
+    }
+    if (decisions.get(rowIndex) === "skip") {
+      skippedDuplicateCount += 1;
+      continue;
+    }
+    pendingTransactions.push({ ...candidate.candidate, id: randomUUID() });
+  }
+
+  const importJob: ImportJob = {
+    id: input.importJobId,
+    householdId: input.householdId,
+    sourceType: "csv",
+    sourceName: input.filePath,
+    candidateCount: result.transactions.length,
+    startedAtIso: input.startedAtIso,
+    finishedAtIso: input.finishedAtIso,
+    provenance: {
+      sourceIdentity: input.sourceIdentity,
+      accountId: input.accountId,
+      duplicateCount: skippedDuplicateCount,
+    },
+  };
+  const insertedCount = dependencies.appendImportJobAndTransactions(importJob, pendingTransactions);
+
+  return {
+    ok: true,
+    importJobId: input.importJobId,
+    transactionCount: insertedCount,
+    duplicateCount: skippedDuplicateCount,
   };
 }

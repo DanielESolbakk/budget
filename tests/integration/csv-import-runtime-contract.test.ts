@@ -10,6 +10,7 @@ import {
   filterPreviouslyImportedCsvTransactions,
   normalizeCsvImportErrors,
   previewCsvRowsWithProgress,
+  runCsvImportWorkflow,
 } from "../../src/app/import/importCsv.js";
 import { parseCsvText } from "../../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../../src/domain/import/csvRowMapper.js";
@@ -107,8 +108,8 @@ interface TestImportJobHistoryStore {
 }
 
 /**
- * Simulates the IPC handler logic: reads CSV from path, maps rows, persists to ledger.
- * Returns the CsvImportResponse shape used by the IPC channel.
+ * Exercises CSV parsing, mapping, validation, and SQLite persistence as a component contract.
+ * This helper reimplements the import decision and does not exercise Electron's `import:csv` handler.
  */
 function runImportOrchestration(
   csvText: string,
@@ -675,6 +676,102 @@ describe("csv-import-runtime-contract", () => {
   });
 
   describe("AC-3: Invalid CSV import returns explicit validation failures and zero transaction writes", () => {
+    it("leaves the SQLite ledger unchanged when production CSV orchestration sees a malformed middle row", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const existingTransaction: Transaction = {
+        id: "existing-production-csv-row",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        bookedAtIso: "2026-05-25T00:00:00Z",
+        amountMinor: -701,
+        merchantRaw: "SYNTHETIC EXISTING CSV ROW",
+        sourceType: "manual",
+      };
+      const rows = parseCsvText([
+        "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Status",
+        "28.05.2026;28.05.2026;SYNTHETIC CSV FIRST;;-12.50;NOK;Bokført",
+        "27.05.2026;27.05.2026;SYNTHETIC CSV BROKEN;;not-a-number;NOK;Bokført",
+        "26.05.2026;26.05.2026;SYNTHETIC CSV LAST;;-20.00;NOK;Bokført",
+      ].join("\n"));
+
+      try {
+        ledger.appendTransactions([existingTransaction]);
+        const beforeImport = structuredClone(ledger.loadLedgerSnapshotData());
+
+        const response = runCsvImportWorkflow({
+          rows,
+          filePath: "production-csv-atomicity.csv",
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+          importJobId: "production-csv-atomicity-job",
+          startedAtIso: "2026-05-29T00:00:00Z",
+          finishedAtIso: "2026-05-29T00:00:00Z",
+          sourceIdentity: "synthetic-csv-content-identity",
+          sourceScope: "production-csv-atomicity.csv",
+        }, {
+          categoryRules: new Map(),
+          loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
+          getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+        });
+
+        expect(response).toEqual({
+          ok: false,
+          errors: [{
+            rowIndex: 1,
+            fields: ["Beløp ut"],
+            codes: ["INVALID_AMOUNT_FORMAT"],
+            messages: ['Amount-out value "not-a-number" is not a valid number.'],
+          }],
+        });
+        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
+      } finally {
+        ledger.close();
+      }
+    });
+
+    it("preserves the seeded ledger when an invalid row is between valid CSV rows", () => {
+      const ledger = makeTestLedger(randomUUID());
+      const existingTransaction: Transaction = {
+        id: "existing-csv-ledger-row",
+        householdId: SAMPLE_HOUSEHOLD.id,
+        accountId: SAMPLE_ACCOUNT.id,
+        bookedAtIso: "2026-05-25T00:00:00Z",
+        amountMinor: -701,
+        merchantRaw: "SYNTHETIC EXISTING CSV ROW",
+        sourceType: "manual",
+      };
+      const csvText = [
+        "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Status",
+        "28.05.2026;28.05.2026;SYNTHETIC CSV FIRST;;-12.50;NOK;Bokført",
+        "27.05.2026;27.05.2026;SYNTHETIC CSV BROKEN;;not-a-number;NOK;Bokført",
+        "26.05.2026;26.05.2026;SYNTHETIC CSV LAST;;-20.00;NOK;Bokført",
+      ].join("\n");
+
+      try {
+        ledger.appendTransactions([existingTransaction]);
+        const beforeImport = structuredClone(ledger.loadLedgerSnapshotData());
+
+        const response = runImportOrchestration(csvText, ledger, {
+          householdId: SAMPLE_HOUSEHOLD.id,
+          accountId: SAMPLE_ACCOUNT.id,
+        });
+
+        expect(response).toEqual({
+          ok: false,
+          errors: [{
+            rowIndex: 1,
+            fields: ["Beløp ut"],
+            codes: ["INVALID_AMOUNT_FORMAT"],
+            messages: ['Amount-out value "not-a-number" is not a valid number.'],
+          }],
+        });
+        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
+      } finally {
+        ledger.close();
+      }
+    });
+
     it("rejects empty and header-only CSV input without creating an import job", () => {
       for (const csvText of ["", "Utført dato;Beskrivelse;Beløp ut;Valuta\n"]) {
         const ledger = makeTestLedger(randomUUID());

@@ -10,16 +10,48 @@ import {
 describe("parseCsvText", () => {
   it("preserves delimiters, escaped quotes, and line breaks inside quoted cells", () => {
     const csvText = [
-      "Bokført dato;Beskrivelse;Melding/KID/Fakt.nr",
-      '28.05.2026;"SYNTHETIC; ""WEST"" SHOP',
-      'SECOND LINE";REF-001',
+      "Utført dato;Bokført dato;Beskrivelse;Beløp ut;Valuta;Melding/KID/Fakt.nr",
+      '28.05.2026;28.05.2026;"SYNTHETIC; ""WEST"" SHOP',
+      'SECOND LINE";-12.50;NOK;REF-001',
     ].join("\n");
+    const rows = parseCsvText(csvText);
 
-    expect(parseCsvText(csvText)).toEqual([
+    expect(rows).toHaveLength(1);
+    expect(rows).toEqual([
       {
+        "Utført dato": "28.05.2026",
         "Bokført dato": "28.05.2026",
         Beskrivelse: 'SYNTHETIC; "WEST" SHOP\nSECOND LINE',
+        "Beløp ut": "-12.50",
+        Valuta: "NOK",
         "Melding/KID/Fakt.nr": "REF-001",
+      },
+    ]);
+
+    const mapped = mapCsvRows(rows, {
+      householdId: "hh-quoted",
+      accountId: "acc-quoted",
+    });
+
+    expect(mapped.skipped).toEqual([]);
+    expect(mapped.transactions).toHaveLength(1);
+    expect(mapped.transactions.map(({ householdId, accountId, bookedAtIso, amountMinor, merchantRaw, sourceReference, sourceType }) => ({
+      householdId,
+      accountId,
+      bookedAtIso,
+      amountMinor,
+      merchantRaw,
+      sourceReference,
+      sourceType,
+    }))).toEqual([
+      {
+        householdId: "hh-quoted",
+        accountId: "acc-quoted",
+        bookedAtIso: "2026-05-28T00:00:00Z",
+        amountMinor: -1250,
+        merchantRaw: 'SYNTHETIC; "WEST" SHOP\nSECOND LINE',
+        sourceReference: "REF-001",
+        sourceType: "csv",
       },
     ]);
   });
