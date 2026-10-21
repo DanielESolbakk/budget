@@ -7,12 +7,32 @@ export class ImportReviewPage {
     return this.page.getByRole("region", { name: "Import review queue", exact: true });
   }
 
+  get reviewedHistoryDisclosure() {
+    return this.reviewQueue.getByText(/^Reviewed rows \(\d+\)$/, { exact: false });
+  }
+
   reviewRow(rowNumber: number) {
     return this.reviewQueue.getByRole("group", { name: `Import review row ${rowNumber}`, exact: true });
   }
 
   async chooseStatementFile(): Promise<void> {
     await this.page.getByRole("button", { name: "Import statement", exact: true }).click();
+  }
+
+  async openCorrection(rowNumber: number): Promise<void> {
+    const disclosure = this.reviewRow(rowNumber).getByText("Correct transaction", { exact: true });
+    const isOpen = await disclosure.evaluate((element) =>
+      element.parentElement instanceof HTMLDetailsElement && element.parentElement.open
+    );
+    if (!isOpen) await disclosure.click();
+  }
+
+  async openDismissal(rowNumber: number): Promise<void> {
+    const disclosure = this.reviewRow(rowNumber).getByText("Dismiss this row", { exact: true });
+    const isOpen = await disclosure.evaluate((element) =>
+      element.parentElement instanceof HTMLDetailsElement && element.parentElement.open
+    );
+    if (!isOpen) await disclosure.click();
   }
 
   async correctRow(
@@ -26,7 +46,8 @@ export class ImportReviewPage {
     }
   ): Promise<void> {
     const row = this.reviewRow(rowNumber);
-    await row.getByLabel("Date", { exact: true }).fill(correction.date);
+    await this.openCorrection(rowNumber);
+    await row.getByLabel("Transaction date", { exact: true }).fill(correction.date);
     await row.getByLabel("Amount", { exact: true }).fill(correction.amount);
     await row.getByLabel("Merchant", { exact: true }).fill(correction.merchant);
     await row.getByLabel("Account", { exact: true }).selectOption(correction.accountId);
@@ -36,7 +57,8 @@ export class ImportReviewPage {
 
   async dismissRow(rowNumber: number, reason: string): Promise<void> {
     const row = this.reviewRow(rowNumber);
-    await row.getByLabel("Reason for dismissal", { exact: true }).fill(reason);
+    await this.openDismissal(rowNumber);
+    await row.getByLabel("Reason for dismissal (required)", { exact: true }).fill(reason);
     await row.getByRole("button", { name: "Dismiss row", exact: true }).click();
   }
 }

@@ -55,6 +55,10 @@ export function ImportWorkspace({
     setVisitedFormats((visited) => new Set(visited).add("manual"));
   }
 
+  function focusImportReview(): void {
+    document.getElementById("import-review-queue")?.focus();
+  }
+
   return (
     <section className="destination-workspace" aria-label="Import workspace" hidden={!isActive}>
       <div className="destination-heading">
@@ -95,6 +99,7 @@ export function ImportWorkspace({
             onImportSuccess={onImportSuccess}
             onOpenLedger={onOpenLedger}
             onReviewUncategorized={onReviewUncategorized}
+            onReviewImportItems={focusImportReview}
           />
         </div>
       )}
@@ -106,6 +111,7 @@ export function ImportWorkspace({
             onImportSuccess={onImportSuccess}
             onOpenLedger={onOpenLedger}
             onReviewUncategorized={onReviewUncategorized}
+            onReviewImportItems={focusImportReview}
           />
         </div>
       )}

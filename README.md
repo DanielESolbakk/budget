@@ -25,7 +25,7 @@ This starts Electron in development mode and opens the desktop window. The ledge
 
 ### Bring in transactions
 
-Open **Import** and choose **Import statement** to select a local `.csv`, `.txt`, or digital `.pdf` file; the app routes it to the matching import flow. Preview the rows and confirm only after checking the dates, merchants, and amounts. Valid transactions are saved to the ledger, while unresolved source rows stay out of it and appear in the local **Import review** queue, where they can be corrected into transactions or dismissed with a reason. A changed file must be previewed again before confirmation. Manual entry is a separate **Enter transaction manually** action, and uncategorized transactions appear in **Review what needs attention**.
+Open **Import** and choose **Import statement** to select a local `.csv`, `.txt`, or digital `.pdf` file; the app routes it to the matching import flow. Preview the rows and confirm only after checking the dates, merchants, and amounts. Valid transactions are saved to the ledger, while unresolved source rows stay out of it and appear in the local **Import review** queue, where they can be corrected into transactions or dismissed with a reason. Correction drafts are saved on this device and restored after an app restart; draft data is temporary and is not included in backup snapshots. A changed file must be previewed again before confirmation. Manual entry is a separate **Enter transaction manually** action, and uncategorized transactions appear in **Review what needs attention**.
 
 The current text/PDF adapter reads Rogaland Sparebank statements, including binary digital PDFs. Scanned images and unknown bank layouts are not supported yet; more bank adapters can be added later. For a safe trial, use the synthetic fixtures in this repository:
 
@@ -34,6 +34,8 @@ The current text/PDF adapter reads Rogaland Sparebank statements, including bina
 - `tests/fixtures/synthetic/rogaland-2026-05-statement.txt`
 
 Repeat imports of an unchanged source are skipped, and import jobs retain local provenance. When statements overlap or contain indistinguishable rows without a stable bank reference, the app cannot prove that rows from different files are the same purchase; check the ledger after importing overlapping exports. Back up locally before restoring another snapshot, since restore replaces the current ledger and learned categorization rules.
+
+When a preview finds possible duplicates, choose **Skip all duplicate candidates** or **Import all duplicate candidates**, then change any individual row that needs a different decision. Confirm the import only after reviewing those choices; importing a candidate may add a transaction already in your ledger.
 
 ### Build for production
 

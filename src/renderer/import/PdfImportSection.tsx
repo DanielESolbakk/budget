@@ -7,6 +7,7 @@ import type { Account } from "../../domain/types.js";
 import type { DuplicateImportDecision } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage } from "./ImportStageProgress.js";
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
+import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
 
 type ImportState =
   | { status: "idle" }
@@ -40,6 +41,7 @@ interface PdfImportSectionProps {
   onImportSuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
+  onReviewImportItems: () => void;
 }
 
 export function PdfImportSection({
@@ -48,6 +50,7 @@ export function PdfImportSection({
   onImportSuccess,
   onOpenLedger,
   onReviewUncategorized,
+  onReviewImportItems,
 }: PdfImportSectionProps): React.JSX.Element {
   const [filePath, setFilePath] = React.useState(initialFilePath);
   const [importState, setImportState] = React.useState<ImportState>({ status: "idle" });
@@ -75,6 +78,7 @@ export function PdfImportSection({
   const unresolvedDuplicateCandidates = duplicateCandidates.filter((candidate) =>
     duplicateDecisions[candidate.rowIndex] === undefined
   );
+  const selectedDuplicateDecisionCount = duplicateCandidates.length - unresolvedDuplicateCandidates.length;
   const excludedRowsAcknowledgementRequired = preview !== null &&
     preview.excludedRowCount > 0 && !acknowledgeExcludedRows;
   const previewPageCount = Math.max(1, Math.ceil((preview?.transactions.length ?? 0) / PREVIEW_PAGE_SIZE));
@@ -346,13 +350,21 @@ export function PdfImportSection({
             )}
             {importState.unresolvedRowCount > 0 && (
               <p className="import-excluded-summary">
-                {importState.unresolvedRowCount} unresolved row{importState.unresolvedRowCount === 1 ? "" : "s"} saved for review.
-                {" "}<a href="#import-review-queue">Review unresolved rows</a>
+                {importState.unresolvedRowCount} row{importState.unresolvedRowCount === 1 ? "" : "s"} {importState.unresolvedRowCount === 1 ? "was" : "were"} sent to review during import.
               </p>
             )}
           </div>
           <div className="import-success-actions" aria-label="Next import actions">
-            <button type="button" onClick={onReviewUncategorized}>Review uncategorized transactions</button>
+            {importState.unresolvedRowCount > 0 && (
+              <button type="button" onClick={onReviewImportItems}>Review unresolved rows</button>
+            )}
+            <button
+              type="button"
+              className={importState.unresolvedRowCount > 0 ? "import-secondary-action" : undefined}
+              onClick={onReviewUncategorized}
+            >
+              Review uncategorized transactions
+            </button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
           </div>
         </div>
@@ -421,8 +433,18 @@ export function PdfImportSection({
               : ""}
             {duplicateCandidates.length === 0
               ? "No possible duplicates found."
-              : `${duplicateCandidates.length} possible duplicate${duplicateCandidates.length === 1 ? "" : "s"} found; ${unresolvedDuplicateCandidates.length} decision${unresolvedDuplicateCandidates.length === 1 ? "" : "s"} remain.`}
+              : `${selectedDuplicateDecisionCount} of ${duplicateCandidates.length} duplicate decisions selected.`}
           </p>
+          {duplicateCandidates.length > 0 && (
+            <DuplicateBulkActions
+              candidateCount={duplicateCandidates.length}
+              onChoose={(action) => {
+                const decisions: Record<number, DuplicateImportDecision["action"]> = {};
+                for (const candidate of duplicateCandidates) decisions[candidate.rowIndex] = action;
+                setDuplicateDecisions(decisions);
+              }}
+            />
+          )}
           {preview.excludedRowCount > 0 && (
             <>
               <p className="import-excluded-summary">
@@ -483,7 +505,9 @@ export function PdfImportSection({
                   return (
                     <tr key={transaction.id} id={`pdf-preview-row-${rowIndex}`} tabIndex={-1} data-state={duplicateCandidate === undefined ? "ready" : "duplicate"}>
                       <td data-label="Date">{transaction.bookedAtIso.slice(0, 10)}</td>
-                      <td data-label="Merchant">{transaction.merchantRaw}</td>
+                      <td data-label="Merchant">
+                        <span className="import-preview-cell-value">{transaction.merchantRaw}</span>
+                      </td>
                       <td data-label="Amount">{formatAmount(transaction.amountMinor)}</td>
                       <td data-label="Currency">{transaction.currencyCode ?? "NOK"}</td>
                       <td data-label="Status and duplicate decision">
@@ -493,9 +517,12 @@ export function PdfImportSection({
                             <div className="import-duplicate-decision">
                               <strong>Duplicate candidate</strong>
                               <small>Matched by {duplicateCandidate.duplicateMatch.matchBasis === "source-reference" ? "source reference" : "transaction fingerprint"}.</small>
-                              <span className="import-duplicate-match">
-                                Existing: {duplicateCandidate.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {duplicateCandidate.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(duplicateCandidate.duplicateMatch.matchingTransaction.amountMinor)}
-                              </span>
+                              <details className="import-duplicate-match-details">
+                                <summary>Compare existing transaction</summary>
+                                <span className="import-duplicate-match">
+                                  Existing: {duplicateCandidate.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {duplicateCandidate.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(duplicateCandidate.duplicateMatch.matchingTransaction.amountMinor)}
+                                </span>
+                              </details>
                               <fieldset aria-label={`Duplicate decision for row ${rowIndex + 1}`}>
                                 <label><input type="radio" name={`pdf-duplicate-${rowIndex}`} value="skip" checked={duplicateDecisions[rowIndex] === "skip"} onChange={() => setDuplicateDecisions((current) => ({ ...current, [rowIndex]: "skip" }))} />Skip duplicate</label>
                                 <label><input type="radio" name={`pdf-duplicate-${rowIndex}`} value="import" checked={duplicateDecisions[rowIndex] === "import"} onChange={() => setDuplicateDecisions((current) => ({ ...current, [rowIndex]: "import" }))} />Import duplicate</label>

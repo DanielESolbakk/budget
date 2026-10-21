@@ -76,6 +76,7 @@ test.describe("Main-process transaction privacy", () => {
       currency: "NOK",
     });
     await importReview.dismissRow(1, "Not a household transaction");
+    await importReview.reviewedHistoryDisclosure.click();
     await expect(importReview.reviewRow(2)).toContainText("Corrected");
     await expect(importReview.reviewRow(1)).toContainText("Dismissed");
 
