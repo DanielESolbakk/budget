@@ -129,10 +129,13 @@ export function ImportReviewSection({
       const loadedAccounts = current?.accounts ?? [];
       setItems(loadedItems);
       setAccounts(loadedAccounts);
-      setDrafts(Object.fromEntries(
+      setDrafts((currentDrafts) => Object.fromEntries(
         loadedItems
           .filter((item) => item.status === "unresolved")
-          .map((item) => [item.id, createDraft(item, loadedAccounts)])
+          .map((item) => [
+            item.id,
+            currentDrafts[item.id] ?? createDraft(item, loadedAccounts),
+          ])
       ));
       setLoadState("ready");
     }).catch((error: unknown) => {
@@ -201,6 +204,11 @@ export function ImportReviewSection({
       setItems((current) => current.map((candidate) =>
         candidate.id === item.id ? response.item : candidate
       ));
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
       onReviewChange();
     } catch (error: unknown) {
       setActionErrors((current) => ({
@@ -234,6 +242,11 @@ export function ImportReviewSection({
       setItems((current) => current.map((candidate) =>
         candidate.id === item.id ? response.item : candidate
       ));
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
       onReviewChange();
     } catch (error: unknown) {
       setActionErrors((current) => ({
@@ -245,8 +258,146 @@ export function ImportReviewSection({
     }
   }
 
+  const unresolvedItems = items.filter((item) => item.status === "unresolved");
+  const reviewedItems = items.filter((item) => item.status !== "unresolved");
+
+  function renderReviewItem(item: ImportReviewItem): React.JSX.Element {
+    const rowNumber = item.sourceRowIndex + 1;
+    const draft = drafts[item.id];
+    const isPending = pendingItemId === item.id;
+
+    return (
+      <li key={item.id}>
+        <section className="import-review-row" role="group" aria-label={`Import review row ${rowNumber}`}>
+          <div className="import-review-source">
+            <p className="import-review-status" role="status">{statusLabel(item.status)}</p>
+            <p><strong>Source:</strong> {fileNameFromPath(item.sourceName)}</p>
+            <p><strong>Row:</strong> {rowNumber}</p>
+            <details>
+              <summary>Original source row</summary>
+              <pre>{item.rawRow}</pre>
+            </details>
+            <ul aria-label="Parser diagnostics">
+              {item.parserErrors.map((error, index) => (
+                <li key={`${error.code}-${index}`}>
+                  {error.field === undefined ? "" : `${error.field}: `}{error.message}
+                </li>
+              ))}
+            </ul>
+            {item.status === "corrected" && (
+              <p>
+                Corrected transaction {item.correctedTransactionId} at {item.correctedAtIso}.
+              </p>
+            )}
+            {item.status === "dismissed" && (
+              <p>
+                Dismissed at {item.dismissedAtIso}: {item.dismissalReason}
+              </p>
+            )}
+          </div>
+          {item.status === "unresolved" && draft !== undefined && (
+            <div className="import-review-actions">
+              {draft.sourceEvidenceError !== undefined && <p role="alert">{draft.sourceEvidenceError}</p>}
+              <form
+                aria-label={`Correct import review row ${rowNumber}`}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveCorrection(item);
+                }}
+              >
+                <label htmlFor={`import-review-date-${item.id}`}>Transaction date</label>
+                <input
+                  id={`import-review-date-${item.id}`}
+                  type="date"
+                  aria-describedby={`import-review-date-help-${item.id}`}
+                  value={draft.bookedAtIso}
+                  onChange={(event) => updateDraft(item.id, "bookedAtIso", event.target.value)}
+                  required
+                  disabled={isPending}
+                />
+                <p id={`import-review-date-help-${item.id}`} className="import-review-field-help">
+                  Use the booked date when available; otherwise use the execution date.
+                </p>
+                <label htmlFor={`import-review-amount-${item.id}`}>Amount</label>
+                <input
+                  id={`import-review-amount-${item.id}`}
+                  type="number"
+                  step="0.01"
+                  aria-describedby={`import-review-amount-help-${item.id}`}
+                  value={draft.amount}
+                  onChange={(event) => updateDraft(item.id, "amount", event.target.value)}
+                  required
+                  disabled={isPending}
+                />
+                <p id={`import-review-amount-help-${item.id}`} className="import-review-field-help">
+                  Enter income as a positive amount and spending as a negative amount.
+                </p>
+                <label htmlFor={`import-review-merchant-${item.id}`}>Merchant</label>
+                <input
+                  id={`import-review-merchant-${item.id}`}
+                  type="text"
+                  value={draft.merchantRaw}
+                  onChange={(event) => updateDraft(item.id, "merchantRaw", event.target.value)}
+                  required
+                  disabled={isPending}
+                />
+                <label htmlFor={`import-review-account-${item.id}`}>Account</label>
+                <select
+                  id={`import-review-account-${item.id}`}
+                  value={draft.accountId}
+                  onChange={(event) => updateDraft(item.id, "accountId", event.target.value)}
+                  required
+                  disabled={isPending || accounts.length === 0}
+                >
+                  <option value="" disabled>Select an account</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>{account.name}</option>
+                  ))}
+                </select>
+                <label htmlFor={`import-review-currency-${item.id}`}>Currency</label>
+                <input
+                  id={`import-review-currency-${item.id}`}
+                  type="text"
+                  value={draft.currencyCode}
+                  onChange={(event) => updateDraft(item.id, "currencyCode", event.target.value)}
+                  maxLength={3}
+                  required
+                  disabled={isPending}
+                />
+                <button type="submit" disabled={isPending || accounts.length === 0}>
+                  Save corrected transaction
+                </button>
+              </form>
+              <label htmlFor={`import-review-dismiss-reason-${item.id}`}>Reason for dismissal (required)</label>
+              <p id={`import-review-dismiss-reason-help-${item.id}`} className="import-review-field-help">
+                Required. This reason is saved with the original row in your local review history.
+              </p>
+              <textarea
+                id={`import-review-dismiss-reason-${item.id}`}
+                aria-describedby={`import-review-dismiss-reason-help-${item.id}`}
+                value={draft.dismissalReason}
+                onChange={(event) => updateDraft(item.id, "dismissalReason", event.target.value)}
+                required
+                disabled={isPending}
+              />
+              <button
+                type="button"
+                className="import-secondary-action"
+                onClick={() => void dismissItem(item)}
+                disabled={isPending || draft.dismissalReason.trim().length === 0}
+              >
+                Dismiss row
+              </button>
+              {actionErrors[item.id] !== undefined && <p role="alert">{actionErrors[item.id]}</p>}
+            </div>
+          )}
+        </section>
+      </li>
+    );
+  }
+
   return (
-    <section id="import-review-queue" className="import-review-queue" aria-label="Import review queue">
+    <section id="import-review-queue" className="import-review-queue" aria-label="Import review queue" tabIndex={-1}>
       <h3>Import review</h3>
       <p className="section-intro">Unresolved source rows stay out of the ledger until you correct or dismiss them.</p>
       {loadState === "loading" && <p role="status">Loading import review...</p>}
@@ -256,132 +407,21 @@ export function ImportReviewSection({
           <button type="button" onClick={() => setRetryKey((current) => current + 1)}>Retry import review</button>
         </div>
       )}
-      {loadState === "ready" && items.length === 0 && (
+      {loadState === "ready" && unresolvedItems.length === 0 && (
         <p className="empty-state">No import rows need review.</p>
       )}
-      {loadState === "ready" && items.length > 0 && (
+      {loadState === "ready" && unresolvedItems.length > 0 && (
         <ul className="import-review-list" aria-label="Import review items">
-          {items.map((item) => {
-            const rowNumber = item.sourceRowIndex + 1;
-            const draft = drafts[item.id];
-            const isPending = pendingItemId === item.id;
-            return (
-              <li key={item.id}>
-                <section className="import-review-row" role="group" aria-label={`Import review row ${rowNumber}`}>
-                  <div className="import-review-source">
-                    <p className="import-review-status" role="status">{statusLabel(item.status)}</p>
-                    <p><strong>Source:</strong> {fileNameFromPath(item.sourceName)}</p>
-                    <p><strong>Row:</strong> {rowNumber}</p>
-                    <details>
-                      <summary>Original source row</summary>
-                      <pre>{item.rawRow}</pre>
-                    </details>
-                    <ul aria-label="Parser diagnostics">
-                      {item.parserErrors.map((error, index) => (
-                        <li key={`${error.code}-${index}`}>
-                          {error.field === undefined ? "" : `${error.field}: `}{error.message}
-                        </li>
-                      ))}
-                    </ul>
-                    {item.status === "corrected" && (
-                      <p>
-                        Corrected transaction {item.correctedTransactionId} at {item.correctedAtIso}.
-                      </p>
-                    )}
-                    {item.status === "dismissed" && (
-                      <p>
-                        Dismissed at {item.dismissedAtIso}: {item.dismissalReason}
-                      </p>
-                    )}
-                  </div>
-                  {item.status === "unresolved" && draft !== undefined && (
-                    <div className="import-review-actions">
-                      {draft.sourceEvidenceError !== undefined && <p role="alert">{draft.sourceEvidenceError}</p>}
-                      <form
-                        aria-label={`Correct import review row ${rowNumber}`}
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void saveCorrection(item);
-                        }}
-                      >
-                        <label htmlFor={`import-review-date-${item.id}`}>Date</label>
-                        <input
-                          id={`import-review-date-${item.id}`}
-                          type="date"
-                          value={draft.bookedAtIso}
-                          onChange={(event) => updateDraft(item.id, "bookedAtIso", event.target.value)}
-                          required
-                          disabled={isPending}
-                        />
-                        <label htmlFor={`import-review-amount-${item.id}`}>Amount</label>
-                        <input
-                          id={`import-review-amount-${item.id}`}
-                          type="number"
-                          step="0.01"
-                          value={draft.amount}
-                          onChange={(event) => updateDraft(item.id, "amount", event.target.value)}
-                          required
-                          disabled={isPending}
-                        />
-                        <label htmlFor={`import-review-merchant-${item.id}`}>Merchant</label>
-                        <input
-                          id={`import-review-merchant-${item.id}`}
-                          type="text"
-                          value={draft.merchantRaw}
-                          onChange={(event) => updateDraft(item.id, "merchantRaw", event.target.value)}
-                          required
-                          disabled={isPending}
-                        />
-                        <label htmlFor={`import-review-account-${item.id}`}>Account</label>
-                        <select
-                          id={`import-review-account-${item.id}`}
-                          value={draft.accountId}
-                          onChange={(event) => updateDraft(item.id, "accountId", event.target.value)}
-                          required
-                          disabled={isPending || accounts.length === 0}
-                        >
-                          <option value="" disabled>Select an account</option>
-                          {accounts.map((account) => (
-                            <option key={account.id} value={account.id}>{account.name}</option>
-                          ))}
-                        </select>
-                        <label htmlFor={`import-review-currency-${item.id}`}>Currency</label>
-                        <input
-                          id={`import-review-currency-${item.id}`}
-                          type="text"
-                          value={draft.currencyCode}
-                          onChange={(event) => updateDraft(item.id, "currencyCode", event.target.value)}
-                          maxLength={3}
-                          required
-                          disabled={isPending}
-                        />
-                        <button type="submit" disabled={isPending || accounts.length === 0}>
-                          Save corrected transaction
-                        </button>
-                      </form>
-                      <label htmlFor={`import-review-dismiss-reason-${item.id}`}>Reason for dismissal</label>
-                      <textarea
-                        id={`import-review-dismiss-reason-${item.id}`}
-                        value={draft.dismissalReason}
-                        onChange={(event) => updateDraft(item.id, "dismissalReason", event.target.value)}
-                        disabled={isPending}
-                      />
-                      <button
-                        type="button"
-                        className="import-secondary-action"
-                        onClick={() => void dismissItem(item)}
-                        disabled={isPending || draft.dismissalReason.trim().length === 0}
-                      >
-                        Dismiss row
-                      </button>
-                      {actionErrors[item.id] !== undefined && <p role="alert">{actionErrors[item.id]}</p>}
-                    </div>
-                  )}
-                </section>
-              </li>
-            );
-          })}
+          {unresolvedItems.map(renderReviewItem)}
         </ul>
+      )}
+      {loadState === "ready" && reviewedItems.length > 0 && (
+        <details className="import-reviewed-history">
+          <summary>Reviewed rows ({reviewedItems.length})</summary>
+          <ul className="import-review-list" aria-label="Reviewed import items">
+            {reviewedItems.map(renderReviewItem)}
+          </ul>
+        </details>
       )}
     </section>
   );

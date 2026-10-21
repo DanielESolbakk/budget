@@ -705,9 +705,29 @@ section[aria-label].destination-workspace {
   margin-top: 0.35rem;
 }
 
+.import-review-field-help {
+  grid-column: 1 / -1;
+  margin: -0.1rem 0 0;
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
 .import-review-actions > label {
   display: block;
   margin-top: 0.8rem;
+}
+
+.import-reviewed-history {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 0.75rem;
+}
+
+.import-reviewed-history > summary {
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .import-review-actions textarea {

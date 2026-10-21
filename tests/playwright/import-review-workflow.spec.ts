@@ -124,6 +124,12 @@ test.describe("single statement import entry", () => {
       await expect(reviewQueue).toBeVisible();
       const reviewRow = importReview.reviewRow(2);
       await expect(reviewRow).toContainText("SYNTHETIC UNRESOLVED ROW");
+      await expect(reviewRow.getByText("Use the booked date when available; otherwise use the execution date.", { exact: true }))
+        .toBeVisible();
+      await expect(reviewRow.getByText(
+        "Enter income as a positive amount and spending as a negative amount.",
+        { exact: true }
+      )).toBeVisible();
       await importReview.correctRow(2, {
         date: "2026-05-19",
         amount: "-9.99",
@@ -132,6 +138,10 @@ test.describe("single statement import entry", () => {
         currency: "NOK",
       });
 
+      await expect(reviewRow).not.toBeVisible();
+      const reviewedHistory = importReview.reviewedHistoryDisclosure;
+      await expect(reviewedHistory).toBeVisible();
+      await reviewedHistory.click();
       await expect(reviewRow).toContainText("Corrected");
       const database = new DatabaseSync(databasePath);
       try {
@@ -170,8 +180,17 @@ test.describe("single statement import entry", () => {
 
       const reviewRow = importReview.reviewRow(2);
       await expect(reviewRow.getByRole("button", { name: "Dismiss row", exact: true })).toBeDisabled();
+      await expect(reviewRow.getByLabel("Reason for dismissal (required)", { exact: true })).toHaveAttribute("required", "");
+      await expect(reviewRow.getByText(
+        "Required. This reason is saved with the original row in your local review history.",
+        { exact: true }
+      )).toBeVisible();
       await importReview.dismissRow(2, "Not a household transaction");
 
+      await expect(reviewRow).not.toBeVisible();
+      const reviewedHistory = importReview.reviewedHistoryDisclosure;
+      await expect(reviewedHistory).toBeVisible();
+      await reviewedHistory.click();
       await expect(reviewRow).toContainText("Dismissed");
       await expect(reviewRow).toContainText(
         /Dismissed at \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z: Not a household transaction/
@@ -188,6 +207,57 @@ test.describe("single statement import entry", () => {
       } finally {
         database.close();
       }
+    });
+
+    test("hands unresolved imports directly to the review queue", async ({
+      appShell,
+      csvImport,
+      window,
+    }) => {
+      await appShell.openWorkspace("Import");
+      const importReview = new ImportReviewPage(window);
+      await importReview.chooseStatementFile();
+      await csvImport.enterFilePath(MIXED_CSV_PATH);
+      await csvImport.importButton.click();
+      await expect(csvImport.previewRegion).toBeVisible();
+      await csvImport.confirmImportButton.click();
+      await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
+
+      const reviewUnresolvedButton = csvImport.importSection.getByRole("button", {
+        name: "Review unresolved rows",
+        exact: true,
+      });
+      await expect(reviewUnresolvedButton).toBeVisible();
+      await reviewUnresolvedButton.click();
+      await expect(importReview.reviewQueue).toBeInViewport();
+      await expect(importReview.reviewRow(2)).toBeVisible();
+      await expect(csvImport.importSection.getByRole("button", {
+        name: "Review uncategorized transactions",
+        exact: true,
+      })).toBeVisible();
+    });
+
+    test("keeps an unsaved correction draft when returning to the import workspace", async ({
+      appShell,
+      csvImport,
+      window,
+    }) => {
+      await appShell.openWorkspace("Import");
+      const importReview = new ImportReviewPage(window);
+      await importReview.chooseStatementFile();
+      await csvImport.enterFilePath(MIXED_CSV_PATH);
+      await csvImport.importButton.click();
+      await expect(csvImport.previewRegion).toBeVisible();
+      await csvImport.confirmImportButton.click();
+      await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
+
+      const merchantInput = importReview.reviewRow(2).getByLabel("Merchant", { exact: true });
+      await merchantInput.fill("UNSAVED CORRECTION DRAFT");
+      await appShell.openWorkspace("Review");
+      await appShell.openWorkspace("Import");
+
+      await expect(importReview.reviewRow(2).getByLabel("Merchant", { exact: true }))
+        .toHaveValue("UNSAVED CORRECTION DRAFT");
     });
 
     test.describe("unresolved text statement rows", () => {
@@ -220,6 +290,8 @@ test.describe("single statement import entry", () => {
           accountId: "sample-acc",
           currency: "NOK",
         });
+        await expect(reviewRow).not.toBeVisible();
+        await importReview.reviewedHistoryDisclosure.click();
         await expect(reviewRow).toContainText("Corrected");
 
         const database = new DatabaseSync(databasePath);
@@ -261,6 +333,11 @@ test.describe("single statement import entry", () => {
         await statementImport.confirmImportButton.click();
         await expect(statementImport.successStatus).toContainText("Added 1 transaction to your ledger.");
         await expect(statementImport.importSection.getByText(/1 unresolved row saved for review/)).toBeVisible();
+        await statementImport.importSection.getByRole("button", {
+          name: "Review unresolved rows",
+          exact: true,
+        }).click();
+        await expect(importReview.reviewQueue).toBeInViewport();
 
         const reviewRow = importReview.reviewRow(7);
         await expect(reviewRow).toContainText("SYNTHETIC PDF BROKEN");
@@ -271,6 +348,8 @@ test.describe("single statement import entry", () => {
           accountId: "sample-acc",
           currency: "NOK",
         });
+        await expect(reviewRow).not.toBeVisible();
+        await importReview.reviewedHistoryDisclosure.click();
         await expect(reviewRow).toContainText("Corrected");
 
         const database = new DatabaseSync(databasePath);
@@ -315,7 +394,7 @@ test.describe("single statement import entry", () => {
       await csvImport.confirmImportButton.click();
 
       const reviewRow = new ImportReviewPage(window).reviewRow(2);
-      await expect(reviewRow.getByLabel("Date", { exact: true })).toBeVisible();
+      await expect(reviewRow.getByLabel("Transaction date", { exact: true })).toBeVisible();
       await expect(reviewRow.getByRole("button", { name: "Save corrected transaction", exact: true })).toBeVisible();
       const geometry = await reviewRow.evaluate((element) => {
         const controls = Array.from(element.querySelectorAll("input, select, textarea, button"));

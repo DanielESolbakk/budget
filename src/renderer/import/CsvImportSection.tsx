@@ -37,6 +37,7 @@ interface CsvImportSectionProps {
   onImportSuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
+  onReviewImportItems: () => void;
 }
 
 export function CsvImportSection({
@@ -45,6 +46,7 @@ export function CsvImportSection({
   onImportSuccess,
   onOpenLedger,
   onReviewUncategorized,
+  onReviewImportItems,
 }: CsvImportSectionProps): React.JSX.Element {
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [profiles, setProfiles] = React.useState<CsvImportProfile[]>([]);
@@ -515,7 +517,16 @@ export function CsvImportSection({
             )}
           </div>
           <div className="import-success-actions" aria-label="Next import actions">
-            <button type="button" onClick={onReviewUncategorized}>Review uncategorized transactions</button>
+            {importState.unresolvedCount > 0 && (
+              <button type="button" onClick={onReviewImportItems}>Review unresolved rows</button>
+            )}
+            <button
+              type="button"
+              className={importState.unresolvedCount > 0 ? "import-secondary-action" : undefined}
+              onClick={onReviewUncategorized}
+            >
+              Review uncategorized transactions
+            </button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
           </div>
         </div>

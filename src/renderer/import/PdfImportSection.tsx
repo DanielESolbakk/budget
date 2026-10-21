@@ -40,6 +40,7 @@ interface PdfImportSectionProps {
   onImportSuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
+  onReviewImportItems: () => void;
 }
 
 export function PdfImportSection({
@@ -48,6 +49,7 @@ export function PdfImportSection({
   onImportSuccess,
   onOpenLedger,
   onReviewUncategorized,
+  onReviewImportItems,
 }: PdfImportSectionProps): React.JSX.Element {
   const [filePath, setFilePath] = React.useState(initialFilePath);
   const [importState, setImportState] = React.useState<ImportState>({ status: "idle" });
@@ -347,12 +349,20 @@ export function PdfImportSection({
             {importState.unresolvedRowCount > 0 && (
               <p className="import-excluded-summary">
                 {importState.unresolvedRowCount} unresolved row{importState.unresolvedRowCount === 1 ? "" : "s"} saved for review.
-                {" "}<a href="#import-review-queue">Review unresolved rows</a>
               </p>
             )}
           </div>
           <div className="import-success-actions" aria-label="Next import actions">
-            <button type="button" onClick={onReviewUncategorized}>Review uncategorized transactions</button>
+            {importState.unresolvedRowCount > 0 && (
+              <button type="button" onClick={onReviewImportItems}>Review unresolved rows</button>
+            )}
+            <button
+              type="button"
+              className={importState.unresolvedRowCount > 0 ? "import-secondary-action" : undefined}
+              onClick={onReviewUncategorized}
+            >
+              Review uncategorized transactions
+            </button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
           </div>
         </div>
