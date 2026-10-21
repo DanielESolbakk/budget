@@ -10,8 +10,50 @@ const TEXT_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026
 const PDF_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 const MIXED_CSV_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review/import-review-mixed.csv");
 const MIXED_TEXT_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review/import-review-mixed.txt");
+const MIXED_PDF_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review/import-review-mixed.pdf");
 
 test.describe("single statement import entry", () => {
+  test.describe("native statement chooser", () => {
+    test.use({ importFileDialogBehavior: "native" });
+
+    test("opens the chooser with the supported local statement extensions", async ({
+      appShell,
+      electronApp,
+      window,
+    }) => {
+      await electronApp.evaluate(({ dialog }, selectedPath: string) => {
+        const state = globalThis as typeof globalThis & {
+          __budgetCapturedImportDialog?: { properties: string[]; extensions: string[] };
+        };
+        dialog.showOpenDialog = async (options) => {
+          if (!("filters" in options)) {
+            throw new Error("Import statement chooser did not receive open-dialog options.");
+          }
+          state.__budgetCapturedImportDialog = {
+            properties: options.properties ?? [],
+            extensions: options.filters?.flatMap(({ extensions }) => extensions) ?? [],
+          };
+          return { canceled: false, filePaths: [selectedPath] };
+        };
+      }, CSV_PATH);
+
+      await appShell.openWorkspace("Import");
+      await new ImportReviewPage(window).chooseStatementFile();
+      await expect(window.getByRole("region", { name: "CSV Import", exact: true })).toBeVisible();
+
+      const capturedOptions = await electronApp.evaluate(() => {
+        const state = globalThis as typeof globalThis & {
+          __budgetCapturedImportDialog?: { properties: string[]; extensions: string[] };
+        };
+        return state.__budgetCapturedImportDialog ?? null;
+      });
+      expect(capturedOptions).toEqual({
+        properties: ["openFile"],
+        extensions: ["csv", "txt", "pdf"],
+      });
+    });
+  });
+
   test.describe("CSV selection", () => {
     test.use({ importFileDialogBehavior: "csv-selected" });
 
@@ -93,10 +135,12 @@ test.describe("single statement import entry", () => {
       await expect(reviewRow).toContainText("Corrected");
       const database = new DatabaseSync(databasePath);
       try {
-        const corrected = database.prepare(`
+        const correctedRows = database.prepare(`
           SELECT import_job_id, amount_minor, source_type, currency_code
           FROM transactions WHERE merchant_raw = ?
-        `).get("SYNTHETIC CORRECTED ROW");
+        `).all("SYNTHETIC CORRECTED ROW");
+        expect(correctedRows).toHaveLength(1);
+        const corrected = correctedRows[0];
         expect(corrected).toMatchObject({
           amount_minor: -999,
           source_type: "csv",
@@ -129,6 +173,12 @@ test.describe("single statement import entry", () => {
       await importReview.dismissRow(2, "Not a household transaction");
 
       await expect(reviewRow).toContainText("Dismissed");
+      await expect(reviewRow).toContainText(
+        /Dismissed at \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z: Not a household transaction/
+      );
+      await expect(reviewRow.getByRole("list", { name: "Parser diagnostics" })).toBeVisible();
+      await reviewRow.getByText("Original source row", { exact: true }).click();
+      await expect(reviewRow).toContainText("SYNTHETIC UNRESOLVED ROW");
       const database = new DatabaseSync(databasePath);
       try {
         const unresolvedTransaction = database.prepare(
@@ -174,15 +224,75 @@ test.describe("single statement import entry", () => {
 
         const database = new DatabaseSync(databasePath);
         try {
-          const corrected = database.prepare(`
+          const correctedRows = database.prepare(`
             SELECT amount_minor, source_type, currency_code
             FROM transactions WHERE merchant_raw = ?
-          `).get("SYNTHETIC PDF CORRECTED");
+          `).all("SYNTHETIC PDF CORRECTED");
+          expect(correctedRows).toHaveLength(1);
+          const corrected = correctedRows[0];
           expect(corrected).toMatchObject({
             amount_minor: -725,
             source_type: "pdf",
             currency_code: "NOK",
           });
+        } finally {
+          database.close();
+        }
+      });
+    });
+
+    test.describe("unresolved binary PDF rows", () => {
+      test.use({ importFileDialogBehavior: "pdf-selected" });
+
+      test("corrects an unresolved row extracted from a binary PDF", async ({
+        appShell,
+        databasePath,
+        window,
+      }) => {
+        await appShell.openWorkspace("Import");
+        const importReview = new ImportReviewPage(window);
+        const statementImport = new PdfImportPage(window);
+        await importReview.chooseStatementFile();
+        await statementImport.enterFilePath(MIXED_PDF_PATH);
+        await statementImport.importButton.click();
+        await expect(statementImport.previewRegion).toBeVisible();
+        await expect(statementImport.previewRegion.getByText(/1 unresolved row will be saved for review/)).toBeVisible();
+        await expect(statementImport.confirmImportButton).toBeEnabled();
+        await statementImport.confirmImportButton.click();
+        await expect(statementImport.successStatus).toContainText("Added 1 transaction to your ledger.");
+        await expect(statementImport.importSection.getByText(/1 unresolved row saved for review/)).toBeVisible();
+
+        const reviewRow = importReview.reviewRow(7);
+        await expect(reviewRow).toContainText("SYNTHETIC PDF BROKEN");
+        await importReview.correctRow(7, {
+          date: "2026-05-27",
+          amount: "-7.25",
+          merchant: "SYNTHETIC BINARY PDF CORRECTED",
+          accountId: "sample-acc",
+          currency: "NOK",
+        });
+        await expect(reviewRow).toContainText("Corrected");
+
+        const database = new DatabaseSync(databasePath);
+        try {
+          const pdfTransactions = database.prepare(`
+            SELECT merchant_raw, amount_minor, source_type
+            FROM transactions
+            WHERE source_type = 'pdf'
+          `).all();
+          expect(pdfTransactions).toHaveLength(2);
+          expect(pdfTransactions).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+              merchant_raw: "SYNTHETIC PDF VALID",
+              amount_minor: -1250,
+              source_type: "pdf",
+            }),
+            expect.objectContaining({
+              merchant_raw: "SYNTHETIC BINARY PDF CORRECTED",
+              amount_minor: -725,
+              source_type: "pdf",
+            }),
+          ]));
         } finally {
           database.close();
         }
