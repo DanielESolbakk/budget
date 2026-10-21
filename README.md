@@ -35,6 +35,8 @@ The current text/PDF adapter reads Rogaland Sparebank statements, including bina
 
 Repeat imports of an unchanged source are skipped, and import jobs retain local provenance. When statements overlap or contain indistinguishable rows without a stable bank reference, the app cannot prove that rows from different files are the same purchase; check the ledger after importing overlapping exports. Back up locally before restoring another snapshot, since restore replaces the current ledger and learned categorization rules.
 
+When a preview finds possible duplicates, choose **Skip all duplicate candidates** or **Import all duplicate candidates**, then change any individual row that needs a different decision. Confirm the import only after reviewing those choices; importing a candidate may add a transaction already in your ledger.
+
 ### Build for production
 
 ```bash
