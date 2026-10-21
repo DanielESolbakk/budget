@@ -9,6 +9,7 @@ import type { DuplicateImportDecision } from "../../domain/import/filterPrevious
 import type { Account } from "../../domain/types.js";
 import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage } from "./ImportStageProgress.js";
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
+import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
 
 type ImportState =
   | { status: "idle" }
@@ -89,6 +90,7 @@ export function CsvImportSection({
     previewPage * PREVIEW_PAGE_SIZE,
     (previewPage + 1) * PREVIEW_PAGE_SIZE
   ) ?? [];
+  const duplicateCandidateRows = preview?.rows.filter((row) => row.duplicateMatch !== undefined) ?? [];
   const unresolvedDuplicateRows = preview?.rows.filter((row) =>
     row.duplicateMatch !== undefined && duplicateDecisions[row.rowIndex] === undefined
   ) ?? [];
@@ -587,10 +589,20 @@ export function CsvImportSection({
             {invalidPreviewRowCount > 0
              ? `${invalidPreviewRowCount} unresolved row${invalidPreviewRowCount === 1 ? "" : "s"} will be saved for review, not as transactions.`
               : "No validation issues."}{" "}
-            {unresolvedDuplicateRows.length === 0
-              ? "No duplicate decisions needed."
-              : `${unresolvedDuplicateRows.length} duplicate decision${unresolvedDuplicateRows.length === 1 ? "" : "s"} remain.`}
+            {duplicateCandidateRows.length === 0
+              ? "No possible duplicates found."
+              : `${duplicateCandidateRows.length - unresolvedDuplicateRows.length} of ${duplicateCandidateRows.length} duplicate decisions selected.`}
           </p>
+          {duplicateCandidateRows.length > 0 && (
+            <DuplicateBulkActions
+              candidateCount={duplicateCandidateRows.length}
+              onChoose={(action) => {
+                const decisions: Record<number, DuplicateImportDecision["action"]> = {};
+                for (const row of duplicateCandidateRows) decisions[row.rowIndex] = action;
+                setDuplicateDecisions(decisions);
+              }}
+            />
+          )}
           {preview.rows.some((row) => row.errors.length > 0) && (
             <div role="alert">
               <p>{invalidPreviewRowCount} unresolved row{invalidPreviewRowCount === 1 ? " will" : "s will"} be retained for correction or dismissal. Open the validation report for row details.</p>
@@ -628,7 +640,11 @@ export function CsvImportSection({
                 {visiblePreviewRows.map((row) => (
                   <tr key={row.rowIndex} id={`csv-preview-row-${row.rowIndex}`} data-state={row.transaction === undefined ? "invalid" : row.duplicateMatch === undefined ? "ready" : "duplicate"}>
                     <td data-label="Date">{row.transaction?.bookedAtIso.slice(0, 10) ?? "Needs review"}</td>
-                    <td data-label="Merchant or row">{row.transaction?.merchantRaw ?? `Row ${row.rowIndex + 1}`}</td>
+                    <td data-label="Merchant or row">
+                      <span className="import-preview-cell-value">
+                        {row.transaction?.merchantRaw ?? `Row ${row.rowIndex + 1}`}
+                      </span>
+                    </td>
                     <td data-label="Amount">{row.transaction === undefined ? "Not ready" : formatAmount(row.transaction.amountMinor)}</td>
                     <td data-label="Currency">{row.transaction?.currencyCode ?? (row.transaction === undefined ? "Not available" : "NOK")}</td>
                     <td data-label="Status and duplicate decision">

@@ -82,6 +82,18 @@ function writeMixedValidityCsvFixture(): string {
   return path;
 }
 
+function writeLongMerchantCsvFixture(): { path: string; merchant: string } {
+  const dir = createTemporaryDirectory();
+  const path = join(dir, `long-merchant-${randomUUID()}.csv`);
+  const merchant = `LONGMERCHANT${"X".repeat(96)}`;
+  writeFileSync(
+    path,
+    `Date;Description;Amount Out;Currency\n28.05.2026;${merchant};-12.34;NOK\n`,
+    "utf8"
+  );
+  return { path, merchant };
+}
+
 function writeLargeCsvFixture(rowCount: number, invalidRowIndex?: number): string {
   const directory = createTemporaryDirectory();
   const path = join(directory, `large-${rowCount}.csv`);
@@ -136,7 +148,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
 
-    await expect(csvImport.previewRegion).toContainText("No duplicate decisions needed.");
+    await expect(csvImport.previewRegion).toContainText("No possible duplicates found.");
   });
 
   test("cancelling a 10,000-row preflight leaves the ledger unchanged", async ({ csvImport, databasePath }) => {
@@ -217,7 +229,7 @@ test.describe("CSV import renderer workflow", () => {
     await expect(historyTable.getByRole("row")).toHaveCount(3);
   });
 
-  test("CSV duplicate candidates require explicit per-row skip or import decisions", async ({ csvImport }) => {
+  test("CSV duplicate candidates support one bulk choice with an individual override", async ({ csvImport }) => {
     await csvImport.submitImport(FIXTURE_PATH);
     await csvImport.enterFilePath(FIXTURE_PATH);
     await csvImport.importButton.click();
@@ -231,8 +243,13 @@ test.describe("CSV import renderer workflow", () => {
     await expect(duplicateRows.first()).toContainText(/Matched by (source reference|transaction fingerprint)/);
     await expect(csvImport.confirmImportButton).toBeDisabled();
 
+    const bulkActions = csvImport.previewRegion.getByRole("group", {
+      name: "Set duplicate decisions for all candidates",
+    });
+    await bulkActions.getByRole("button", { name: "Skip all duplicate candidates", exact: true }).click();
+    await expect(csvImport.previewRegion).toContainText("16 of 16 duplicate decisions selected.");
     for (const row of await duplicateRows.all()) {
-      await row.getByRole("radio", { name: "Skip duplicate" }).check();
+      await expect(row.getByRole("radio", { name: "Skip duplicate" })).toBeChecked();
     }
     await duplicateRows.first().getByRole("radio", { name: "Import duplicate" }).check();
     await expect(csvImport.confirmImportButton).toBeEnabled();
@@ -240,6 +257,47 @@ test.describe("CSV import renderer workflow", () => {
 
     await expect(csvImport.successStatus).toHaveText("Added 1 transaction to your ledger.");
     await expect(csvImport.importSection.getByText("15 duplicate rows skipped.", { exact: true })).toBeVisible();
+  });
+
+  test("long duplicate descriptions wrap inside the compact preview", async ({
+    csvImport,
+    electronApp,
+  }) => {
+    const fixture = writeLongMerchantCsvFixture();
+    await csvImport.submitImport(fixture.path);
+    await expect(csvImport.successStatus).toHaveText("Added 1 transaction to your ledger.");
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+    await csvImport.enterFilePath(fixture.path);
+    await csvImport.importButton.click();
+    await expect(csvImport.previewRegion).toBeVisible();
+
+    const duplicateRow = csvImport.previewRegion.getByRole("row")
+      .filter({ hasText: "Duplicate candidate" });
+    await expect(duplicateRow).toHaveCount(1);
+    const layout = await duplicateRow.evaluate((row) => {
+      const textRight = (selector: string): number => {
+        const element = row.querySelector(selector);
+        if (element === null) throw new Error(`Expected preview text is missing: ${selector}`);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return Math.max(...Array.from(range.getClientRects(), (rect) => rect.right));
+      };
+      return {
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+        merchantCellRight: row.querySelector('[data-label="Merchant or row"]')?.getBoundingClientRect().right ?? 0,
+        merchantValueRight: textRight('[data-label="Merchant or row"]'),
+        decisionCellRight: row.querySelector('[data-label="Status and duplicate decision"]')?.getBoundingClientRect().right ?? 0,
+        decisionTextRight: textRight(".import-duplicate-match"),
+      };
+    });
+
+    expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.merchantValueRight).toBeLessThanOrEqual(layout.merchantCellRight + 1);
+    expect(layout.decisionTextRight).toBeLessThanOrEqual(layout.decisionCellRight + 1);
   });
 
   test("a CSV profile saves the explicit account and mapping for reuse", async ({ csvImport }) => {

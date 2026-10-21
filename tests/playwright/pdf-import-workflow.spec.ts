@@ -502,7 +502,7 @@ test.describe("PDF import renderer workflow", () => {
     await expect(historyTable.getByRole("row")).toHaveCount(3);
   });
 
-  test("PDF duplicate candidates require explicit per-row skip or import decisions", async ({ pdfImport }) => {
+  test("PDF duplicate candidates support one bulk import choice with an individual override", async ({ pdfImport }) => {
     await pdfImport.submitImport(FIXTURE_PATH);
     await pdfImport.enterFilePath(FIXTURE_PATH);
     await pdfImport.importButton.click();
@@ -514,15 +514,20 @@ test.describe("PDF import renderer workflow", () => {
     await expect(duplicateRows.first()).toContainText(/Matched by (source reference|transaction fingerprint)/);
     await expect(pdfImport.confirmImportButton).toBeDisabled();
 
+    const bulkActions = pdfImport.previewRegion.getByRole("group", {
+      name: "Set duplicate decisions for all candidates",
+    });
+    await bulkActions.getByRole("button", { name: "Import all duplicate candidates", exact: true }).click();
+    await expect(pdfImport.previewRegion).toContainText("10 of 10 duplicate decisions selected.");
     for (const row of await duplicateRows.all()) {
-      await row.getByRole("radio", { name: "Skip duplicate" }).check();
+      await expect(row.getByRole("radio", { name: "Import duplicate" })).toBeChecked();
     }
-    await duplicateRows.first().getByRole("radio", { name: "Import duplicate" }).check();
+    await duplicateRows.first().getByRole("radio", { name: "Skip duplicate" }).check();
     await expect(pdfImport.confirmImportButton).toBeEnabled();
     await pdfImport.confirmImportButton.click();
 
-    await expect(pdfImport.successStatus).toHaveText("Added 1 transaction to your ledger.");
-    await expect(pdfImport.importSection.getByText("9 duplicate rows skipped.", { exact: true })).toBeVisible();
+    await expect(pdfImport.successStatus).toHaveText("Added 9 transactions to your ledger.");
+    await expect(pdfImport.importSection.getByText("1 duplicate row skipped.", { exact: true })).toBeVisible();
   });
 
   test("Scenario 0: importing a binary PDF extracts and persists representative transaction fields", async ({

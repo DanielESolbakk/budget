@@ -2354,6 +2354,89 @@ section[aria-label="Category Target Entry"] [role="status"] {
   margin-top: 1rem;
 }
 
+.import-duplicate-bulk-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem 1rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 0.75rem;
+}
+
+.import-duplicate-bulk-copy {
+  min-width: 0;
+}
+
+.import-duplicate-bulk-copy p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.import-duplicate-bulk-warning {
+  margin-top: 0.25rem !important;
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+}
+
+.import-duplicate-bulk-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.import-duplicate-bulk-buttons button {
+  margin: 0;
+}
+
+.import-duplicate-decision {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+.import-duplicate-decision > small,
+.import-duplicate-match {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.import-duplicate-decision fieldset {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.import-duplicate-decision fieldset label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.import-duplicate-decision fieldset input[type="radio"] {
+  flex: 0 0 auto;
+  width: 1rem;
+  margin: 0;
+}
+
+.import-preview-cell-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .import-preview-table {
   min-width: 34rem;
   font-size: 0.82rem;
@@ -2875,6 +2958,15 @@ section[aria-label="Category Target Entry"] [role="status"] {
   .import-review-actions form button {
     grid-column: 1;
     justify-self: stretch;
+  }
+
+  .import-duplicate-bulk-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-duplicate-bulk-buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .import-preview-table caption {
