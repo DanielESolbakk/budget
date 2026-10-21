@@ -1,1 +1,1 @@
-tests/fixtures/synthetic/*.pdf binary
+tests/fixtures/synthetic/**/*.pdf binary
