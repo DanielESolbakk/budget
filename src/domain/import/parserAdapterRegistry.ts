@@ -4,7 +4,13 @@ import {
   type SourceDocument,
   type SourceDocumentCapability,
 } from "./sourceDocument.js";
-import type { PdfTextExcludedRow, PdfTextParseBatchCallbacks, PdfTextParseOptions, PdfTextValidationError } from "./pdfTextParser.js";
+import type {
+  PdfTextExcludedRow,
+  PdfTextParseBatchCallbacks,
+  PdfTextParseOptions,
+  PdfTextUnresolvedRow,
+  PdfTextValidationError,
+} from "./pdfTextParser.js";
 import {
   isRogalandStatementText,
   parseRogalandStatementText,
@@ -23,6 +29,7 @@ export interface AdapterParseSuccess {
   adapterId: string;
   sourceIdentity: string;
   candidates: Transaction[];
+  unresolvedRows?: PdfTextUnresolvedRow[];
   excludedRows?: PdfTextExcludedRow[];
 }
 
@@ -163,6 +170,7 @@ const rogalandAdapter: ParserAdapter = {
         adapterId: result.adapterId,
         sourceIdentity: ROGALAND_SOURCE_ID,
         candidates: result.transactions,
+        ...(result.unresolvedRows === undefined ? {} : { unresolvedRows: result.unresolvedRows }),
         ...(result.excludedRows === undefined ? {} : { excludedRows: result.excludedRows }),
       };
     }
@@ -177,6 +185,7 @@ const rogalandAdapter: ParserAdapter = {
         adapterId: result.adapterId,
         sourceIdentity: ROGALAND_SOURCE_ID,
         candidates: result.transactions,
+        ...(result.unresolvedRows === undefined ? {} : { unresolvedRows: result.unresolvedRows }),
         ...(result.excludedRows === undefined ? {} : { excludedRows: result.excludedRows }),
       };
     }

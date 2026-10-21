@@ -374,12 +374,18 @@ describe("pdfTextParser unit tests", () => {
     ].join("\n");
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.errors[0]).toMatchObject({
-      code: "INVALID_AMOUNT_FORMAT",
-      lineNumber: 3,
-      field: "amount",
+    expect(result).toMatchObject({
+      ok: true,
+      transactions: [],
+      unresolvedRows: [{
+        lineNumber: 3,
+        rawRow: "27.05.2026   BROKEN ROW                               invalid         75,00",
+        errors: [expect.objectContaining({
+          code: "INVALID_AMOUNT_FORMAT",
+          lineNumber: 3,
+          field: "amount",
+        })],
+      }],
     });
   });
 
@@ -420,8 +426,13 @@ describe("pdfTextParser unit tests", () => {
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
     expect(result).toMatchObject({
-      ok: false,
-      errors: [{ code: "INVALID_TRANSACTION_ROW", lineNumber: 4 }],
+      ok: true,
+      transactions: [expect.objectContaining({ merchantRaw: "27.05 MARKET" })],
+      unresolvedRows: [{
+        lineNumber: 4,
+        rawRow: "BAD ROW WITHOUT A DATE",
+        errors: [expect.objectContaining({ code: "INVALID_TRANSACTION_ROW", lineNumber: 4 })],
+      }],
     });
   });
 
@@ -438,8 +449,13 @@ describe("pdfTextParser unit tests", () => {
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
     expect(result).toMatchObject({
-      ok: false,
-      errors: [{ code: "INVALID_TRANSACTION_ROW", lineNumber: 5 }],
+      ok: true,
+      transactions: expect.arrayContaining([expect.objectContaining({ merchantRaw: "Fra: EMPLOYER" })]),
+      unresolvedRows: [{
+        lineNumber: 5,
+        rawRow: "BROKEN ROW WITHOUT A DATE",
+        errors: [expect.objectContaining({ code: "INVALID_TRANSACTION_ROW", lineNumber: 5 })],
+      }],
     });
   });
 
@@ -456,8 +472,16 @@ describe("pdfTextParser unit tests", () => {
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
     expect(result).toMatchObject({
-      ok: false,
-      errors: [{ code: "INVALID_TRANSACTION_ROW", lineNumber: 5 }],
+      ok: true,
+      transactions: expect.arrayContaining([
+        expect.objectContaining({ merchantRaw: "27.05 MARKET" }),
+        expect.objectContaining({ merchantRaw: "Fra: EMPLOYER" }),
+      ]),
+      unresolvedRows: [{
+        lineNumber: 5,
+        rawRow: "BROKEN ROW WITHOUT A DATE",
+        errors: [expect.objectContaining({ code: "INVALID_TRANSACTION_ROW", lineNumber: 5 })],
+      }],
     });
   });
 
@@ -497,7 +521,7 @@ describe("pdfTextParser unit tests", () => {
     ]);
   });
 
-  it("rejects malformed text one column outside the message continuation boundary", () => {
+  it("retains malformed text one column outside the message boundary for review", () => {
     const tableHeader = "Dato       Type          Fra konto       Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
     const continuationColumn = tableHeader.indexOf("Melding/KID/Fakt.nr") - 9;
     const text = [
@@ -512,11 +536,13 @@ describe("pdfTextParser unit tests", () => {
 
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.errors.map(({ code, lineNumber }) => ({ code, lineNumber }))).toEqual([
-      { code: "INVALID_TRANSACTION_ROW", lineNumber: 6 },
-    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      unresolvedRows: [{
+        lineNumber: 6,
+        errors: [expect.objectContaining({ code: "INVALID_TRANSACTION_ROW", lineNumber: 6 })],
+      }],
+    });
   });
 
   it("joins a wrapped transaction type just inside its column boundary", () => {
@@ -591,7 +617,7 @@ describe("pdfTextParser unit tests", () => {
     ]);
   });
 
-  it("rejects malformed text at the unsupported side of the transaction-type boundary", () => {
+  it("retains malformed text outside the transaction-type boundary for review", () => {
     const tableHeader = "Dato       Type          Fra konto       Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
     const continuationColumn = tableHeader.indexOf("Fra konto") - 8;
     const text = [
@@ -606,11 +632,13 @@ describe("pdfTextParser unit tests", () => {
 
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.errors.map(({ code, lineNumber }) => ({ code, lineNumber }))).toEqual([
-      { code: "INVALID_TRANSACTION_ROW", lineNumber: 6 },
-    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      unresolvedRows: [{
+        lineNumber: 6,
+        errors: [expect.objectContaining({ code: "INVALID_TRANSACTION_ROW", lineNumber: 6 })],
+      }],
+    });
   });
 
   it("reports a malformed bank-export amount as an amount error", () => {
@@ -624,8 +652,13 @@ describe("pdfTextParser unit tests", () => {
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
     expect(result).toMatchObject({
-      ok: false,
-      errors: [{ code: "INVALID_AMOUNT_FORMAT", lineNumber: 4, field: "amount" }],
+      ok: true,
+      transactions: [],
+      unresolvedRows: [{
+        lineNumber: 4,
+        rawRow: expect.stringContaining("invalid NOK"),
+        errors: [expect.objectContaining({ code: "INVALID_AMOUNT_FORMAT", lineNumber: 4, field: "amount" })],
+      }],
     });
   });
 
@@ -962,7 +995,7 @@ describe("pdfTextParser unit tests", () => {
     });
   });
 
-  describe("AC-3: invalid amount format in a transaction line produces error", () => {
+  describe("AC-3: invalid PDF rows are retained for import review", () => {
     const invalidRow = "27.05.2026   BROKEN AMOUNT                            invalid-amount  75 000,00";
     const firstValidRow = "28.05.2026   SYNTHETIC FIRST                         -10,00          200,00";
     const secondValidRow = "26.05.2026   SYNTHETIC SECOND                        -20,00          300,00";
@@ -971,7 +1004,7 @@ describe("pdfTextParser unit tests", () => {
       { placement: "before", rows: [invalidRow, firstValidRow, secondValidRow], lineNumber: 3 },
       { placement: "between", rows: [firstValidRow, invalidRow, secondValidRow], lineNumber: 4 },
       { placement: "after", rows: [firstValidRow, secondValidRow, invalidRow], lineNumber: 5 },
-    ])("rejects an invalid amount $placement valid rows without returning partial transactions", ({ rows, lineNumber }) => {
+    ])("keeps valid rows and retains an invalid amount $placement them for review", ({ rows, lineNumber }) => {
       const text = [
         "ROGALAND SPAREBANK",
         "Dato         Beskrivelse                              Beløp          Saldo",
@@ -980,16 +1013,22 @@ describe("pdfTextParser unit tests", () => {
 
       const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.errors.map(({ code, field, lineNumber: errorLineNumber }) => ({
-        code,
-        field,
-        lineNumber: errorLineNumber,
-      }))).toEqual([
-        { code: "INVALID_AMOUNT_FORMAT", field: "amount", lineNumber },
-      ]);
-      expect("transactions" in result).toBe(false);
+      expect(result).toMatchObject({
+        ok: true,
+        transactions: expect.arrayContaining([
+          expect.objectContaining({ merchantRaw: "SYNTHETIC FIRST" }),
+          expect.objectContaining({ merchantRaw: "SYNTHETIC SECOND" }),
+        ]),
+        unresolvedRows: [{
+          lineNumber,
+          rawRow: invalidRow,
+          errors: [expect.objectContaining({
+            code: "INVALID_AMOUNT_FORMAT",
+            field: "amount",
+            lineNumber,
+          })],
+        }],
+      });
     });
 
     const dateInput = (layout: "classic" | "bank-export", rawDate: string): string => layout === "classic"
@@ -1038,16 +1077,18 @@ describe("pdfTextParser unit tests", () => {
     }) => {
       const result = parseRogalandStatementText(dateInput(layout, rawDate), BASE_OPTIONS);
 
-      expect(result.ok).toBe(false);
-      if (result.ok) throw new Error("Expected an invalid calendar date to fail");
-      expect(result.errors.map(({ code, field, lineNumber: errorLineNumber }) => ({
-        code,
-        field,
-        lineNumber: errorLineNumber,
-      }))).toEqual([
-        { code: "INVALID_DATE_FORMAT", field: "date", lineNumber },
-      ]);
-      expect("transactions" in result).toBe(false);
+      expect(result).toMatchObject({
+        ok: true,
+        transactions: [],
+        unresolvedRows: [{
+          lineNumber,
+          errors: [expect.objectContaining({
+            code: "INVALID_DATE_FORMAT",
+            field: "date",
+            lineNumber,
+          })],
+        }],
+      });
     });
   });
 
@@ -1107,8 +1148,8 @@ describe("pdfTextParser unit tests", () => {
     });
   });
 
-  describe("Scenario 3: malformed input returns explicit failures without partial results", () => {
-    it("rejects a transaction row with a missing amount", () => {
+  describe("Scenario 3: malformed input remains explicit unresolved review data", () => {
+    it("retains a transaction row with a missing amount without creating a transaction", () => {
       const text = [
         "ROGALAND SPAREBANK",
         "",
@@ -1118,13 +1159,18 @@ describe("pdfTextParser unit tests", () => {
 
       const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.errors[0]?.code).toBe("INVALID_AMOUNT_FORMAT");
-      expect(result).not.toHaveProperty("transactions");
+      expect(result).toMatchObject({
+        ok: true,
+        transactions: [],
+        unresolvedRows: [{
+          lineNumber: 4,
+          rawRow: "27.05.2026   SALARY",
+          errors: [expect.objectContaining({ code: "INVALID_AMOUNT_FORMAT", field: "amount" })],
+        }],
+      });
     });
 
-    it("rejects a malformed row after a valid row without returning partial transactions", () => {
+    it("returns valid transactions and retains a malformed row for review", () => {
       const text = [
         "ROGALAND SPAREBANK",
         "",
@@ -1135,10 +1181,17 @@ describe("pdfTextParser unit tests", () => {
 
       const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.errors[0]?.code).toBe("INVALID_AMOUNT_FORMAT");
-      expect(result).not.toHaveProperty("transactions");
+      expect(result).toMatchObject({
+        ok: true,
+        transactions: [expect.objectContaining({
+          bookedAtIso: "2026-05-27T00:00:00Z",
+          merchantRaw: "SALARY",
+        })],
+        unresolvedRows: [{
+          lineNumber: 5,
+          errors: [expect.objectContaining({ code: "INVALID_AMOUNT_FORMAT", field: "amount" })],
+        }],
+      });
     });
 
     it("rejects an unsupported layout without returning partial transactions", () => {

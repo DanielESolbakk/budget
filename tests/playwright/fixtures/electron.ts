@@ -21,7 +21,7 @@ const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 interface ElectronFixtures {
   backupOutputDialogBehavior: "native" | "cancel" | "selected";
   csvExportDialogBehavior: "native" | "cancel" | "selected";
-  importFileDialogBehavior: "native" | "cancel" | "csv-selected" | "pdf-selected";
+  importFileDialogBehavior: "native" | "cancel" | "csv-selected" | "pdf-selected" | "text-selected";
   nodeEnvironment: "test" | "production";
   restoreSnapshotDialogBehavior: "native" | "cancel" | "selected";
   databasePath: string;
@@ -39,6 +39,27 @@ interface ElectronFixtures {
   recovery: RecoveryPage;
   reviewQueue: ReviewQueuePage;
   ledger: LedgerPage;
+}
+
+async function chooseStatementForFixture(
+  electronApp: ElectronApplication,
+  appShell: AppShellPage,
+  selectedBehavior: "csv-selected" | "pdf-selected",
+  importFormat: "CSV statement" | "Digital PDF"
+): Promise<void> {
+  const previousBehavior = await electronApp.evaluate(() =>
+    process.env["BUDGET_TEST_IMPORT_FILE_DIALOG"] ?? "native"
+  );
+  await electronApp.evaluate((_, behavior: string) => {
+    process.env["BUDGET_TEST_IMPORT_FILE_DIALOG"] = behavior;
+  }, selectedBehavior);
+  try {
+    await appShell.selectImportFormat(importFormat);
+  } finally {
+    await electronApp.evaluate((_, behavior: string) => {
+      process.env["BUDGET_TEST_IMPORT_FILE_DIALOG"] = behavior;
+    }, previousBehavior);
+  }
 }
 
 export const test = base.extend<ElectronFixtures>({
@@ -72,7 +93,8 @@ export const test = base.extend<ElectronFixtures>({
           BUDGET_TEST_CSV_EXPORT_PATH: join(dirname(databasePath), "dialog-selected.csv"),
           BUDGET_TEST_IMPORT_FILE_DIALOG: importFileDialogBehavior,
           BUDGET_TEST_CSV_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv"),
-          BUDGET_TEST_PDF_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt"),
+          BUDGET_TEST_PDF_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf"),
+          BUDGET_TEST_TEXT_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt"),
           BUDGET_TEST_RESTORE_DIALOG: restoreSnapshotDialogBehavior,
           BUDGET_TEST_RESTORE_SNAPSHOT_PATH: join(dirname(databasePath), "dialog-selected-restore.json"),
           NODE_ENV: nodeEnvironment,
@@ -100,10 +122,12 @@ export const test = base.extend<ElectronFixtures>({
   categoryTarget: async ({ window }, use) => {
     await use(new CategoryTargetPage(window));
   },
-  csvImport: async ({ appShell, window }, use) => {
+  csvImport: async ({ appShell, electronApp, window }, use) => {
     await appShell.openWorkspace("Import");
-    await appShell.selectImportFormat("CSV statement");
-    await use(new CsvImportPage(window));
+    await chooseStatementForFixture(electronApp, appShell, "csv-selected", "CSV statement");
+    const csvImport = new CsvImportPage(window);
+    await csvImport.clearFilePath();
+    await use(csvImport);
   },
   dashboard: async ({ window }, use) => {
     await use(new DashboardPage(window));
@@ -119,10 +143,12 @@ export const test = base.extend<ElectronFixtures>({
     await appShell.selectImportFormat("Manual transaction");
     await use(new ManualEntryPage(window));
   },
-  pdfImport: async ({ appShell, window }, use) => {
+  pdfImport: async ({ appShell, electronApp, window }, use) => {
     await appShell.openWorkspace("Import");
-    await appShell.selectImportFormat("Digital PDF");
-    await use(new PdfImportPage(window));
+    await chooseStatementForFixture(electronApp, appShell, "pdf-selected", "Digital PDF");
+    const pdfImport = new PdfImportPage(window);
+    await pdfImport.clearFilePath();
+    await use(pdfImport);
   },
   preloadBridge: async ({ window }, use) => {
     await use(new PreloadBridgePage(window));

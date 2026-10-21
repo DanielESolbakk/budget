@@ -4,8 +4,8 @@
  * These tests launch the built Electron app and verify:
  *   - Scenario 1: Importing the supported synthetic CSV from the renderer reports success
  *     and updates the monthly dashboard totals for the fixture month (AC-1, AC-2, AC-4).
- *   - Scenario 2: Importing an unsupported CSV shape reports validation errors and preserves
- *     the pre-import dashboard state (AC-1, AC-3).
+ *   - Scenario 2: Importing an unsupported CSV shape retains unresolved rows for review and
+ *     preserves the pre-import dashboard totals (AC-1, AC-3).
  *   - Scenario 3: The import workflow runs under the network guard with no outbound calls (AC-2).
  *
  * Framework boundary:
@@ -18,11 +18,12 @@
 
 import { test, expect } from "./fixtures/electron.js";
 import type { Request } from "@playwright/test";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const temporaryDirectories = new Set<string>();
@@ -265,41 +266,30 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.importSection.getByText("Norwegian bank profile", { exact: true })).not.toBeVisible();
   });
 
-  test("format selection exposes only the chosen import workflow", async ({ appShell, window }) => {
+  test("import workspace offers one statement picker and a separate manual entry action", async ({ appShell, window }) => {
     await appShell.openWorkspace("Import");
-    await expect(window.getByRole("group", { name: "Choose import format" })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Import statement", exact: true })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Enter transaction manually", exact: true })).toBeVisible();
+    await expect(window.getByRole("button", { name: "CSV statement", exact: true })).toHaveCount(0);
+    await expect(window.getByRole("button", { name: "Digital PDF", exact: true })).toHaveCount(0);
     await expect(window.getByRole("region", { name: "CSV Import", exact: true })).not.toBeVisible();
-    await expect(window.getByRole("region", { name: "PDF Import", exact: true })).not.toBeVisible();
+    await expect(window.getByRole("region", { name: "Digital statement import", exact: true })).not.toBeVisible();
     await expect(window.getByRole("region", { name: "Manual Entry", exact: true })).not.toBeVisible();
-    await expect(window.getByRole("button", { name: "CSV statement", exact: true })).toBeVisible();
-    await window.getByRole("button", { name: "CSV statement", exact: true }).click();
+    await window.getByRole("button", { name: "Enter transaction manually", exact: true }).click();
 
-    await expect(window.getByRole("region", { name: "CSV Import", exact: true })).toBeVisible();
-    await expect(window.getByRole("region", { name: "PDF Import", exact: true })).not.toBeVisible();
-    await expect(window.getByRole("region", { name: "Manual Entry", exact: true })).not.toBeVisible();
+    await expect(window.getByRole("region", { name: "Manual Entry", exact: true })).toBeVisible();
   });
 
-  test("@visual Visual: import format selection stays legible in desktop and compact windows", async ({
+  test("@visual Visual: single statement entry stays legible in desktop and compact windows", async ({
     appShell,
     electronApp,
     window,
   }) => {
     await appShell.openWorkspace("Import");
-    await window.getByRole("button", { name: "CSV statement", exact: true }).click();
-    await expect(window.getByText("Manage CSV profiles (0)", { exact: true })).toBeVisible();
-    const csvChoice = window.getByRole("button", { name: "CSV statement", exact: true });
-    await expect(csvChoice).toHaveAttribute("aria-pressed", "true");
-    await csvChoice.hover();
-    const selectedColors = await csvChoice.evaluate((button) => {
-      const style = getComputedStyle(button);
-      return { background: style.backgroundColor, border: style.borderColor };
-    });
-    const inactiveColors = await window.getByRole("button", { name: "Digital PDF", exact: true }).evaluate((button) => {
-      const style = getComputedStyle(button);
-      return { background: style.backgroundColor, border: style.borderColor };
-    });
-    expect(selectedColors.background).not.toBe(inactiveColors.background);
-    expect(selectedColors.border).not.toBe(inactiveColors.border);
+    const statementButton = window.getByRole("button", { name: "Import statement", exact: true });
+    const manualButton = window.getByRole("button", { name: "Enter transaction manually", exact: true });
+    await expect(statementButton).toBeVisible();
+    await expect(manualButton).toBeVisible();
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
@@ -315,15 +305,12 @@ test.describe("CSV import renderer workflow", () => {
     const compactDimensions = await window.evaluate(() => ({
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: document.documentElement.clientWidth,
-      formatOptionsHeight: document.querySelector(".import-format-options")?.getBoundingClientRect().height ?? 0,
-      choiceHeights: [...document.querySelectorAll(".import-format-choice")].map((choice) =>
-        choice.getBoundingClientRect().height
-      ),
+      statementButtonWidth: document.querySelector("#import-statement-picker-button")?.getBoundingClientRect().width ?? 0,
+      manualButtonWidth: document.querySelector("#manual-entry-choice")?.getBoundingClientRect().width ?? 0,
     }));
     expect(compactDimensions.documentWidth).toBeLessThanOrEqual(compactDimensions.viewportWidth);
-    expect(compactDimensions.choiceHeights).toHaveLength(3);
-    expect(compactDimensions.choiceHeights.every((height) => height >= 44)).toBe(true);
-    expect(compactDimensions.formatOptionsHeight).toBeLessThanOrEqual(150);
+    expect(compactDimensions.statementButtonWidth).toBeGreaterThan(300);
+    expect(compactDimensions.manualButtonWidth).toBeGreaterThan(180);
     await expect(window).toHaveScreenshot("import-workspace-compact.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.015,
@@ -417,10 +404,11 @@ test.describe("CSV import renderer workflow", () => {
     });
   });
 
-  test("mixed-validity preview keeps ready rows and links disabled confirmation to an invalid row", async ({ csvImport, databasePath }) => {
+  test("mixed-validity preview imports valid rows and retains invalid rows for review", async ({ csvImport, databasePath, window }) => {
     const transactionsBeforePreview = loadPersistedTransactions(databasePath);
+    const mixedValidityCsvPath = writeMixedValidityCsvFixture();
     await csvImport.importSection.getByText("Advanced: enter a file path", { exact: true }).click();
-    await csvImport.filePathInput.fill(writeMixedValidityCsvFixture());
+    await csvImport.filePathInput.fill(mixedValidityCsvPath);
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
 
@@ -431,9 +419,22 @@ test.describe("CSV import renderer workflow", () => {
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(1)).toHaveAttribute("data-state", "ready");
     await expect(rows.nth(2)).toHaveAttribute("data-state", "invalid");
-    await expect(csvImport.confirmImportButton).toBeDisabled();
-    await expect(csvImport.importSection.locator("#csv-confirm-help")).toContainText("Row 2 needs attention");
+    await expect(csvImport.confirmImportButton).toBeEnabled();
+    await expect(csvImport.importSection.locator("#csv-confirm-help")).toContainText("will be kept for review");
     expect(loadPersistedTransactions(databasePath)).toEqual(transactionsBeforePreview);
+
+    await csvImport.confirmImportButton.click();
+    await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
+    await expect(csvImport.importSection.getByText("1 unresolved row saved for review.", { exact: true })).toBeVisible();
+    const reviewRow = new ImportReviewPage(window).reviewQueue
+      .getByRole("listitem")
+      .filter({ hasText: basename(mixedValidityCsvPath) })
+      .getByRole("group", { name: "Import review row 2", exact: true });
+    await expect(reviewRow).toHaveCount(1);
+    await expect(reviewRow).toContainText("Needs review");
+    await reviewRow.getByText("Original source row", { exact: true }).click();
+    await expect(reviewRow).toContainText("INVALID PREVIEW ROW");
+    expect(loadPersistedTransactions(databasePath)).toHaveLength(transactionsBeforePreview.length + 1);
   });
 
   test("CSV confirmation invalidates a file changed after preview", async ({ csvImport }) => {
@@ -693,7 +694,7 @@ test.describe("CSV import renderer workflow", () => {
     await expect(dashboard.incomeValue).toHaveText(incomeAfterFirstImport);
   });
 
-  test("Scenario 2: importing an unsupported CSV shape reports validation errors and leaves dashboard unchanged", async ({ appShell, csvImport, dashboard }) => {
+  test("Scenario 2: unsupported CSV rows remain available for review without changing dashboard totals", async ({ appShell, csvImport, dashboard, window }) => {
     // Ensure dashboard is in a known state before the invalid import.
     await appShell.openWorkspace("Review");
     await dashboard.monthSelector.selectOption("2026-05");
@@ -706,10 +707,15 @@ test.describe("CSV import renderer workflow", () => {
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(invalidPath);
 
-    // AC-3: alert with validation failure is shown.
-    await expect(csvImport.errorAlert).toBeVisible({ timeout: 10_000 });
-    const alertText = await csvImport.errorAlert.textContent();
-    expect(alertText).toMatch(/needs attention/i);
+    await expect(csvImport.successStatus).toContainText("Added 0 transactions to your ledger.");
+    const reviewQueue = new ImportReviewPage(window).reviewQueue;
+    await expect(reviewQueue).toBeVisible();
+    await expect(
+      reviewQueue
+        .getByRole("list", { name: "Import review items" })
+        .getByRole("listitem")
+        .filter({ hasText: basename(invalidPath) })
+    ).toHaveCount(1);
 
     // AC-4: dashboard totals remain unchanged after a failed import.
     await appShell.openWorkspace("Review");

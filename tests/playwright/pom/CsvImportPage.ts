@@ -31,7 +31,7 @@ export class CsvImportPage {
   }
 
   get chooseFileButton() {
-    return this.page.getByRole("button", { name: "Choose CSV file", exact: true });
+    return this.page.getByRole("button", { name: "Import statement", exact: true });
   }
 
   /** The Import CSV action button. */
@@ -49,6 +49,13 @@ export class CsvImportPage {
       await advancedPathEntry.getByText("Advanced: enter a file path", { exact: true }).click();
     }
     await this.filePathInput.fill(filePath);
+  }
+
+  async clearFilePath(): Promise<void> {
+    await this.enterFilePath("");
+    await this.importSection.locator("details.import-path-entry")
+      .getByText("Advanced: enter a file path", { exact: true })
+      .click();
   }
 
   get previewRegion() {

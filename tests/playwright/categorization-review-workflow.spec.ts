@@ -381,6 +381,8 @@ test.describe("Categorization review workflow", () => {
       args: [MAIN_ENTRY],
       env: {
         ...process.env,
+        BUDGET_TEST_IMPORT_FILE_DIALOG: "csv-selected",
+        BUDGET_TEST_CSV_IMPORT_PATH: CSV_FIXTURE_PATH,
         NODE_ENV: "test",
         BUDGET_DB_PATH: databasePath,
       },
@@ -433,6 +435,8 @@ test.describe("Categorization review workflow", () => {
         args: [MAIN_ENTRY],
         env: {
           ...process.env,
+          BUDGET_TEST_IMPORT_FILE_DIALOG: "csv-selected",
+          BUDGET_TEST_CSV_IMPORT_PATH: CSV_FIXTURE_PATH,
           NODE_ENV: "test",
           BUDGET_DB_PATH: databasePath,
         },

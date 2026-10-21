@@ -7,12 +7,18 @@ import type {
 } from "../app/import/importCsv.js";
 import type { ManualEntryResponse } from "../app/import/manualEntry.js";
 import type {
+  ImportReviewCorrectionResult,
+  ImportReviewDismissalResult,
+} from "../app/reviewService.js";
+import type {
   PdfImportPreviewResponse,
   PdfImportResponse,
 } from "../app/import/importPdf.js";
 import type {
   Account,
   ForecastEntry,
+  ImportReviewCorrectionInput,
+  ImportReviewItem,
   ManualEntryInput,
   MerchantCorrectionProvenance,
   MonthlyCategoryTarget,
@@ -71,8 +77,7 @@ export interface ExportApi {
 }
 
 export interface FileDialogApi {
-  chooseCsvImportPath: () => Promise<string | null>;
-  choosePdfImportPath: () => Promise<string | null>;
+  chooseImportStatementPath: () => Promise<string | null>;
   chooseCsvExportPath: () => Promise<string | null>;
   chooseBackupOutputPath: () => Promise<string | null>;
   chooseRestoreSnapshotPath: () => Promise<string | null>;
@@ -95,6 +100,11 @@ export interface ImportApi {
   addManualTransaction: (input: ManualEntryInput) => Promise<ManualEntryResponse>;
   previewPdf: (input: { filePath: string; requestId?: string; accountId?: string }) => Promise<PdfImportPreviewResponse>;
   importPdf: (input: { filePath: string; previewId: string; accountId?: string; duplicateDecisions?: DuplicateImportDecision[]; acknowledgeExcludedRows?: boolean }) => Promise<PdfImportResponse>;
+  review: {
+    list: () => Promise<ImportReviewItem[]>;
+    correct: (input: { reviewItemId: string; correction: ImportReviewCorrectionInput }) => Promise<ImportReviewCorrectionResult>;
+    dismiss: (input: { reviewItemId: string; reason: string }) => Promise<ImportReviewDismissalResult>;
+  };
 }
 
 export interface ReviewApi {
@@ -206,6 +216,13 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("import:pdfPreview", input),
     importPdf: (input: { filePath: string; previewId: string; accountId?: string; duplicateDecisions?: DuplicateImportDecision[]; acknowledgeExcludedRows?: boolean }): Promise<PdfImportResponse> =>
       ipcRenderer.invoke("import:pdf", input),
+    review: {
+      list: (): Promise<ImportReviewItem[]> => ipcRenderer.invoke("importReview:list"),
+      correct: (input: { reviewItemId: string; correction: ImportReviewCorrectionInput }): Promise<ImportReviewCorrectionResult> =>
+        ipcRenderer.invoke("importReview:correct", input),
+      dismiss: (input: { reviewItemId: string; reason: string }): Promise<ImportReviewDismissalResult> =>
+        ipcRenderer.invoke("importReview:dismiss", input),
+    },
   },
   review: {
     list: (): Promise<Transaction[]> => ipcRenderer.invoke("transaction:listReview"),
@@ -247,10 +264,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("backup:restore", input),
   },
   dialogs: {
-    chooseCsvImportPath: (): Promise<string | null> =>
-      ipcRenderer.invoke("dialog:chooseCsvImportPath"),
-    choosePdfImportPath: (): Promise<string | null> =>
-      ipcRenderer.invoke("dialog:choosePdfImportPath"),
+    chooseImportStatementPath: (): Promise<string | null> =>
+      ipcRenderer.invoke("dialog:chooseImportStatementPath"),
     chooseCsvExportPath: (): Promise<string | null> =>
       ipcRenderer.invoke("dialog:chooseCsvExportPath"),
     chooseBackupOutputPath: (): Promise<string | null> =>

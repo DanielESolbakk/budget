@@ -23,6 +23,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
 const BINARY_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
@@ -133,18 +134,18 @@ test.describe("PDF file picker result", () => {
   test("disabled confirmation explains how to select a statement before preview", async ({ pdfImport }) => {
     await expect(pdfImport.confirmImportButton).toBeDisabled();
     const reason = pdfImport.importSection.locator("#pdf-confirm-help");
-    await expect(reason).toContainText("Choose a digital PDF statement");
+    await expect(reason).toContainText("Choose a supported statement file");
     await expect(reason.getByRole("link", { name: "select its file" })).toHaveAttribute(
       "href",
-      "#pdf-file-picker-button"
+      "#import-statement-picker-button"
     );
   });
 
   test("choosing a PDF file makes it the statement being previewed", async ({ pdfImport, window }) => {
-    await window.getByRole("button", { name: "Choose PDF file", exact: true }).click();
+    await window.getByRole("button", { name: "Import statement", exact: true }).click();
 
-    await expect(window.getByText(basename(FIXTURE_PATH), { exact: true })).toBeVisible();
-    await expect(window.getByText(FIXTURE_PATH, { exact: true })).not.toBeVisible();
+    await expect(window.getByText(basename(BINARY_FIXTURE_PATH), { exact: true })).toBeVisible();
+    await expect(window.getByText(BINARY_FIXTURE_PATH, { exact: true })).not.toBeVisible();
     await expect(pdfImport.importButton).toBeEnabled();
   });
 
@@ -417,18 +418,24 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.previewRegion.getByText(/Rows 101-200 of 10/)).toBeVisible();
   });
 
-  test("PDF validation report identifies the source line and field", async ({ pdfImport }) => {
+  test("PDF parser diagnostics remain reviewable with the original source line", async ({ pdfImport, window }) => {
     const invalidStatement = writeMalformedTransactionStatementFixture();
     await pdfImport.enterFilePath(invalidStatement.path);
     await pdfImport.importButton.click();
 
-    await expect(pdfImport.errorAlert).toBeVisible();
-    await expect(pdfImport.errorAlert).toContainText("No transactions were saved.");
-    await expect(pdfImport.errorAlert).toContainText("Open the validation report, correct the source, then preview again.");
-    const report = pdfImport.importSection.locator("details.import-validation-report");
-    await report.getByText("PDF validation report", { exact: false }).click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+    const report = pdfImport.previewRegion.locator("details.import-validation-report");
+    await report.getByText("Unresolved rows for review", { exact: false }).click();
     await expect(report).toContainText(`Line ${invalidStatement.lineNumber}`);
     await expect(report).toContainText("amount");
+    await pdfImport.confirmImportButton.click();
+    await expect(pdfImport.successStatus).toContainText("Added 9 transactions to your ledger.");
+    await expect(pdfImport.importSection.getByText(/1 unresolved row saved for review\./)).toBeVisible();
+    const reviewRow = new ImportReviewPage(window).reviewQueue
+      .getByRole("listitem")
+      .filter({ hasText: basename(invalidStatement.path) })
+      .getByRole("group", { name: `Import review row ${invalidStatement.lineNumber}`, exact: true });
+    await expect(reviewRow).toContainText("Needs review");
   });
 
   test("unsupported layouts retain the original source text for review", async ({ pdfImport, databasePath }) => {

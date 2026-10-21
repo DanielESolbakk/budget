@@ -52,6 +52,10 @@ export class AppShellPage {
   }
 
   async selectImportFormat(format: "CSV statement" | "Digital PDF" | "Manual transaction"): Promise<void> {
-    await this.page.getByRole("button", { name: format, exact: true }).click();
+    if (format === "Manual transaction") {
+      await this.page.getByRole("button", { name: "Enter transaction manually", exact: true }).click();
+      return;
+    }
+    await this.page.getByRole("button", { name: "Import statement", exact: true }).click();
   }
 }

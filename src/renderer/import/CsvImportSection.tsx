@@ -14,7 +14,7 @@ type ImportState =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "cancelled" }
-  | { status: "success"; importJobId: string; transactionCount: number; duplicateCount: number }
+  | { status: "success"; importJobId: string; transactionCount: number; duplicateCount: number; unresolvedCount: number }
   | { status: "error"; message: string }
   | { status: "validation"; errors: CsvImportResponse & { ok: false } };
 
@@ -32,12 +32,20 @@ function formatAmount(amountMinor: number): string {
 }
 
 interface CsvImportSectionProps {
+  initialFilePath: string;
+  fileSelectionId: number;
   onImportSuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
 }
 
-export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncategorized }: CsvImportSectionProps): React.JSX.Element {
+export function CsvImportSection({
+  initialFilePath,
+  fileSelectionId,
+  onImportSuccess,
+  onOpenLedger,
+  onReviewUncategorized,
+}: CsvImportSectionProps): React.JSX.Element {
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [profiles, setProfiles] = React.useState<CsvImportProfile[]>([]);
   const [profileName, setProfileName] = React.useState("");
@@ -47,7 +55,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
   const [profileError, setProfileError] = React.useState<string | null>(null);
   const [profileLoadState, setProfileLoadState] = React.useState<"loading" | "ready" | "error">("loading");
   const [profileRefreshKey, setProfileRefreshKey] = React.useState(0);
-  const [filePath, setFilePath] = React.useState("");
+  const [filePath, setFilePath] = React.useState(initialFilePath);
   const [importState, setImportState] = React.useState<ImportState>({ status: "idle" });
   const [activePreflightRequestId, setActivePreflightRequestId] = React.useState<string | undefined>();
   const [preflightProgress, setPreflightProgress] = React.useState<{
@@ -86,7 +94,19 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     JSON.stringify(previewMapping) === JSON.stringify(columnMapping);
   const firstInvalidRow = preview?.rows.find((row) => row.errors.length > 0);
   const confirmationDisabled = profileLoadState !== "ready" || effectiveImportAccountId === undefined || importState.status === "pending" || preview === null ||
-    !isMappingCurrent || invalidPreviewRowCount > 0 || unresolvedDuplicateRows.length > 0;
+    !isMappingCurrent || unresolvedDuplicateRows.length > 0;
+
+  React.useEffect(() => {
+    setFilePath(initialFilePath);
+    setPreview(null);
+    setPreviewMapping(null);
+    setColumnMapping({});
+    setDuplicateDecisions({});
+    setPreviewPage(0);
+    setValidationReportPage(0);
+    setImportState({ status: "idle" });
+    setStage(initialFilePath ? "map-and-validate" : "select-file");
+  }, [fileSelectionId, initialFilePath]);
 
   React.useEffect(() => {
     let active = true;
@@ -227,18 +247,6 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     setStage(filePath ? "map-and-validate" : "select-file");
   }
 
-  async function handleChooseFile(): Promise<void> {
-    try {
-      const selectedPath = await window.budgetApi.dialogs.chooseCsvImportPath();
-      if (selectedPath !== null) updateFilePath(selectedPath);
-    } catch (error: unknown) {
-      setImportState({
-        status: "error",
-        message: error instanceof Error ? error.message : "Unknown file selection error.",
-      });
-    }
-  }
-
   async function saveProfile(): Promise<void> {
     if (!profileName.trim() || !profileAccountId) return;
     setProfileError(null);
@@ -304,7 +312,6 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
     const trimmedPath = filePath.trim();
     if (!trimmedPath || effectiveImportAccountId === undefined || preview === null || previewMapping === null) return;
     if (JSON.stringify(previewMapping) !== JSON.stringify(columnMapping)) return;
-    if (preview.rows.some((row) => row.errors.length > 0)) return;
 
     setImportState({ status: "pending" });
     setStage("confirm");
@@ -327,6 +334,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
             importJobId: response.importJobId,
             transactionCount: response.transactionCount,
             duplicateCount: response.duplicateCount,
+            unresolvedCount: response.unresolvedCount,
           });
           setStage("complete");
           setFilePath("");
@@ -428,9 +436,6 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
       </details>
       <ImportStageProgress format="CSV" stage={stage} />
       <div className="import-file-source">
-        <button id="csv-file-picker-button" type="button" className="import-file-choice-primary" onClick={() => void handleChooseFile()} disabled={importState.status === "pending"}>
-          Choose CSV file
-        </button>
         <p aria-live="polite" className="import-selected-file">
           {filePath ? <><strong>Selected:</strong> <code>{filePath}</code></> : "No CSV statement selected."}
         </p>
@@ -484,11 +489,11 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
           : preview === null
             ? filePath
               ? <>The selected file has not passed validation. <a href="#csv-preview-button">Preview CSV</a>.</>
-              : <>Choose a CSV statement before previewing it. <a href="#csv-file-picker-button">Choose a file</a>.</>
+              : <>Choose a statement file before previewing it. <a href="#import-statement-picker-button">Choose a file</a>.</>
             : !isMappingCurrent
               ? <>Validate the updated column mapping before confirming. <a href="#csv-preview-button">Preview CSV</a>.</>
               : firstInvalidRow !== undefined
-                ? <>Row <a href={`#csv-preview-row-${firstInvalidRow.rowIndex}`}>{firstInvalidRow.rowIndex + 1}</a> needs attention before confirmation.</>
+                ? <>Row <a href={`#csv-preview-row-${firstInvalidRow.rowIndex}`}>{firstInvalidRow.rowIndex + 1}</a> will be kept for review and will not become a transaction.</>
                 : unresolvedDuplicateRows[0] !== undefined
                   ? <>Choose whether to skip or import duplicate <a href={`#csv-preview-row-${unresolvedDuplicateRows[0].rowIndex}`}>row {unresolvedDuplicateRows[0].rowIndex + 1}</a> before confirming.</>
                   : "Review the ready rows before confirming the import."}
@@ -503,6 +508,11 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
             <p className="import-duplicate-summary">
               {importState.duplicateCount} duplicate row{importState.duplicateCount === 1 ? "" : "s"} skipped.
             </p>
+            {importState.unresolvedCount > 0 && (
+              <p className="import-excluded-summary">
+                {importState.unresolvedCount} unresolved row{importState.unresolvedCount === 1 ? "" : "s"} saved for review.
+              </p>
+            )}
           </div>
           <div className="import-success-actions" aria-label="Next import actions">
             <button type="button" onClick={onReviewUncategorized}>Review uncategorized transactions</button>
@@ -564,7 +574,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
           <p className="preview-summary" aria-live="polite">
             <strong>{validPreviewRowCount} of {preview.rows.length} rows ready.</strong>{" "}
             {invalidPreviewRowCount > 0
-              ? `${invalidPreviewRowCount} row${invalidPreviewRowCount === 1 ? "" : "s"} need${invalidPreviewRowCount === 1 ? "s" : ""} attention before import.`
+             ? `${invalidPreviewRowCount} unresolved row${invalidPreviewRowCount === 1 ? "" : "s"} will be saved for review, not as transactions.`
               : "No validation issues."}{" "}
             {unresolvedDuplicateRows.length === 0
               ? "No duplicate decisions needed."
@@ -572,7 +582,7 @@ export function CsvImportSection({ onImportSuccess, onOpenLedger, onReviewUncate
           </p>
           {preview.rows.some((row) => row.errors.length > 0) && (
             <div role="alert">
-              <p>{invalidPreviewRowCount} row{invalidPreviewRowCount === 1 ? " needs" : "s need"} attention. Open the validation report for row details.</p>
+              <p>{invalidPreviewRowCount} unresolved row{invalidPreviewRowCount === 1 ? " will" : "s will"} be retained for correction or dismissal. Open the validation report for row details.</p>
             </div>
           )}
           {invalidPreviewRowCount > 0 && (

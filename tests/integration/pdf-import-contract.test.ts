@@ -119,6 +119,7 @@ function runPdfImportOrchestration(
       parserRegistry: defaultParserAdapterRegistry,
       appendImportJob: ledger.appendImportJob,
       appendTransactions: ledger.appendTransactions,
+      appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
     }
   );
 }
@@ -170,15 +171,13 @@ describe("pdf import contract", () => {
     }, defaultParserAdapterRegistry);
 
     expect(preview).toMatchObject({
-      ok: false,
-      errors: [{ code: "INVALID_AMOUNT_FORMAT", lineNumber: 4 }],
-      unresolvedInput: {
-        sourceDocument: {
-          pages: [{
-            sourceLines: expect.arrayContaining([expect.objectContaining({ lineNumber: 4, rawText: malformedRow })]),
-          }],
-        },
-      },
+      ok: true,
+      transactions: [],
+      unresolvedRows: [{
+        lineNumber: 4,
+        rawRow: malformedRow,
+        errors: [expect.objectContaining({ code: "INVALID_AMOUNT_FORMAT", lineNumber: 4 })],
+      }],
     });
   });
 
@@ -775,7 +774,7 @@ describe("pdf import contract", () => {
   });
 
   describe("AC-3: invalid or unsupported input returns explicit errors with no partial transactions", () => {
-    it("leaves the ledger unchanged when a malformed middle row sits between valid rows", () => {
+    it("persists valid rows and retains the malformed middle row for review", () => {
       const ledger = makeTestLedger(randomUUID());
       const existingTransaction: Transaction = {
         id: "existing-ledger-row",
@@ -807,16 +806,33 @@ describe("pdf import contract", () => {
         });
 
         expect(response).toMatchObject({
-          ok: false,
-          errors: [{ code: "INVALID_AMOUNT_FORMAT", field: "amount", lineNumber: 6 }],
+          ok: true,
+          transactionCount: 2,
+          unresolvedRowCount: 1,
         });
-        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
+        const snapshot = ledger.loadLedgerSnapshotData();
+        expect(snapshot.transactions).toHaveLength(beforeImport.transactions.length + 2);
+        expect(snapshot.transactions).toEqual(expect.arrayContaining([
+          ...beforeImport.transactions,
+          expect.objectContaining({ merchantRaw: "SYNTHETIC FIRST", amountMinor: -9770 }),
+          expect.objectContaining({ merchantRaw: "SYNTHETIC LAST", amountMinor: -2000 }),
+        ]));
+        expect(ledger.listImportReviewItems(SAMPLE_HOUSEHOLD.id)).toEqual([
+          expect.objectContaining({
+            sourceName: "mixed-validity-statement.pdf",
+            sourceType: "pdf",
+            sourceRowIndex: 5,
+            rawRow: expect.stringContaining("SYNTHETIC BROKEN"),
+            parserErrors: [expect.objectContaining({ code: "INVALID_AMOUNT_FORMAT", field: "amount" })],
+            status: "unresolved",
+          }),
+        ]);
       } finally {
         ledger.close();
       }
     });
 
-    it("preserves the original line for a malformed transaction after a page break", () => {
+    it("preserves page-aware source lines for malformed transactions after a page break", () => {
       const ledger = makeTestLedger(randomUUID());
       const existingTransaction: Transaction = {
         id: "existing-paginated-ledger-row",
@@ -854,12 +870,20 @@ describe("pdf import contract", () => {
           sourceName: "paginated-malformed-statement.pdf",
         });
 
-        expect(response.ok).toBe(false);
-        if (response.ok) return;
-        expect(response.errors.map(({ code, field, lineNumber }) => ({ code, field, lineNumber }))).toEqual([
-          { code: "INVALID_AMOUNT_FORMAT", field: "amount", lineNumber: 11 },
+        expect(response).toMatchObject({
+          ok: true,
+          transactionCount: 2,
+          unresolvedRowCount: 1,
+        });
+        expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(beforeImport.transactions.length + 2);
+        expect(ledger.listImportReviewItems(SAMPLE_HOUSEHOLD.id)).toEqual([
+          expect.objectContaining({
+            sourceRowIndex: 10,
+            rawRow: expect.stringContaining("SYNTHETIC BROKEN"),
+            parserErrors: [expect.objectContaining({ code: "INVALID_AMOUNT_FORMAT", field: "amount" })],
+            status: "unresolved",
+          }),
         ]);
-        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
       } finally {
         ledger.close();
       }
