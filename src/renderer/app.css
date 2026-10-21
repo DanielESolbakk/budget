@@ -635,68 +635,89 @@ section[aria-label].destination-workspace {
   line-height: 1.5;
 }
 
-.import-format-picker {
+.import-format-content {
   margin-top: 1rem;
-  border-bottom: 1px solid var(--line-strong);
-  padding-bottom: 1rem;
 }
 
-.import-format-picker fieldset {
+.import-review-queue {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 1rem;
+}
+
+.import-review-queue > h3 {
+  margin-bottom: 0.35rem;
+}
+
+.import-review-list {
   margin: 0;
-  border: 0;
   padding: 0;
+  list-style: none;
 }
 
-.import-format-picker legend {
-  margin-bottom: 0.65rem;
-  color: var(--paper-muted);
-  font-size: 0.76rem;
+.import-review-list > li {
+  border-top: 1px solid var(--line-strong);
+  padding: 1rem 0;
+}
+
+.import-review-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 1rem 1.5rem;
+}
+
+.import-review-source p {
+  margin: 0.35rem 0;
+  overflow-wrap: anywhere;
+}
+
+.import-review-status {
+  color: var(--orange);
   font-weight: 700;
 }
 
-.import-format-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
-}
-
-.import-format-choice,
-.import-format-choice:hover:not(:disabled) {
-  display: grid;
-  min-height: 5rem;
-  align-content: center;
-  gap: 0.25rem;
-  border-color: var(--line-strong);
-  padding: 0.7rem 0.8rem;
+.import-review-source pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.6rem;
   color: var(--paper);
   background: var(--panel);
-  font-family: inherit;
-  font-size: 0.85rem;
-  letter-spacing: 0;
-  text-align: left;
-  text-transform: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.import-format-choice small {
+.import-review-actions form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem 0.75rem;
+}
+
+.import-review-actions form label,
+.import-review-actions > label {
   color: var(--paper-muted);
-  font-size: 0.72rem;
-  font-weight: 400;
-  line-height: 1.35;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
-.import-format-choice[aria-pressed="true"],
-.import-format-choice[aria-pressed="true"]:hover:not(:disabled) {
-  border-color: var(--orange);
-  color: var(--paper);
-  background: var(--orange-soft);
+.import-review-actions form button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 0.35rem;
 }
 
-.import-format-choice:hover:not(:disabled) {
-  border-color: var(--paper-muted);
+.import-review-actions > label {
+  display: block;
+  margin-top: 0.8rem;
 }
 
-.import-format-content {
-  margin-top: 1rem;
+.import-review-actions textarea {
+  width: 100%;
+  min-height: 4rem;
+  margin-top: 0.35rem;
+}
+
+.import-review-actions > button {
+  margin-top: 0.5rem;
 }
 
 .import-file-source {
@@ -705,6 +726,16 @@ section[aria-label].destination-workspace {
   gap: 0.75rem;
   align-items: center;
   margin-top: 1rem;
+}
+
+.import-file-source p {
+  margin: 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+#manual-entry-choice {
+  margin-top: 0.75rem;
 }
 
 .csv-import-profiles {
@@ -2812,16 +2843,18 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 @media (max-width: 38rem) {
-  .import-format-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .import-format-choice:nth-child(3) {
-    grid-column: 1 / -1;
-  }
-
   .import-file-source {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-review-row,
+  .import-review-actions form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-review-actions form button {
+    grid-column: 1;
+    justify-self: stretch;
   }
 
   .import-preview-table caption {

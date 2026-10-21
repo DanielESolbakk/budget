@@ -1,9 +1,11 @@
 import { test, expect } from "./fixtures/electron.js";
 import type { ElectronApplication } from "@playwright/test";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
+import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
+const REVIEW_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review-two-unresolved.csv");
 
 test.describe("Main-process transaction privacy", () => {
   async function installFetchProbe(electronApp: ElectronApplication): Promise<void> {
@@ -40,6 +42,48 @@ test.describe("Main-process transaction privacy", () => {
       (globalThis as typeof globalThis & { __budgetMainFetchRequests?: string[] }).__budgetMainFetchRequests ?? []
     );
     expect(requests).toEqual([]);
+  });
+
+  test("correcting and dismissing import-review rows stays on device", async ({
+    appShell,
+    csvImport,
+    electronApp,
+    window,
+  }) => {
+    const rendererHttpRequests: string[] = [];
+    window.on("request", (request) => {
+      if (/^https?:/i.test(request.url())) rendererHttpRequests.push(request.url());
+    });
+    await installFetchProbe(electronApp);
+    await appShell.openWorkspace("Import");
+    await csvImport.enterFilePath(REVIEW_FIXTURE_PATH);
+    await csvImport.importButton.click();
+    await expect(csvImport.previewRegion).toBeVisible();
+    await expect(csvImport.confirmImportButton).toBeEnabled();
+    await csvImport.confirmImportButton.click();
+    await expect(csvImport.successStatus).toContainText("Added 0 transactions to your ledger.");
+
+    const importReview = new ImportReviewPage(window);
+    const reviewItems = importReview.reviewQueue
+      .getByRole("list", { name: "Import review items" })
+      .getByRole("listitem");
+    await expect(reviewItems.filter({ hasText: basename(REVIEW_FIXTURE_PATH) })).toHaveCount(2);
+    await importReview.correctRow(2, {
+      date: "2026-05-19",
+      amount: "-9.99",
+      merchant: "REVIEW CORRECTED LOCALLY",
+      accountId: "sample-acc",
+      currency: "NOK",
+    });
+    await importReview.dismissRow(1, "Not a household transaction");
+    await expect(importReview.reviewRow(2)).toContainText("Corrected");
+    await expect(importReview.reviewRow(1)).toContainText("Dismissed");
+
+    const mainProcessRequests = await electronApp.evaluate(() =>
+      (globalThis as typeof globalThis & { __budgetMainFetchRequests?: string[] }).__budgetMainFetchRequests ?? []
+    );
+    expect(rendererHttpRequests).toEqual([]);
+    expect(mainProcessRequests).toEqual([]);
   });
 
   test("rejects malformed ledger filters, saved views, and restore payloads at the IPC boundary", async ({ window }) => {

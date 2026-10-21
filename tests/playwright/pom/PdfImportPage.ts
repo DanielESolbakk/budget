@@ -15,32 +15,32 @@ export class PdfImportPage {
     this.page = page;
   }
 
-  /** The landmark region wrapping the PDF import section (aria-label="PDF Import"). */
+  /** The landmark region wrapping digital text and PDF statement import. */
   get importSection() {
-    return this.page.getByRole("region", { name: "PDF Import", exact: true });
+    return this.page.getByRole("region", { name: "Digital statement import", exact: true });
   }
 
-  /** The "Import PDF Statement" heading inside the section. */
+  /** The digital statement import heading. */
   get importHeading() {
-    return this.page.getByRole("heading", { name: "Import PDF Statement", level: 2 });
+    return this.page.getByRole("heading", { name: "Import digital statement", level: 2 });
   }
 
   /** The file path text input. */
   get filePathInput() {
-    return this.page.getByRole("textbox", { name: "PDF statement path" });
+    return this.page.getByRole("textbox", { name: "Statement file path" });
   }
 
   get chooseFileButton() {
-    return this.page.getByRole("button", { name: "Choose PDF file", exact: true });
+    return this.page.getByRole("button", { name: "Import statement", exact: true });
   }
 
-  /** The Import PDF action button. */
+  /** The statement preflight action button. */
   get importButton() {
-    return this.page.getByRole("button", { name: "Preview PDF" });
+    return this.page.getByRole("button", { name: "Preview statement" });
   }
 
   get confirmImportButton() {
-    return this.page.getByRole("button", { name: "Confirm PDF import" });
+    return this.page.getByRole("button", { name: "Confirm statement import" });
   }
 
   async enterFilePath(filePath: string): Promise<void> {
@@ -49,6 +49,13 @@ export class PdfImportPage {
       await advancedPathEntry.getByText("Advanced: enter a file path", { exact: true }).click();
     }
     await this.filePathInput.fill(filePath);
+  }
+
+  async clearFilePath(): Promise<void> {
+    await this.enterFilePath("");
+    await this.importSection.locator("details.import-path-entry")
+      .getByText("Advanced: enter a file path", { exact: true })
+      .click();
   }
 
   get previewRegion() {

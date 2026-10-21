@@ -675,8 +675,8 @@ describe("csv-import-runtime-contract", () => {
     });
   });
 
-  describe("AC-3: Invalid CSV import returns explicit validation failures and zero transaction writes", () => {
-    it("leaves the SQLite ledger unchanged when production CSV orchestration sees a malformed middle row", () => {
+  describe("AC-3: Mixed CSV imports retain valid rows and review malformed rows", () => {
+    it("persists valid rows and preserves malformed row diagnostics for review", () => {
       const ledger = makeTestLedger(randomUUID());
       const existingTransaction: Transaction = {
         id: "existing-production-csv-row",
@@ -715,16 +715,47 @@ describe("csv-import-runtime-contract", () => {
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
         });
 
-        expect(response).toEqual({
-          ok: false,
-          errors: [{
-            rowIndex: 1,
-            fields: ["Beløp ut"],
-            codes: ["INVALID_AMOUNT_FORMAT"],
-            messages: ['Amount-out value "not-a-number" is not a valid number.'],
-          }],
+        expect(response).toMatchObject({
+          ok: true,
+          transactionCount: 2,
+          unresolvedCount: 1,
         });
-        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
+        const snapshot = ledger.loadLedgerSnapshotData();
+        expect(snapshot.transactions).toEqual(expect.arrayContaining([
+          ...beforeImport.transactions,
+          expect.objectContaining({
+            importJobId: "production-csv-atomicity-job",
+            bookedAtIso: "2026-05-28T00:00:00Z",
+            merchantRaw: "SYNTHETIC CSV FIRST",
+            amountMinor: -1250,
+          }),
+          expect.objectContaining({
+            importJobId: "production-csv-atomicity-job",
+            bookedAtIso: "2026-05-26T00:00:00Z",
+            merchantRaw: "SYNTHETIC CSV LAST",
+            amountMinor: -2000,
+          }),
+        ]));
+        expect(snapshot.importJobs).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            id: "production-csv-atomicity-job",
+            validationFailureCount: 1,
+          }),
+        ]));
+        expect(ledger.listImportReviewItems(SAMPLE_HOUSEHOLD.id)).toEqual([
+          expect.objectContaining({
+            importJobId: "production-csv-atomicity-job",
+            sourceRowIndex: 1,
+            rawRow: expect.stringContaining("not-a-number"),
+            status: "unresolved",
+            parserErrors: [
+              expect.objectContaining({
+                code: "INVALID_AMOUNT_FORMAT",
+                field: "Beløp ut",
+              }),
+            ],
+          }),
+        ]);
       } finally {
         ledger.close();
       }

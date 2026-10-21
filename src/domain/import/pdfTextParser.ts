@@ -45,7 +45,14 @@ export interface PdfTextParseSuccess {
   ok: true;
   adapterId: string;
   transactions: Transaction[];
+  unresolvedRows?: PdfTextUnresolvedRow[];
   excludedRows?: PdfTextExcludedRow[];
+}
+
+export interface PdfTextUnresolvedRow {
+  lineNumber: number;
+  rawRow: string;
+  errors: PdfTextValidationError[];
 }
 
 export interface PdfTextExcludedRow {
@@ -221,6 +228,7 @@ function parseRogalandBankExport(
   const idPrefix = options.idPrefix ?? "pdf";
   const transactions: Transaction[] = [];
   const excludedRows: PdfTextExcludedRow[] = [];
+  const unresolvedRows: PdfTextUnresolvedRow[] = [];
   const errors: PdfTextValidationError[] = [];
   const bankExportRowPattern =
     /^(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+([+-]?\d[\d ]*,\d{2})\s+([A-Z]{3})\s+(Bokført|Reservert|Bekreftet)\s*(.*)$/i;
@@ -230,27 +238,30 @@ function parseRogalandBankExport(
     if (match === null) {
       const hasDateLikePrefix = BANK_EXPORT_DATE_LIKE_PREFIX_PATTERN.test(row.text);
       const hasValidDatePrefix = BANK_EXPORT_TRANSACTION_DATE_PATTERN.test(row.text);
+      let error: PdfTextValidationError;
       if (hasDateLikePrefix && !hasValidDatePrefix) {
-        errors.push({
+        error = {
           code: "INVALID_DATE_FORMAT",
           message: `Could not parse bank-export transaction date at line ${row.lineNumber}.`,
           lineNumber: row.lineNumber,
           field: "date",
-        });
+        };
       } else if (hasValidDatePrefix) {
-        errors.push({
+        error = {
           code: "INVALID_AMOUNT_FORMAT",
           message: `Could not parse bank-export transaction amount at line ${row.lineNumber}.`,
           lineNumber: row.lineNumber,
           field: "amount",
-        });
+        };
       } else {
-        errors.push({
+        error = {
           code: "INVALID_TRANSACTION_ROW",
           message: `Could not parse bank-export transaction row at line ${row.lineNumber}.`,
           lineNumber: row.lineNumber,
-        });
+        };
       }
+      errors.push(error);
+      unresolvedRows.push({ lineNumber: row.lineNumber, rawRow: row.text, errors: [error] });
       continue;
     }
 
@@ -270,34 +281,40 @@ function parseRogalandBankExport(
 
     const bookedAtIso = parseNorwegianDate(rawDate);
     if (bookedAtIso === null) {
-      errors.push({
+      const error: PdfTextValidationError = {
         code: "INVALID_DATE_FORMAT",
         message: `Invalid bank-export transaction date at line ${row.lineNumber}.`,
         lineNumber: row.lineNumber,
         field: "date",
-      });
+      };
+      errors.push(error);
+      unresolvedRows.push({ lineNumber: row.lineNumber, rawRow: row.text, errors: [error] });
       continue;
     }
 
     const amount = parseNorwegianAmount(rawAmount);
     if (amount === null) {
-      errors.push({
+      const error: PdfTextValidationError = {
         code: "INVALID_AMOUNT_FORMAT",
         message: `Invalid bank-export amount at line ${row.lineNumber}.`,
         lineNumber: row.lineNumber,
         field: "amount",
-      });
+      };
+      errors.push(error);
+      unresolvedRows.push({ lineNumber: row.lineNumber, rawRow: row.text, errors: [error] });
       continue;
     }
 
     const merchantRaw = rawMessage.trim().replace(/\s+/g, " ") || prefix.trim().replace(/\s+/g, " ");
     if (merchantRaw.length === 0) {
-      errors.push({
+      const error: PdfTextValidationError = {
         code: "MISSING_DESCRIPTION",
         message: `Missing bank-export description at line ${row.lineNumber}.`,
         lineNumber: row.lineNumber,
         field: "description",
-      });
+      };
+      errors.push(error);
+      unresolvedRows.push({ lineNumber: row.lineNumber, rawRow: row.text, errors: [error] });
       continue;
     }
 
@@ -315,8 +332,7 @@ function parseRogalandBankExport(
     transactions.push(transaction);
   }
 
-  if (errors.length > 0) return { ok: false, errors };
-  if (transactions.length === 0 && !(allowExcludedOnly && excludedRows.length > 0)) {
+  if (transactions.length === 0 && unresolvedRows.length === 0 && !(allowExcludedOnly && excludedRows.length > 0)) {
     return {
       ok: false,
       errors: [{
@@ -339,6 +355,7 @@ function parseRogalandBankExport(
     ok: true,
     adapterId: ROGALAND_ADAPTER_ID,
     transactions,
+    ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
     ...(excludedRows.length === 0 ? {} : { excludedRows }),
   };
 }
@@ -394,27 +411,31 @@ export function parseRogalandStatementText(
 
   const idPrefix = options.idPrefix ?? "pdf";
   const transactions: Transaction[] = [];
-  const errors: PdfTextValidationError[] = [];
+  const unresolvedRows: PdfTextUnresolvedRow[] = [];
   let rowIndex = 0;
 
   for (const [transactionLineIndex, line] of transactionLines.entries()) {
     const lineNumber = tableHeaderIndex + transactionLineIndex + 2;
     const match = TRANSACTION_LINE_PATTERN.exec(line);
     if (!match) {
+      let error: PdfTextValidationError | undefined;
       if (VALID_TRANSACTION_DATE_PREFIX_PATTERN.test(line)) {
-        errors.push({
+        error = {
           code: "INVALID_AMOUNT_FORMAT",
           message: `Could not parse transaction line: "${line.trim()}"`,
           lineNumber,
           field: "amount",
-        });
+        };
       } else if (TRANSACTION_DATE_LIKE_PREFIX_PATTERN.test(line)) {
-        errors.push({
+        error = {
           code: "INVALID_DATE_FORMAT",
           message: `Could not parse transaction line: "${line.trim()}"`,
           lineNumber,
           field: "date",
-        });
+        };
+      }
+      if (error !== undefined) {
+        unresolvedRows.push({ lineNumber, rawRow: line.trim(), errors: [error] });
       }
       continue;
     }
@@ -423,34 +444,37 @@ export function parseRogalandStatementText(
 
     const bookedAtIso = parseNorwegianDate(rawDate);
     if (!bookedAtIso) {
-      errors.push({
+      const error: PdfTextValidationError = {
         code: "INVALID_DATE_FORMAT",
         message: `Invalid date value "${rawDate}" on line: "${line.trim()}"`,
         lineNumber,
         field: "date",
-      });
+      };
+      unresolvedRows.push({ lineNumber, rawRow: line.trim(), errors: [error] });
       continue;
     }
 
     const description = rawDescription.trim();
     if (!description) {
-      errors.push({
+      const error: PdfTextValidationError = {
         code: "MISSING_DESCRIPTION",
         message: `Missing description on line: "${line.trim()}"`,
         lineNumber,
         field: "description",
-      });
+      };
+      unresolvedRows.push({ lineNumber, rawRow: line.trim(), errors: [error] });
       continue;
     }
 
     const amount = parseNorwegianAmount(rawAmount);
     if (amount === null) {
-      errors.push({
+      const error: PdfTextValidationError = {
         code: "INVALID_AMOUNT_FORMAT",
         message: `Invalid amount value "${rawAmount}" on line: "${line.trim()}"`,
         lineNumber,
         field: "amount",
-      });
+      };
+      unresolvedRows.push({ lineNumber, rawRow: line.trim(), errors: [error] });
       continue;
     }
 
@@ -473,11 +497,7 @@ export function parseRogalandStatementText(
     rowIndex++;
   }
 
-  if (errors.length > 0) {
-    return { ok: false, errors };
-  }
-
-  if (transactions.length === 0) {
+  if (transactions.length === 0 && unresolvedRows.length === 0) {
     return {
       ok: false,
       errors: [
@@ -509,6 +529,7 @@ export function parseRogalandStatementText(
     ok: true,
     adapterId: ROGALAND_ADAPTER_ID,
     transactions,
+    ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
   };
 }
 
@@ -530,6 +551,7 @@ export async function parseRogalandStatementTextInBatches(
     const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
     const transactions: Transaction[] = [];
     const excludedRows: PdfTextExcludedRow[] = [];
+    const unresolvedRows: PdfTextUnresolvedRow[] = [];
     const errors: PdfTextValidationError[] = [];
 
     for (let start = 0; start < rows.length; start += batchSize) {
@@ -547,6 +569,14 @@ export async function parseRogalandStatementTextInBatches(
 
       if (result.ok) {
         transactions.push(...result.transactions);
+        for (const unresolvedRow of result.unresolvedRows ?? []) {
+          const batchRowIndex = unresolvedRow.lineNumber - bankExportHeaderIndex - 2;
+          const sourceRow = rows[start + batchRowIndex];
+          unresolvedRows.push({
+            ...unresolvedRow,
+            ...(sourceRow === undefined ? {} : { lineNumber: sourceRow.lineNumber, rawRow: sourceRow.text }),
+          });
+        }
         for (const excludedRow of result.excludedRows ?? []) {
           const batchRowIndex = excludedRow.lineNumber - bankExportHeaderIndex - 2;
           const sourceRow = rows[start + batchRowIndex];
@@ -576,7 +606,7 @@ export async function parseRogalandStatementTextInBatches(
 
     if (callbacks.isCancelled()) return null;
     if (errors.length > 0) return { ok: false, errors };
-    if (transactions.length === 0) return parseRogalandStatementText(text, options);
+    if (transactions.length === 0 && unresolvedRows.length === 0) return parseRogalandStatementText(text, options);
 
     transactions.sort((left, right) =>
       right.bookedAtIso.localeCompare(left.bookedAtIso) ||
@@ -592,6 +622,7 @@ export async function parseRogalandStatementTextInBatches(
       ok: true,
       adapterId: ROGALAND_ADAPTER_ID,
       transactions,
+      ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
       ...(excludedRows.length === 0 ? {} : { excludedRows }),
     };
   }
@@ -605,6 +636,7 @@ export async function parseRogalandStatementTextInBatches(
   const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
   const headerText = lines.slice(0, tableHeaderIndex + 1).join("\n");
   const transactions: Transaction[] = [];
+  const unresolvedRows: PdfTextUnresolvedRow[] = [];
   const errors: PdfTextValidationError[] = [];
 
   for (let start = 0; start < transactionLines.length; start += batchSize) {
@@ -617,6 +649,10 @@ export async function parseRogalandStatementTextInBatches(
     });
     if (result.ok) {
       transactions.push(...result.transactions);
+      unresolvedRows.push(...(result.unresolvedRows ?? []).map((row) => ({
+        ...row,
+        lineNumber: row.lineNumber + start,
+      })));
     } else {
       errors.push(...result.errors
         .filter((error) => error.code !== "MISSING_TRANSACTION_SECTION")
@@ -632,7 +668,7 @@ export async function parseRogalandStatementTextInBatches(
 
   if (callbacks.isCancelled()) return null;
   if (errors.length > 0) return { ok: false, errors };
-  if (transactions.length === 0) return parseRogalandStatementText(text, options);
+  if (transactions.length === 0 && unresolvedRows.length === 0) return parseRogalandStatementText(text, options);
 
   transactions.sort((left, right) => {
     const dateComparison = right.bookedAtIso.localeCompare(left.bookedAtIso);
@@ -646,5 +682,10 @@ export async function parseRogalandStatementTextInBatches(
     transaction.id = `${idPrefix}-${index + 1}`;
   });
 
-  return { ok: true, adapterId: ROGALAND_ADAPTER_ID, transactions };
+  return {
+    ok: true,
+    adapterId: ROGALAND_ADAPTER_ID,
+    transactions,
+    ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
+  };
 }

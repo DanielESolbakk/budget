@@ -1,4 +1,9 @@
-import type { PdfTextExcludedRow, PdfTextParseBatchCallbacks, PdfTextValidationError } from "../../domain/import/pdfTextParser.js";
+import type {
+  PdfTextExcludedRow,
+  PdfTextParseBatchCallbacks,
+  PdfTextUnresolvedRow,
+  PdfTextValidationError,
+} from "../../domain/import/pdfTextParser.js";
 import { randomUUID } from "node:crypto";
 import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
@@ -8,7 +13,7 @@ import { categorizeTransaction } from "../../domain/categorization/categorizeTra
 import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
 import { createTextSourceDocument } from "../../domain/import/sourceDocument.js";
 import type { SourceDocument } from "../../domain/import/sourceDocument.js";
-import type { ImportJob, ImportJobStoryAnchor, Transaction } from "../../domain/types.js";
+import type { ImportJob, ImportJobStoryAnchor, ImportReviewItem, Transaction } from "../../domain/types.js";
 import { resolve } from "node:path";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
@@ -26,6 +31,7 @@ export interface PdfImportSuccess {
   duplicateCount: number;
   excludedRowCount: number;
   adapterId: string;
+  unresolvedRowCount?: number;
 }
 
 /** Returned when a PDF import has validation errors and no transactions are persisted. */
@@ -53,6 +59,7 @@ export interface PdfImportPreviewSuccess {
   transactions: Transaction[];
   excludedRowCount: number;
   excludedRows: PdfTextExcludedRow[];
+  unresolvedRows?: PdfTextUnresolvedRow[];
   duplicateCandidates?: Array<{
     rowIndex: number;
     transactionId: string;
@@ -85,7 +92,11 @@ export interface PdfImportWorkflowDependencies {
     sourceType: ImportJob["sourceType"], sourceName: string, accountId: string, sourceIdentity?: string
   ) => Transaction[];
   getExistingTransactionsForAccount?: (accountId: string) => Transaction[];
-  appendImportJobAndTransactions?: (importJob: ImportJob, transactions: Transaction[]) => number;
+  appendImportJobAndTransactions?: (
+    importJob: ImportJob,
+    transactions: Transaction[],
+    reviewItems?: ImportReviewItem[]
+  ) => number;
   appendTransactions: (transactions: Transaction[]) => number | void;
   onTransactionsPersisted?: (transactions: Transaction[]) => void;
 }
@@ -197,6 +208,9 @@ export function previewPdfImportWorkflow(
     adapterId: parseResult.adapterId,
     excludedRowCount: parseResult.excludedRows?.length ?? 0,
     excludedRows: parseResult.excludedRows ?? [],
+    ...(parseResult.unresolvedRows === undefined || parseResult.unresolvedRows.length === 0
+      ? {}
+      : { unresolvedRows: parseResult.unresolvedRows }),
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
       canonicalSourceScope(input.filePath)
@@ -227,6 +241,9 @@ export async function previewPdfImportWorkflowInBatches(
     adapterId: parseResult.adapterId,
     excludedRowCount: parseResult.excludedRows?.length ?? 0,
     excludedRows: parseResult.excludedRows ?? [],
+    ...(parseResult.unresolvedRows === undefined || parseResult.unresolvedRows.length === 0
+      ? {}
+      : { unresolvedRows: parseResult.unresolvedRows }),
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
       canonicalSourceScope(input.filePath)
@@ -253,6 +270,7 @@ export function runPdfImportWorkflow(
   }
 
   const excludedRowCount = parseResult.excludedRows?.length ?? 0;
+  const unresolvedRows = parseResult.unresolvedRows ?? [];
   if (excludedRowCount > 0 && input.acknowledgeExcludedRows !== true) {
     return {
       ok: false,
@@ -269,6 +287,25 @@ export function runPdfImportWorkflow(
     ),
     { sourceScope: canonicalSourceScope(input.filePath) }
   );
+  const reviewItems: ImportReviewItem[] = unresolvedRows.map((row) => ({
+    id: `${input.importJobId}:review:${row.lineNumber}`,
+    importJobId: input.importJobId,
+    householdId: input.householdId,
+    accountId: input.accountId,
+    sourceType: "pdf",
+    sourceName: input.filePath,
+    sourceIdentity: parseResult.sourceIdentity,
+    sourceRowIndex: Math.max(0, row.lineNumber - 1),
+    rawRow: row.rawRow,
+    parserErrors: row.errors.map(({ code, message, field }) => ({
+      code,
+      message,
+      ...(field === undefined ? {} : { field }),
+    })),
+    status: "unresolved",
+    createdAtIso: input.finishedAtIso,
+    updatedAtIso: input.finishedAtIso,
+  }));
 
   const previousTransactions = [
     ...(dependencies.getTransactionsForImportJob?.(input.importJobId) ?? []),
@@ -325,7 +362,7 @@ export function runPdfImportWorkflow(
     sourceName: input.filePath,
     adapterId: parseResult.adapterId,
     candidateCount: transactions.length,
-    validationFailureCount: 0,
+    validationFailureCount: reviewItems.length,
     startedAtIso: input.startedAtIso,
     finishedAtIso: input.finishedAtIso,
     provenance: {
@@ -338,12 +375,16 @@ export function runPdfImportWorkflow(
     },
   };
 
-  const insertedCount = dependencies.appendImportJobAndTransactions === undefined
-    ? (() => {
-        dependencies.appendImportJob(importJob);
-        return dependencies.appendTransactions(pendingTransactions) ?? pendingTransactions.length;
-      })()
-    : dependencies.appendImportJobAndTransactions(importJob, pendingTransactions);
+  let insertedCount: number;
+  if (dependencies.appendImportJobAndTransactions === undefined) {
+    if (reviewItems.length > 0) {
+      throw new Error("PDF review rows require atomic import-job, transaction, and review-item persistence.");
+    }
+    dependencies.appendImportJob(importJob);
+    insertedCount = dependencies.appendTransactions(pendingTransactions) ?? pendingTransactions.length;
+  } else {
+    insertedCount = dependencies.appendImportJobAndTransactions(importJob, pendingTransactions, reviewItems);
+  }
   const reportedDuplicateCount = input.duplicateDecisions === undefined
     ? transactions.length - insertedCount
     : duplicateCount;
@@ -356,5 +397,6 @@ export function runPdfImportWorkflow(
     duplicateCount: reportedDuplicateCount,
     excludedRowCount,
     adapterId: parseResult.adapterId,
+    ...(reviewItems.length === 0 ? {} : { unresolvedRowCount: reviewItems.length }),
   };
 }

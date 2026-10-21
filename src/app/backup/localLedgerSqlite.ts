@@ -29,6 +29,7 @@ import type {
   Household,
   ImportJob,
   ImportJobProvenance,
+  ImportReviewItem,
   MerchantCorrectionProvenance,
   MerchantCategoryRule,
   MonthlyCategoryTarget,
@@ -88,7 +89,23 @@ export interface LocalLedgerDatabase {
   hasImportJob: (importJobId: string) => boolean;
   getTransactionsForImportJob: (importJobId: string) => Transaction[];
   getImportedTransactionsForSource: (sourceType: ImportJob["sourceType"], sourceName: string, accountId: string, sourceIdentity?: string) => Transaction[];
-  appendImportJobAndTransactions: (importJob: ImportJob, transactions: Transaction[]) => number;
+  listImportReviewItems: (householdId: string) => ImportReviewItem[];
+  completeImportReviewCorrection: (
+    reviewItemId: string,
+    transaction: Transaction,
+    correctionJson: string,
+    correctedAtIso: string
+  ) => { item: ImportReviewItem; transaction: Transaction };
+  completeImportReviewDismissal: (
+    reviewItemId: string,
+    reason: string,
+    dismissedAtIso: string
+  ) => ImportReviewItem;
+  appendImportJobAndTransactions: (
+    importJob: ImportJob,
+    transactions: Transaction[],
+    reviewItems?: ImportReviewItem[]
+  ) => number;
   appendTransactions: (transactions: Transaction[]) => number;
   updateTransactionCategory: (transactionId: string, categoryId: string) => void;
   updateTransactionCategoryAndRule: (
@@ -165,6 +182,72 @@ function mapTransactionRow(transaction: TransactionRow): Transaction {
   if (transaction.category_id !== null) mapped.categoryId = transaction.category_id;
   if (transaction.import_job_id !== null) mapped.importJobId = transaction.import_job_id;
   return mapped;
+}
+
+function mapImportReviewItemRow(row: Record<string, unknown>): ImportReviewItem {
+  const requiredString = (column: string): string => {
+    const value = row[column];
+    if (typeof value !== "string") {
+      throw new Error(`Invalid import review item ${column} value.`);
+    }
+    return value;
+  };
+  const optionalString = (column: string): string | undefined => {
+    const value = row[column];
+    if (value === null || value === undefined) return undefined;
+    if (typeof value !== "string") {
+      throw new Error(`Invalid import review item ${column} value.`);
+    }
+    return value;
+  };
+  const sourceType = requiredString("source_type");
+  if (sourceType !== "csv" && sourceType !== "pdf") {
+    throw new Error(`Invalid import review source type: ${sourceType}`);
+  }
+  const status = requiredString("status");
+  if (status !== "unresolved" && status !== "corrected" && status !== "dismissed") {
+    throw new Error(`Invalid import review status: ${status}`);
+  }
+  const sourceRowIndex = row.source_row_index;
+  if (typeof sourceRowIndex !== "number" || !Number.isSafeInteger(sourceRowIndex)) {
+    throw new Error("Invalid import review item source row index.");
+  }
+  const parserErrorsJson = requiredString("parser_errors_json");
+  const parserErrors: unknown = JSON.parse(parserErrorsJson);
+  if (!Array.isArray(parserErrors) || !parserErrors.every((error) =>
+    typeof error === "object" && error !== null &&
+      "code" in error && typeof error.code === "string" &&
+      "message" in error && typeof error.message === "string" &&
+      (!("field" in error) || typeof error.field === "string")
+  )) {
+    throw new Error("Invalid import review item parser diagnostics.");
+  }
+  const correctedAtIso = optionalString("corrected_at_iso");
+  const correctedTransactionId = optionalString("corrected_transaction_id");
+  const correctionJson = optionalString("correction_json");
+  const dismissalReason = optionalString("dismissal_reason");
+  const dismissedAtIso = optionalString("dismissed_at_iso");
+
+  return {
+    id: requiredString("id"),
+    importJobId: requiredString("import_job_id"),
+    householdId: requiredString("household_id"),
+    accountId: requiredString("account_id"),
+    sourceType,
+    sourceName: requiredString("source_name"),
+    sourceIdentity: requiredString("source_identity"),
+    sourceRowIndex,
+    rawRow: requiredString("raw_row"),
+    parserErrors,
+    status,
+    createdAtIso: requiredString("created_at_iso"),
+    updatedAtIso: requiredString("updated_at_iso"),
+    ...(correctedAtIso === undefined ? {} : { correctedAtIso }),
+    ...(correctedTransactionId === undefined ? {} : { correctedTransactionId }),
+    ...(correctionJson === undefined ? {} : { correctionJson }),
+    ...(dismissalReason === undefined ? {} : { dismissalReason }),
+    ...(dismissedAtIso === undefined ? {} : { dismissedAtIso }),
+  };
 }
 
 function serializeTransactionForUndo(transaction: Transaction): string {
@@ -267,6 +350,30 @@ function ensureSchema(db: DatabaseSync): void {
       finished_at_iso TEXT,
       provenance_json TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS import_review_items (
+      id TEXT PRIMARY KEY,
+      import_job_id TEXT NOT NULL,
+      household_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      source_type TEXT NOT NULL CHECK (source_type IN ('csv', 'pdf')),
+      source_name TEXT NOT NULL,
+      source_identity TEXT NOT NULL,
+      source_row_index INTEGER NOT NULL,
+      raw_row TEXT NOT NULL,
+      parser_errors_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('unresolved', 'corrected', 'dismissed')),
+      created_at_iso TEXT NOT NULL,
+      updated_at_iso TEXT NOT NULL,
+      corrected_at_iso TEXT,
+      corrected_transaction_id TEXT,
+      correction_json TEXT,
+      dismissal_reason TEXT,
+      dismissed_at_iso TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS import_review_items_by_household_status
+      ON import_review_items (household_id, status, created_at_iso);
 
     CREATE TABLE IF NOT EXISTS monthly_category_targets (
       year_month TEXT NOT NULL,
@@ -1380,6 +1487,169 @@ export function createLocalLedgerDatabase(
     return loadLedgerSnapshotData().transactions.filter((transaction) => transaction.importJobId === importJobId);
   }
 
+  function listImportReviewItems(householdId: string): ImportReviewItem[] {
+    return (
+      db.prepare(`
+        SELECT id, import_job_id, household_id, account_id, source_type, source_name, source_identity,
+          source_row_index, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
+          corrected_at_iso, corrected_transaction_id, correction_json, dismissal_reason, dismissed_at_iso
+        FROM import_review_items
+        WHERE household_id = ?
+        ORDER BY created_at_iso, id
+      `).all(householdId)
+    ).map(mapImportReviewItemRow);
+  }
+
+  function getImportReviewItemById(reviewItemId: string): ImportReviewItem | undefined {
+    const row = db.prepare(`
+      SELECT id, import_job_id, household_id, account_id, source_type, source_name, source_identity,
+        source_row_index, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
+        corrected_at_iso, corrected_transaction_id, correction_json, dismissal_reason, dismissed_at_iso
+      FROM import_review_items
+      WHERE id = ?
+    `).get(reviewItemId);
+    return row === undefined ? undefined : mapImportReviewItemRow(row);
+  }
+
+  function completeImportReviewCorrection(
+    reviewItemId: string,
+    transaction: Transaction,
+    correctionJson: string,
+    correctedAtIso: string
+  ): { item: ImportReviewItem; transaction: Transaction } {
+    db.exec("BEGIN");
+    try {
+      const reviewItem = getImportReviewItemById(reviewItemId);
+      if (reviewItem === undefined) {
+        throw new Error(`Import review item not found: ${reviewItemId}`);
+      }
+      if (
+        reviewItem.importJobId !== transaction.importJobId ||
+        reviewItem.householdId !== transaction.householdId ||
+        reviewItem.sourceType !== transaction.sourceType
+      ) {
+        throw new Error("Corrected transaction provenance does not match the import review item.");
+      }
+      if (reviewItem.status === "corrected") {
+        if (reviewItem.correctionJson !== correctionJson || reviewItem.correctedTransactionId === undefined) {
+          throw new Error(`Import review item has already been corrected: ${reviewItemId}`);
+        }
+        const existingTransaction = getTransactionById(reviewItem.correctedTransactionId);
+        if (existingTransaction === undefined) {
+          throw new Error(`Corrected transaction is missing: ${reviewItem.correctedTransactionId}`);
+        }
+        db.exec("COMMIT");
+        return { item: reviewItem, transaction: existingTransaction };
+      }
+      if (reviewItem.status !== "unresolved") {
+        throw new Error(`Import review item is already resolved: ${reviewItemId}`);
+      }
+
+      const result = db.prepare(`
+        INSERT OR IGNORE INTO transactions (
+          id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search,
+          currency_code, source_type, source_reference, category_id, import_job_id, categorization_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        transaction.id,
+        transaction.householdId,
+        transaction.accountId,
+        transaction.bookedAtIso,
+        transaction.amountMinor,
+        transaction.merchantRaw,
+        merchantSearchValue(transaction),
+        transaction.currencyCode ?? null,
+        transaction.sourceType ?? null,
+        transaction.sourceReference ?? null,
+        transaction.categoryId ?? null,
+        transaction.importJobId ?? null,
+        transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
+      ) as { changes: number | bigint };
+      if (Number(result.changes) !== 1) {
+        throw new Error(`Corrected transaction already exists: ${transaction.id}`);
+      }
+
+      const updateResult = db.prepare(`
+        UPDATE import_review_items
+        SET status = 'corrected', updated_at_iso = ?, corrected_at_iso = ?,
+          corrected_transaction_id = ?, correction_json = ?
+        WHERE id = ? AND status = 'unresolved'
+      `).run(correctedAtIso, correctedAtIso, transaction.id, correctionJson, reviewItemId) as { changes: number | bigint };
+      if (Number(updateResult.changes) !== 1) {
+        throw new Error(`Import review item changed while correcting: ${reviewItemId}`);
+      }
+
+      const operationResult = db.prepare(`
+        UPDATE import_job_operations
+        SET candidate_count = candidate_count + 1, imported_count = imported_count + 1
+        WHERE import_job_id = ?
+      `).run(reviewItem.importJobId) as { changes: number | bigint };
+      if (Number(operationResult.changes) !== 1) {
+        throw new Error(`Import job history not found for review item: ${reviewItemId}`);
+      }
+      persistTransactionBaseline(db, reviewItem.importJobId, transaction);
+
+      const updatedItem = getImportReviewItemById(reviewItemId);
+      const savedTransaction = getTransactionById(transaction.id);
+      if (updatedItem === undefined || savedTransaction === undefined) {
+        throw new Error(`Corrected import review item could not be reloaded: ${reviewItemId}`);
+      }
+
+      db.exec("COMMIT");
+      return { item: updatedItem, transaction: savedTransaction };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function completeImportReviewDismissal(
+    reviewItemId: string,
+    reason: string,
+    dismissedAtIso: string
+  ): ImportReviewItem {
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) throw new Error("A dismissal reason is required.");
+
+    db.exec("BEGIN");
+    try {
+      const reviewItem = getImportReviewItemById(reviewItemId);
+      if (reviewItem === undefined) {
+        throw new Error(`Import review item not found: ${reviewItemId}`);
+      }
+      if (reviewItem.status === "dismissed") {
+        if (reviewItem.dismissalReason !== normalizedReason) {
+          throw new Error(`Import review item has already been dismissed: ${reviewItemId}`);
+        }
+        db.exec("COMMIT");
+        return reviewItem;
+      }
+      if (reviewItem.status !== "unresolved") {
+        throw new Error(`Import review item is already resolved: ${reviewItemId}`);
+      }
+
+      const result = db.prepare(`
+        UPDATE import_review_items
+        SET status = 'dismissed', updated_at_iso = ?, dismissal_reason = ?, dismissed_at_iso = ?
+        WHERE id = ? AND status = 'unresolved'
+      `).run(dismissedAtIso, normalizedReason, dismissedAtIso, reviewItemId) as { changes: number | bigint };
+      if (Number(result.changes) !== 1) {
+        throw new Error(`Import review item changed while dismissing: ${reviewItemId}`);
+      }
+
+      const updatedItem = getImportReviewItemById(reviewItemId);
+      if (updatedItem === undefined) {
+        throw new Error(`Dismissed import review item could not be reloaded: ${reviewItemId}`);
+      }
+
+      db.exec("COMMIT");
+      return updatedItem;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   function getImportedTransactionsForSource(
     sourceType: ImportJob["sourceType"],
     sourceName: string,
@@ -1467,7 +1737,8 @@ export function createLocalLedgerDatabase(
 
   function appendImportJobAndTransactions(
     importJob: ImportJob,
-    transactions: Transaction[]
+    transactions: Transaction[],
+    reviewItems: ImportReviewItem[] = []
   ): number {
     const insertImportJob = db.prepare(
       "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -1475,6 +1746,13 @@ export function createLocalLedgerDatabase(
     const insertTransaction = db.prepare(
   "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
+    const insertReviewItem = db.prepare(`
+      INSERT OR IGNORE INTO import_review_items (
+        id, import_job_id, household_id, account_id, source_type, source_name, source_identity,
+        source_row_index, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
+        corrected_at_iso, corrected_transaction_id, correction_json, dismissal_reason, dismissed_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
     db.exec("BEGIN");
     try {
@@ -1513,6 +1791,32 @@ export function createLocalLedgerDatabase(
           insertedCount += Number(result.changes);
           insertedTransactions.push(transaction);
         }
+      }
+
+      for (const reviewItem of reviewItems) {
+        if (reviewItem.importJobId !== importJob.id || reviewItem.householdId !== importJob.householdId) {
+          throw new Error("Import review items must belong to the import job and household being persisted.");
+        }
+        insertReviewItem.run(
+          reviewItem.id,
+          reviewItem.importJobId,
+          reviewItem.householdId,
+          reviewItem.accountId,
+          reviewItem.sourceType,
+          reviewItem.sourceName,
+          reviewItem.sourceIdentity,
+          reviewItem.sourceRowIndex,
+          reviewItem.rawRow,
+          JSON.stringify(reviewItem.parserErrors),
+          reviewItem.status,
+          reviewItem.createdAtIso,
+          reviewItem.updatedAtIso,
+          reviewItem.correctedAtIso ?? null,
+          reviewItem.correctedTransactionId ?? null,
+          reviewItem.correctionJson ?? null,
+          reviewItem.dismissalReason ?? null,
+          reviewItem.dismissedAtIso ?? null
+        );
       }
 
       persistImportJobOperation(db, importJob, insertedTransactions);
@@ -1976,6 +2280,9 @@ export function createLocalLedgerDatabase(
     hasImportJob,
     getTransactionsForImportJob,
     getImportedTransactionsForSource,
+    listImportReviewItems,
+    completeImportReviewCorrection,
+    completeImportReviewDismissal,
     appendImportJobAndTransactions,
     appendTransactions,
     updateTransactionCategory,

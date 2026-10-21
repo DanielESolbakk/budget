@@ -232,6 +232,73 @@ export function validateManualEntryInput(input: ManualEntryInput): ManualEntryIn
   return input;
 }
 
+export function validateImportReviewCorrectionInput(
+  input: ImportReviewCorrectionInput,
+  context: { householdId: string; accounts: readonly Account[] }
+): ImportReviewCorrectionValidationResult {
+  const errors: ImportReviewCorrectionValidationError[] = [];
+  const householdId = context.householdId.trim();
+  const accountId = input.accountId.trim();
+  const bookedAtIso = input.bookedAtIso.trim();
+  const merchantRaw = input.merchantRaw.trim();
+  const currencyCode = input.currencyCode.trim().toUpperCase();
+
+  if (!householdId) {
+    errors.push({
+      code: "INVALID_HOUSEHOLD_ID",
+      message: "A household is required to correct an imported row.",
+      field: "householdId",
+    });
+  }
+  if (!context.accounts.some((account) => account.id === accountId && account.householdId === householdId)) {
+    errors.push({
+      code: "INVALID_ACCOUNT_ID",
+      message: "Choose an account that belongs to this household.",
+      field: "accountId",
+    });
+  }
+  if (!isValidIsoDate(bookedAtIso)) {
+    errors.push({
+      code: "INVALID_BOOKED_AT_ISO",
+      message: "Enter a valid transaction date.",
+      field: "bookedAtIso",
+    });
+  }
+  if (!Number.isSafeInteger(input.amountMinor)) {
+    errors.push({
+      code: "INVALID_AMOUNT_MINOR_INTEGER",
+      message: "Enter an amount with no fractional minor units.",
+      field: "amountMinor",
+    });
+  }
+  if (!merchantRaw) {
+    errors.push({
+      code: "INVALID_MERCHANT_RAW",
+      message: "Enter a merchant or description.",
+      field: "merchantRaw",
+    });
+  }
+  if (!isCurrencyCode(currencyCode)) {
+    errors.push({
+      code: "INVALID_CURRENCY_CODE",
+      message: "Enter a three-letter currency code.",
+      field: "currencyCode",
+    });
+  }
+  if (errors.length > 0) return { ok: false, errors };
+
+  return {
+    ok: true,
+    value: {
+      bookedAtIso,
+      amountMinor: input.amountMinor,
+      merchantRaw,
+      accountId,
+      currencyCode,
+    },
+  };
+}
+
 export interface ImportJob {
   id: string;
   householdId: string;
@@ -261,6 +328,59 @@ export interface ImportJobProvenance {
   duplicateCount?: number;
   storyAnchor?: ImportJobStoryAnchor;
 }
+
+export type ImportReviewStatus = "unresolved" | "corrected" | "dismissed";
+
+export interface ImportReviewDiagnostic {
+  code: string;
+  message: string;
+  field?: string;
+}
+
+export interface ImportReviewItem {
+  id: string;
+  importJobId: string;
+  householdId: string;
+  accountId: string;
+  sourceType: "csv" | "pdf";
+  sourceName: string;
+  sourceIdentity: string;
+  sourceRowIndex: number;
+  rawRow: string;
+  parserErrors: ImportReviewDiagnostic[];
+  status: ImportReviewStatus;
+  createdAtIso: string;
+  updatedAtIso: string;
+  correctedAtIso?: string;
+  correctedTransactionId?: string;
+  correctionJson?: string;
+  dismissalReason?: string;
+  dismissedAtIso?: string;
+}
+
+export interface ImportReviewCorrectionInput {
+  bookedAtIso: string;
+  amountMinor: number;
+  merchantRaw: string;
+  accountId: string;
+  currencyCode: string;
+}
+
+export interface ImportReviewCorrectionValidationError {
+  code:
+    | "INVALID_HOUSEHOLD_ID"
+    | "INVALID_ACCOUNT_ID"
+    | "INVALID_BOOKED_AT_ISO"
+    | "INVALID_AMOUNT_MINOR_INTEGER"
+    | "INVALID_MERCHANT_RAW"
+    | "INVALID_CURRENCY_CODE";
+  message: string;
+  field: string;
+}
+
+export type ImportReviewCorrectionValidationResult =
+  | { ok: true; value: ImportReviewCorrectionInput }
+  | { ok: false; errors: ImportReviewCorrectionValidationError[] };
 
 export interface MonthlyTotal {
   /** Calendar month in YYYY-MM format, e.g. "2026-05". */

@@ -6,11 +6,11 @@ import type {
 } from "../../domain/import/csvRowMapper.js";
 import {
   CSV_COLUMN_NAMES,
-  mapCsvRows,
   mapCsvRowToTransaction,
   normalizeCsvRow,
+  previewCsvRows,
 } from "../../domain/import/csvRowMapper.js";
-import type { ImportJob, Transaction } from "../../domain/types.js";
+import type { ImportJob, ImportReviewItem, Transaction } from "../../domain/types.js";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import {
   classifyDuplicateCandidates,
@@ -39,6 +39,7 @@ export interface CsvImportSuccess {
   importJobId: string;
   transactionCount: number;
   duplicateCount: number;
+  unresolvedCount: number;
 }
 
 /** Returned when a CSV import has validation errors and no transactions are persisted. */
@@ -74,7 +75,11 @@ export interface CsvImportWorkflowDependencies {
     accountId: string,
     sourceIdentity: string
   ) => Transaction[];
-  appendImportJobAndTransactions: (importJob: ImportJob, transactions: Transaction[]) => number;
+  appendImportJobAndTransactions: (
+    importJob: ImportJob,
+    transactions: Transaction[],
+    reviewItems?: ImportReviewItem[]
+  ) => number;
 }
 
 export interface CsvImportPreviewRow extends CsvRowPreview {
@@ -313,7 +318,7 @@ export function runCsvImportWorkflow(
   input: CsvImportWorkflowInput,
   dependencies: CsvImportWorkflowDependencies
 ): CsvImportResponse {
-  const result = mapCsvRows(input.rows, {
+  const preview = previewCsvRows(input.rows, {
     householdId: input.householdId,
     accountId: input.accountId,
     importJobId: input.importJobId,
@@ -323,11 +328,25 @@ export function runCsvImportWorkflow(
     sourceScope: input.sourceScope,
   });
 
-  if (result.skipped.length > 0) {
-    return normalizeCsvImportErrors(result.skipped);
-  }
-
-  const categorizedTransactions = categorizeTransactions(result.transactions, dependencies.categoryRules);
+  const skipped = preview.rows
+    .filter((row) => row.transaction === undefined && row.errors.length > 0)
+    .map((row) => ({ rowIndex: row.rowIndex, errors: row.errors }));
+  const categorizedTransactions = categorizeTransactions(preview.transactions, dependencies.categoryRules);
+  const reviewItems: ImportReviewItem[] = skipped.map(({ rowIndex, errors }) => ({
+    id: `${input.importJobId}:review:${rowIndex}`,
+    importJobId: input.importJobId,
+    householdId: input.householdId,
+    accountId: input.accountId,
+    sourceType: "csv",
+    sourceName: input.filePath,
+    sourceIdentity: input.sourceIdentity,
+    sourceRowIndex: rowIndex,
+    rawRow: JSON.stringify(input.rows[rowIndex] ?? {}),
+    parserErrors: errors.map(({ code, message, field }) => ({ code, message, field })),
+    status: "unresolved",
+    createdAtIso: input.finishedAtIso,
+    updatedAtIso: input.finishedAtIso,
+  }));
   const snapshot = dependencies.loadLedgerSnapshotData();
   const previouslyImported = dependencies.getImportedTransactionsForSource(
     "csv",
@@ -379,7 +398,8 @@ export function runCsvImportWorkflow(
     householdId: input.householdId,
     sourceType: "csv",
     sourceName: input.filePath,
-    candidateCount: result.transactions.length,
+    candidateCount: preview.transactions.length,
+    validationFailureCount: skipped.length,
     startedAtIso: input.startedAtIso,
     finishedAtIso: input.finishedAtIso,
     provenance: {
@@ -388,12 +408,13 @@ export function runCsvImportWorkflow(
       duplicateCount: skippedDuplicateCount,
     },
   };
-  const insertedCount = dependencies.appendImportJobAndTransactions(importJob, pendingTransactions);
+  const insertedCount = dependencies.appendImportJobAndTransactions(importJob, pendingTransactions, reviewItems);
 
   return {
     ok: true,
     importJobId: input.importJobId,
     transactionCount: insertedCount,
     duplicateCount: skippedDuplicateCount,
+    unresolvedCount: reviewItems.length,
   };
 }

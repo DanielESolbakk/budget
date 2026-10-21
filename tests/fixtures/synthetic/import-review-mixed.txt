@@ -1,0 +1,4 @@
+ROGALAND SPAREBANK
+Dato         Beskrivelse                              Beløp          Saldo
+28.05.2026   SYNTHETIC PDF VALID                       -12,50         100,00
+27.05.2026   SYNTHETIC PDF BROKEN                      invalid-amount 87,50

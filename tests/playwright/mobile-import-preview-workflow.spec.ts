@@ -5,19 +5,24 @@ const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogala
 const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 
 test.describe("Mobile import preview workflow", () => {
-  test("gives format choices usable width at 390px", async ({ appShell, electronApp, window }) => {
+  test("keeps the shared statement action and manual entry usable at 390px", async ({ appShell, electronApp, window }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
     await appShell.openWorkspace("Import");
 
-    const pdfChoice = window.getByRole("button", { name: "Digital PDF", exact: true });
-    const manualChoice = window.getByRole("button", { name: "Manual transaction", exact: true });
-    const pdfBounds = await pdfChoice.boundingBox();
+    const statementChoice = window.getByRole("button", { name: "Import statement", exact: true });
+    const manualChoice = window.getByRole("button", { name: "Enter transaction manually", exact: true });
+    const statementBounds = await statementChoice.boundingBox();
     const manualBounds = await manualChoice.boundingBox();
 
-    expect(pdfBounds?.width ?? 0).toBeGreaterThan(150);
-    expect(manualBounds?.width ?? 0).toBeGreaterThan(300);
+    expect(statementBounds?.width ?? 0).toBeGreaterThan(300);
+    expect(manualBounds?.width ?? 0).toBeGreaterThan(180);
+    const dimensions = await window.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
   });
 
   test("@mobile CSV preview stays readable at 390px", async ({ csvImport, electronApp, window }) => {

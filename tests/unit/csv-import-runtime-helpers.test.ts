@@ -157,6 +157,7 @@ describe("csv-import-runtime-helpers", () => {
         importJobId: "job-123",
         transactionCount: 42,
         duplicateCount: 0,
+        unresolvedCount: 0,
       };
 
       expect(success.ok).toBe(true);

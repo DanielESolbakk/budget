@@ -27,15 +27,16 @@ const BASE_OPTIONS = {
   accountId: "acc-integration",
 };
 
-const MALFORMED_STATEMENT = [
-  "ROGALAND SPAREBANK",
-  "Dato  Beskrivelse  Beløp",
-  "31.05.2026  Valid merchant  -10,00 ",
-  "31.05.2026  Broken merchant  not-a-number ",
-].join("\n");
-
 function loadFixture(): string {
   return readFileSync(FIXTURE_PATH, "utf8");
+}
+
+function loadMalformedStatementFixture(): string {
+  const lines = loadFixture().split(/\r?\n/);
+  const transactionIndex = lines.findIndex((line) => /^\s*\d{2}\.\d{2}\.\d{4}\s+/.test(line));
+  if (transactionIndex < 0) throw new Error("Synthetic statement fixture has no transaction row.");
+  lines[transactionIndex] = "27.05.2026   BROKEN STORE                              invalid         75,00";
+  return lines.join("\n");
 }
 
 function createTestLedger() {
@@ -83,6 +84,7 @@ function runWorkflow(
     {
       parserRegistry: defaultParserAdapterRegistry,
       appendImportJob: ledger.appendImportJob,
+      appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
       appendTransactions: ledger.appendTransactions,
     }
   );
@@ -247,20 +249,32 @@ describe("import job / parser adapter contract", () => {
     });
   });
 
-  describe("AC-3: malformed and unsupported sources produce explicit failures", () => {
-    it("malformed transaction rows fail before persisting jobs or candidates", () => {
+  describe("AC-3: malformed rows are reviewable while unsupported sources fail explicitly", () => {
+    it("imports valid candidates and retains malformed transaction rows for review", () => {
       const testLedger = createTestLedger();
 
       try {
-        const result = runWorkflow(MALFORMED_STATEMENT, testLedger.ledger, "job-malformed");
+        const result = runWorkflow(loadMalformedStatementFixture(), testLedger.ledger, "job-malformed");
 
-        expect(result.ok).toBe(false);
-        if (result.ok) return;
-        expect(result.errors.some((error) => error.code === "INVALID_AMOUNT_FORMAT")).toBe(true);
+        expect(result).toMatchObject({
+          ok: true,
+          transactionCount: 9,
+          unresolvedRowCount: 1,
+        });
+        if (!result.ok) return;
 
         const snapshot = testLedger.ledger.loadLedgerSnapshotData();
-        expect(snapshot.importJobs).toHaveLength(0);
-        expect(snapshot.transactions).toHaveLength(0);
+        expect(snapshot.importJobs).toHaveLength(1);
+        expect(snapshot.transactions).toHaveLength(9);
+        expect(testLedger.ledger.listImportReviewItems(BASE_OPTIONS.householdId)).toEqual([
+          expect.objectContaining({
+            rawRow: expect.stringContaining("BROKEN STORE"),
+            parserErrors: expect.arrayContaining([
+              expect.objectContaining({ code: "INVALID_AMOUNT_FORMAT" }),
+            ]),
+            status: "unresolved",
+          }),
+        ]);
       } finally {
         testLedger.close();
       }

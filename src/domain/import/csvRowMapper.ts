@@ -1,21 +1,11 @@
 import type { Transaction } from "../types.js";
 import { buildTransactionFingerprint } from "./buildTransactionFingerprint.js";
 import { assignImportedTransactionIds } from "./assignImportedTransactionIds.js";
+import { CSV_COLUMN_NAMES } from "./csvColumns.js";
+import type { CsvColumnKey, CsvColumnMapping } from "./csvColumns.js";
 
-/** Column names for the supported Norwegian bank CSV import format. */
-export const CSV_COLUMN_NAMES = {
-  executionDate: "Utført dato",
-  bookedDate: "Bokført dato",
-  description: "Beskrivelse",
-  amountIn: "Beløp inn",
-  amountOut: "Beløp ut",
-  currency: "Valuta",
-  status: "Status",
-  reference: "Melding/KID/Fakt.nr",
-} as const;
-
-export type CsvColumnKey = keyof typeof CSV_COLUMN_NAMES;
-export type CsvColumnMapping = Partial<Record<CsvColumnKey, string>>;
+export { CSV_COLUMN_NAMES } from "./csvColumns.js";
+export type { CsvColumnKey, CsvColumnMapping } from "./csvColumns.js";
 
 type CsvColumnName = (typeof CSV_COLUMN_NAMES)[keyof typeof CSV_COLUMN_NAMES];
 

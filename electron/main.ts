@@ -34,6 +34,8 @@ import {
 } from "../src/app/reviewQueue.js";
 import {
   applyCategorizationCorrection,
+  applyImportReviewCorrection,
+  dismissImportReviewItem,
   listCategorizationReviewQueue,
 } from "../src/app/reviewService.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
@@ -102,6 +104,7 @@ import {
   type Household,
   type Account,
   type ManualEntryInput,
+  type ImportReviewCorrectionInput,
   type MonthlyCategoryTargetInput,
   type SameMerchantPropagationInput,
   type SameMerchantPropagationPreviewRequest,
@@ -277,6 +280,56 @@ function parseNonEmptyString(value: unknown, fieldName: string): string {
     throw new Error(`${fieldName} must be a non-empty string.`);
   }
   return value.trim();
+}
+
+function parseImportReviewCorrectionRequest(input: unknown): {
+  reviewItemId: string;
+  correction: ImportReviewCorrectionInput;
+} {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Import review correction input must be an object.");
+  }
+  const record = input as Record<string, unknown>;
+  if (typeof record.correction !== "object" || record.correction === null || Array.isArray(record.correction)) {
+    throw new Error("Import review correction must be an object.");
+  }
+  const correction = record.correction as Record<string, unknown>;
+  if (typeof correction.bookedAtIso !== "string" ||
+    typeof correction.merchantRaw !== "string" ||
+    typeof correction.accountId !== "string" ||
+    typeof correction.currencyCode !== "string") {
+    throw new Error("Import review correction text fields must be strings.");
+  }
+  if (typeof correction.amountMinor !== "number") {
+    throw new Error("Import review correction amountMinor must be a number.");
+  }
+  return {
+    reviewItemId: parseNonEmptyString(record.reviewItemId, "reviewItemId"),
+    correction: {
+      bookedAtIso: correction.bookedAtIso,
+      amountMinor: correction.amountMinor,
+      merchantRaw: correction.merchantRaw,
+      accountId: correction.accountId,
+      currencyCode: correction.currencyCode,
+    },
+  };
+}
+
+function parseImportReviewDismissalRequest(input: unknown): {
+  reviewItemId: string;
+  reason: string;
+} {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Import review dismissal input must be an object.");
+  }
+  const record = input as Record<string, unknown>;
+  if (typeof record.reason !== "string") {
+    throw new Error("Import review dismissal reason must be a string.");
+  }
+  return {
+    reviewItemId: parseNonEmptyString(record.reviewItemId, "reviewItemId"),
+    reason: record.reason,
+  };
 }
 
 function parseSameMerchantPropagationInput(input: unknown): SameMerchantPropagationInput {
@@ -707,8 +760,7 @@ app.whenReady().then(async () => {
   });
   const backupOutputDialog = createBackupOutputDialog();
   const csvExportDialog = createCsvExportDialog();
-  const csvImportStatementDialog = createImportStatementDialog("csv");
-  const pdfImportStatementDialog = createImportStatementDialog("pdf");
+  const importStatementDialog = createImportStatementDialog();
   const restoreSnapshotDialog = createRestoreSnapshotDialog();
 
   ipcMain.handle("dashboard:getData", (event) => {
@@ -736,20 +788,11 @@ app.whenReady().then(async () => {
     return result.canceled ? null : result.filePath;
   });
 
-  ipcMain.handle("dialog:chooseCsvImportPath", async (event) => {
+  ipcMain.handle("dialog:chooseImportStatementPath", async (event) => {
     assertTrustedRenderer(event);
-    const result = await csvImportStatementDialog({
+    const result = await importStatementDialog({
       properties: ["openFile"],
-      filters: [{ name: "CSV files", extensions: ["csv"] }],
-    });
-    return result.canceled ? null : result.filePaths[0] ?? null;
-  });
-
-  ipcMain.handle("dialog:choosePdfImportPath", async (event) => {
-    assertTrustedRenderer(event);
-    const result = await pdfImportStatementDialog({
-      properties: ["openFile"],
-      filters: [{ name: "PDF files", extensions: ["pdf"] }],
+      filters: [{ name: "Supported bank statements", extensions: ["csv", "txt", "pdf"] }],
     });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
@@ -1229,6 +1272,42 @@ app.whenReady().then(async () => {
       });
     }
   );
+
+  ipcMain.handle("importReview:list", (event) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listImportReviewItems(sampleHousehold.id);
+  });
+
+  ipcMain.handle("importReview:correct", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const request = parseImportReviewCorrectionRequest(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const result = applyImportReviewCorrection(
+        localLedgerDatabase,
+        sampleHousehold.id,
+        request.reviewItemId,
+        request.correction,
+        new Date().toISOString(),
+        learnedCategoryRules
+      );
+      if (result.ok) ledgerGeneration += 1;
+      return result;
+    });
+  });
+
+  ipcMain.handle("importReview:dismiss", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const request = parseImportReviewDismissalRequest(input);
+    return ledgerOperationCoordinator.runExclusive(() =>
+      dismissImportReviewItem(
+        localLedgerDatabase,
+        sampleHousehold.id,
+        request.reviewItemId,
+        request.reason,
+        new Date().toISOString()
+      )
+    );
+  });
 
   ipcMain.handle("transaction:listReview", async (event) => {
     assertTrustedRenderer(event);

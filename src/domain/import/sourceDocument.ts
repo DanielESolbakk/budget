@@ -1,4 +1,5 @@
 export type SourceDocumentFormat = "pdf" | "text";
+export type ImportStatementFileFormat = "csv" | "pdf" | "text";
 
 export type SourceDocumentCapability =
   | "plain-text"
@@ -44,6 +45,14 @@ export interface SourceDocument {
   text: string;
   capabilities: readonly SourceDocumentCapability[];
   pages: SourceDocumentPage[];
+}
+
+export function classifyImportFilePath(filePath: string): ImportStatementFileFormat | undefined {
+  const fileName = filePath.trim().split(/[\\/]/).at(-1)?.toLowerCase() ?? "";
+  if (fileName.endsWith(".csv")) return "csv";
+  if (fileName.endsWith(".pdf")) return "pdf";
+  if (fileName.endsWith(".txt")) return "text";
+  return undefined;
 }
 
 function createTextSourceLines(sourceText: string): SourceTextLineEvidence[] {

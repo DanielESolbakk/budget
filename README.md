@@ -25,9 +25,9 @@ This starts Electron in development mode and opens the desktop window. The ledge
 
 ### Bring in transactions
 
-Open **Bring in transactions** in the app, then choose CSV, PDF, or manual entry. For CSV and PDF, enter a local file path, preview the mapped rows, and confirm only after checking the dates, merchants, and amounts. A changed file must be previewed again before confirmation. Uncategorized transactions appear in **Review what needs attention**.
+Open **Import** and choose **Import statement** to select a local `.csv`, `.txt`, or digital `.pdf` file; the app routes it to the matching import flow. Preview the rows and confirm only after checking the dates, merchants, and amounts. Valid transactions are saved to the ledger, while unresolved source rows stay out of it and appear in the local **Import review** queue, where they can be corrected into transactions or dismissed with a reason. A changed file must be previewed again before confirmation. Manual entry is a separate **Enter transaction manually** action, and uncategorized transactions appear in **Review what needs attention**.
 
-The supported PDF adapter reads Rogaland Sparebank text-based statements (including binary digital PDFs). Scanned images and unknown bank layouts are not supported yet. For a safe trial, use the synthetic fixtures in this repository:
+The current text/PDF adapter reads Rogaland Sparebank statements, including binary digital PDFs. Scanned images and unknown bank layouts are not supported yet; more bank adapters can be added later. For a safe trial, use the synthetic fixtures in this repository:
 
 - `tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv`
 - `tests/fixtures/synthetic/rogaland-2026-05-binary.pdf`

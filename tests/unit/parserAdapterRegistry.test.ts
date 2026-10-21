@@ -243,8 +243,8 @@ describe("ParserAdapterRegistry", () => {
     });
   });
 
-  describe("AC-3: malformed recognized source returns adapter validation errors", () => {
-    it("forwards malformed Rogaland input without partial candidates", () => {
+  describe("AC-3: malformed recognized source returns reviewable rows", () => {
+    it("forwards valid candidates and malformed rows through the adapter", () => {
       const result = defaultParserAdapterRegistry.parse(
         [
           "ROGALAND SPAREBANK",
@@ -254,14 +254,20 @@ describe("ParserAdapterRegistry", () => {
         BASE_OPTIONS
       );
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
       expect(result.adapterId).toBe(ROGALAND_ADAPTER_ID);
-      expect(result.errors[0]?.code).toBe("INVALID_AMOUNT_FORMAT");
-      expect((result as { candidates?: unknown }).candidates).toBeUndefined();
+      expect(result.candidates).toHaveLength(0);
+      expect(result.unresolvedRows).toEqual([
+        expect.objectContaining({
+          lineNumber: 3,
+          rawRow: expect.stringContaining("invalid-amount"),
+          errors: [expect.objectContaining({ code: "INVALID_AMOUNT_FORMAT" })],
+        }),
+      ]);
     });
 
-    it("rejects a date-like row with an unsupported date format instead of skipping it", () => {
+    it("retains a date-like row with an unsupported date format beside valid candidates", () => {
       const result = defaultParserAdapterRegistry.parse(
         [
           "ROGALAND SPAREBANK",
@@ -272,9 +278,15 @@ describe("ParserAdapterRegistry", () => {
         BASE_OPTIONS
       );
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.errors[0]?.code).toBe("INVALID_DATE_FORMAT");
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.candidates).toHaveLength(1);
+      expect(result.unresolvedRows).toEqual([
+        expect.objectContaining({
+          rawRow: expect.stringContaining("2026-05-27"),
+          errors: [expect.objectContaining({ code: "INVALID_DATE_FORMAT" })],
+        }),
+      ]);
     });
   });
 
