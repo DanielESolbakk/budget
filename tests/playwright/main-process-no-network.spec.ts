@@ -5,7 +5,7 @@ import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
-const REVIEW_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review-two-unresolved.csv");
+const REVIEW_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review/import-review-two-unresolved.csv");
 
 test.describe("Main-process transaction privacy", () => {
   async function installFetchProbe(electronApp: ElectronApplication): Promise<void> {

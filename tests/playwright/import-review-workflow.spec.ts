@@ -8,8 +8,8 @@ import { PdfImportPage } from "./pom/PdfImportPage.js";
 const CSV_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const TEXT_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
 const PDF_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
-const MIXED_CSV_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review-mixed.csv");
-const MIXED_TEXT_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review-mixed.txt");
+const MIXED_CSV_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review/import-review-mixed.csv");
+const MIXED_TEXT_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review/import-review-mixed.txt");
 
 test.describe("single statement import entry", () => {
   test.describe("CSV selection", () => {
