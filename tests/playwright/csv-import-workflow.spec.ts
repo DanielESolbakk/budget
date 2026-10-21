@@ -241,6 +241,10 @@ test.describe("CSV import renderer workflow", () => {
     const duplicateRows = previewTable.getByRole("row").filter({ hasText: "Duplicate candidate" });
     await expect(duplicateRows).toHaveCount(16);
     await expect(duplicateRows.first()).toContainText(/Matched by (source reference|transaction fingerprint)/);
+    await expect(duplicateRows.first().getByText("Compare existing transaction", { exact: true })).toBeVisible();
+    await expect(duplicateRows.first().getByText(/^Existing:/)).not.toBeVisible();
+    await duplicateRows.first().getByText("Compare existing transaction", { exact: true }).click();
+    await expect(duplicateRows.first().getByText(/^Existing:/)).toBeVisible();
     await expect(csvImport.confirmImportButton).toBeDisabled();
 
     const bulkActions = csvImport.previewRegion.getByRole("group", {
@@ -277,6 +281,7 @@ test.describe("CSV import renderer workflow", () => {
     const duplicateRow = csvImport.previewRegion.getByRole("row")
       .filter({ hasText: "Duplicate candidate" });
     await expect(duplicateRow).toHaveCount(1);
+    await duplicateRow.getByText("Compare existing transaction", { exact: true }).click();
     const layout = await duplicateRow.evaluate((row) => {
       const textRight = (selector: string): number => {
         const element = row.querySelector(selector);
@@ -483,7 +488,7 @@ test.describe("CSV import renderer workflow", () => {
 
     await csvImport.confirmImportButton.click();
     await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
-    await expect(csvImport.importSection.getByText("1 unresolved row saved for review.", { exact: true })).toBeVisible();
+    await expect(csvImport.importSection.getByText("1 row was sent to review during import.", { exact: true })).toBeVisible();
     const reviewRow = new ImportReviewPage(window).reviewQueue
       .getByRole("listitem")
       .filter({ hasText: basename(mixedValidityCsvPath) })

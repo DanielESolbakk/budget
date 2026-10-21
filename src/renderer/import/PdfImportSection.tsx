@@ -350,7 +350,7 @@ export function PdfImportSection({
             )}
             {importState.unresolvedRowCount > 0 && (
               <p className="import-excluded-summary">
-                {importState.unresolvedRowCount} unresolved row{importState.unresolvedRowCount === 1 ? "" : "s"} saved for review.
+                {importState.unresolvedRowCount} row{importState.unresolvedRowCount === 1 ? "" : "s"} {importState.unresolvedRowCount === 1 ? "was" : "were"} sent to review during import.
               </p>
             )}
           </div>
@@ -517,9 +517,12 @@ export function PdfImportSection({
                             <div className="import-duplicate-decision">
                               <strong>Duplicate candidate</strong>
                               <small>Matched by {duplicateCandidate.duplicateMatch.matchBasis === "source-reference" ? "source reference" : "transaction fingerprint"}.</small>
-                              <span className="import-duplicate-match">
-                                Existing: {duplicateCandidate.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {duplicateCandidate.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(duplicateCandidate.duplicateMatch.matchingTransaction.amountMinor)}
-                              </span>
+                              <details className="import-duplicate-match-details">
+                                <summary>Compare existing transaction</summary>
+                                <span className="import-duplicate-match">
+                                  Existing: {duplicateCandidate.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {duplicateCandidate.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(duplicateCandidate.duplicateMatch.matchingTransaction.amountMinor)}
+                                </span>
+                              </details>
                               <fieldset aria-label={`Duplicate decision for row ${rowIndex + 1}`}>
                                 <label><input type="radio" name={`pdf-duplicate-${rowIndex}`} value="skip" checked={duplicateDecisions[rowIndex] === "skip"} onChange={() => setDuplicateDecisions((current) => ({ ...current, [rowIndex]: "skip" }))} />Skip duplicate</label>
                                 <label><input type="radio" name={`pdf-duplicate-${rowIndex}`} value="import" checked={duplicateDecisions[rowIndex] === "import"} onChange={() => setDuplicateDecisions((current) => ({ ...current, [rowIndex]: "import" }))} />Import duplicate</label>

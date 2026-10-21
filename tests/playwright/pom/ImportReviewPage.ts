@@ -19,6 +19,22 @@ export class ImportReviewPage {
     await this.page.getByRole("button", { name: "Import statement", exact: true }).click();
   }
 
+  async openCorrection(rowNumber: number): Promise<void> {
+    const disclosure = this.reviewRow(rowNumber).getByText("Correct transaction", { exact: true });
+    const isOpen = await disclosure.evaluate((element) =>
+      element.parentElement instanceof HTMLDetailsElement && element.parentElement.open
+    );
+    if (!isOpen) await disclosure.click();
+  }
+
+  async openDismissal(rowNumber: number): Promise<void> {
+    const disclosure = this.reviewRow(rowNumber).getByText("Dismiss this row", { exact: true });
+    const isOpen = await disclosure.evaluate((element) =>
+      element.parentElement instanceof HTMLDetailsElement && element.parentElement.open
+    );
+    if (!isOpen) await disclosure.click();
+  }
+
   async correctRow(
     rowNumber: number,
     correction: {
@@ -30,6 +46,7 @@ export class ImportReviewPage {
     }
   ): Promise<void> {
     const row = this.reviewRow(rowNumber);
+    await this.openCorrection(rowNumber);
     await row.getByLabel("Transaction date", { exact: true }).fill(correction.date);
     await row.getByLabel("Amount", { exact: true }).fill(correction.amount);
     await row.getByLabel("Merchant", { exact: true }).fill(correction.merchant);
@@ -40,6 +57,7 @@ export class ImportReviewPage {
 
   async dismissRow(rowNumber: number, reason: string): Promise<void> {
     const row = this.reviewRow(rowNumber);
+    await this.openDismissal(rowNumber);
     await row.getByLabel("Reason for dismissal (required)", { exact: true }).fill(reason);
     await row.getByRole("button", { name: "Dismiss row", exact: true }).click();
   }

@@ -514,7 +514,7 @@ export function CsvImportSection({
             </p>
             {importState.unresolvedCount > 0 && (
               <p className="import-excluded-summary">
-                {importState.unresolvedCount} unresolved row{importState.unresolvedCount === 1 ? "" : "s"} saved for review.
+                {importState.unresolvedCount} row{importState.unresolvedCount === 1 ? "" : "s"} {importState.unresolvedCount === 1 ? "was" : "were"} sent to review during import.
               </p>
             )}
           </div>
@@ -656,9 +656,12 @@ export function CsvImportSection({
                             <div className="import-duplicate-decision">
                               <strong>Duplicate candidate</strong>
                               <small>Matched by {row.duplicateMatch.matchBasis === "source-reference" ? "source reference" : "transaction fingerprint"}.</small>
-                              <span className="import-duplicate-match">
-                                Existing: {row.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {row.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(row.duplicateMatch.matchingTransaction.amountMinor)}
-                              </span>
+                              <details className="import-duplicate-match-details">
+                                <summary>Compare existing transaction</summary>
+                                <span className="import-duplicate-match">
+                                  Existing: {row.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {row.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(row.duplicateMatch.matchingTransaction.amountMinor)}
+                                </span>
+                              </details>
                               <fieldset aria-label={`Duplicate decision for row ${row.rowIndex + 1}`}>
                                 <label>
                                   <input
