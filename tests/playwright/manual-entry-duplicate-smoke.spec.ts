@@ -75,6 +75,31 @@ test.describe("Manual entry and duplicate detection", () => {
     await expect(dashboard.expenseValue).toHaveText(afterFirstEntryExpenses ?? "");
   });
 
+  test("duplicate entry recovery opens and focuses the ledger at compact width", async ({ electronApp, manualEntry: entry, window }) => {
+    await entry.submitEntry(manualEntry);
+    await expect(entry.successStatus).toContainText("Added Manual Playwright Entry to your ledger.");
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+    await entry.submitEntry(manualEntry);
+    await expect(entry.resultAlert).toContainText("This transaction is already in your ledger.");
+
+    const openLedgerButton = entry.entrySection.getByRole("button", { name: "Open ledger", exact: true });
+    await expect(openLedgerButton).toBeVisible();
+    const openLedgerBounds = await openLedgerButton.boundingBox();
+    expect(openLedgerBounds?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await expect(openLedgerButton).toBeFocused();
+    await expect(openLedgerButton).toBeInViewport();
+    await openLedgerButton.click();
+
+    const ledgerSection = window.getByRole("region", { name: "Ledger", exact: true });
+    const merchantFilter = ledgerSection.getByRole("textbox", { name: "Filter merchant" });
+    await expect(ledgerSection).toBeVisible();
+    await expect(merchantFilter).toBeFocused();
+    await expect(merchantFilter).toBeInViewport();
+  });
+
   test("Scenario 3: malformed optional category data is rejected by the IPC boundary", async ({ window: page }) => {
     const response = await page.evaluate(async () =>
       window.budgetApi.import.addManualTransaction({

@@ -32,6 +32,7 @@ export function App(): React.JSX.Element {
     () => new Set(["review"])
   );
   const [reviewQueueFocusRequest, setReviewQueueFocusRequest] = React.useState(0);
+  const [ledgerFocusRequest, setLedgerFocusRequest] = React.useState(0);
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [isChangingMonth, setIsChangingMonth] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -143,6 +144,11 @@ export function App(): React.JSX.Element {
     setReviewQueueFocusRequest((request) => request + 1);
   }
 
+  function openLedger(): void {
+    openWorkspace("transactions");
+    setLedgerFocusRequest((request) => request + 1);
+  }
+
   function handleSetupComplete(): void {
     setSetupRequired(false);
     setRefreshCounter((counter) => counter + 1);
@@ -247,6 +253,7 @@ export function App(): React.JSX.Element {
               isActive={activeWorkspace === "transactions"}
               refreshKey={refreshCounter}
               reviewQueueFocusRequest={reviewQueueFocusRequest}
+              ledgerFocusRequest={ledgerFocusRequest}
               onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
             />
           )}
@@ -255,7 +262,7 @@ export function App(): React.JSX.Element {
               isActive={activeWorkspace === "import"}
               refreshKey={refreshCounter}
               onImportSuccess={() => setRefreshCounter((counter) => counter + 1)}
-              onOpenLedger={() => openWorkspace("transactions")}
+              onOpenLedger={openLedger}
               onReviewUncategorized={openReviewQueue}
             />
           )}

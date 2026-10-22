@@ -6,6 +6,7 @@ interface TransactionsWorkspaceProps {
   isActive: boolean;
   refreshKey: number;
   reviewQueueFocusRequest: number;
+  ledgerFocusRequest: number;
   onCategorySaved: () => void;
 }
 
@@ -13,8 +14,10 @@ export function TransactionsWorkspace({
   isActive,
   refreshKey,
   reviewQueueFocusRequest,
+  ledgerFocusRequest,
   onCategorySaved,
 }: TransactionsWorkspaceProps): React.JSX.Element {
+  const workspaceRef = React.useRef<HTMLElement>(null);
   const [uncategorizedQueueState, setUncategorizedQueueState] = React.useState<UncategorizedQueueState>({
     count: 0,
     isReady: false,
@@ -27,8 +30,27 @@ export function TransactionsWorkspace({
     }
   }, [reviewQueueFocusRequest]);
 
+  React.useEffect(() => {
+    if (ledgerFocusRequest === 0) return;
+    const workspace = workspaceRef.current;
+    if (workspace === null) return;
+
+    const merchantFilter = workspace.querySelector<HTMLInputElement>(
+      'section[aria-label="Ledger"] input[aria-label="Filter merchant"]'
+    );
+    if (merchantFilter === null) return;
+
+    merchantFilter.scrollIntoView({ block: "nearest" });
+    merchantFilter.focus({ preventScroll: true });
+  }, [ledgerFocusRequest]);
+
   return (
-    <section className="destination-workspace" aria-label="Transactions workspace" hidden={!isActive}>
+    <section
+      ref={workspaceRef}
+      className="destination-workspace"
+      aria-label="Transactions workspace"
+      hidden={!isActive}
+    >
       <div className="destination-heading">
         <h2>Transactions</h2>
         <p>Search the ledger and resolve entries that still need a category.</p>
@@ -55,9 +77,7 @@ export function TransactionsWorkspace({
           onUncategorizedQueueStateChange={setUncategorizedQueueState}
           focusFirstRequest={focusFirstRequest}
         />
-        <LedgerSection
-          refreshKey={refreshKey}
-        />
+        <LedgerSection refreshKey={refreshKey} />
       </div>
     </section>
   );

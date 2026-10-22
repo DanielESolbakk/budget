@@ -59,6 +59,7 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
   const [formValues, setFormValues] = React.useState<ManualEntryFormValues>(() => createInitialFormValues());
   const [entryState, setEntryState] = React.useState<ManualEntryState>({ status: "idle" });
   const [accountRetryKey, setAccountRetryKey] = React.useState(0);
+  const duplicateActionRef = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -84,6 +85,15 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
       active = false;
     };
   }, [accountRetryKey]);
+
+  React.useEffect(() => {
+    if (entryState.status !== "duplicate") return;
+    const openLedgerButton = duplicateActionRef.current;
+    if (openLedgerButton === null) return;
+
+    openLedgerButton.scrollIntoView({ block: "nearest" });
+    openLedgerButton.focus({ preventScroll: true });
+  }, [entryState.status]);
 
   function updateField(field: keyof ManualEntryFormValues, value: string): void {
     setFormValues((current) => ({ ...current, [field]: value }));
@@ -226,10 +236,15 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
         </div>
       )}
       {entryState.status === "duplicate" && (
-        <div role="alert">
-          <p>This transaction is already in your ledger.</p>
-          <p>Check the Ledger section to review the existing entry before adding another one.</p>
-        </div>
+        <>
+          <div role="alert">
+            <p>This transaction is already in your ledger.</p>
+            <p>Check the Ledger section to review the existing entry before adding another one.</p>
+          </div>
+          <button ref={duplicateActionRef} type="button" onClick={onOpenLedger}>
+            Open ledger
+          </button>
+        </>
       )}
       {entryState.status === "validation" && (
         <div role="alert">
