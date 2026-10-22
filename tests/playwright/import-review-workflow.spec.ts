@@ -65,12 +65,12 @@ test.describe("single statement import entry", () => {
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
 
-      await expect(window.getByRole("button", { name: "Import statement", exact: true })).toBeVisible();
+      await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
       await expect(window.getByRole("button", { name: "CSV statement", exact: true })).toHaveCount(0);
       await importReview.chooseStatementFile();
 
       await expect(window.getByRole("region", { name: "CSV Import", exact: true })).toBeVisible();
-      await expect(window.getByText(CSV_PATH, { exact: true })).toBeVisible();
+      await expect(window.getByText(basename(CSV_PATH), { exact: true })).toBeVisible();
     });
   });
 
@@ -81,7 +81,7 @@ test.describe("single statement import entry", () => {
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
 
-      await expect(window.getByRole("button", { name: "Import statement", exact: true })).toBeVisible();
+      await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
       await importReview.chooseStatementFile();
 
       await expect(window.getByRole("region", { name: "Digital statement import", exact: true })).toBeVisible();
@@ -96,7 +96,7 @@ test.describe("single statement import entry", () => {
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
 
-      await expect(window.getByRole("button", { name: "Import statement", exact: true })).toBeVisible();
+      await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
       await importReview.chooseStatementFile();
 
       await expect(window.getByRole("region", { name: "Digital statement import", exact: true })).toBeVisible();
@@ -125,6 +125,7 @@ test.describe("single statement import entry", () => {
       await expect(csvImport.errorAlert).not.toBeVisible();
       await expect(csvImport.importSection.getByText("1 row was sent to review during import.", { exact: true })).toBeVisible();
 
+      await importReview.openReviewQueue();
       const reviewQueue = importReview.reviewQueue;
       await expect(reviewQueue).toBeVisible();
       const reviewRow = importReview.reviewRow(2);
@@ -193,6 +194,7 @@ test.describe("single statement import entry", () => {
       await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
       await expect(csvImport.importSection.getByText("1 row was sent to review during import.", { exact: true })).toBeVisible();
 
+      await importReview.openReviewQueue();
       const reviewRow = importReview.reviewRow(2);
       await importReview.openDismissal(2);
       await expect(reviewRow.getByRole("button", { name: "Dismiss row", exact: true })).toBeDisabled();
@@ -253,10 +255,8 @@ test.describe("single statement import entry", () => {
       await expect(importReview.reviewQueue).toBeFocused();
       await expect(importReview.reviewQueue).toHaveCSS("outline-width", "3px");
       await expect(importReview.reviewRow(2)).toBeVisible();
-      await expect(csvImport.importSection.getByRole("button", {
-        name: "Review uncategorized transactions",
-        exact: true,
-      })).toBeVisible();
+      await expect(window.getByRole("button", { name: "Import row review", exact: true }))
+        .toHaveAttribute("aria-pressed", "true");
     });
 
     test("keeps an unsaved correction draft when returning to the import workspace", async ({
@@ -273,6 +273,7 @@ test.describe("single statement import entry", () => {
       await csvImport.confirmImportButton.click();
       await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
 
+      await importReview.openReviewQueue();
       await importReview.openCorrection(2);
       const merchantInput = importReview.reviewRow(2).getByLabel("Merchant", { exact: true });
       await merchantInput.fill("UNSAVED CORRECTION DRAFT");
@@ -296,8 +297,9 @@ test.describe("single statement import entry", () => {
       await csvImport.importButton.click();
       await expect(csvImport.previewRegion).toBeVisible();
       await csvImport.confirmImportButton.click();
-      await expect(csvImport.successStatus).toContainText("Added 0 transactions to your ledger.");
+      await expect(csvImport.successStatus).toContainText("No new transactions were added.");
 
+      await importReview.openReviewQueue();
       const firstRow = importReview.reviewRow(2);
       const secondRow = importReview.reviewRow(3);
       await expect(firstRow.getByLabel("Transaction date", { exact: true })).not.toBeVisible();
@@ -323,6 +325,7 @@ test.describe("single statement import entry", () => {
       await expect(csvImport.previewRegion).toBeVisible();
       await csvImport.confirmImportButton.click();
       await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
+      await importReview.openReviewQueue();
       await importReview.openCorrection(2);
       await importReview.reviewRow(2).getByLabel("Merchant", { exact: true }).fill("DRAFT SURVIVES RESTART");
 
@@ -340,6 +343,7 @@ test.describe("single statement import entry", () => {
         await restartedWindow.waitForLoadState("domcontentloaded");
         await new AppShellPage(restartedWindow).openWorkspace("Import");
         const restartedReview = new ImportReviewPage(restartedWindow);
+        await restartedReview.openReviewQueue();
         await expect(restartedReview.reviewRow(2)).toContainText("SYNTHETIC UNRESOLVED ROW");
         await restartedReview.openCorrection(2);
         await expect(restartedReview.reviewRow(2).getByLabel("Merchant", { exact: true }))
@@ -370,6 +374,7 @@ test.describe("single statement import entry", () => {
         await expect(statementImport.successStatus).toContainText("Added 1 transaction to your ledger.");
         await expect(statementImport.importSection.getByText("1 row was sent to review during import.", { exact: true })).toBeVisible();
 
+        await importReview.openReviewQueue();
         const reviewRow = importReview.reviewRow(4);
         await expect(reviewRow).toContainText("SYNTHETIC PDF BROKEN");
         await importReview.correctRow(4, {
@@ -483,6 +488,7 @@ test.describe("single statement import entry", () => {
       await csvImport.confirmImportButton.click();
 
       const importReview = new ImportReviewPage(window);
+      await importReview.openReviewQueue();
       const reviewRow = importReview.reviewRow(2);
       await importReview.openCorrection(2);
       await expect(reviewRow.getByLabel("Transaction date", { exact: true })).toBeVisible();

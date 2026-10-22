@@ -1,6 +1,10 @@
 import React from "react";
 import type { Account } from "../../domain/types.js";
-import type { ImportJobHistoryEntry, UndoImportJobResult } from "../../domain/import/importJobHistory.js";
+import type {
+  ImportJobHistoryEntry,
+  RetainedImportTransaction,
+  UndoImportJobResult,
+} from "../../domain/import/importJobHistory.js";
 
 interface ImportHistorySectionProps {
   refreshKey: number;
@@ -19,8 +23,12 @@ function duplicateLabel(count: number): string {
   return `${count} skipped`;
 }
 
-function undoSummary(result: UndoImportJobResult): string {
-  return `Removed ${result.removedCount} transaction${result.removedCount === 1 ? "" : "s"}. Retained ${result.retainedCount} changed transaction${result.retainedCount === 1 ? "" : "s"}.`;
+function retainedAmount(transaction: RetainedImportTransaction): string {
+  const amount = new Intl.NumberFormat("nb-NO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(transaction.amountMinor / 100);
+  return `${amount} ${transaction.currencyCode}`;
 }
 
 export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistorySectionProps): React.JSX.Element {
@@ -32,6 +40,8 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
   const [isUndoPending, setIsUndoPending] = React.useState(false);
   const [undoError, setUndoError] = React.useState<string | null>(null);
   const [undoResult, setUndoResult] = React.useState<UndoImportJobResult | null>(null);
+  const confirmationRef = React.useRef<HTMLDivElement | null>(null);
+  const confirmButtonRef = React.useRef<HTMLButtonElement | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -52,6 +62,12 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
       active = false;
     };
   }, [refreshKey, reloadKey]);
+
+  React.useEffect(() => {
+    if (pendingUndo === null) return;
+    confirmationRef.current?.scrollIntoView({ block: "nearest" });
+    confirmButtonRef.current?.focus({ preventScroll: true });
+  }, [pendingUndo]);
 
   async function confirmUndo(): Promise<void> {
     if (pendingUndo === null) return;
@@ -102,7 +118,8 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                 const fileName = sourceFileName(entry.sourceName);
                 const accountName = accounts.find((account) => account.id === entry.accountId)?.name ?? entry.accountId ?? "Unavailable";
                 return (
-                  <tr key={entry.id}>
+                  <React.Fragment key={entry.id}>
+                  <tr>
                     <td data-label="Completed">{entry.finishedAtIso ?? entry.startedAtIso}</td>
                     <td data-label="Format">{entry.sourceType.toUpperCase()}</td>
                     <td data-label="Source" title={entry.sourceName}>{fileName}</td>
@@ -121,32 +138,104 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                             onClick={() => {
                               setPendingUndo(entry);
                               setUndoError(null);
+                              setUndoResult(null);
                             }}
                             aria-label={`Undo import ${fileName}`}
                           >
-                            Undo
+                            Undo import
                           </button>
                         )}
                     </td>
                   </tr>
+                  {pendingUndo?.id === entry.id && (
+                    <tr className="import-history-detail-row">
+                      <td colSpan={6}>
+                        <div
+                          ref={confirmationRef}
+                          className="import-undo-confirmation"
+                          role="group"
+                          aria-label="Undo import confirmation"
+                          aria-describedby={`import-undo-explanation-${entry.id}`}
+                        >
+                          <strong>Undo {fileName}?</strong>
+                          <p id={`import-undo-explanation-${entry.id}`}>
+                            This removes unchanged transactions from this import. Transactions changed after import, or whose original values cannot be verified, will stay in your ledger. Categorization rules are not removed.
+                          </p>
+                          {undoError !== null && <p role="alert">Undo failed: {undoError}</p>}
+                          <div>
+                            <button
+                              ref={confirmButtonRef}
+                              type="button"
+                              disabled={isUndoPending}
+                              onClick={() => void confirmUndo()}
+                            >
+                              Confirm undo
+                            </button>
+                            <button
+                              type="button"
+                              className="import-secondary-action"
+                              disabled={isUndoPending}
+                              onClick={() => {
+                                setPendingUndo(null);
+                                setUndoError(null);
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {(undoResult?.importJobId === entry.id || entry.undoneAtIso !== null) && (
+                    <tr className="import-history-detail-row">
+                      <td colSpan={6}>
+                        <div className="import-undo-result" role="status" aria-label="Import undo result">
+                          <strong>Undo complete</strong>
+                          <p>
+                            {undoResult?.importJobId === entry.id ? undoResult.removedCount : entry.undoRemovedCount} transaction{(undoResult?.importJobId === entry.id ? undoResult.removedCount : entry.undoRemovedCount) === 1 ? "" : "s"} removed.
+                          </p>
+                          {(undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount) === 0 && (
+                            <p>All transactions from this import were removed.</p>
+                          )}
+                          {(undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount) > 0 && (
+                            <>
+                              <p>
+                                {(undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount)} transaction{(undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount) === 1 ? "" : "s"} kept because they were changed after import or could not be verified.
+                              </p>
+                              <details open={undoResult?.importJobId === entry.id}>
+                                <summary>
+                                  View retained transactions ({undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount})
+                                </summary>
+                                <ul>
+                                  {(undoResult?.importJobId === entry.id
+                                    ? undoResult.retainedTransactions
+                                    : entry.retainedTransactions
+                                  ).map((transaction) => (
+                                    <li key={transaction.id}>
+                                      <span>{transaction.bookedAtIso.slice(0, 10)} · {transaction.merchantRaw} · {retainedAmount(transaction)}</span>
+                                      <small>
+                                        {transaction.reason === "changed-after-import"
+                                          ? "Changed after import; kept to protect your edits."
+                                          : "Original values could not be verified; kept safely."}
+                                      </small>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
           </table>
         </div>
       )}
-      {pendingUndo !== null && (
-        <div className="import-undo-confirmation" role="group" aria-label="Undo import confirmation">
-          <strong>Undo {sourceFileName(pendingUndo.sourceName)}?</strong>
-          <p>Only unchanged transactions from this import will be removed. Later category corrections and unrelated transactions will be kept; categorization rules are not removed.</p>
-          <div>
-            <button type="button" disabled={isUndoPending} onClick={() => void confirmUndo()}>Confirm undo</button>
-            <button type="button" className="import-secondary-action" disabled={isUndoPending} onClick={() => setPendingUndo(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-      {undoError !== null && <p role="alert">Undo failed: {undoError}</p>}
-      {undoResult !== null && <p role="status" aria-label="Import undo result">{undoSummary(undoResult)}</p>}
     </section>
   );
 }

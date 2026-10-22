@@ -11,12 +11,19 @@ export class ImportReviewPage {
     return this.reviewQueue.getByText(/^Reviewed rows \(\d+\)$/, { exact: false });
   }
 
+  async openReviewQueue(): Promise<void> {
+    const navigationButton = this.page.getByRole("button", { name: "Import row review", exact: true });
+    if (await navigationButton.getAttribute("aria-pressed") !== "true") {
+      await navigationButton.click();
+    }
+  }
+
   reviewRow(rowNumber: number) {
     return this.reviewQueue.getByRole("group", { name: `Import review row ${rowNumber}`, exact: true });
   }
 
   async chooseStatementFile(): Promise<void> {
-    await this.page.getByRole("button", { name: "Import statement", exact: true }).click();
+    await this.page.getByRole("button", { name: "Choose statement file", exact: true }).click();
   }
 
   async openCorrection(rowNumber: number): Promise<void> {

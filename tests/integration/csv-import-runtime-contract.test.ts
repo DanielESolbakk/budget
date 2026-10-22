@@ -98,12 +98,28 @@ interface TestImportJobHistoryStore {
     importedCount: number;
     duplicateCount: number;
     undoAvailable: boolean;
+    retainedTransactions: Array<{
+      id: string;
+      bookedAtIso: string;
+      amountMinor: number;
+      merchantRaw: string;
+      currencyCode: string;
+      reason: "changed-after-import" | "baseline-unavailable";
+    }>;
   }>;
   undoImportJob: (importJobId: string) => {
     importJobId: string;
     removedCount: number;
     retainedCount: number;
     alreadyUndone: boolean;
+    retainedTransactions: Array<{
+      id: string;
+      bookedAtIso: string;
+      amountMinor: number;
+      merchantRaw: string;
+      currencyCode: string;
+      reason: "changed-after-import" | "baseline-unavailable";
+    }>;
   };
 }
 
@@ -294,6 +310,27 @@ describe("csv-import-runtime-contract", () => {
         removedCount: 1,
         retainedCount: 1,
         alreadyUndone: false,
+        retainedTransactions: [{
+          id: correctedTransaction.id,
+          bookedAtIso: correctedTransaction.bookedAtIso,
+          amountMinor: correctedTransaction.amountMinor,
+          merchantRaw: correctedTransaction.merchantRaw,
+          currencyCode: "NOK",
+          reason: "changed-after-import",
+        }],
+      });
+      expect(historyStore.listImportJobHistory?.(SAMPLE_HOUSEHOLD.id)?.[0]).toMatchObject({
+        undoneAtIso: expect.any(String),
+        undoRemovedCount: 1,
+        undoRetainedCount: 1,
+        retainedTransactions: [{
+          id: correctedTransaction.id,
+          bookedAtIso: correctedTransaction.bookedAtIso,
+          amountMinor: correctedTransaction.amountMinor,
+          merchantRaw: correctedTransaction.merchantRaw,
+          currencyCode: "NOK",
+          reason: "changed-after-import",
+        }],
       });
       expect(ledger.loadLedgerSnapshotData().transactions).toEqual([
         { ...correctedTransaction, categoryId: "groceries" },

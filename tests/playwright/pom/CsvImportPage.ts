@@ -31,7 +31,9 @@ export class CsvImportPage {
   }
 
   get chooseFileButton() {
-    return this.page.getByRole("button", { name: "Import statement", exact: true });
+    return this.page.getByRole("button", {
+      name: /^(Choose statement file|Change statement file|Import another statement)$/,
+    });
   }
 
   /** The Import CSV action button. */
@@ -46,16 +48,14 @@ export class CsvImportPage {
   async enterFilePath(filePath: string): Promise<void> {
     const advancedPathEntry = this.importSection.locator("details.import-path-entry");
     if (await advancedPathEntry.getAttribute("open") === null) {
-      await advancedPathEntry.getByText("Advanced: enter a file path", { exact: true }).click();
+      await advancedPathEntry.locator("summary").click();
     }
     await this.filePathInput.fill(filePath);
   }
 
   async clearFilePath(): Promise<void> {
     await this.enterFilePath("");
-    await this.importSection.locator("details.import-path-entry")
-      .getByText("Advanced: enter a file path", { exact: true })
-      .click();
+    await this.importSection.locator("details.import-path-entry").locator("summary").click();
   }
 
   get previewRegion() {

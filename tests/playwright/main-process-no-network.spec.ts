@@ -61,9 +61,10 @@ test.describe("Main-process transaction privacy", () => {
     await expect(csvImport.previewRegion).toBeVisible();
     await expect(csvImport.confirmImportButton).toBeEnabled();
     await csvImport.confirmImportButton.click();
-    await expect(csvImport.successStatus).toContainText("Added 0 transactions to your ledger.");
+    await expect(csvImport.successStatus).toContainText("No new transactions were added.");
 
     const importReview = new ImportReviewPage(window);
+    await importReview.openReviewQueue();
     const reviewItems = importReview.reviewQueue
       .getByRole("list", { name: "Import review items" })
       .getByRole("listitem");

@@ -7,6 +7,7 @@ import { PdfImportSection } from "../import/PdfImportSection.js";
 import { classifyImportFilePath } from "../../domain/import/sourceDocument.js";
 
 type ImportFormat = "csv" | "pdf" | "manual";
+type ImportWorkspaceView = "new-import" | "review" | "history";
 
 interface ImportWorkspaceProps {
   isActive: boolean;
@@ -24,6 +25,8 @@ export function ImportWorkspace({
   onReviewUncategorized,
 }: ImportWorkspaceProps): React.JSX.Element {
   const [selectedFormat, setSelectedFormat] = React.useState<ImportFormat | null>(null);
+  const [activeView, setActiveView] = React.useState<ImportWorkspaceView>("new-import");
+  const [hasStatementImportCompleted, setHasStatementImportCompleted] = React.useState(false);
   const [visitedFormats, setVisitedFormats] = React.useState<Set<ImportFormat>>(() => new Set());
   const [selectedFilePath, setSelectedFilePath] = React.useState("");
   const [fileSelectionId, setFileSelectionId] = React.useState(0);
@@ -44,6 +47,8 @@ export function ImportWorkspace({
       setFileSelectionId((current) => current + 1);
       setSelectionError(null);
       setSelectedFormat(importFormat);
+      setActiveView("new-import");
+      setHasStatementImportCompleted(false);
       setVisitedFormats((visited) => new Set(visited).add(importFormat));
     } catch (error: unknown) {
       setSelectionError(error instanceof Error ? error.message : "Could not open the statement file picker.");
@@ -52,51 +57,107 @@ export function ImportWorkspace({
 
   function selectManualEntry(): void {
     setSelectedFormat("manual");
+    setActiveView("new-import");
+    setHasStatementImportCompleted(false);
     setVisitedFormats((visited) => new Set(visited).add("manual"));
   }
 
-  function focusImportReview(): void {
-    document.getElementById("import-review-queue")?.focus();
+  function handleStatementImportSuccess(): void {
+    setHasStatementImportCompleted(true);
+    onImportSuccess();
   }
+
+  function focusImportReview(): void {
+    setActiveView("review");
+    window.requestAnimationFrame(() => document.getElementById("import-review-queue")?.focus());
+  }
+
+  const headingDescription = activeView === "new-import"
+    ? hasStatementImportCompleted
+      ? "Import complete. The summary below shows what was added and what stayed unchanged."
+      : "Choose a statement, review the rows, then decide what to add."
+    : activeView === "review"
+      ? "Correct or dismiss rows that could not be imported as transactions."
+      : "Review past imports and see what an undo will remove or keep.";
 
   return (
     <section className="destination-workspace" aria-label="Import workspace" hidden={!isActive}>
       <div className="destination-heading">
         <h2>Import</h2>
-        <p>Choose a statement to preview its rows before anything is saved.</p>
+        <p>{headingDescription}</p>
       </div>
-      <div className="import-file-source">
+      <div className="import-workspace-switcher" role="group" aria-label="Import sections">
         <button
-          id="import-statement-picker-button"
           type="button"
-          className="import-file-choice-primary"
-          aria-describedby="import-statement-file-help"
-          onClick={() => void chooseStatementFile()}
+          aria-pressed={activeView === "new-import"}
+          onClick={() => setActiveView("new-import")}
         >
-          Import statement
+          New import
         </button>
-        <p id="import-statement-file-help">
-          Select a local .csv, .txt, or digital .pdf statement. Scanned-image PDFs are not supported.
-        </p>
+        <button
+          type="button"
+          aria-pressed={activeView === "review"}
+          onClick={() => setActiveView("review")}
+        >
+          Import row review
+        </button>
+        <button
+          type="button"
+          aria-pressed={activeView === "history"}
+          onClick={() => setActiveView("history")}
+        >
+          Import history
+        </button>
       </div>
-      {selectionError !== null && <p role="alert">{selectionError}</p>}
-      <button
-        id="manual-entry-choice"
-        type="button"
-        className="import-secondary-action"
-        onClick={selectManualEntry}
-      >
-        Enter transaction manually
-      </button>
-      {selectedFormat === null && (
-        <p className="empty-state">Choose a statement file or enter a transaction manually.</p>
-      )}
+      {activeView === "new-import" && (
+        <div className="import-new-panel">
+          {(selectedFormat === null || selectedFormat === "manual") && (
+            <div className="import-file-source">
+              <button
+                id="import-statement-picker-button"
+                type="button"
+                className="import-file-choice-primary"
+                aria-describedby="import-statement-file-help"
+                onClick={() => void chooseStatementFile()}
+              >
+                {selectedFormat === "manual" ? "Choose a statement file instead" : "Choose statement file"}
+              </button>
+              <p id="import-statement-file-help">
+                Choose a local .csv, .txt, or digital .pdf statement. Scanned-image PDFs are not supported.
+              </p>
+            </div>
+          )}
+          {selectionError !== null && <p role="alert">{selectionError}</p>}
+          {selectedFormat === null && (
+            <>
+              <button
+                id="manual-entry-choice"
+                type="button"
+                className="import-secondary-action"
+                onClick={selectManualEntry}
+              >
+                Enter transaction manually
+              </button>
+              <p className="empty-state">A statement import is saved only when you confirm it.</p>
+            </>
+          )}
+          {(selectedFormat === "pdf" || selectedFormat === "csv") && !hasStatementImportCompleted && (
+            <button
+              id="manual-entry-choice"
+              type="button"
+              className="import-manual-entry-link"
+              onClick={selectManualEntry}
+            >
+              Enter a transaction manually instead
+            </button>
+          )}
       {visitedFormats.has("csv") && (
         <div className="import-format-content" hidden={selectedFormat !== "csv"}>
           <CsvImportSection
             initialFilePath={selectedFilePath}
             fileSelectionId={fileSelectionId}
-            onImportSuccess={onImportSuccess}
+            onChooseFile={chooseStatementFile}
+            onImportSuccess={handleStatementImportSuccess}
             onOpenLedger={onOpenLedger}
             onReviewUncategorized={onReviewUncategorized}
             onReviewImportItems={focusImportReview}
@@ -108,7 +169,8 @@ export function ImportWorkspace({
           <PdfImportSection
             initialFilePath={selectedFilePath}
             fileSelectionId={fileSelectionId}
-            onImportSuccess={onImportSuccess}
+            onChooseFile={chooseStatementFile}
+            onImportSuccess={handleStatementImportSuccess}
             onOpenLedger={onOpenLedger}
             onReviewUncategorized={onReviewUncategorized}
             onReviewImportItems={focusImportReview}
@@ -124,12 +186,14 @@ export function ImportWorkspace({
           />
         </div>
       )}
-      <ImportReviewSection
-        isActive={isActive}
-        refreshKey={refreshKey}
-        onReviewChange={onImportSuccess}
-      />
-      <ImportHistorySection refreshKey={refreshKey} onUndoSuccess={onImportSuccess} />
+        </div>
+      )}
+      {activeView === "review" && isActive && (
+        <ImportReviewSection isActive={isActive} refreshKey={refreshKey} onReviewChange={onImportSuccess} />
+      )}
+      {activeView === "history" && isActive && (
+        <ImportHistorySection refreshKey={refreshKey} onUndoSuccess={onImportSuccess} />
+      )}
     </section>
   );
 }

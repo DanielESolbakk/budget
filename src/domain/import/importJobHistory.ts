@@ -1,5 +1,16 @@
 import type { ImportJob } from "../types.js";
 
+export type ImportUndoRetentionReason = "changed-after-import" | "baseline-unavailable";
+
+export interface RetainedImportTransaction {
+  id: string;
+  bookedAtIso: string;
+  amountMinor: number;
+  merchantRaw: string;
+  currencyCode: string;
+  reason: ImportUndoRetentionReason;
+}
+
 export interface ImportJobHistoryEntry {
   id: string;
   householdId: string;
@@ -16,6 +27,7 @@ export interface ImportJobHistoryEntry {
   undoneAtIso: string | null;
   undoRemovedCount: number;
   undoRetainedCount: number;
+  retainedTransactions: RetainedImportTransaction[];
 }
 
 export interface UndoImportJobResult {
@@ -23,4 +35,5 @@ export interface UndoImportJobResult {
   removedCount: number;
   retainedCount: number;
   alreadyUndone: boolean;
+  retainedTransactions: RetainedImportTransaction[];
 }

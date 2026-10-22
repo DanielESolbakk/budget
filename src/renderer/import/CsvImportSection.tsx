@@ -15,7 +15,7 @@ type ImportState =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "cancelled" }
-  | { status: "success"; importJobId: string; transactionCount: number; duplicateCount: number; unresolvedCount: number }
+  | { status: "success"; importJobId: string; sourceName: string; accountName: string; transactionCount: number; duplicateCount: number; unresolvedCount: number }
   | { status: "error"; message: string }
   | { status: "validation"; errors: CsvImportResponse & { ok: false } };
 
@@ -35,6 +35,7 @@ function formatAmount(amountMinor: number): string {
 interface CsvImportSectionProps {
   initialFilePath: string;
   fileSelectionId: number;
+  onChooseFile: () => void;
   onImportSuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
@@ -44,6 +45,7 @@ interface CsvImportSectionProps {
 export function CsvImportSection({
   initialFilePath,
   fileSelectionId,
+  onChooseFile,
   onImportSuccess,
   onOpenLedger,
   onReviewUncategorized,
@@ -69,6 +71,8 @@ export function CsvImportSection({
   } | null>(null);
   const [stage, setStage] = React.useState<ImportWorkflowStage>("select-file");
   const [preview, setPreview] = React.useState<CsvImportPreviewSuccess | null>(null);
+  const previewRegionRef = React.useRef<HTMLElement | null>(null);
+  const importPathEntryRef = React.useRef<HTMLDetailsElement | null>(null);
   const [previewPage, setPreviewPage] = React.useState(0);
   const [validationReportPage, setValidationReportPage] = React.useState(0);
   const [duplicateDecisions, setDuplicateDecisions] = React.useState<Record<number, DuplicateImportDecision["action"]>>({});
@@ -111,6 +115,12 @@ export function CsvImportSection({
     setImportState({ status: "idle" });
     setStage(initialFilePath ? "map-and-validate" : "select-file");
   }, [fileSelectionId, initialFilePath]);
+
+  React.useEffect(() => {
+    if (preview === null || previewRegionRef.current === null) return;
+    previewRegionRef.current.scrollIntoView({ block: "start" });
+    previewRegionRef.current.focus({ preventScroll: true });
+  }, [preview]);
 
   React.useEffect(() => {
     let active = true;
@@ -333,9 +343,12 @@ export function CsvImportSection({
       })
       .then((response) => {
         if (response.ok) {
+          if (importPathEntryRef.current !== null) importPathEntryRef.current.open = false;
           setImportState({
             status: "success",
             importJobId: response.importJobId,
+            sourceName: filePath.split(/[\\/]/).at(-1) || filePath,
+            accountName: accounts.find((account) => account.id === effectiveImportAccountId)?.name ?? "Unavailable",
             transactionCount: response.transactionCount,
             duplicateCount: response.duplicateCount,
             unresolvedCount: response.unresolvedCount,
@@ -363,11 +376,15 @@ export function CsvImportSection({
 
   return (
     <section aria-label="CSV Import">
-      <h2>Import CSV</h2>
-      <p className="section-intro">Use this for a bank export ending in <strong>.csv</strong>. Preview it first; nothing is saved until you confirm.</p>
-      {profileLoadState === "loading" && <p role="status">Loading accounts...</p>}
-      {profileLoadState === "error" && <p role="alert">Available accounts could not be loaded. Open CSV profiles to retry.</p>}
-      {profileLoadState === "ready" && accounts.length > 0 && effectiveImportAccountId !== undefined && (
+      {importState.status !== "success" && (
+        <>
+          <h2>Import CSV</h2>
+          <p className="section-intro">Use this for a bank export ending in <strong>.csv</strong>. Preview it first; nothing is saved until you confirm.</p>
+        </>
+      )}
+      {importState.status !== "success" && profileLoadState === "loading" && <p role="status">Loading accounts...</p>}
+      {importState.status !== "success" && profileLoadState === "error" && <p role="alert">Available accounts could not be loaded. Open CSV profiles to retry.</p>}
+      {importState.status !== "success" && profileLoadState === "ready" && accounts.length > 0 && effectiveImportAccountId !== undefined && (
         <ImportAccountSelect
           id="csv-import-account"
           label="Import into account"
@@ -377,7 +394,7 @@ export function CsvImportSection({
           disabled={importState.status === "pending"}
         />
       )}
-      <details className="csv-import-profiles">
+      {importState.status !== "success" && <details className="csv-import-profiles">
         <summary aria-label="Manage CSV profiles">Manage CSV profiles ({profiles.length})</summary>
         {profileLoadState === "loading" && <p role="status">Loading CSV profiles and accounts...</p>}
         {profileLoadState === "error" && (
@@ -437,15 +454,22 @@ export function CsvImportSection({
             {profileError !== null && <p role="alert">{profileError}</p>}
           </div>
         )}
-      </details>
-      <ImportStageProgress format="CSV" stage={stage} />
-      <div className="import-file-source">
-        <p aria-live="polite" className="import-selected-file">
-          {filePath ? <><strong>Selected:</strong> <code>{filePath}</code></> : "No CSV statement selected."}
-        </p>
-      </div>
-      <details className="import-path-entry">
-        <summary>Advanced: enter a file path</summary>
+      </details>}
+      {importState.status !== "success" && <ImportStageProgress format="CSV" stage={stage} />}
+      {importState.status !== "success" && (
+        <div className="import-file-source">
+          <p aria-live="polite" className="import-selected-file">
+            {filePath ? <><strong>Selected file:</strong> <code>{filePath.split(/[\\/]/).at(-1) || filePath}</code></> : "No statement file selected."}
+          </p>
+          <button type="button" className="action-secondary import-secondary-action" onClick={() => void onChooseFile()}>
+            {filePath ? "Change statement file" : "Choose statement file"}
+          </button>
+        </div>
+      )}
+      <details ref={importPathEntryRef} className="import-path-entry">
+        <summary>
+          {importState.status === "success" ? "Advanced: enter a new file path" : "Advanced: enter a file path"}
+        </summary>
         <label htmlFor="csv-file-path">CSV file path</label>
         <input
           id="csv-file-path"
@@ -456,14 +480,14 @@ export function CsvImportSection({
           disabled={importState.status === "pending"}
         />
       </details>
-      <button
+      {importState.status !== "success" && <button
         id="csv-preview-button"
         type="button"
         onClick={handlePreview}
         disabled={importState.status === "pending" || !filePath.trim() || profileLoadState !== "ready" || effectiveImportAccountId === undefined}
       >
         Preview CSV
-      </button>
+      </button>}
       {((importState.status === "pending" && activePreflightRequestId !== undefined) || importState.status === "cancelled") && (
         <div className="import-preflight-status">
           <p role="status" aria-label="Import preflight progress">
@@ -478,7 +502,7 @@ export function CsvImportSection({
           )}
         </div>
       )}
-      <button
+      {preview !== null && importState.status !== "success" && <button
         id="csv-confirm-button"
         type="button"
         onClick={handleImport}
@@ -486,14 +510,14 @@ export function CsvImportSection({
         disabled={confirmationDisabled}
       >
         Confirm CSV import
-      </button>
-      <p id="csv-confirm-help" className="import-action-help">
+      </button>}
+      {preview !== null && importState.status !== "success" && <p id="csv-confirm-help" className="import-action-help">
         {importState.status === "pending"
           ? getImportPendingMessage(stage)
           : preview === null
             ? filePath
               ? <>The selected file has not passed validation. <a href="#csv-preview-button">Preview CSV</a>.</>
-              : <>Choose a statement file before previewing it. <a href="#import-statement-picker-button">Choose a file</a>.</>
+              : "Choose a statement file above before previewing it."
             : !isMappingCurrent
               ? <>Validate the updated column mapping before confirming. <a href="#csv-preview-button">Preview CSV</a>.</>
               : firstInvalidRow !== undefined
@@ -501,13 +525,19 @@ export function CsvImportSection({
                 : unresolvedDuplicateRows[0] !== undefined
                   ? <>Choose whether to skip or import duplicate <a href={`#csv-preview-row-${unresolvedDuplicateRows[0].rowIndex}`}>row {unresolvedDuplicateRows[0].rowIndex + 1}</a> before confirming.</>
                   : "Review the ready rows before confirming the import."}
-      </p>
+      </p>}
       {importState.status === "cancelled" && <p role="status">Preview cancelled. No transactions were saved.</p>}
       {importState.status === "success" && (
         <div className="import-success">
           <div className="import-result-summary" role="region" aria-label="Import result summary">
+            <h3>Import complete</h3>
+            <p className="import-success-source">
+              <strong>{importState.sourceName}</strong> was imported into <strong>{importState.accountName}</strong>.
+            </p>
             <p role="status" aria-label="Transactions imported">
-              Added {importState.transactionCount} transaction{importState.transactionCount === 1 ? "" : "s"} to your ledger.
+              {importState.transactionCount === 0
+                ? "No new transactions were added."
+                : `Added ${importState.transactionCount} transaction${importState.transactionCount === 1 ? "" : "s"} to your ledger.`}
             </p>
             <p className="import-duplicate-summary">
               {importState.duplicateCount} duplicate row{importState.duplicateCount === 1 ? "" : "s"} skipped.
@@ -517,6 +547,9 @@ export function CsvImportSection({
                 {importState.unresolvedCount} row{importState.unresolvedCount === 1 ? "" : "s"} {importState.unresolvedCount === 1 ? "was" : "were"} sent to review during import.
               </p>
             )}
+            <p className="import-original-file-note">
+              The original statement file stays in its original folder. The import saves transaction rows and a history record, not a copy of the statement.
+            </p>
           </div>
           <div className="import-success-actions" aria-label="Next import actions">
             {importState.unresolvedCount > 0 && (
@@ -530,6 +563,9 @@ export function CsvImportSection({
               Review uncategorized transactions
             </button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
+            <button type="button" className="import-secondary-action" onClick={() => void onChooseFile()}>
+              Import another statement
+            </button>
           </div>
         </div>
       )}
@@ -549,7 +585,12 @@ export function CsvImportSection({
         </div>
       )}
       {preview !== null && (
-        <section aria-label="CSV import preview">
+        <section
+          ref={previewRegionRef}
+          aria-label="CSV import preview"
+          className="import-preview-region"
+          tabIndex={-1}
+        >
           <h3>CSV import preview</h3>
           <fieldset aria-label="CSV column mapping">
             <legend>Match your CSV columns</legend>
