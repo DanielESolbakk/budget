@@ -38,7 +38,7 @@ export class CsvImportPage {
 
   /** The Import CSV action button. */
   get importButton() {
-    return this.page.getByRole("button", { name: /^(Preview CSV|Update preview|Hide preview|Show preview)$/ });
+    return this.page.getByRole("button", { name: /^(Preview CSV|Update preview)$/ });
   }
 
   get confirmImportButton() {
