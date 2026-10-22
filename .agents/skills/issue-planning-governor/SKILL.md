@@ -17,6 +17,7 @@ Govern Feature, Story, Enabler, and Test planning, not implementation. Epics are
 - Never delete; close only for completed criteria or a linked successor.
 - `planning-invalid` blocks readiness. Repair only after a fresh failure, at most twice. Timeout, unresolved blockers, or permission failures stop the run.
 - Use GitHub MCP, never `gh`; MCP cannot dispatch or inspect Actions runs. Issue-record updates need no PR; repository-file changes do.
+- Serialize GitHub MCP issue writes. Never parallelize issue creation; verify each created issue before creating the next.
 - Keep transaction content local; add no cloud processing, telemetry, or analytics.
 - Use `- #NUMBER` references in structured sections; ban uncertainty in tasks, criteria, and validation commands.
 - A workflow pass proves structure only. Preserve `needs-grooming` until G1-G9 pass with quoted evidence.
