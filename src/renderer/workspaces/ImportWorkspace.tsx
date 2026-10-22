@@ -31,6 +31,7 @@ export function ImportWorkspace({
   const [selectedFilePath, setSelectedFilePath] = React.useState("");
   const [fileSelectionId, setFileSelectionId] = React.useState(0);
   const [selectionError, setSelectionError] = React.useState<string | null>(null);
+  const [selectionNotice, setSelectionNotice] = React.useState<string | null>(null);
 
   async function chooseStatementFile(): Promise<void> {
     try {
@@ -46,6 +47,7 @@ export function ImportWorkspace({
       setSelectedFilePath(selectedPath);
       setFileSelectionId((current) => current + 1);
       setSelectionError(null);
+      setSelectionNotice(null);
       setSelectedFormat(importFormat);
       setActiveView("new-import");
       setHasStatementImportCompleted(false);
@@ -59,7 +61,18 @@ export function ImportWorkspace({
     setSelectedFormat("manual");
     setActiveView("new-import");
     setHasStatementImportCompleted(false);
+    setSelectionNotice(null);
     setVisitedFormats((visited) => new Set(visited).add("manual"));
+  }
+
+  function cancelStatementImport(): void {
+    setSelectedFormat(null);
+    setSelectedFilePath("");
+    setFileSelectionId((current) => current + 1);
+    setSelectionError(null);
+    setSelectionNotice("Import cancelled. No transactions were saved.");
+    setHasStatementImportCompleted(false);
+    window.requestAnimationFrame(() => document.getElementById("import-statement-picker-button")?.focus());
   }
 
   function handleStatementImportSuccess(): void {
@@ -128,6 +141,9 @@ export function ImportWorkspace({
             </div>
           )}
           {selectionError !== null && <p role="alert">{selectionError}</p>}
+          {selectionNotice !== null && selectedFormat === null && (
+            <p role="status">{selectionNotice}</p>
+          )}
           {selectedFormat === null && (
             <>
               <button
@@ -157,6 +173,7 @@ export function ImportWorkspace({
             initialFilePath={selectedFilePath}
             fileSelectionId={fileSelectionId}
             onChooseFile={chooseStatementFile}
+            onCancelImport={cancelStatementImport}
             onImportSuccess={handleStatementImportSuccess}
             onOpenLedger={onOpenLedger}
             onReviewUncategorized={onReviewUncategorized}
@@ -170,6 +187,7 @@ export function ImportWorkspace({
             initialFilePath={selectedFilePath}
             fileSelectionId={fileSelectionId}
             onChooseFile={chooseStatementFile}
+            onCancelImport={cancelStatementImport}
             onImportSuccess={handleStatementImportSuccess}
             onOpenLedger={onOpenLedger}
             onReviewUncategorized={onReviewUncategorized}

@@ -137,6 +137,42 @@ function loadPersistedTransactions(databasePath: string) {
 test.describe("CSV import renderer workflow", () => {
   test.use({ importFileDialogBehavior: "csv-selected" });
 
+  test("hides and reopens the validated CSV preview without saving rows", async ({ csvImport, window, databasePath }) => {
+    const transactionsBeforePreview = loadPersistedTransactions(databasePath);
+    await csvImport.enterFilePath(writeAliasHeaderCsvFixture());
+    await csvImport.importButton.click();
+    await expect(csvImport.previewRegion).toBeVisible();
+
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport();
+    await window.getByRole("button", { name: "Hide preview", exact: true }).click();
+    await expect(csvImport.previewRegion).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Show preview", exact: true })).toBeFocused();
+    await expect(csvImport.chooseFileButton).toBeVisible();
+    await expect(window.getByRole("button", { name: "Show preview", exact: true })).toHaveAttribute("aria-expanded", "false");
+
+    await window.getByRole("button", { name: "Show preview", exact: true }).click();
+    await expect(csvImport.previewRegion).toBeVisible();
+    await expect(csvImport.confirmImportButton).toBeEnabled();
+    expect(loadPersistedTransactions(databasePath)).toEqual(transactionsBeforePreview);
+  });
+
+  test("cancels an unconfirmed CSV import without saving rows", async ({ csvImport, window, databasePath }) => {
+    const transactionsBeforePreview = loadPersistedTransactions(databasePath);
+    await csvImport.enterFilePath(FIXTURE_PATH);
+    await csvImport.importButton.click();
+    await expect(csvImport.previewRegion).toBeVisible();
+
+    await window.getByRole("button", { name: "Cancel import", exact: true }).click();
+
+    await expect(csvImport.previewRegion).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
+    await expect(window.getByRole("status").filter({
+      hasText: "Import cancelled. No transactions were saved.",
+    })).toBeVisible();
+    expect(loadPersistedTransactions(databasePath)).toEqual(transactionsBeforePreview);
+  });
+
   test("shows the target account before CSV preview", async ({ csvImport }) => {
     const accountSelect = csvImport.importSection.getByRole("combobox", { name: "Import into account" });
 
@@ -593,6 +629,7 @@ test.describe("CSV import renderer workflow", () => {
     const executionDate = csvImport.mappingSelect("Execution date");
     await executionDate.selectOption("Date");
     await executionDate.selectOption("");
+    await expect(csvImport.importButton).toHaveText("Update preview");
     await csvImport.importButton.click();
 
     await expect(csvImport.previewRegion).toBeVisible();

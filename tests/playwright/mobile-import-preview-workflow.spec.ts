@@ -44,7 +44,7 @@ test.describe("Mobile import preview workflow", () => {
     expect(tableWidth).toBeLessThanOrEqual(viewportWidth - 32);
   });
 
-  test("@mobile PDF preview keeps its caption and selected file readable at 390px", async ({ pdfImport, electronApp }) => {
+  test("@mobile PDF preview keeps its caption, file actions, and collapse usable at 390px", async ({ pdfImport, electronApp, window }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
@@ -63,5 +63,15 @@ test.describe("Mobile import preview workflow", () => {
     expect(captionWidth).toBeGreaterThan(240);
     expect((selectedFileBounds?.y ?? Number.POSITIVE_INFINITY) + (selectedFileBounds?.height ?? 0))
       .toBeLessThanOrEqual(chooseFileBounds?.y ?? 0);
+
+    await pdfImport.importSection.getByRole("button", { name: "Hide preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+    const collapsedDimensions = await window.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(collapsedDimensions.documentWidth).toBeLessThanOrEqual(collapsedDimensions.viewportWidth);
+    await pdfImport.importSection.getByRole("button", { name: "Show preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).toBeVisible();
   });
 });

@@ -284,6 +284,81 @@ function loadPersistedSnapshot(databasePath: string) {
 test.describe("PDF import renderer workflow", () => {
   test.use({ importFileDialogBehavior: "pdf-selected" });
 
+  test("hides and reopens the validated preview without losing decisions", async ({ pdfImport, window }, testInfo) => {
+    const fixturePath = writeMixedStatusPdfFixture();
+    await pdfImport.enterFilePath(fixturePath);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    const acknowledgement = pdfImport.importSection.getByRole("checkbox", {
+      name: "I understand that these 2 rows are not booked and will be left out.",
+    });
+    await acknowledgement.check();
+    await expect(pdfImport.confirmImportButton).toBeEnabled();
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport();
+    await window.screenshot({ path: testInfo.outputPath("statement-preview-visible.png") });
+
+    await window.getByRole("button", { name: "Hide preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Show preview", exact: true })).toBeFocused();
+    await expect(pdfImport.importSection.getByText(basename(fixturePath), { exact: true })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Show preview", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await window.screenshot({ path: testInfo.outputPath("statement-preview-hidden.png") });
+
+    await window.getByRole("button", { name: "Show preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport({ ratio: 1 });
+    await expect(acknowledgement).toBeChecked();
+    await expect(pdfImport.confirmImportButton).toBeEnabled();
+    await window.screenshot({ path: testInfo.outputPath("statement-preview-reopened.png") });
+  });
+
+  test("keeps the preview toggle fully visible above a long reopened preview", async ({ pdfImport, window }, testInfo) => {
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    const previewTable = pdfImport.previewRegion.getByRole("table", {
+      name: "PDF statement preview rows and duplicate decisions",
+    });
+    await expect(previewTable.getByRole("row")).toHaveCount(101);
+    const toggle = window.getByRole("button", { name: "Hide preview", exact: true });
+    await expect(toggle).toBeInViewport({ ratio: 0.99 });
+    expect((await toggle.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(12);
+
+    await toggle.click();
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+    await window.getByRole("button", { name: "Show preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+    const reopenedToggle = window.getByRole("button", { name: "Hide preview", exact: true });
+    await expect(reopenedToggle).toBeInViewport({ ratio: 0.99 });
+    expect((await reopenedToggle.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(12);
+    await window.screenshot({ path: testInfo.outputPath("long-preview-reopened.png") });
+  });
+
+  test("cancels an unconfirmed import and returns to file selection without saving rows", async ({
+    pdfImport,
+    window,
+    databasePath,
+  }) => {
+    const transactionsBeforePreview = loadPersistedSnapshot(databasePath).transactions;
+    await pdfImport.enterFilePath(BINARY_FIXTURE_PATH);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    await window.getByRole("button", { name: "Cancel import", exact: true }).click();
+
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
+    await expect(window.getByRole("status").filter({
+      hasText: "Import cancelled. No transactions were saved.",
+    })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeFocused();
+    expect(loadPersistedSnapshot(databasePath).transactions).toEqual(transactionsBeforePreview);
+  });
+
   test("keeps review and history out of the active statement preview", async ({ pdfImport, window }, testInfo) => {
     await window.setViewportSize({ width: 1280, height: 800 });
     await pdfImport.enterFilePath(BINARY_FIXTURE_PATH);

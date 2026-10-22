@@ -39,6 +39,7 @@ interface PdfImportSectionProps {
   initialFilePath: string;
   fileSelectionId: number;
   onChooseFile: () => void;
+  onCancelImport: () => void;
   onImportSuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
@@ -49,6 +50,7 @@ export function PdfImportSection({
   initialFilePath,
   fileSelectionId,
   onChooseFile,
+  onCancelImport,
   onImportSuccess,
   onOpenLedger,
   onReviewUncategorized,
@@ -65,6 +67,7 @@ export function PdfImportSection({
   } | null>(null);
   const [stage, setStage] = React.useState<ImportWorkflowStage>("select-file");
   const [preview, setPreview] = React.useState<PdfImportPreviewSuccess | null>(null);
+  const [isPreviewExpanded, setIsPreviewExpanded] = React.useState(true);
   const previewRegionRef = React.useRef<HTMLElement | null>(null);
   const importPathEntryRef = React.useRef<HTMLDetailsElement | null>(null);
   const [previewPage, setPreviewPage] = React.useState(0);
@@ -101,6 +104,7 @@ export function PdfImportSection({
   React.useEffect(() => {
     setFilePath(initialFilePath);
     setPreview(null);
+    setIsPreviewExpanded(true);
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
@@ -143,10 +147,10 @@ export function PdfImportSection({
   }, [duplicateRowToFocus, previewPage]);
 
   React.useEffect(() => {
-    if (preview === null || previewRegionRef.current === null) return;
-    previewRegionRef.current.scrollIntoView({ block: "start" });
+    if (preview === null || !isPreviewExpanded || previewRegionRef.current === null) return;
+    document.getElementById("pdf-preview-actions")?.scrollIntoView({ block: "start" });
     previewRegionRef.current.focus({ preventScroll: true });
-  }, [preview]);
+  }, [preview, isPreviewExpanded]);
 
   async function handlePreview(): Promise<void> {
     const trimmedPath = filePath.trim();
@@ -156,6 +160,7 @@ export function PdfImportSection({
     setActivePreflightRequestId(requestId);
     setPreflightProgress({ requestId, phase: "Reading statement", completedRows: 0, totalRows: 0 });
     setImportState({ status: "pending" });
+    setIsPreviewExpanded(true);
     setStage("map-and-validate");
     setDuplicateDecisions({});
     setAcknowledgeExcludedRows(false);
@@ -196,6 +201,24 @@ export function PdfImportSection({
     }
   }
 
+  function handlePreviewButtonClick(): void {
+    if (preview === null) {
+      void handlePreview();
+      return;
+    }
+    if (!isPreviewExpanded) {
+      setIsPreviewExpanded(true);
+      return;
+    }
+
+    setIsPreviewExpanded(false);
+    window.requestAnimationFrame(() => {
+      const previewButton = document.getElementById("pdf-preview-button");
+      previewButton?.scrollIntoView({ block: "start" });
+      previewButton?.focus({ preventScroll: true });
+    });
+  }
+
   function cancelPreview(): void {
     if (activePreflightRequestId !== undefined) {
       void window.budgetApi.import.cancelPreview(activePreflightRequestId);
@@ -205,6 +228,7 @@ export function PdfImportSection({
   function updateFilePath(nextFilePath: string): void {
     setFilePath(nextFilePath);
     setPreview(null);
+    setIsPreviewExpanded(true);
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
@@ -216,6 +240,7 @@ export function PdfImportSection({
   function updateAccountId(nextAccountId: string): void {
     setAccountId(nextAccountId);
     setPreview(null);
+    setIsPreviewExpanded(true);
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
@@ -330,14 +355,29 @@ export function PdfImportSection({
           disabled={importState.status === "pending"}
         />
       </details>
-      {importState.status !== "success" && <button
-        id="pdf-preview-button"
-        type="button"
-        onClick={() => void handlePreview()}
-        disabled={importState.status === "pending" || !filePath.trim() || accountLoadState !== "ready" || !accountId}
-      >
-        Preview statement
-      </button>}
+      {importState.status !== "success" && (
+        <div id="pdf-preview-actions" className="import-preview-actions" role="group" aria-label="Statement import actions">
+          <button
+            id="pdf-preview-button"
+            type="button"
+            onClick={handlePreviewButtonClick}
+            aria-expanded={preview !== null && isPreviewExpanded}
+            aria-controls={preview === null ? undefined : "pdf-preview-panel"}
+            disabled={importState.status === "pending" || !filePath.trim() || accountLoadState !== "ready" || !accountId}
+          >
+            {preview === null ? "Preview statement" : isPreviewExpanded ? "Hide preview" : "Show preview"}
+          </button>
+          {filePath.trim() !== "" && importState.status !== "pending" && (
+            <button
+              type="button"
+              className="action-secondary import-secondary-action"
+              onClick={onCancelImport}
+            >
+              Cancel import
+            </button>
+          )}
+        </div>
+      )}
       {((importState.status === "pending" && activePreflightRequestId !== undefined) || importState.status === "cancelled") && (
         <div className="import-preflight-status">
           <p role="status" aria-label="Import preflight progress">
@@ -454,12 +494,13 @@ export function PdfImportSection({
         </div>
       )}
       {preview !== null && importState.status !== "success" && (
-        <section
-          ref={previewRegionRef}
-          aria-label="PDF import preview"
-          className="import-preview-region"
-          tabIndex={-1}
-        >
+        <div id="pdf-preview-panel" className="import-preview-panel" hidden={!isPreviewExpanded}>
+          <section
+            ref={previewRegionRef}
+            aria-label="PDF import preview"
+            className="import-preview-region"
+            tabIndex={-1}
+          >
           <h3>Review statement</h3>
           <p className="import-account-summary">
             Importing into account: <strong>{accounts.find((account) => account.id === accountId)?.name ?? "Unavailable"}</strong>.
@@ -618,7 +659,8 @@ export function PdfImportSection({
               <button type="button" disabled={previewPage + 1 >= previewPageCount} onClick={() => setPreviewPage((page) => Math.min(previewPageCount - 1, page + 1))}>Next rows</button>
             </div>
           )}
-        </section>
+          </section>
+        </div>
       )}
     </section>
   );

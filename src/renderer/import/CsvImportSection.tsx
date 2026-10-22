@@ -36,6 +36,7 @@ interface CsvImportSectionProps {
   initialFilePath: string;
   fileSelectionId: number;
   onChooseFile: () => void;
+  onCancelImport: () => void;
   onImportSuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
@@ -46,6 +47,7 @@ export function CsvImportSection({
   initialFilePath,
   fileSelectionId,
   onChooseFile,
+  onCancelImport,
   onImportSuccess,
   onOpenLedger,
   onReviewUncategorized,
@@ -71,6 +73,7 @@ export function CsvImportSection({
   } | null>(null);
   const [stage, setStage] = React.useState<ImportWorkflowStage>("select-file");
   const [preview, setPreview] = React.useState<CsvImportPreviewSuccess | null>(null);
+  const [isPreviewExpanded, setIsPreviewExpanded] = React.useState(true);
   const previewRegionRef = React.useRef<HTMLElement | null>(null);
   const importPathEntryRef = React.useRef<HTMLDetailsElement | null>(null);
   const [previewPage, setPreviewPage] = React.useState(0);
@@ -102,11 +105,12 @@ export function CsvImportSection({
     JSON.stringify(previewMapping) === JSON.stringify(columnMapping);
   const firstInvalidRow = preview?.rows.find((row) => row.errors.length > 0);
   const confirmationDisabled = profileLoadState !== "ready" || effectiveImportAccountId === undefined || importState.status === "pending" || preview === null ||
-    !isMappingCurrent || unresolvedDuplicateRows.length > 0;
+    !isMappingCurrent || unresolvedDuplicateRows.length > 0 || !isPreviewExpanded;
 
   React.useEffect(() => {
     setFilePath(initialFilePath);
     setPreview(null);
+    setIsPreviewExpanded(true);
     setPreviewMapping(null);
     setColumnMapping({});
     setDuplicateDecisions({});
@@ -117,10 +121,10 @@ export function CsvImportSection({
   }, [fileSelectionId, initialFilePath]);
 
   React.useEffect(() => {
-    if (preview === null || previewRegionRef.current === null) return;
-    previewRegionRef.current.scrollIntoView({ block: "start" });
+    if (preview === null || !isPreviewExpanded || previewRegionRef.current === null) return;
+    document.getElementById("csv-preview-actions")?.scrollIntoView({ block: "start" });
     previewRegionRef.current.focus({ preventScroll: true });
-  }, [preview]);
+  }, [preview, isPreviewExpanded]);
 
   React.useEffect(() => {
     let active = true;
@@ -178,6 +182,7 @@ export function CsvImportSection({
     setActivePreflightRequestId(requestId);
     setPreflightProgress({ requestId, phase: "Reading statement", completedRows: 0, totalRows: 0 });
     setImportState({ status: "pending" });
+    setIsPreviewExpanded(true);
     setStage("map-and-validate");
     setDuplicateDecisions({});
     let wasCancelled = false;
@@ -223,6 +228,24 @@ export function CsvImportSection({
     }
   }
 
+  function handlePreviewButtonClick(): void {
+    if (preview === null || !isMappingCurrent) {
+      void handlePreview();
+      return;
+    }
+    if (!isPreviewExpanded) {
+      setIsPreviewExpanded(true);
+      return;
+    }
+
+    setIsPreviewExpanded(false);
+    window.requestAnimationFrame(() => {
+      const previewButton = document.getElementById("csv-preview-button");
+      previewButton?.scrollIntoView({ block: "start" });
+      previewButton?.focus({ preventScroll: true });
+    });
+  }
+
   function cancelPreview(): void {
     if (activePreflightRequestId !== undefined) {
       void window.budgetApi.import.cancelPreview(activePreflightRequestId);
@@ -240,6 +263,7 @@ export function CsvImportSection({
   function updateFilePath(nextFilePath: string): void {
     setFilePath(nextFilePath);
     setPreview(null);
+    setIsPreviewExpanded(true);
     setPreviewMapping(null);
     setColumnMapping({});
     setDuplicateDecisions({});
@@ -480,14 +504,33 @@ export function CsvImportSection({
           disabled={importState.status === "pending"}
         />
       </details>
-      {importState.status !== "success" && <button
-        id="csv-preview-button"
-        type="button"
-        onClick={handlePreview}
-        disabled={importState.status === "pending" || !filePath.trim() || profileLoadState !== "ready" || effectiveImportAccountId === undefined}
-      >
-        Preview CSV
-      </button>}
+      {importState.status !== "success" && (
+        <div id="csv-preview-actions" className="import-preview-actions" role="group" aria-label="Statement import actions">
+          <button
+            id="csv-preview-button"
+            type="button"
+            onClick={handlePreviewButtonClick}
+            aria-expanded={preview !== null && isPreviewExpanded}
+            aria-controls={preview === null ? undefined : "csv-preview-panel"}
+            disabled={importState.status === "pending" || !filePath.trim() || profileLoadState !== "ready" || effectiveImportAccountId === undefined}
+          >
+            {preview === null
+              ? "Preview CSV"
+              : !isMappingCurrent
+                ? "Update preview"
+                : isPreviewExpanded ? "Hide preview" : "Show preview"}
+          </button>
+          {filePath.trim() !== "" && importState.status !== "pending" && (
+            <button
+              type="button"
+              className="action-secondary import-secondary-action"
+              onClick={onCancelImport}
+            >
+              Cancel import
+            </button>
+          )}
+        </div>
+      )}
       {((importState.status === "pending" && activePreflightRequestId !== undefined) || importState.status === "cancelled") && (
         <div className="import-preflight-status">
           <p role="status" aria-label="Import preflight progress">
@@ -514,6 +557,8 @@ export function CsvImportSection({
       {preview !== null && importState.status !== "success" && <p id="csv-confirm-help" className="import-action-help">
         {importState.status === "pending"
           ? getImportPendingMessage(stage)
+          : !isPreviewExpanded
+            ? "Show the preview before confirming this import."
           : preview === null
             ? filePath
               ? <>The selected file has not passed validation. <a href="#csv-preview-button">Preview CSV</a>.</>
@@ -585,12 +630,13 @@ export function CsvImportSection({
         </div>
       )}
       {preview !== null && (
-        <section
-          ref={previewRegionRef}
-          aria-label="CSV import preview"
-          className="import-preview-region"
-          tabIndex={-1}
-        >
+        <div id="csv-preview-panel" className="import-preview-panel" hidden={!isPreviewExpanded}>
+          <section
+            ref={previewRegionRef}
+            aria-label="CSV import preview"
+            className="import-preview-region"
+            tabIndex={-1}
+          >
           <h3>CSV import preview</h3>
           <fieldset aria-label="CSV column mapping">
             <legend>Match your CSV columns</legend>
@@ -742,7 +788,8 @@ export function CsvImportSection({
               <button type="button" disabled={previewPage + 1 >= previewPageCount} onClick={() => setPreviewPage((page) => Math.min(previewPageCount - 1, page + 1))}>Next rows</button>
             </div>
           )}
-        </section>
+          </section>
+        </div>
       )}
     </section>
   );

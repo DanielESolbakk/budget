@@ -962,6 +962,22 @@ section[aria-label].destination-workspace {
   background: var(--panel-soft);
 }
 
+.import-preview-panel[hidden] {
+  display: none;
+}
+
+.import-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  scroll-margin-block-start: 1rem;
+}
+
+.import-preview-actions button {
+  margin: 0;
+}
+
 .import-preview-region {
   scroll-margin-block-start: 1rem;
 }
