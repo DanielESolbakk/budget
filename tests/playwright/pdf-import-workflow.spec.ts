@@ -131,22 +131,31 @@ test.describe("PDF file picker cancellation", () => {
 test.describe("PDF file picker result", () => {
   test.use({ importFileDialogBehavior: "pdf-selected" });
 
-  test("disabled confirmation explains how to select a statement before preview", async ({ pdfImport }) => {
-    await expect(pdfImport.confirmImportButton).toBeDisabled();
-    const reason = pdfImport.importSection.locator("#pdf-confirm-help");
-    await expect(reason).toContainText("Choose a supported statement file");
-    await expect(reason.getByRole("link", { name: "select its file" })).toHaveAttribute(
-      "href",
-      "#import-statement-picker-button"
-    );
+  test("the empty state keeps file selection as the next action", async ({ pdfImport, window }) => {
+    await expect(pdfImport.confirmImportButton).not.toBeVisible();
+    await expect(pdfImport.importSection.getByRole("link", { name: "Select its file" })).not.toBeVisible();
+    await expect(pdfImport.chooseFileButton).toBeVisible();
+
+    await pdfImport.chooseFileButton.click();
+
+    await expect(window.getByText(basename(BINARY_FIXTURE_PATH), { exact: true })).toBeVisible();
   });
 
   test("choosing a PDF file makes it the statement being previewed", async ({ pdfImport, window }) => {
-    await window.getByRole("button", { name: "Import statement", exact: true }).click();
+    await window.getByRole("button", { name: "Choose statement file", exact: true }).click();
 
     await expect(window.getByText(basename(BINARY_FIXTURE_PATH), { exact: true })).toBeVisible();
     await expect(window.getByText(BINARY_FIXTURE_PATH, { exact: true })).not.toBeVisible();
     await expect(pdfImport.importButton).toBeEnabled();
+  });
+
+  test("importing another statement from the receipt opens the file picker", async ({ pdfImport, window }) => {
+    await pdfImport.submitImport(FIXTURE_PATH);
+
+    await pdfImport.importSection.getByRole("button", { name: "Import another statement", exact: true }).click();
+
+    await expect(window.getByText(basename(BINARY_FIXTURE_PATH), { exact: true })).toBeVisible();
+    await expect(pdfImport.successStatus).not.toBeVisible();
   });
 
   test("PDF preview uses shared stages and does not persist before confirmation", async ({ pdfImport, databasePath }) => {
@@ -273,6 +282,158 @@ function loadPersistedSnapshot(databasePath: string) {
 }
 
 test.describe("PDF import renderer workflow", () => {
+  test.use({ importFileDialogBehavior: "pdf-selected" });
+
+  test("hides and reopens the validated preview without losing decisions", async ({ pdfImport, window }, testInfo) => {
+    const fixturePath = writeMixedStatusPdfFixture();
+    await pdfImport.enterFilePath(fixturePath);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    const acknowledgement = pdfImport.importSection.getByRole("checkbox", {
+      name: "I understand that these 2 rows are not booked and will be left out.",
+    });
+    await acknowledgement.check();
+    await expect(pdfImport.confirmImportButton).toBeEnabled();
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport();
+    await window.screenshot({ path: testInfo.outputPath("statement-preview-visible.png") });
+
+    await window.getByRole("button", { name: "Hide preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Show preview", exact: true })).toBeFocused();
+    await expect(pdfImport.importSection.getByText(basename(fixturePath), { exact: true })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Show preview", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await window.screenshot({ path: testInfo.outputPath("statement-preview-hidden.png") });
+
+    await window.getByRole("button", { name: "Show preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport({ ratio: 1 });
+    await expect(acknowledgement).toBeChecked();
+    await expect(pdfImport.confirmImportButton).toBeEnabled();
+    await window.screenshot({ path: testInfo.outputPath("statement-preview-reopened.png") });
+  });
+
+  test("keeps the preview toggle fully visible above a long reopened preview", async ({ pdfImport, window }, testInfo) => {
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    const previewTable = pdfImport.previewRegion.getByRole("table", {
+      name: "PDF statement preview rows and duplicate decisions",
+    });
+    await expect(previewTable.getByRole("row")).toHaveCount(101);
+    const toggle = window.getByRole("button", { name: "Hide preview", exact: true });
+    await expect(toggle).toBeInViewport({ ratio: 0.99 });
+    expect((await toggle.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(12);
+
+    await toggle.click();
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+    await window.getByRole("button", { name: "Show preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+    const reopenedToggle = window.getByRole("button", { name: "Hide preview", exact: true });
+    await expect(reopenedToggle).toBeInViewport({ ratio: 0.99 });
+    expect((await reopenedToggle.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(12);
+    await window.screenshot({ path: testInfo.outputPath("long-preview-reopened.png") });
+  });
+
+  test("cancels an unconfirmed import and returns to file selection without saving rows", async ({
+    pdfImport,
+    window,
+    databasePath,
+  }) => {
+    const transactionsBeforePreview = loadPersistedSnapshot(databasePath).transactions;
+    await pdfImport.enterFilePath(BINARY_FIXTURE_PATH);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    await window.getByRole("button", { name: "Cancel import", exact: true }).click();
+
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
+    await expect(window.getByRole("status").filter({
+      hasText: "Import cancelled. No transactions were saved.",
+    })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeFocused();
+    expect(loadPersistedSnapshot(databasePath).transactions).toEqual(transactionsBeforePreview);
+  });
+
+  test("keeps review and history out of the active statement preview", async ({ pdfImport, window }, testInfo) => {
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await pdfImport.enterFilePath(BINARY_FIXTURE_PATH);
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+    await window.screenshot({ path: testInfo.outputPath("statement-preview.png") });
+
+    await expect(window.getByRole("region", { name: "Import review queue", exact: true })).not.toBeVisible();
+    await expect(window.getByRole("region", { name: "Import history", exact: true })).not.toBeVisible();
+  });
+
+  test("shows a source-aware completion receipt instead of an empty import form", async ({
+    pdfImport,
+    window,
+  }, testInfo) => {
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await pdfImport.submitImport(FIXTURE_PATH);
+
+    await expect(pdfImport.successStatus).toContainText("Added 10 transactions to your ledger.");
+    await expect(window.getByText(
+      "Import complete. The summary below shows what was added and what stayed unchanged.",
+      { exact: true }
+    )).toBeVisible();
+    await expect(pdfImport.importHeading).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Enter a transaction manually instead" })).not.toBeVisible();
+    await expect(pdfImport.importSection).toContainText(basename(FIXTURE_PATH));
+    await expect(pdfImport.importSection).toContainText("The original statement file stays in its original folder.");
+    await expect(pdfImport.importButton).not.toBeVisible();
+    await expect(pdfImport.confirmImportButton).not.toBeVisible();
+    await expect(pdfImport.filePathInput).not.toBeVisible();
+    await expect(pdfImport.importSection.getByText("No digital statement selected.", { exact: true })).not.toBeVisible();
+    await window.screenshot({ path: testInfo.outputPath("statement-import-receipt.png") });
+  });
+
+  test("keeps undo confirmation and retained transaction details beside the selected import", async ({
+    pdfImport,
+    window,
+    databasePath,
+  }, testInfo) => {
+    await pdfImport.submitImport(FIXTURE_PATH);
+    const importedTransaction = loadPersistedSnapshot(databasePath).transactions.find(
+      (transaction) => transaction.importJobId !== undefined
+    );
+    expect(importedTransaction).toBeDefined();
+    if (importedTransaction === undefined) return;
+
+    const ledger = createLocalLedgerDatabase({ dbPath: databasePath });
+    try {
+      ledger.updateTransactionCategoryAndRule(importedTransaction.id, {
+        merchantAlias: "user-corrected merchant",
+        categoryId: "groceries",
+      });
+    } finally {
+      ledger.close();
+    }
+
+    await window.getByRole("button", { name: "Import history", exact: true }).click();
+    const history = window.getByRole("region", { name: "Import history", exact: true });
+    const historyTable = history.getByRole("table", { name: "Completed local import jobs" });
+    const importRow = historyTable.getByRole("row").filter({ hasText: basename(FIXTURE_PATH) }).first();
+    await importRow.getByRole("button", { name: `Undo import ${basename(FIXTURE_PATH)}` }).click();
+
+    const confirmation = history.getByRole("group", { name: "Undo import confirmation", exact: true });
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation).toBeInViewport();
+    await confirmation.getByRole("button", { name: "Confirm undo", exact: true }).click();
+
+    const result = history.getByRole("status", { name: "Import undo result" });
+    await expect(result).toContainText("1 transaction kept");
+    await expect(result).toContainText("changed after import");
+    await expect(result).toContainText(importedTransaction.merchantRaw);
+    await expect(result).toBeInViewport();
+    await window.screenshot({ path: testInfo.outputPath("statement-import-undo.png") });
+  });
+
   test("shows the target account before PDF preview", async ({ pdfImport }) => {
     const accountSelect = pdfImport.importSection.getByRole("combobox", { name: "Import into account" });
 
@@ -285,6 +446,7 @@ test.describe("PDF import renderer workflow", () => {
     await pdfImport.enterFilePath(BINARY_FIXTURE_PATH);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
+    await expect(pdfImport.previewRegion).toBeFocused();
 
     await expect(pdfImport.previewRegion).toContainText("No possible duplicates found.");
   });
@@ -307,19 +469,21 @@ test.describe("PDF import renderer workflow", () => {
     await expect(duplicateRow).toHaveCSS("outline-width", "3px");
   });
 
-  test("places confirmation after the reviewed rows and names the destination account", async ({ pdfImport }) => {
+  test("places confirmation with the statement summary before the long row list", async ({ pdfImport }) => {
     await pdfImport.enterFilePath(BINARY_FIXTURE_PATH);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
-    const confirmationFollowsPreview = await pdfImport.importSection.evaluate((section) => {
+    const confirmationLeadsIntoRows = await pdfImport.importSection.evaluate((section) => {
       const preview = section.querySelector('[aria-label="PDF import preview"]');
       const confirmation = section.querySelector("#pdf-confirm-button");
-      return preview !== null && confirmation !== null &&
-        Boolean(preview.compareDocumentPosition(confirmation) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const table = preview?.querySelector("table") ?? null;
+      return preview !== null && confirmation !== null && table !== null &&
+        preview.contains(confirmation) &&
+        Boolean(confirmation.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
 
-    expect(confirmationFollowsPreview).toBe(true);
+    expect(confirmationLeadsIntoRows).toBe(true);
     await expect(pdfImport.previewRegion).toContainText("Importing into account: Brukskonto");
   });
 
@@ -349,7 +513,7 @@ test.describe("PDF import renderer workflow", () => {
     await pdfImport.confirmImportButton.click();
 
     await expect(pdfImport.successStatus).toContainText("Added 1 transaction to your ledger.");
-    await expect(pdfImport.importSection.getByText("Imported into Brukskonto.", { exact: true })).toBeVisible();
+    await expect(pdfImport.importSection).toContainText("was imported into Brukskonto.");
     await expect(pdfImport.importSection.getByText("2 rows not yet booked were left out.", { exact: true })).toBeVisible();
     const pdfTransactions = loadPersistedSnapshot(databasePath).transactions.filter((transaction) => transaction.sourceType === "pdf");
     expect(pdfTransactions).toHaveLength(1);
@@ -431,6 +595,7 @@ test.describe("PDF import renderer workflow", () => {
     await pdfImport.confirmImportButton.click();
     await expect(pdfImport.successStatus).toContainText("Added 9 transactions to your ledger.");
     await expect(pdfImport.importSection.getByText("1 row was sent to review during import.", { exact: true })).toBeVisible();
+    await new ImportReviewPage(window).openReviewQueue();
     const reviewRow = new ImportReviewPage(window).reviewQueue
       .getByRole("listitem")
       .filter({ hasText: basename(invalidStatement.path) })
@@ -497,6 +662,7 @@ test.describe("PDF import renderer workflow", () => {
     }
     await pdfImport.confirmImportButton.click();
 
+    await window.getByRole("button", { name: "Import history", exact: true }).click();
     const historyTable = window.getByRole("region", { name: "Import history", exact: true })
       .getByRole("table", { name: "Completed local import jobs" });
     await expect(historyTable.getByRole("row")).toHaveCount(3);
@@ -609,18 +775,15 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.successStatus).toContainText(/Added 10 transactions to your ledger/i, {
       timeout: 10_000,
     });
-    const stageProgress = pdfImport.importSection.getByRole("navigation", { name: "PDF import stages" });
-    const stages = stageProgress.getByRole("listitem");
-    await expect(stages).toHaveCount(4);
-    for (const stage of await stages.all()) {
-      await expect(stage).toHaveAttribute("data-state", "complete");
-    }
-    await expect(stageProgress.locator('[aria-current="step"]')).toHaveCount(0);
+    await expect(pdfImport.importSection.getByRole("navigation", { name: "PDF import stages" })).not.toBeVisible();
 
     // AC-4: the import completes with user-facing feedback; adapter provenance is persisted separately.
 
     // The app reloads dashboard state after successful import and remounts the import section.
-    await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(pdfImport.importSection.getByRole("button", {
+      name: "Import another statement",
+      exact: true,
+    })).toBeVisible();
 
     // AC-5: dashboard automatically reloads after import success.
     await appShell.openWorkspace("Review");
@@ -654,9 +817,12 @@ test.describe("PDF import renderer workflow", () => {
       await row.getByRole("radio", { name: "Skip duplicate" }).check();
     }
     await pdfImport.confirmImportButton.click();
-    await expect(pdfImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(pdfImport.importSection.getByRole("button", {
+      name: "Import another statement",
+      exact: true,
+    })).toBeVisible();
     await expect(pdfImport.pendingStatus).not.toBeVisible();
-    await expect(pdfImport.successStatus).toHaveText("Added 0 transactions to your ledger.", { timeout: 10_000 });
+    await expect(pdfImport.successStatus).toHaveText("No new transactions were added.", { timeout: 10_000 });
     await expect(pdfImport.importSection.getByText("10 duplicate rows skipped.", { exact: true })).toBeVisible();
     await appShell.openWorkspace("Review");
     await expect
@@ -732,11 +898,9 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.errorAlert).toBeVisible({ timeout: 10_000 });
     await expect(pdfImport.errorAlert).toContainText("Import validation failed");
     await expect(pdfImport.errorAlert).toContainText("PREVIEW_STALE: The file changed after preview.");
-    await expect(pdfImport.confirmImportButton).toBeDisabled();
+    await expect(pdfImport.confirmImportButton).not.toBeVisible();
+    await expect(pdfImport.importButton).toBeEnabled();
     await expect(pdfImport.previewRegion).not.toBeVisible();
-    await expect(pdfImport.importSection.locator("#pdf-confirm-help").getByRole("link", {
-      name: "preview the statement again",
-    })).toHaveAttribute("href", "#pdf-preview-button");
     await appShell.openWorkspace("Review");
     await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
     await expect(dashboard.expenseValue).toHaveText(beforeExpenseText);

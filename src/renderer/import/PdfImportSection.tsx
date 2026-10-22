@@ -13,7 +13,7 @@ type ImportState =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "cancelled" }
-  | { status: "success"; importJobId: string; transactionCount: number; duplicateCount: number; excludedRowCount: number; unresolvedRowCount: number; adapterId: string }
+  | { status: "success"; importJobId: string; sourceName: string; accountName: string; transactionCount: number; duplicateCount: number; excludedRowCount: number; unresolvedRowCount: number; adapterId: string }
   | { status: "error"; message: string }
   | { status: "validation"; errors: PdfImportResponse & { ok: false }; source: "preview" | "import" };
 
@@ -38,6 +38,8 @@ function fileNameFromPath(filePath: string): string {
 interface PdfImportSectionProps {
   initialFilePath: string;
   fileSelectionId: number;
+  onChooseFile: () => void;
+  onCancelImport: () => void;
   onImportSuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
@@ -47,6 +49,8 @@ interface PdfImportSectionProps {
 export function PdfImportSection({
   initialFilePath,
   fileSelectionId,
+  onChooseFile,
+  onCancelImport,
   onImportSuccess,
   onOpenLedger,
   onReviewUncategorized,
@@ -63,6 +67,9 @@ export function PdfImportSection({
   } | null>(null);
   const [stage, setStage] = React.useState<ImportWorkflowStage>("select-file");
   const [preview, setPreview] = React.useState<PdfImportPreviewSuccess | null>(null);
+  const [isPreviewExpanded, setIsPreviewExpanded] = React.useState(true);
+  const previewRegionRef = React.useRef<HTMLElement | null>(null);
+  const importPathEntryRef = React.useRef<HTMLDetailsElement | null>(null);
   const [previewPage, setPreviewPage] = React.useState(0);
   const [duplicateRowToFocus, setDuplicateRowToFocus] = React.useState<number | null>(null);
   const [validationReportPage, setValidationReportPage] = React.useState(0);
@@ -97,6 +104,7 @@ export function PdfImportSection({
   React.useEffect(() => {
     setFilePath(initialFilePath);
     setPreview(null);
+    setIsPreviewExpanded(true);
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
@@ -138,6 +146,12 @@ export function PdfImportSection({
     setDuplicateRowToFocus(null);
   }, [duplicateRowToFocus, previewPage]);
 
+  React.useEffect(() => {
+    if (preview === null || !isPreviewExpanded || previewRegionRef.current === null) return;
+    document.getElementById("pdf-preview-actions")?.scrollIntoView({ block: "start" });
+    previewRegionRef.current.focus({ preventScroll: true });
+  }, [preview, isPreviewExpanded]);
+
   async function handlePreview(): Promise<void> {
     const trimmedPath = filePath.trim();
     if (!trimmedPath || !accountId || accountLoadState !== "ready") return;
@@ -146,6 +160,7 @@ export function PdfImportSection({
     setActivePreflightRequestId(requestId);
     setPreflightProgress({ requestId, phase: "Reading statement", completedRows: 0, totalRows: 0 });
     setImportState({ status: "pending" });
+    setIsPreviewExpanded(true);
     setStage("map-and-validate");
     setDuplicateDecisions({});
     setAcknowledgeExcludedRows(false);
@@ -186,6 +201,24 @@ export function PdfImportSection({
     }
   }
 
+  function handlePreviewButtonClick(): void {
+    if (preview === null) {
+      void handlePreview();
+      return;
+    }
+    if (!isPreviewExpanded) {
+      setIsPreviewExpanded(true);
+      return;
+    }
+
+    setIsPreviewExpanded(false);
+    window.requestAnimationFrame(() => {
+      const previewButton = document.getElementById("pdf-preview-button");
+      previewButton?.scrollIntoView({ block: "start" });
+      previewButton?.focus({ preventScroll: true });
+    });
+  }
+
   function cancelPreview(): void {
     if (activePreflightRequestId !== undefined) {
       void window.budgetApi.import.cancelPreview(activePreflightRequestId);
@@ -195,6 +228,7 @@ export function PdfImportSection({
   function updateFilePath(nextFilePath: string): void {
     setFilePath(nextFilePath);
     setPreview(null);
+    setIsPreviewExpanded(true);
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
@@ -206,6 +240,7 @@ export function PdfImportSection({
   function updateAccountId(nextAccountId: string): void {
     setAccountId(nextAccountId);
     setPreview(null);
+    setIsPreviewExpanded(true);
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
@@ -233,9 +268,12 @@ export function PdfImportSection({
       })
       .then((response) => {
         if (response.ok) {
+          if (importPathEntryRef.current !== null) importPathEntryRef.current.open = false;
           setImportState({
             status: "success",
             importJobId: response.importJobId,
+            sourceName: fileNameFromPath(trimmedPath),
+            accountName: accounts.find((account) => account.id === accountId)?.name ?? "Unavailable",
             transactionCount: response.transactionCount,
             duplicateCount: response.duplicateCount,
             excludedRowCount: response.excludedRowCount,
@@ -269,16 +307,20 @@ export function PdfImportSection({
 
   return (
     <section aria-label="Digital statement import">
-      <h2>Import digital statement</h2>
-      <p className="section-intro">Use a standalone <strong>.txt</strong> statement or digital bank statement ending in <strong>.pdf</strong>. Scanned image statements are not supported.</p>
-      {accountLoadState === "loading" && <p role="status">Loading accounts...</p>}
-      {accountLoadState === "error" && (
+      {importState.status !== "success" && (
+        <>
+          <h2>Import digital statement</h2>
+          <p className="section-intro">Use a standalone <strong>.txt</strong> statement or digital bank statement ending in <strong>.pdf</strong>. Scanned image statements are not supported.</p>
+        </>
+      )}
+      {importState.status !== "success" && accountLoadState === "loading" && <p role="status">Loading accounts...</p>}
+      {importState.status !== "success" && accountLoadState === "error" && (
         <div role="alert">
           <p>Available accounts could not be loaded.</p>
           <button type="button" onClick={() => setAccountRefreshKey((key) => key + 1)}>Retry account loading</button>
         </div>
       )}
-      {accountLoadState === "ready" && (
+      {importState.status !== "success" && accountLoadState === "ready" && (
         <ImportAccountSelect
           id="pdf-import-account"
           label="Import into account"
@@ -288,14 +330,21 @@ export function PdfImportSection({
           disabled={importState.status === "pending"}
         />
       )}
-      <ImportStageProgress format="PDF" stage={stage} />
-      <div className="import-file-source">
-        <p aria-live="polite" className="import-selected-file">
-          {filePath ? <><strong>Selected:</strong> <code>{fileNameFromPath(filePath)}</code></> : "No digital statement selected."}
-        </p>
-      </div>
-      <details className="import-path-entry">
-        <summary>Advanced: enter a file path</summary>
+      {importState.status !== "success" && <ImportStageProgress format="PDF" stage={stage} />}
+      {importState.status !== "success" && (
+        <div className="import-file-source">
+          <p aria-live="polite" className="import-selected-file">
+            {filePath ? <><strong>Selected file:</strong> <code>{fileNameFromPath(filePath)}</code></> : "No statement file selected."}
+          </p>
+          <button type="button" className="action-secondary import-secondary-action" onClick={() => void onChooseFile()}>
+            {filePath ? "Change statement file" : "Choose statement file"}
+          </button>
+        </div>
+      )}
+      <details ref={importPathEntryRef} className="import-path-entry">
+        <summary>
+          {importState.status === "success" ? "Advanced: enter a new file path" : "Advanced: enter a file path"}
+        </summary>
         <label htmlFor="pdf-file-path">Statement file path</label>
         <input
           id="pdf-file-path"
@@ -306,14 +355,29 @@ export function PdfImportSection({
           disabled={importState.status === "pending"}
         />
       </details>
-      <button
-        id="pdf-preview-button"
-        type="button"
-        onClick={() => void handlePreview()}
-        disabled={importState.status === "pending" || !filePath.trim() || accountLoadState !== "ready" || !accountId}
-      >
-        Preview statement
-      </button>
+      {importState.status !== "success" && (
+        <div id="pdf-preview-actions" className="import-preview-actions" role="group" aria-label="Statement import actions">
+          <button
+            id="pdf-preview-button"
+            type="button"
+            onClick={handlePreviewButtonClick}
+            aria-expanded={preview !== null && isPreviewExpanded}
+            aria-controls={preview === null ? undefined : "pdf-preview-panel"}
+            disabled={importState.status === "pending" || !filePath.trim() || accountLoadState !== "ready" || !accountId}
+          >
+            {preview === null ? "Preview statement" : isPreviewExpanded ? "Hide preview" : "Show preview"}
+          </button>
+          {filePath.trim() !== "" && importState.status !== "pending" && (
+            <button
+              type="button"
+              className="action-secondary import-secondary-action"
+              onClick={onCancelImport}
+            >
+              Cancel import
+            </button>
+          )}
+        </div>
+      )}
       {((importState.status === "pending" && activePreflightRequestId !== undefined) || importState.status === "cancelled") && (
         <div className="import-preflight-status">
           <p role="status" aria-label="Import preflight progress">
@@ -334,11 +398,14 @@ export function PdfImportSection({
       {importState.status === "success" && (
         <div className="import-success">
           <div className="import-result-summary" role="region" aria-label="Import result summary">
-            <p role="status" aria-label="Transactions imported">
-              Added {importState.transactionCount} transaction{importState.transactionCount === 1 ? "" : "s"} to your ledger.
+            <h3>Import complete</h3>
+            <p className="import-success-source">
+              <strong>{importState.sourceName}</strong> was imported into <strong>{importState.accountName}</strong>.
             </p>
-            <p className="import-account-summary">
-              Imported into {accounts.find((account) => account.id === accountId)?.name ?? "Unavailable"}.
+            <p role="status" aria-label="Transactions imported">
+              {importState.transactionCount === 0
+                ? "No new transactions were added."
+                : `Added ${importState.transactionCount} transaction${importState.transactionCount === 1 ? "" : "s"} to your ledger.`}
             </p>
             <p className="import-duplicate-summary">
               {importState.duplicateCount} duplicate row{importState.duplicateCount === 1 ? "" : "s"} skipped.
@@ -353,6 +420,9 @@ export function PdfImportSection({
                 {importState.unresolvedRowCount} row{importState.unresolvedRowCount === 1 ? "" : "s"} {importState.unresolvedRowCount === 1 ? "was" : "were"} sent to review during import.
               </p>
             )}
+            <p className="import-original-file-note">
+              The original statement file stays in its original folder. The import saves transaction rows and a history record, not a copy of the statement.
+            </p>
           </div>
           <div className="import-success-actions" aria-label="Next import actions">
             {importState.unresolvedRowCount > 0 && (
@@ -366,6 +436,9 @@ export function PdfImportSection({
               Review uncategorized transactions
             </button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
+            <button type="button" className="import-secondary-action" onClick={() => void onChooseFile()}>
+              Import another statement
+            </button>
           </div>
         </div>
       )}
@@ -420,9 +493,15 @@ export function PdfImportSection({
           )}
         </div>
       )}
-      {preview !== null && (
-        <section aria-label="PDF import preview">
-          <h3>PDF import preview</h3>
+      {preview !== null && importState.status !== "success" && (
+        <div id="pdf-preview-panel" className="import-preview-panel" hidden={!isPreviewExpanded}>
+          <section
+            ref={previewRegionRef}
+            aria-label="PDF import preview"
+            className="import-preview-region"
+            tabIndex={-1}
+          >
+          <h3>Review statement</h3>
           <p className="import-account-summary">
             Importing into account: <strong>{accounts.find((account) => account.id === accountId)?.name ?? "Unavailable"}</strong>.
           </p>
@@ -491,6 +570,41 @@ export function PdfImportSection({
               </ul>
             </details>
           )}
+          <div className="import-preview-confirmation">
+            <button
+              id="pdf-confirm-button"
+              type="button"
+              onClick={handleImport}
+              aria-describedby="pdf-confirm-help"
+              disabled={importState.status === "pending" || preview === null || unresolvedDuplicateCandidates.length > 0 || excludedRowsAcknowledgementRequired}
+            >
+              Confirm statement import
+            </button>
+            <p id="pdf-confirm-help" className="import-action-help">
+              {importState.status === "pending"
+                ? "Wait for the current import operation to finish."
+                : excludedRowsAcknowledgementRequired
+                  ? "Acknowledge the excluded rows before confirming this import."
+                  : unresolvedRowCount > 0
+                    ? `Confirm to import valid rows and retain ${unresolvedRowCount} unresolved row${unresolvedRowCount === 1 ? "" : "s"} for review.`
+                    : unresolvedDuplicateCandidates[0] !== undefined
+                      ? <>
+                          Choose whether to skip or import duplicate row {unresolvedDuplicateCandidates[0].rowIndex + 1} before confirming.{" "}
+                          <button
+                            type="button"
+                            className="import-secondary-action import-inline-action"
+                            onClick={() => {
+                              const rowIndex = unresolvedDuplicateCandidates[0]!.rowIndex;
+                              setPreviewPage(Math.floor(rowIndex / PREVIEW_PAGE_SIZE));
+                              setDuplicateRowToFocus(rowIndex);
+                            }}
+                          >
+                            Go to unresolved duplicate
+                          </button>
+                        </>
+                      : "Review the statement rows below, then confirm. Nothing is saved yet."}
+            </p>
+          </div>
           <p>Statement format recognized: {preview.adapterId === "rogaland-sparebank-text-v1" ? "Rogaland Sparebank digital statement" : "supported bank statement"}.</p>
           <div className="preview-table-wrap">
             <table className="import-preview-table">
@@ -545,49 +659,9 @@ export function PdfImportSection({
               <button type="button" disabled={previewPage + 1 >= previewPageCount} onClick={() => setPreviewPage((page) => Math.min(previewPageCount - 1, page + 1))}>Next rows</button>
             </div>
           )}
-        </section>
+          </section>
+        </div>
       )}
-      <button
-        id="pdf-confirm-button"
-        type="button"
-        onClick={handleImport}
-        aria-describedby="pdf-confirm-help"
-        disabled={importState.status === "pending" || preview === null || unresolvedDuplicateCandidates.length > 0 || excludedRowsAcknowledgementRequired}
-      >
-        Confirm statement import
-      </button>
-      <p id="pdf-confirm-help" className="import-action-help">
-        {importState.status === "pending"
-          ? "Wait for the current import operation to finish."
-          : preview !== null
-            ? excludedRowsAcknowledgementRequired
-              ? "Acknowledge the excluded rows before confirming this import."
-              : unresolvedRowCount > 0
-                ? `Confirm to import valid rows and retain ${unresolvedRowCount} unresolved row${unresolvedRowCount === 1 ? "" : "s"} for review.`
-              : unresolvedDuplicateCandidates[0] !== undefined
-              ? <>
-                  Choose whether to skip or import duplicate row {unresolvedDuplicateCandidates[0].rowIndex + 1} before confirming.{" "}
-                  <button
-                    type="button"
-                    className="import-secondary-action import-inline-action"
-                    onClick={() => {
-                      const rowIndex = unresolvedDuplicateCandidates[0]!.rowIndex;
-                      setPreviewPage(Math.floor(rowIndex / PREVIEW_PAGE_SIZE));
-                      setDuplicateRowToFocus(rowIndex);
-                    }}
-                  >
-                    Go to unresolved duplicate
-                  </button>
-                </>
-              : "Review the statement rows before confirming the import."
-            : filePath && importState.status === "validation" && importState.source === "preview"
-                ? <>This file did not match a supported digital statement format. <a href="#import-statement-picker-button">Select another file</a>.</>
-              : filePath && importState.status === "validation"
-                ? <>The import could not be confirmed. Review the validation message, then <a href="#pdf-preview-button">preview the statement again</a>.</>
-                : filePath
-                    ? <>This statement has not passed validation. <a href="#pdf-preview-button">Preview statement</a>.</>
-                    : <>Choose a supported statement file before previewing it. <a href="#import-statement-picker-button">Select its file</a>.</>}
-      </p>
     </section>
   );
 }

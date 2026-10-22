@@ -56,6 +56,6 @@ export class AppShellPage {
       await this.page.getByRole("button", { name: "Enter transaction manually", exact: true }).click();
       return;
     }
-    await this.page.getByRole("button", { name: "Import statement", exact: true }).click();
+    await this.page.getByRole("button", { name: "Choose statement file", exact: true }).click();
   }
 }

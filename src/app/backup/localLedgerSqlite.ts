@@ -1350,6 +1350,36 @@ export function createLocalLedgerDatabase(
     }
   }
 
+  function retainedImportTransactions(importJobId: string): UndoImportJobResult["retainedTransactions"] {
+    const transactions = db.prepare(`
+      SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        currency_code, source_type, source_reference, category_id, import_job_id
+      FROM transactions
+      WHERE import_job_id = ?
+      ORDER BY booked_at_iso, id
+    `).all(importJobId) as unknown as TransactionRow[];
+    const baselines = new Map(db.prepare(`
+      SELECT transaction_id
+      FROM import_job_transaction_baselines
+      WHERE import_job_id = ?
+    `).all(importJobId).map((row) => {
+      const baseline = row as { transaction_id: string };
+      return [baseline.transaction_id, true] as const;
+    }));
+
+    return transactions.map((row) => {
+      const transaction = mapTransactionRow(row);
+      return {
+        id: transaction.id,
+        bookedAtIso: transaction.bookedAtIso,
+        amountMinor: transaction.amountMinor,
+        merchantRaw: transaction.merchantRaw,
+        currencyCode: transaction.currencyCode ?? "NOK",
+        reason: baselines.has(transaction.id) ? "changed-after-import" : "baseline-unavailable",
+      };
+    });
+  }
+
   function listImportJobHistory(householdId: string): ImportJobHistoryEntry[] {
     return db.prepare(`
       SELECT job.id, job.household_id, job.source_type, job.source_name, job.adapter_id,
@@ -1400,6 +1430,9 @@ export function createLocalLedgerDatabase(
         undoneAtIso: history.undone_at_iso,
         undoRemovedCount: history.undo_removed_count,
         undoRetainedCount: history.undo_retained_count,
+        retainedTransactions: history.undone_at_iso === null || history.undo_retained_count === 0
+          ? []
+          : retainedImportTransactions(history.id),
       } satisfies ImportJobHistoryEntry;
     });
   }
@@ -1423,6 +1456,7 @@ export function createLocalLedgerDatabase(
         removedCount: operation.undo_removed_count,
         retainedCount: operation.undo_retained_count,
         alreadyUndone: true,
+        retainedTransactions: retainedImportTransactions(importJobId),
       };
     }
 
@@ -1444,6 +1478,7 @@ export function createLocalLedgerDatabase(
 
     let removedCount = 0;
     let retainedCount = 0;
+    const retainedTransactions: UndoImportJobResult["retainedTransactions"] = [];
     db.exec("BEGIN");
     try {
       if (operation.undo_available === 1) {
@@ -1458,10 +1493,29 @@ export function createLocalLedgerDatabase(
             removedCount += Number(result.changes);
           } else {
             retainedCount += 1;
+            retainedTransactions.push({
+              id: transaction.id,
+              bookedAtIso: transaction.bookedAtIso,
+              amountMinor: transaction.amountMinor,
+              merchantRaw: transaction.merchantRaw,
+              currencyCode: transaction.currencyCode ?? "NOK",
+              reason: baselineJson === undefined ? "baseline-unavailable" : "changed-after-import",
+            });
           }
         }
       } else {
         retainedCount = transactions.length;
+        for (const row of transactions) {
+          const transaction = mapTransactionRow(row);
+          retainedTransactions.push({
+            id: transaction.id,
+            bookedAtIso: transaction.bookedAtIso,
+            amountMinor: transaction.amountMinor,
+            merchantRaw: transaction.merchantRaw,
+            currencyCode: transaction.currencyCode ?? "NOK",
+            reason: baselines.has(transaction.id) ? "changed-after-import" : "baseline-unavailable",
+          });
+        }
       }
 
       const undoneAtIso = new Date().toISOString();
@@ -1476,7 +1530,7 @@ export function createLocalLedgerDatabase(
       throw error;
     }
 
-    return { importJobId, removedCount, retainedCount, alreadyUndone: false };
+    return { importJobId, removedCount, retainedCount, alreadyUndone: false, retainedTransactions };
   }
 
   function hasImportJob(importJobId: string): boolean {

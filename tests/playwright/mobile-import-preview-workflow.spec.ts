@@ -11,7 +11,7 @@ test.describe("Mobile import preview workflow", () => {
     });
     await appShell.openWorkspace("Import");
 
-    const statementChoice = window.getByRole("button", { name: "Import statement", exact: true });
+    const statementChoice = window.getByRole("button", { name: "Choose statement file", exact: true });
     const manualChoice = window.getByRole("button", { name: "Enter transaction manually", exact: true });
     const statementBounds = await statementChoice.boundingBox();
     const manualBounds = await manualChoice.boundingBox();
@@ -44,7 +44,7 @@ test.describe("Mobile import preview workflow", () => {
     expect(tableWidth).toBeLessThanOrEqual(viewportWidth - 32);
   });
 
-  test("@mobile PDF preview keeps its caption and selected file readable at 390px", async ({ pdfImport, electronApp }) => {
+  test("@mobile PDF preview keeps its caption, file actions, and collapse usable at 390px", async ({ pdfImport, electronApp, window }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
@@ -61,6 +61,17 @@ test.describe("Mobile import preview workflow", () => {
     const selectedFileBounds = await pdfImport.importSection.locator(".import-selected-file").boundingBox();
 
     expect(captionWidth).toBeGreaterThan(240);
-    expect(selectedFileBounds?.y ?? 0).toBeGreaterThan((chooseFileBounds?.y ?? 0) + (chooseFileBounds?.height ?? 0));
+    expect((selectedFileBounds?.y ?? Number.POSITIVE_INFINITY) + (selectedFileBounds?.height ?? 0))
+      .toBeLessThanOrEqual(chooseFileBounds?.y ?? 0);
+
+    await pdfImport.importSection.getByRole("button", { name: "Hide preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).not.toBeVisible();
+    const collapsedDimensions = await window.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(collapsedDimensions.documentWidth).toBeLessThanOrEqual(collapsedDimensions.viewportWidth);
+    await pdfImport.importSection.getByRole("button", { name: "Show preview", exact: true }).click();
+    await expect(pdfImport.previewRegion).toBeVisible();
   });
 });

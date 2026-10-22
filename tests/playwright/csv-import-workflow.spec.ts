@@ -135,6 +135,44 @@ function loadPersistedTransactions(databasePath: string) {
 }
 
 test.describe("CSV import renderer workflow", () => {
+  test.use({ importFileDialogBehavior: "csv-selected" });
+
+  test("hides and reopens the validated CSV preview without saving rows", async ({ csvImport, window, databasePath }) => {
+    const transactionsBeforePreview = loadPersistedTransactions(databasePath);
+    await csvImport.enterFilePath(writeAliasHeaderCsvFixture());
+    await csvImport.importButton.click();
+    await expect(csvImport.previewRegion).toBeVisible();
+
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport();
+    await window.getByRole("button", { name: "Hide preview", exact: true }).click();
+    await expect(csvImport.previewRegion).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Show preview", exact: true })).toBeFocused();
+    await expect(csvImport.chooseFileButton).toBeVisible();
+    await expect(window.getByRole("button", { name: "Show preview", exact: true })).toHaveAttribute("aria-expanded", "false");
+
+    await window.getByRole("button", { name: "Show preview", exact: true }).click();
+    await expect(csvImport.previewRegion).toBeVisible();
+    await expect(csvImport.confirmImportButton).toBeEnabled();
+    expect(loadPersistedTransactions(databasePath)).toEqual(transactionsBeforePreview);
+  });
+
+  test("cancels an unconfirmed CSV import without saving rows", async ({ csvImport, window, databasePath }) => {
+    const transactionsBeforePreview = loadPersistedTransactions(databasePath);
+    await csvImport.enterFilePath(FIXTURE_PATH);
+    await csvImport.importButton.click();
+    await expect(csvImport.previewRegion).toBeVisible();
+
+    await window.getByRole("button", { name: "Cancel import", exact: true }).click();
+
+    await expect(csvImport.previewRegion).not.toBeVisible();
+    await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
+    await expect(window.getByRole("status").filter({
+      hasText: "Import cancelled. No transactions were saved.",
+    })).toBeVisible();
+    expect(loadPersistedTransactions(databasePath)).toEqual(transactionsBeforePreview);
+  });
+
   test("shows the target account before CSV preview", async ({ csvImport }) => {
     const accountSelect = csvImport.importSection.getByRole("combobox", { name: "Import into account" });
 
@@ -147,6 +185,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.enterFilePath(writeAliasHeaderCsvFixture());
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
+    await expect(csvImport.previewRegion).toBeFocused();
 
     await expect(csvImport.previewRegion).toContainText("No possible duplicates found.");
   });
@@ -190,6 +229,7 @@ test.describe("CSV import renderer workflow", () => {
   test("import history summarizes a run and requires confirmation before undo", async ({ csvImport, window }) => {
     await csvImport.submitImport(writeAliasHeaderCsvFixture());
 
+    await window.getByRole("button", { name: "Import history", exact: true }).click();
     const history = window.getByRole("region", { name: "Import history", exact: true });
     await expect(history).toBeVisible();
     const jobRow = history.getByRole("row").nth(1);
@@ -201,12 +241,13 @@ test.describe("CSV import renderer workflow", () => {
 
     const confirmation = history.getByRole("group", { name: "Undo import confirmation" });
     await expect(confirmation).toContainText("unchanged transactions");
-    await expect(confirmation).toContainText(/later category corrections and unrelated transactions will be kept/i);
+    await expect(confirmation).toContainText(/changed after import/i);
+    await expect(confirmation).toContainText(/original values cannot be verified/i);
     await confirmation.getByRole("button", { name: "Confirm undo" }).click();
 
     const undoResult = history.getByRole("status", { name: "Import undo result" });
-    await expect(undoResult).toContainText("Removed 1 transaction");
-    await expect(undoResult).toContainText("Retained 0 changed transactions");
+    await expect(undoResult).toContainText("1 transaction removed");
+    await expect(undoResult).toContainText("All transactions from this import were removed.");
   });
 
   test("history keeps repeated imports of the same CSV as separate runs", async ({ csvImport, window }) => {
@@ -224,6 +265,7 @@ test.describe("CSV import renderer workflow", () => {
     }
     await csvImport.confirmImportButton.click();
 
+    await window.getByRole("button", { name: "Import history", exact: true }).click();
     const historyTable = window.getByRole("region", { name: "Import history", exact: true })
       .getByRole("table", { name: "Completed local import jobs" });
     await expect(historyTable.getByRole("row")).toHaveCount(3);
@@ -331,7 +373,8 @@ test.describe("CSV import renderer workflow", () => {
 
   test("import workspace offers one statement picker and a separate manual entry action", async ({ appShell, window }) => {
     await appShell.openWorkspace("Import");
-    await expect(window.getByRole("button", { name: "Import statement", exact: true })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
+    await expect(window.getByText("A statement import is saved only when you confirm it.", { exact: true })).toBeVisible();
     await expect(window.getByRole("button", { name: "Enter transaction manually", exact: true })).toBeVisible();
     await expect(window.getByRole("button", { name: "CSV statement", exact: true })).toHaveCount(0);
     await expect(window.getByRole("button", { name: "Digital PDF", exact: true })).toHaveCount(0);
@@ -349,7 +392,7 @@ test.describe("CSV import renderer workflow", () => {
     window,
   }) => {
     await appShell.openWorkspace("Import");
-    const statementButton = window.getByRole("button", { name: "Import statement", exact: true });
+    const statementButton = window.getByRole("button", { name: "Choose statement file", exact: true });
     const manualButton = window.getByRole("button", { name: "Enter transaction manually", exact: true });
     await expect(statementButton).toBeVisible();
     await expect(manualButton).toBeVisible();
@@ -405,7 +448,7 @@ test.describe("CSV import renderer workflow", () => {
     test("choosing a CSV file makes it the statement being previewed", async ({ csvImport, window }) => {
       await csvImport.chooseFileButton.click();
 
-      await expect(window.getByText(FIXTURE_PATH, { exact: true })).toBeVisible();
+      await expect(window.getByText(basename(FIXTURE_PATH), { exact: true })).toBeVisible();
       await expect(csvImport.importButton).toBeEnabled();
     });
 
@@ -428,11 +471,14 @@ test.describe("CSV import renderer workflow", () => {
       await expect(csvImport.previewRegion).toBeVisible();
       await csvImport.confirmImportButton.click();
       await expect(csvImport.successStatus).toContainText("Added 16 transactions to your ledger");
+      await expect(window.getByText(
+        "Import complete. The summary below shows what was added and what stayed unchanged.",
+        { exact: true }
+      )).toBeVisible();
+      await expect(csvImport.importHeading).not.toBeVisible();
+      await expect(window.getByRole("button", { name: "Enter a transaction manually instead" })).not.toBeVisible();
 
-      const stageProgress = csvImport.importSection.getByRole("navigation", { name: "CSV import stages" });
-      const stages = stageProgress.getByRole("listitem");
-      await expect(stages.nth(3)).toContainText("Complete");
-      await expect(stageProgress.locator('[aria-current="step"]')).toHaveCount(0);
+      await expect(csvImport.importSection.getByRole("navigation", { name: "CSV import stages" })).not.toBeVisible();
 
       await expect(window.getByRole("button", { name: "Review uncategorized transactions", exact: true })).toBeVisible();
       await expect(window.getByRole("button", { name: "Return to ledger", exact: true })).toBeVisible();
@@ -461,7 +507,7 @@ test.describe("CSV import renderer workflow", () => {
 
       const result = csvImport.importSection.getByRole("region", { name: "Import result summary" });
       await expect(result.getByRole("status", { name: "Transactions imported" })).toHaveText(
-        "Added 0 transactions to your ledger."
+        "No new transactions were added."
       );
       await expect(result.getByText("16 duplicate rows skipped.", { exact: true })).toBeVisible();
     });
@@ -489,6 +535,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.confirmImportButton.click();
     await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
     await expect(csvImport.importSection.getByText("1 row was sent to review during import.", { exact: true })).toBeVisible();
+    await new ImportReviewPage(window).openReviewQueue();
     const reviewRow = new ImportReviewPage(window).reviewQueue
       .getByRole("listitem")
       .filter({ hasText: basename(mixedValidityCsvPath) })
@@ -511,11 +558,9 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.confirmImportButton.click();
 
     await expect(csvImport.errorAlert).toBeVisible();
-    await expect(csvImport.confirmImportButton).toBeDisabled();
+    await expect(csvImport.confirmImportButton).not.toBeVisible();
+    await expect(csvImport.importButton).toBeEnabled();
     await expect(csvImport.previewRegion).not.toBeVisible();
-    await expect(csvImport.importSection.locator("#csv-confirm-help").getByRole("link", {
-      name: "Preview CSV",
-    })).toHaveAttribute("href", "#csv-preview-button");
   });
 
   test("Scenario 1: importing the supported synthetic CSV reports success and updates dashboard totals", async ({ appShell, csvImport, dashboard }) => {
@@ -543,7 +588,7 @@ test.describe("CSV import renderer workflow", () => {
 
     // The app reloads dashboard state after successful import and remounts the import section.
     // Wait for the remounted input to clear as a stable completion signal.
-    await expect(csvImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(csvImport.chooseFileButton).toBeVisible();
 
     // AC-4: dashboard automatically reloads after import success;
     // wait for the monthly totals section to re-render and values to change.
@@ -584,6 +629,7 @@ test.describe("CSV import renderer workflow", () => {
     const executionDate = csvImport.mappingSelect("Execution date");
     await executionDate.selectOption("Date");
     await executionDate.selectOption("");
+    await expect(csvImport.importButton).toHaveText("Update preview");
     await csvImport.importButton.click();
 
     await expect(csvImport.previewRegion).toBeVisible();
@@ -668,7 +714,7 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.successStatus).toContainText(/Added 16 transactions to your ledger/i);
 
     // Refresh now runs without tearing down the section and clears the input for next import.
-    await expect(csvImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(csvImport.chooseFileButton).toBeVisible();
     await expect(csvImport.importSection).toBeVisible();
   });
 
@@ -712,7 +758,7 @@ test.describe("CSV import renderer workflow", () => {
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(FIXTURE_PATH);
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
-    await expect(csvImport.filePathInput).toHaveValue("", { timeout: 10_000 });
+    await expect(csvImport.chooseFileButton).toBeVisible();
     await appShell.openWorkspace("Review");
     await expect(dashboard.monthSelector).toHaveValue(selectedMonth, { timeout: 10_000 });
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
@@ -748,7 +794,7 @@ test.describe("CSV import renderer workflow", () => {
     }
     await csvImport.confirmImportButton.click();
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
-    await expect(csvImport.successStatus).toHaveText("Added 0 transactions to your ledger.");
+    await expect(csvImport.successStatus).toHaveText("No new transactions were added.");
     await expect(csvImport.importSection.getByText("16 duplicate rows skipped.", { exact: true })).toBeVisible();
     const transactionsAfterSecondImport = loadPersistedTransactions(databasePath);
 
@@ -770,7 +816,8 @@ test.describe("CSV import renderer workflow", () => {
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(invalidPath);
 
-    await expect(csvImport.successStatus).toContainText("Added 0 transactions to your ledger.");
+    await expect(csvImport.successStatus).toContainText("No new transactions were added.");
+    await new ImportReviewPage(window).openReviewQueue();
     const reviewQueue = new ImportReviewPage(window).reviewQueue;
     await expect(reviewQueue).toBeVisible();
     await expect(
