@@ -15,6 +15,15 @@
 - A fresh validation result proves structure only. It never proves G1-G9 readiness or authorizes assignment by itself.
 - If an issue write returns `awaiting_user_submission`, read the issue before taking another action. If the requested change is present, continue from the saved state. If it is absent, report that the pending form was not submitted and request that submission; do not blindly retry.
 
+## GitHub MCP Write Safety
+
+- Treat issue creation as non-idempotent. Never run multiple `issue_write` create calls in parallel, including through `multi_tool_use.parallel`.
+- Before each create, search the exact title/key in the target feature and inspect the issue's parent; do not create a second issue for an existing scope.
+- Create one issue, then read it and its parent to confirm the saved title, body, labels, and relationship before creating another.
+- A returned issue number means that create succeeded. Do not submit a second approval form or replay that create.
+- `awaiting_user_submission` means the write is still pending. Read the target issue first. If the requested content is absent, report that the form was not submitted and wait for the owner to submit or edit it manually; do not issue another create or update. If Submit is disabled, stop and report the blocked edit.
+- Serialize issue-body and state updates too. After each write, verify the saved issue before moving to the next issue in the batch.
+
 ## Common Rationalizations
 
 | Excuse | Reality |
@@ -23,6 +32,7 @@
 | "The catalog lacks this approved Story key, so issue-only planning cannot continue." | Use the next unambiguous key from the owning Feature's `storyKeyPattern`; GitHub issue updates do not require a catalog-file PR. |
 | "These Stories are related, so combine future suggestions with existing-ledger propagation." | Keep distinct user outcomes and workflows in distinct Stories. |
 | "The validator requires an Enabler, so link any Enabler or create a placeholder." | Require a real same-feature implementation dependency; report validator conflicts without fabricating hierarchy. |
+| "The three issue creates are independent, so parallelize them." | Issue creation is non-idempotent; create and verify one issue at a time. |
 | "The MCP write is probably done because the user said continue." | Read the issue and report only its observed state. |
 
 Red flags: pausing unrelated issue edits for one issue's grooming conflict; asking again for batch validation permission already given; linking a placeholder to appease the validator; merging distinct outcomes to avoid issue creation; claiming an `awaiting_user_submission` write was saved without reading it.
@@ -30,7 +40,7 @@ Red flags: pausing unrelated issue edits for one issue's grooming conflict; aski
 ## Issue Materialization Gate
 
 - Keep unapproved unscheduled ideas roadmap-only; never create empty delivery/Test hierarchies for visibility.
-- A user-approved outcome is real Story scope when it states a distinct user behavior. Search all existing same-feature Stories first; reuse a matching real Story or replace a traceability-only placeholder with the approved scope. Create a separate Story when the behavior is distinct, assigning the next unambiguous key under the owning Feature using `storyKeyPattern`. Never invent acceptance criteria or create a Story solely to satisfy validation.
+- A user-approved outcome is real Story scope when it states a distinct user behavior. Search all existing same-feature Stories first; reuse a matching real Story or replace a traceability-only placeholder with the approved scope. Create a separate Story when the behavior is distinct, assigning the next unambiguous key under its owning Feature using `storyKeyPattern`. Never invent acceptance criteria or create a Story solely to satisfy validation.
 - Create an Enabler only when real implementation work enables one or more real same-Feature Stories. Search existing Stories in that Feature first and link only Stories with the same Parent Feature.
 - Decide Test Necessity from changed behavior. Create or convert Tests only after an immediate Story/Enabler owns delivered or active implementation. Each Test owns one layer and executable scenarios/commands.
 - Never create coverage anchors, reserved scenarios, placeholder commands, or Tests solely for traceability, triangle completeness, or validator success. Declare Unit, Integration, and Playwright intent on the parent; link concrete follow-ups only when justified.
