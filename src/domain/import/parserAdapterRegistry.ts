@@ -1,4 +1,4 @@
-import type { Transaction } from "../types.js";
+import type { PendingTransactionObservation, Transaction } from "../types.js";
 import {
   createTextSourceDocument,
   type SourceDocument,
@@ -29,6 +29,7 @@ export interface AdapterParseSuccess {
   adapterId: string;
   sourceIdentity: string;
   candidates: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
   unresolvedRows?: PdfTextUnresolvedRow[];
   excludedRows?: PdfTextExcludedRow[];
 }
@@ -170,6 +171,9 @@ const rogalandAdapter: ParserAdapter = {
         adapterId: result.adapterId,
         sourceIdentity: ROGALAND_SOURCE_ID,
         candidates: result.transactions,
+        ...(result.pendingObservations === undefined
+          ? {}
+          : { pendingObservations: result.pendingObservations }),
         ...(result.unresolvedRows === undefined ? {} : { unresolvedRows: result.unresolvedRows }),
         ...(result.excludedRows === undefined ? {} : { excludedRows: result.excludedRows }),
       };
@@ -185,6 +189,9 @@ const rogalandAdapter: ParserAdapter = {
         adapterId: result.adapterId,
         sourceIdentity: ROGALAND_SOURCE_ID,
         candidates: result.transactions,
+        ...(result.pendingObservations === undefined
+          ? {}
+          : { pendingObservations: result.pendingObservations }),
         ...(result.unresolvedRows === undefined ? {} : { unresolvedRows: result.unresolvedRows }),
         ...(result.excludedRows === undefined ? {} : { excludedRows: result.excludedRows }),
       };

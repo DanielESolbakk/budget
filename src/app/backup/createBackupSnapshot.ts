@@ -34,6 +34,9 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
 
   const accounts = [...input.accounts].sort((a, b) => a.id.localeCompare(b.id));
   const transactions = [...input.transactions].sort((a, b) => a.id.localeCompare(b.id));
+  const pendingObservations = [...(input.pendingObservations ?? [])].sort((a, b) =>
+    a.id.localeCompare(b.id)
+  );
   const importJobs = [...input.importJobs].sort((a, b) => a.id.localeCompare(b.id));
   const monthlyCategoryTargets = [...input.monthlyCategoryTargets].sort((a, b) => {
     const byMonth = a.yearMonth.localeCompare(b.yearMonth);
@@ -55,6 +58,7 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     household: input.household,
     accounts,
     transactions,
+    ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
     importJobs,
     monthlyCategoryTargets,
     merchantCategoryRules,

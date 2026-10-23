@@ -10,7 +10,11 @@ function buildImportedTransactionId(identity: string, occurrenceIndex: number): 
 
 export function assignImportedTransactionIds(
   transactions: readonly Transaction[],
-  options: { sourceScope?: string; sourceReferences?: readonly (string | undefined)[] } = {}
+  options: {
+    sourceScope?: string;
+    sourceScopes?: readonly (string | undefined)[];
+    sourceReferences?: readonly (string | undefined)[];
+  } = {}
 ): Transaction[] {
   const occurrenceByIdentity = new Map<string, number>();
 
@@ -22,10 +26,13 @@ export function assignImportedTransactionIds(
       merchantRaw: transaction.merchantRaw,
     });
     const reference = (options.sourceReferences?.[index] ?? transaction.sourceReference)?.trim();
+    const sourceScope = options.sourceScopes === undefined
+      ? options.sourceScope
+      : options.sourceScopes[index];
     const identity = [
       `fingerprint:${fingerprint}`,
       ...(reference ? [`reference:${reference}`] : []),
-      ...(options.sourceScope ? [`source:${options.sourceScope}`] : []),
+      ...(sourceScope ? [`source:${sourceScope}`] : []),
     ].join("|");
     const occurrenceIndex = occurrenceByIdentity.get(identity) ?? 0;
     occurrenceByIdentity.set(identity, occurrenceIndex + 1);

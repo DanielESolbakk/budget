@@ -15,7 +15,7 @@ type ImportState =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "cancelled" }
-  | { status: "success"; importJobId: string; sourceName: string; accountName: string; transactionCount: number; duplicateCount: number; unresolvedCount: number }
+  | { status: "success"; importJobId: string; sourceName: string; accountName: string; transactionCount: number; pendingCount: number; duplicateCount: number; unresolvedCount: number }
   | { status: "error"; message: string }
   | { status: "validation"; errors: CsvImportResponse & { ok: false } };
 
@@ -82,7 +82,12 @@ export function CsvImportSection({
   const [columnMapping, setColumnMapping] = React.useState<CsvColumnMapping>({});
   const [previewMapping, setPreviewMapping] = React.useState<CsvColumnMapping | null>(null);
   const effectiveImportAccountId = importAccountId ?? accounts[0]?.id;
-  const validPreviewRowCount = preview?.rows.filter((row) => row.transaction !== undefined).length ?? 0;
+  const validPreviewRowCount = preview?.rows.filter((row) =>
+    row.transaction !== undefined || row.pendingObservation !== undefined
+  ).length ?? 0;
+  const pendingPreviewRowCount = preview?.rows.filter((row) =>
+    row.pendingObservation !== undefined
+  ).length ?? 0;
   const invalidPreviewRowCount = preview?.rows.length === undefined
     ? 0
     : preview.rows.length - validPreviewRowCount;
@@ -374,6 +379,7 @@ export function CsvImportSection({
             sourceName: filePath.split(/[\\/]/).at(-1) || filePath,
             accountName: accounts.find((account) => account.id === effectiveImportAccountId)?.name ?? "Unavailable",
             transactionCount: response.transactionCount,
+            pendingCount: response.pendingCount ?? 0,
             duplicateCount: response.duplicateCount,
             unresolvedCount: response.unresolvedCount,
           });
@@ -584,6 +590,11 @@ export function CsvImportSection({
                 ? "No new transactions were added."
                 : `Added ${importState.transactionCount} transaction${importState.transactionCount === 1 ? "" : "s"} to your ledger.`}
             </p>
+            {importState.pendingCount > 0 && (
+              <p role="status" aria-label="Pending items imported">
+                {importState.pendingCount} pending item{importState.pendingCount === 1 ? "" : "s"} {importState.pendingCount === 1 ? "is" : "are"} tracked in Pending.
+              </p>
+            )}
             <p className="import-duplicate-summary">
               {importState.duplicateCount} duplicate row{importState.duplicateCount === 1 ? "" : "s"} skipped.
             </p>
@@ -673,6 +684,9 @@ export function CsvImportSection({
           </fieldset>
           <p className="preview-summary" aria-live="polite">
             <strong>{validPreviewRowCount} of {preview.rows.length} rows ready.</strong>{" "}
+            {pendingPreviewRowCount > 0
+              ? `${pendingPreviewRowCount} pending row${pendingPreviewRowCount === 1 ? "" : "s"} will be tracked separately in Pending. `
+              : ""}
             {invalidPreviewRowCount > 0
              ? `${invalidPreviewRowCount} unresolved row${invalidPreviewRowCount === 1 ? "" : "s"} will be saved for review, not as transactions.`
               : "No validation issues."}{" "}
@@ -725,18 +739,50 @@ export function CsvImportSection({
               </thead>
               <tbody>
                 {visiblePreviewRows.map((row) => (
-                  <tr key={row.rowIndex} id={`csv-preview-row-${row.rowIndex}`} data-state={row.transaction === undefined ? "invalid" : row.duplicateMatch === undefined ? "ready" : "duplicate"}>
-                    <td data-label="Date">{row.transaction?.bookedAtIso.slice(0, 10) ?? "Needs review"}</td>
+                  <tr
+                    key={row.rowIndex}
+                    id={`csv-preview-row-${row.rowIndex}`}
+                    data-state={row.errors.length > 0
+                      ? "invalid"
+                      : row.pendingObservation !== undefined
+                        ? "pending"
+                        : row.duplicateMatch === undefined
+                          ? "ready"
+                          : "duplicate"}
+                  >
+                    <td data-label="Date">
+                      {row.transaction?.bookedAtIso.slice(0, 10) ??
+                        row.pendingObservation?.transactionDateIso.slice(0, 10) ??
+                        "Needs review"}
+                    </td>
                     <td data-label="Merchant or row">
                       <span className="import-preview-cell-value">
-                        {row.transaction?.merchantRaw ?? `Row ${row.rowIndex + 1}`}
+                        {row.transaction?.merchantRaw ??
+                          row.pendingObservation?.merchantRaw ??
+                          `Row ${row.rowIndex + 1}`}
                       </span>
                     </td>
-                    <td data-label="Amount">{row.transaction === undefined ? "Not ready" : formatAmount(row.transaction.amountMinor)}</td>
-                    <td data-label="Currency">{row.transaction?.currencyCode ?? (row.transaction === undefined ? "Not available" : "NOK")}</td>
+                    <td data-label="Amount">
+                      {row.transaction !== undefined
+                        ? formatAmount(row.transaction.amountMinor)
+                        : row.pendingObservation !== undefined
+                          ? formatAmount(row.pendingObservation.amountMinor)
+                          : "Not ready"}
+                    </td>
+                    <td data-label="Currency">
+                      {row.transaction?.currencyCode ??
+                        row.pendingObservation?.currencyCode ??
+                        (row.transaction === undefined && row.pendingObservation === undefined
+                          ? "Not available"
+                          : "NOK")}
+                    </td>
                     <td data-label="Status and duplicate decision">
-                      {row.transaction === undefined
+                      {row.errors.length > 0
                         ? "Needs attention"
+                        : row.pendingObservation !== undefined
+                          ? `${row.pendingObservation.sourceStatus} · Pending`
+                          : row.transaction === undefined
+                            ? "Needs attention"
                         : row.duplicateMatch === undefined
                           ? "Ready"
                           : (

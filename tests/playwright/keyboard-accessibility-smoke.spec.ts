@@ -108,6 +108,8 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(appShell.destination("Transactions")).toBeFocused();
     await window.keyboard.press("Tab");
+    await expect(appShell.destination("Pending")).toBeFocused();
+    await window.keyboard.press("Tab");
     await expect(appShell.destination("Import")).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(appShell.destination("Data safety")).toBeFocused();

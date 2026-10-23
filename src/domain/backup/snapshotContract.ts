@@ -4,6 +4,7 @@ import type {
   ImportJob,
   MerchantCategoryRule,
   MonthlyCategoryTarget,
+  PendingTransactionObservation,
   Transaction,
 } from "../types.js";
 
@@ -36,6 +37,7 @@ export interface BackupSnapshot {
   household: Household;
   accounts: Account[];
   transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
   importJobs: ImportJob[];
   monthlyCategoryTargets: MonthlyCategoryTarget[];
   merchantCategoryRules: MerchantCategoryRule[];
@@ -51,6 +53,7 @@ export interface LedgerSnapshotData {
   household: Household;
   accounts: Account[];
   transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
   importJobs: ImportJob[];
   monthlyCategoryTargets: MonthlyCategoryTarget[];
   merchantCategoryRules?: MerchantCategoryRule[];
@@ -119,6 +122,7 @@ export interface RestoreSnapshotOutput {
   household: Household;
   accounts: Account[];
   transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
   importJobs: ImportJob[];
   monthlyCategoryTargets: MonthlyCategoryTarget[];
   merchantCategoryRules: MerchantCategoryRule[];

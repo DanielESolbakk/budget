@@ -1370,6 +1370,11 @@ app.whenReady().then(async () => {
     return { ...result, accounts };
   });
 
+  ipcMain.handle("pending:list", (event) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listPendingTransactionObservations(sampleHousehold.id);
+  });
+
   ipcMain.handle("ledgerView:list", (event) => {
     assertTrustedRenderer(event);
     return localLedgerDatabase.listSavedLedgerViews();

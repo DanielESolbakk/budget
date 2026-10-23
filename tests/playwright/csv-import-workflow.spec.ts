@@ -246,8 +246,8 @@ test.describe("CSV import renderer workflow", () => {
     await confirmation.getByRole("button", { name: "Confirm undo" }).click();
 
     const undoResult = history.getByRole("status", { name: "Import undo result" });
-    await expect(undoResult).toContainText("1 transaction removed");
-    await expect(undoResult).toContainText("All transactions from this import were removed.");
+    await expect(undoResult).toContainText("1 imported item removed");
+    await expect(undoResult).toContainText("No items from this import were retained.");
   });
 
   test("history keeps repeated imports of the same CSV as separate runs", async ({ csvImport, window }) => {
@@ -281,7 +281,7 @@ test.describe("CSV import renderer workflow", () => {
       name: "CSV statement preview rows and validation states",
     });
     const duplicateRows = previewTable.getByRole("row").filter({ hasText: "Duplicate candidate" });
-    await expect(duplicateRows).toHaveCount(16);
+    await expect(duplicateRows).toHaveCount(14);
     await expect(duplicateRows.first()).toContainText(/Matched by (source reference|transaction fingerprint)/);
     await expect(duplicateRows.first().getByText("Compare existing transaction", { exact: true })).toBeVisible();
     await expect(duplicateRows.first().getByText(/^Existing:/)).not.toBeVisible();
@@ -293,7 +293,7 @@ test.describe("CSV import renderer workflow", () => {
       name: "Set duplicate decisions for all candidates",
     });
     await bulkActions.getByRole("button", { name: "Skip all duplicate candidates", exact: true }).click();
-    await expect(csvImport.previewRegion).toContainText("16 of 16 duplicate decisions selected.");
+    await expect(csvImport.previewRegion).toContainText("14 of 14 duplicate decisions selected.");
     for (const row of await duplicateRows.all()) {
       await expect(row.getByRole("radio", { name: "Skip duplicate" })).toBeChecked();
     }
@@ -302,7 +302,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.confirmImportButton.click();
 
     await expect(csvImport.successStatus).toHaveText("Added 1 transaction to your ledger.");
-    await expect(csvImport.importSection.getByText("15 duplicate rows skipped.", { exact: true })).toBeVisible();
+    await expect(csvImport.importSection.getByText("13 duplicate rows skipped.", { exact: true })).toBeVisible();
   });
 
   test("long duplicate descriptions wrap inside the compact preview", async ({
@@ -470,7 +470,7 @@ test.describe("CSV import renderer workflow", () => {
       await csvImport.importButton.click();
       await expect(csvImport.previewRegion).toBeVisible();
       await csvImport.confirmImportButton.click();
-      await expect(csvImport.successStatus).toContainText("Added 16 transactions to your ledger");
+      await expect(csvImport.successStatus).toContainText("Added 14 transactions to your ledger");
       await expect(window.getByText(
         "Import complete. The summary below shows what was added and what stayed unchanged.",
         { exact: true }
@@ -491,7 +491,7 @@ test.describe("CSV import renderer workflow", () => {
 
     test("successful import reports duplicate skips separately from imported transactions", async ({ csvImport }) => {
       await csvImport.submitImport(FIXTURE_PATH);
-      await expect(csvImport.successStatus).toContainText("Added 16 transactions to your ledger");
+      await expect(csvImport.successStatus).toContainText("Added 14 transactions to your ledger");
 
       await csvImport.enterFilePath(FIXTURE_PATH);
       await csvImport.importButton.click();
@@ -499,7 +499,7 @@ test.describe("CSV import renderer workflow", () => {
       const duplicateRows = csvImport.previewRegion.getByRole("table", {
         name: "CSV statement preview rows and validation states",
       }).getByRole("row").filter({ hasText: "Duplicate candidate" });
-      await expect(duplicateRows).toHaveCount(16);
+      await expect(duplicateRows).toHaveCount(14);
       for (const row of await duplicateRows.all()) {
         await row.getByRole("radio", { name: "Skip duplicate" }).check();
       }
@@ -509,7 +509,7 @@ test.describe("CSV import renderer workflow", () => {
       await expect(result.getByRole("status", { name: "Transactions imported" })).toHaveText(
         "No new transactions were added."
       );
-      await expect(result.getByText("16 duplicate rows skipped.", { exact: true })).toBeVisible();
+      await expect(result.getByText("14 duplicate rows skipped.", { exact: true })).toBeVisible();
     });
   });
 
@@ -584,7 +584,7 @@ test.describe("CSV import renderer workflow", () => {
 
     // AC-1: success status is shown after import.
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
-    await expect(csvImport.successStatus).toContainText(/Added 16 transactions to your ledger/i);
+    await expect(csvImport.successStatus).toContainText(/Added 14 transactions to your ledger/i);
 
     // The app reloads dashboard state after successful import and remounts the import section.
     // Wait for the remounted input to clear as a stable completion signal.
@@ -711,7 +711,7 @@ test.describe("CSV import renderer workflow", () => {
 
     // Regression guard for the previous refresh race: success feedback must be observable.
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
-    await expect(csvImport.successStatus).toContainText(/Added 16 transactions to your ledger/i);
+    await expect(csvImport.successStatus).toContainText(/Added 14 transactions to your ledger/i);
 
     // Refresh now runs without tearing down the section and clears the input for next import.
     await expect(csvImport.chooseFileButton).toBeVisible();
@@ -720,7 +720,7 @@ test.describe("CSV import renderer workflow", () => {
 
   test("destination switching preserves successful import feedback", async ({ appShell, csvImport }) => {
     await csvImport.submitImport(FIXTURE_PATH);
-    await expect(csvImport.successStatus).toContainText(/Added 16 transactions to your ledger/i);
+    await expect(csvImport.successStatus).toContainText(/Added 14 transactions to your ledger/i);
     const successMessage = (await csvImport.successStatus.innerText()).trim();
 
     await appShell.openWorkspace("Transactions");
@@ -788,14 +788,14 @@ test.describe("CSV import renderer workflow", () => {
     const duplicateRows = csvImport.previewRegion.getByRole("table", {
       name: "CSV statement preview rows and validation states",
     }).getByRole("row").filter({ hasText: "Duplicate candidate" });
-    await expect(duplicateRows).toHaveCount(16);
+    await expect(duplicateRows).toHaveCount(14);
     for (const row of await duplicateRows.all()) {
       await row.getByRole("radio", { name: "Skip duplicate" }).check();
     }
     await csvImport.confirmImportButton.click();
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
     await expect(csvImport.successStatus).toHaveText("No new transactions were added.");
-    await expect(csvImport.importSection.getByText("16 duplicate rows skipped.", { exact: true })).toBeVisible();
+    await expect(csvImport.importSection.getByText("14 duplicate rows skipped.", { exact: true })).toBeVisible();
     const transactionsAfterSecondImport = loadPersistedTransactions(databasePath);
 
     expect(transactionsAfterSecondImport).toEqual(transactionsAfterFirstImport);

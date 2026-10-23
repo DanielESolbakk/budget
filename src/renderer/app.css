@@ -1468,6 +1468,11 @@ section[aria-label="CSV Import"] [role="alert"] a {
   color: var(--paper);
 }
 
+.import-preview-table tr[data-state="pending"] td:last-child {
+  color: var(--info);
+  font-weight: 700;
+}
+
 .transactions-workspace-grid,
 .destination-heading + .workflow-import-grid,
 .destination-heading + .workflow-recovery-grid {
@@ -1477,6 +1482,122 @@ section[aria-label="CSV Import"] [role="alert"] a {
 .transactions-workspace-grid {
   display: grid;
   gap: 1rem;
+}
+
+.pending-workspace-summary {
+  max-width: 68ch;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  margin: 1rem 0;
+  padding: 0.75rem 0;
+  color: var(--paper-muted);
+}
+
+.pending-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.pending-list-heading p {
+  margin: 0;
+  color: var(--paper-muted);
+}
+
+.pending-observation-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line-strong);
+  list-style: none;
+}
+
+.pending-observation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem 1rem;
+  border-bottom: 1px solid var(--line);
+  padding: 1rem 0;
+}
+
+.pending-observation-primary {
+  min-width: 0;
+}
+
+.pending-observation-primary h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+
+.pending-observation-primary p {
+  margin: 0.3rem 0 0;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+}
+
+.pending-observation-status {
+  justify-self: end;
+  border: 1px solid var(--line-strong);
+  padding: 0.2rem 0.4rem;
+  color: var(--info);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.pending-observation-amount {
+  justify-self: end;
+  margin: 0;
+  color: var(--paper);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pending-observation-reference {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 0.15rem;
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.pending-observation-reference strong {
+  color: var(--paper);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pending-observation-reference small {
+  color: var(--paper-muted);
+  font-size: 0.72rem;
+}
+
+.pending-empty-state {
+  max-width: 68ch;
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 1rem;
+}
+
+.pending-empty-state h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.1rem;
+}
+
+.pending-empty-state p {
+  max-width: 65ch;
 }
 
 section[aria-label="Ledger"] form.ledger-filters {
@@ -2909,7 +3030,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
   .primary-navigation {
     position: static;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .review-grid {
@@ -2979,7 +3100,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   .primary-navigation {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.2rem;
   }
 
@@ -3004,6 +3125,25 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
   .review-intro h2 {
     font-size: 1.8rem;
+  }
+
+  .pending-list-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pending-observation-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+  }
+
+  .pending-observation-status,
+  .pending-observation-amount {
+    justify-self: start;
+  }
+
+  .pending-observation-reference {
+    grid-column: auto;
   }
 
   .review-intro {
@@ -3202,6 +3342,13 @@ section[aria-label="Category Target Entry"] [role="status"] {
   .import-history-table {
     min-width: 0;
     width: 100%;
+  }
+
+  .import-history-table caption {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.5rem;
+    text-align: left;
   }
 
   .import-history-table thead {

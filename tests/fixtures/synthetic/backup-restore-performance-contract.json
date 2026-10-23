@@ -25,13 +25,13 @@
   },
   "metrics": {
     "fixtureRowCount": 16,
-    "mappedTransactionCount": 16,
-    "restoredTransactionCount": 16,
+    "mappedTransactionCount": 14,
+    "restoredTransactionCount": 14,
     "skippedRowCount": 0,
-    "serializedByteLength": 4601,
+    "serializedByteLength": 4023,
     "incomeMinorTotal": 5000000,
-    "expenseMinorTotal": 315280,
-    "netMinorTotal": 4684720,
+    "expenseMinorTotal": 275780,
+    "netMinorTotal": 4724220,
     "roundTripStable": true
   }
 }

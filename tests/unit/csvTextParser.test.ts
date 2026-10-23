@@ -185,7 +185,7 @@ describe("parseCsvText", () => {
     );
   });
 
-  it("maps the sanitized bank export fixture transaction rows into ledger candidates", () => {
+  it("routes a pending fixture row separately from its booked ledger candidate", () => {
     const fixture = readFileSync(
       "tests/fixtures/synthetic/rogaland-2026-05-export-edge-cases.csv",
       "utf8"
@@ -198,14 +198,19 @@ describe("parseCsvText", () => {
     expect(result.skipped).toEqual([]);
     expect(result.transactions).toMatchObject([
       {
-        bookedAtIso: "2026-05-29T00:00:00Z",
-        amountMinor: -4500,
-        merchantRaw: "SYNTHETIC MARKET 7",
-      },
-      {
         bookedAtIso: "2026-05-28T00:00:00Z",
         amountMinor: -9770,
         merchantRaw: 'SYNTHETIC SHOP; "WEST" WING',
+      },
+    ]);
+    expect(result.pendingObservations).toMatchObject([
+      {
+        transactionDateIso: "2026-05-29T00:00:00Z",
+        amountMinor: -4500,
+        merchantRaw: "SYNTHETIC MARKET 7",
+        sourceReference: "REF-PENDING",
+        status: "reserved",
+        sourceStatus: "Reservert",
       },
     ]);
   });

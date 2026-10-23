@@ -13,7 +13,13 @@ import { categorizeTransaction } from "../../domain/categorization/categorizeTra
 import type { ParserAdapterRegistry } from "../../domain/import/parserAdapterRegistry.js";
 import { createTextSourceDocument } from "../../domain/import/sourceDocument.js";
 import type { SourceDocument } from "../../domain/import/sourceDocument.js";
-import type { ImportJob, ImportJobStoryAnchor, ImportReviewItem, Transaction } from "../../domain/types.js";
+import type {
+  ImportJob,
+  ImportJobStoryAnchor,
+  ImportReviewItem,
+  PendingTransactionObservation,
+  Transaction,
+} from "../../domain/types.js";
 import { resolve } from "node:path";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
@@ -28,6 +34,7 @@ export interface PdfImportSuccess {
   ok: true;
   importJobId: string;
   transactionCount: number;
+  pendingCount?: number;
   duplicateCount: number;
   excludedRowCount: number;
   adapterId: string;
@@ -57,6 +64,7 @@ export interface PdfImportPreviewSuccess {
   previewId: string;
   adapterId: string;
   transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
   excludedRowCount: number;
   excludedRows: PdfTextExcludedRow[];
   unresolvedRows?: PdfTextUnresolvedRow[];
@@ -95,7 +103,8 @@ export interface PdfImportWorkflowDependencies {
   appendImportJobAndTransactions?: (
     importJob: ImportJob,
     transactions: Transaction[],
-    reviewItems?: ImportReviewItem[]
+    reviewItems?: ImportReviewItem[],
+    pendingObservations?: PendingTransactionObservation[]
   ) => number;
   appendTransactions: (transactions: Transaction[]) => number | void;
   onTransactionsPersisted?: (transactions: Transaction[]) => void;
@@ -211,6 +220,9 @@ export function previewPdfImportWorkflow(
     ...(parseResult.unresolvedRows === undefined || parseResult.unresolvedRows.length === 0
       ? {}
       : { unresolvedRows: parseResult.unresolvedRows }),
+    ...(parseResult.pendingObservations === undefined
+      ? {}
+      : { pendingObservations: parseResult.pendingObservations }),
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
       canonicalSourceScope(input.filePath)
@@ -244,6 +256,9 @@ export async function previewPdfImportWorkflowInBatches(
     ...(parseResult.unresolvedRows === undefined || parseResult.unresolvedRows.length === 0
       ? {}
       : { unresolvedRows: parseResult.unresolvedRows }),
+    ...(parseResult.pendingObservations === undefined
+      ? {}
+      : { pendingObservations: parseResult.pendingObservations }),
     transactions: buildPdfImportTransactions(
       parseResult.candidates,
       canonicalSourceScope(input.filePath)
@@ -270,16 +285,8 @@ export function runPdfImportWorkflow(
   }
 
   const excludedRowCount = parseResult.excludedRows?.length ?? 0;
+  const pendingObservations = parseResult.pendingObservations ?? [];
   const unresolvedRows = parseResult.unresolvedRows ?? [];
-  if (excludedRowCount > 0 && input.acknowledgeExcludedRows !== true) {
-    return {
-      ok: false,
-      errors: [{
-        code: "PENDING_ROWS_ACKNOWLEDGEMENT_REQUIRED",
-        message: "This statement contains reserved or confirmed rows that are not booked. Acknowledge that they will be excluded before importing booked transactions.",
-      }],
-    };
-  }
 
   const transactions = assignImportedTransactionIds(
     parseResult.candidates.map((transaction) =>
@@ -361,7 +368,7 @@ export function runPdfImportWorkflow(
     sourceType: "pdf",
     sourceName: input.filePath,
     adapterId: parseResult.adapterId,
-    candidateCount: transactions.length,
+    candidateCount: transactions.length + pendingObservations.length,
     validationFailureCount: reviewItems.length,
     startedAtIso: input.startedAtIso,
     finishedAtIso: input.finishedAtIso,
@@ -377,13 +384,18 @@ export function runPdfImportWorkflow(
 
   let insertedCount: number;
   if (dependencies.appendImportJobAndTransactions === undefined) {
-    if (reviewItems.length > 0) {
-      throw new Error("PDF review rows require atomic import-job, transaction, and review-item persistence.");
+    if (reviewItems.length > 0 || pendingObservations.length > 0) {
+      throw new Error("PDF review and pending rows require atomic import-job, transaction, and observation persistence.");
     }
     dependencies.appendImportJob(importJob);
     insertedCount = dependencies.appendTransactions(pendingTransactions) ?? pendingTransactions.length;
   } else {
-    insertedCount = dependencies.appendImportJobAndTransactions(importJob, pendingTransactions, reviewItems);
+    insertedCount = dependencies.appendImportJobAndTransactions(
+      importJob,
+      pendingTransactions,
+      reviewItems,
+      pendingObservations
+    );
   }
   const reportedDuplicateCount = input.duplicateDecisions === undefined
     ? transactions.length - insertedCount
@@ -394,6 +406,7 @@ export function runPdfImportWorkflow(
     ok: true,
     importJobId: input.importJobId,
     transactionCount: insertedCount,
+    ...(pendingObservations.length === 0 ? {} : { pendingCount: pendingObservations.length }),
     duplicateCount: reportedDuplicateCount,
     excludedRowCount,
     adapterId: parseResult.adapterId,

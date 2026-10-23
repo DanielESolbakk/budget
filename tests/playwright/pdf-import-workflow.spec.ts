@@ -290,11 +290,8 @@ test.describe("PDF import renderer workflow", () => {
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
-    const acknowledgement = pdfImport.importSection.getByRole("checkbox", {
-      name: "I understand that these 2 rows are not booked and will be left out.",
-    });
-    await acknowledgement.check();
     await expect(pdfImport.confirmImportButton).toBeEnabled();
+    await expect(pdfImport.previewRegion).toContainText("Pending rows (2)");
     await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toHaveAttribute("aria-expanded", "true");
     await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport();
     await window.screenshot({ path: testInfo.outputPath("statement-preview-visible.png") });
@@ -309,7 +306,7 @@ test.describe("PDF import renderer workflow", () => {
     await window.getByRole("button", { name: "Show preview", exact: true }).click();
     await expect(pdfImport.previewRegion).toBeVisible();
     await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport({ ratio: 1 });
-    await expect(acknowledgement).toBeChecked();
+    await expect(pdfImport.previewRegion).toContainText("Pending rows (2)");
     await expect(pdfImport.confirmImportButton).toBeEnabled();
     await window.screenshot({ path: testInfo.outputPath("statement-preview-reopened.png") });
   });
@@ -427,8 +424,8 @@ test.describe("PDF import renderer workflow", () => {
     await confirmation.getByRole("button", { name: "Confirm undo", exact: true }).click();
 
     const result = history.getByRole("status", { name: "Import undo result" });
-    await expect(result).toContainText("1 transaction kept");
-    await expect(result).toContainText("changed after import");
+    await expect(result).toContainText("1 imported item kept");
+    await expect(result).toContainText(/changed after import/i);
     await expect(result).toContainText(importedTransaction.merchantRaw);
     await expect(result).toBeInViewport();
     await window.screenshot({ path: testInfo.outputPath("statement-import-undo.png") });
@@ -487,35 +484,38 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.previewRegion).toContainText("Importing into account: Brukskonto");
   });
 
-  test("acknowledges excluded status rows before importing booked transactions", async ({ pdfImport, databasePath }) => {
+  test("imports pending status rows separately from booked transactions", async ({ pdfImport, databasePath }) => {
     const fixturePath = writeMixedStatusPdfFixture();
     await pdfImport.enterFilePath(fixturePath);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
-    await expect(pdfImport.previewRegion).toContainText("2 rows are not booked by the bank and will not be imported.");
-    const excludedRowsDisclosure = pdfImport.previewRegion.getByText("Excluded rows (2)", { exact: true });
-    await expect(excludedRowsDisclosure).toBeVisible();
-    await excludedRowsDisclosure.click();
-    const excludedRows = pdfImport.previewRegion.getByRole("list", { name: "Excluded rows" });
-    await expect(excludedRows.getByRole("listitem")).toHaveCount(2);
-    await expect(excludedRows).toContainText("Line 4 · 29.05.2026 · SYNTHETIC TRANSIT · -45,00 NOK · Reservert");
-    await expect(excludedRows).toContainText("Line 5 · 29.05.2026 · SYNTHETIC BILL · -350,00 NOK · Bekreftet");
+    await expect(pdfImport.previewRegion).toContainText(
+      "2 pending items will be tracked separately in Pending and excluded from booked totals, budgets and forecasts."
+    );
+    const pendingRowsDisclosure = pdfImport.previewRegion.getByText("Pending rows (2)", { exact: true });
+    await expect(pendingRowsDisclosure).toBeVisible();
+    await pendingRowsDisclosure.click();
+    const pendingRows = pdfImport.previewRegion.getByRole("list", { name: "PDF pending transactions" });
+    await expect(pendingRows.getByRole("listitem")).toHaveCount(2);
+    await expect(pendingRows).toContainText("SYNTHETIC TRANSIT");
+    await expect(pendingRows).toContainText("No source reference");
+    await expect(pendingRows).toContainText("Reservert");
+    await expect(pendingRows).toContainText("Bekreftet");
     await expect(pdfImport.previewRegion.getByRole("row").filter({ hasText: "SYNTHETIC SHOP" })).toContainText("Booked · will import");
-    const acknowledgement = pdfImport.importSection.getByRole("checkbox", {
-      name: "I understand that these 2 rows are not booked and will be left out.",
-    });
-    await expect(acknowledgement).not.toBeChecked();
-    await expect(pdfImport.confirmImportButton).toBeDisabled();
-
-    await acknowledgement.check();
     await expect(pdfImport.confirmImportButton).toBeEnabled();
     await pdfImport.confirmImportButton.click();
 
     await expect(pdfImport.successStatus).toContainText("Added 1 transaction to your ledger.");
     await expect(pdfImport.importSection).toContainText("was imported into Brukskonto.");
-    await expect(pdfImport.importSection.getByText("2 rows not yet booked were left out.", { exact: true })).toBeVisible();
-    const pdfTransactions = loadPersistedSnapshot(databasePath).transactions.filter((transaction) => transaction.sourceType === "pdf");
+    await expect(
+      pdfImport.importSection.getByRole("status", {
+        name: "Pending items imported",
+        exact: true,
+      })
+    ).toHaveText("2 pending items are tracked in Pending.");
+    const snapshot = loadPersistedSnapshot(databasePath);
+    const pdfTransactions = snapshot.transactions.filter((transaction) => transaction.sourceType === "pdf");
     expect(pdfTransactions).toHaveLength(1);
     expect(pdfTransactions[0]).toMatchObject({
       bookedAtIso: "2026-05-28T00:00:00Z",
@@ -523,34 +523,38 @@ test.describe("PDF import renderer workflow", () => {
       merchantRaw: "SYNTHETIC SHOP",
       sourceType: "pdf",
     });
+    expect(snapshot.pendingObservations).toMatchObject([
+      { sourceStatus: "Reservert", status: "reserved" },
+      { sourceStatus: "Bekreftet", status: "confirmed" },
+    ]);
   });
 
-  test("keeps the excluded-row acknowledgement readable at narrow width", async ({ pdfImport, window }) => {
+  test("announces pending PDF rows in the statement preview", async ({ pdfImport }) => {
+    await pdfImport.enterFilePath(writeMixedStatusPdfFixture());
+    await pdfImport.importButton.click();
+    await expect(pdfImport.previewRegion).toBeVisible();
+
+    await expect(
+      pdfImport.previewRegion.getByRole("status", {
+        name: "Pending rows in preview",
+        exact: true,
+      })
+    ).toContainText("2 pending items will be tracked separately in Pending");
+  });
+
+  test("keeps pending PDF details readable at narrow width", async ({ pdfImport, window }) => {
     await window.setViewportSize({ width: 390, height: 844 });
     await pdfImport.enterFilePath(writeMixedStatusPdfFixture());
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
-    const label = pdfImport.importSection.locator("label.import-excluded-acknowledgement");
-    const geometry = await label.evaluate((element) => {
-      const checkbox = element.querySelector("input[type=checkbox]");
-      const textWidths: number[] = [];
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-      while (walker.nextNode()) {
-        const textNode = walker.currentNode;
-        if (!textNode.textContent?.trim()) continue;
-        const range = document.createRange();
-        range.selectNodeContents(textNode);
-        textWidths.push(...Array.from(range.getClientRects(), (rect) => rect.width));
-      }
-      return {
-        checkboxWidth: checkbox?.getBoundingClientRect().width ?? 0,
-        widestTextLine: Math.max(...textWidths, 0),
-      };
-    });
-
-    expect(geometry.checkboxWidth).toBeLessThan(32);
-    expect(geometry.widestTextLine).toBeGreaterThan(120);
+    await pdfImport.previewRegion.getByText("Pending rows (2)", { exact: true }).click();
+    const pendingRows = pdfImport.previewRegion.getByRole("list", { name: "PDF pending transactions" });
+    await expect(pendingRows.getByRole("listitem")).toHaveCount(2);
+    const rowOverflows = await pendingRows.evaluate((list) =>
+      Array.from(list.querySelectorAll("li")).some((row) => row.scrollWidth > row.clientWidth)
+    );
+    expect(rowOverflows).toBe(false);
   });
 
   test("rejects a non-boolean excluded-row acknowledgement at the IPC boundary", async ({ window }) => {
