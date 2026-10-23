@@ -4,7 +4,10 @@ import {
   mapCsvRows,
   previewCsvRows,
 } from "../../src/domain/import/csvRowMapper.js";
+import { computeMonthlyTotals } from "../../src/domain/aggregation/computeMonthlyTotals.js";
 import { previewCsvRowsWithProgress } from "../../src/app/import/importCsv.js";
+import { buildForecastInput } from "../../src/domain/forecast/forecastInputAdapter.js";
+import { buildMonthBuckets } from "../../src/domain/forecast/aggregationAdapter.js";
 import { parseRogalandStatementText } from "../../src/domain/import/pdfTextParser.js";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { matchPendingTransactionObservations } from "../../src/domain/import/pendingTransactionMatching.js";
@@ -265,6 +268,58 @@ describe("pending transaction lifecycle", () => {
         sourceReference: "REF-RES-001",
       },
     });
+  });
+
+  it("keeps pending CSV amounts out of booked totals and forecast inputs while retaining booked values", () => {
+    const result = mapCsvRows(
+      [
+        {
+          [CSV_COLUMN_NAMES.executionDate]: "29.05.2026",
+          [CSV_COLUMN_NAMES.bookedDate]: "",
+          [CSV_COLUMN_NAMES.description]: "SYNTHETIC PENDING SHOP",
+          [CSV_COLUMN_NAMES.amountIn]: "",
+          [CSV_COLUMN_NAMES.amountOut]: "12.34",
+          [CSV_COLUMN_NAMES.currency]: "NOK",
+          [CSV_COLUMN_NAMES.status]: "Reservert",
+          [CSV_COLUMN_NAMES.reference]: "REF-PENDING-UNIT-001",
+        },
+        {
+          [CSV_COLUMN_NAMES.executionDate]: "28.05.2026",
+          [CSV_COLUMN_NAMES.bookedDate]: "28.05.2026",
+          [CSV_COLUMN_NAMES.description]: "SYNTHETIC BOOKED SHOP",
+          [CSV_COLUMN_NAMES.amountIn]: "",
+          [CSV_COLUMN_NAMES.amountOut]: "25.00",
+          [CSV_COLUMN_NAMES.currency]: "NOK",
+          [CSV_COLUMN_NAMES.status]: "Bokført",
+          [CSV_COLUMN_NAMES.reference]: "REF-BOOKED-UNIT-002",
+        },
+      ],
+      {
+        householdId: "hh-pending",
+        accountId: "acc-pending",
+        importJobId: "job-pending-unit-totals",
+      }
+    );
+
+    expect(result.pendingObservations).toHaveLength(1);
+    expect(result.pendingObservations?.[0]?.amountMinor).toBe(-1234);
+    expect(result.transactions).toHaveLength(1);
+    expect(result.transactions[0]).toMatchObject({
+      amountMinor: -2500,
+      sourceReference: "REF-BOOKED-UNIT-002",
+    });
+
+    expect(computeMonthlyTotals(result.transactions, "2026-05")).toEqual({
+      yearMonth: "2026-05",
+      incomeMinor: 0,
+      expenseMinor: 2500,
+      netMinor: -2500,
+    });
+    expect(
+      buildForecastInput(buildMonthBuckets(result.transactions), {
+        fallbackStartYearMonth: "2026-06",
+      }).history
+    ).toEqual([{ yearMonth: "2026-05", totalMinor: -2500 }]);
   });
 
   it("maps reserved and confirmed text-PDF rows separately from booked transactions", () => {

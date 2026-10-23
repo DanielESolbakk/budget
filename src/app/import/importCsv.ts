@@ -168,7 +168,11 @@ export async function previewCsvRowsWithProgress(
   const validTransactions = assignImportedTransactionIds(
     candidates.map(({ transaction }) => transaction),
     {
-      ...(options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope }),
+      sourceScopes: candidates.map((candidate) =>
+        candidate.status !== "booked" && candidate.transaction.sourceReference?.trim()
+          ? undefined
+          : options.sourceScope
+      ),
       sourceReferences: candidates.map(({ transaction }) => transaction.sourceReference),
     }
   );

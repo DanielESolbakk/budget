@@ -422,7 +422,9 @@ export function mapCsvRows(
   const identifiedPendingRows = assignImportedTransactionIds(
     pendingRows.map(({ transaction }) => transaction),
     {
-      ...sourceScope,
+      sourceScopes: pendingRows.map(({ transaction }) =>
+        transaction.sourceReference?.trim() ? undefined : options.sourceScope
+      ),
       sourceReferences: pendingRows.map(({ transaction }) => transaction.sourceReference),
     }
   );
@@ -494,7 +496,11 @@ export function previewCsvRows(
   const validTransactions = assignImportedTransactionIds(
     validRows.map(({ transaction }) => transaction),
     {
-      ...(options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope }),
+      sourceScopes: validRows.map((row) =>
+        row.status !== "booked" && row.transaction.sourceReference?.trim()
+          ? undefined
+          : options.sourceScope
+      ),
       sourceReferences: validRows.map(({ transaction }) => transaction.sourceReference),
     }
   );

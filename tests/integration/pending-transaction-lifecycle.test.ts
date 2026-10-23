@@ -13,6 +13,102 @@ import { defaultParserAdapterRegistry } from "../../src/domain/import/parserAdap
 import { buildForecastInput } from "../../src/domain/forecast/forecastInputAdapter.js";
 
 describe("pending transaction lifecycle persistence", () => {
+  it("does not duplicate a pending CSV source row imported from a different path", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-pending-path-replay-"));
+    const ledger = createLocalLedgerDatabase({
+      dbPath: join(directory, "ledger.sqlite"),
+      seedData: {
+        household: {
+          id: "hh-pending",
+          name: "Synthetic Household",
+          createdAtIso: "2026-01-01T00:00:00Z",
+        },
+        accounts: [
+          {
+            id: "acc-pending",
+            householdId: "hh-pending",
+            name: "Synthetic Account",
+            currencyCode: "NOK",
+          },
+        ],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+    const rows = [
+      {
+        "Utført dato": "29.05.2026",
+        "Bokført dato": "",
+        Beskrivelse: "SYNTHETIC SHOP",
+        "Beløp inn": "",
+        "Beløp ut": "12.34",
+        Valuta: "NOK",
+        Status: "Reservert",
+        "Melding/KID/Fakt.nr": "REF-PATH-REPLAY-001",
+      },
+    ];
+    const dependencies = {
+      categoryRules: new Map<string, string>(),
+      loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
+      getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+      appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+    };
+
+    try {
+      const firstResponse = runCsvImportWorkflow(
+        {
+          rows,
+          filePath: "imports-a/pending.csv",
+          householdId: "hh-pending",
+          accountId: "acc-pending",
+          importJobId: "job-pending-path-a",
+          startedAtIso: "2026-05-29T00:00:00Z",
+          finishedAtIso: "2026-05-29T00:00:01Z",
+          sourceIdentity: "same-pending-csv-content",
+          sourceScope: "imports-a/pending.csv",
+        },
+        dependencies
+      );
+      const secondResponse = runCsvImportWorkflow(
+        {
+          rows,
+          filePath: "imports-b/pending-copy.csv",
+          householdId: "hh-pending",
+          accountId: "acc-pending",
+          importJobId: "job-pending-path-b",
+          startedAtIso: "2026-05-29T00:00:02Z",
+          finishedAtIso: "2026-05-29T00:00:03Z",
+          sourceIdentity: "same-pending-csv-content",
+          sourceScope: "imports-b/pending-copy.csv",
+        },
+        dependencies
+      );
+
+      expect(firstResponse).toMatchObject({
+        ok: true,
+        transactionCount: 0,
+        pendingCount: 1,
+      });
+      expect(secondResponse).toMatchObject({
+        ok: true,
+        transactionCount: 0,
+        pendingCount: 1,
+      });
+      expect(ledger.listPendingTransactionObservations("hh-pending")).toMatchObject([
+        {
+          accountId: "acc-pending",
+          sourceReference: "REF-PATH-REPLAY-001",
+          importJobId: "job-pending-path-a",
+        },
+      ]);
+      expect(ledger.listPendingTransactionObservations("hh-pending")).toHaveLength(1);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("persists one pending CSV observation separately from booked transactions on replay", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-pending-lifecycle-"));
     const ledger = createLocalLedgerDatabase({
