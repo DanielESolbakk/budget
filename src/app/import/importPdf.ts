@@ -19,8 +19,15 @@ import type {
   ImportReviewItem,
   PendingTransactionObservation,
   Transaction,
+  CurrencyCode,
 } from "../../domain/types.js";
 import { resolve } from "node:path";
+import {
+  reconcileImportJob,
+  type ImportReconciliation,
+  type ImportReconciliationDisposition,
+  type ImportReconciliationSourceRow,
+} from "../../domain/import/importReconciliation.js";
 
 /** Shape of a normalized PDF import request passed from the renderer to the main process via IPC. */
 export interface PdfImportRequest {
@@ -39,6 +46,7 @@ export interface PdfImportSuccess {
   excludedRowCount: number;
   adapterId: string;
   unresolvedRowCount?: number;
+  reconciliation: ImportReconciliation;
 }
 
 /** Returned when a PDF import has validation errors and no transactions are persisted. */
@@ -95,7 +103,8 @@ export interface PdfImportWorkflowDependencies {
   parserRegistry: Pick<ParserAdapterRegistry, "parse">;
   appendImportJob: (importJob: ImportJob) => void;
   hasImportJob?: (importJobId: string) => boolean;
-  getTransactionsForImportJob?: (importJobId: string) => Transaction[];
+  getTransactionsForImportJob: (importJobId: string) => Transaction[];
+  getAccountCurrencyCode?: (accountId: string) => CurrencyCode | undefined;
   getImportedTransactionsForSource?: (
     sourceType: ImportJob["sourceType"], sourceName: string, accountId: string, sourceIdentity?: string
   ) => Transaction[];
@@ -283,17 +292,52 @@ export function runPdfImportWorkflow(
       sourceDocument,
     });
   }
+  if (parseResult.sourceRows === undefined) {
+    return {
+      ok: false,
+      errors: [{
+        code: "SOURCE_ACCOUNTING_UNAVAILABLE",
+        message: "The statement parser did not provide source rows for reconciliation.",
+      }],
+    };
+  }
+  const sourceRowIndexByCandidateId = new Map(
+    parseResult.sourceRows.flatMap((row) =>
+      row.candidateId === undefined ? [] : [[row.candidateId, row.lineNumber - 1] as const]
+    )
+  );
+  const unmatchedCandidate = parseResult.candidates.find(
+    (candidate) => !sourceRowIndexByCandidateId.has(candidate.id)
+  );
+  if (unmatchedCandidate !== undefined) {
+    return {
+      ok: false,
+      errors: [{
+        code: "SOURCE_ACCOUNTING_UNAVAILABLE",
+        message: "A parsed transaction could not be linked to its source row.",
+      }],
+    };
+  }
 
   const excludedRowCount = parseResult.excludedRows?.length ?? 0;
   const pendingObservations = parseResult.pendingObservations ?? [];
   const unresolvedRows = parseResult.unresolvedRows ?? [];
 
+  const categorizedCandidates = parseResult.candidates.map((transaction) =>
+    categorizeTransaction(transaction, input.categoryRules)
+  );
   const transactions = assignImportedTransactionIds(
-    parseResult.candidates.map((transaction) =>
-      categorizeTransaction(transaction, input.categoryRules)
-    ),
+    categorizedCandidates,
     { sourceScope: canonicalSourceScope(input.filePath) }
   );
+  const sourceRowIndexByTransactionId = new Map<string, number>();
+  categorizedCandidates.forEach((candidate, index) => {
+    const sourceRowIndex = sourceRowIndexByCandidateId.get(candidate.id);
+    const assignedTransaction = transactions[index];
+    if (sourceRowIndex !== undefined && assignedTransaction !== undefined) {
+      sourceRowIndexByTransactionId.set(assignedTransaction.id, sourceRowIndex);
+    }
+  });
   const reviewItems: ImportReviewItem[] = unresolvedRows.map((row) => ({
     id: `${input.importJobId}:review:${row.lineNumber}`,
     importJobId: input.importJobId,
@@ -327,9 +371,35 @@ export function runPdfImportWorkflow(
   );
   let pendingTransactions: Transaction[];
   let duplicateCount: number;
+  const dispositions = new Map<number, {
+    disposition: ImportReconciliationDisposition;
+    reviewItemId?: string;
+  }>();
+  for (const observation of pendingObservations) {
+    dispositions.set(observation.sourceRowIndex, { disposition: "pending" });
+  }
+  for (const row of unresolvedRows) {
+    dispositions.set(row.lineNumber - 1, {
+      disposition: "invalid",
+      reviewItemId: `${input.importJobId}:review:${row.lineNumber}`,
+    });
+  }
+  const transactionIdByRowIndex = new Map<number, string>();
   if (input.duplicateDecisions === undefined) {
     pendingTransactions = filterPreviouslyImportedTransactions(transactions, previousTransactions);
     duplicateCount = 0;
+    const pendingTransactionIds = new Set(pendingTransactions.map((transaction) => transaction.id));
+    for (const transaction of transactions) {
+      const sourceRowIndex = sourceRowIndexByTransactionId.get(transaction.id);
+      if (sourceRowIndex === undefined) {
+        throw new Error("PDF duplicate classification lost its source row index.");
+      }
+      if (pendingTransactionIds.has(transaction.id)) {
+        transactionIdByRowIndex.set(sourceRowIndex, transaction.id);
+      } else {
+        dispositions.set(sourceRowIndex, { disposition: "duplicate" });
+      }
+    }
   } else {
     const existingTransactions = dependencies.getExistingTransactionsForAccount?.(input.accountId) ?? previousTransactions;
     const classifiedCandidates = classifyDuplicateCandidates(transactions, existingTransactions);
@@ -351,13 +421,21 @@ export function runPdfImportWorkflow(
 
     pendingTransactions = [];
     duplicateCount = 0;
-    for (const [rowIndex, candidate] of classifiedCandidates.entries()) {
+    for (const [candidateIndex, candidate] of classifiedCandidates.entries()) {
+      const sourceRowIndex = sourceRowIndexByTransactionId.get(candidate.candidate.id);
+      if (sourceRowIndex === undefined) {
+        throw new Error("PDF duplicate classification lost its source row index.");
+      }
       if (candidate.duplicateMatch === undefined) {
         pendingTransactions.push(candidate.candidate);
-      } else if (decisions.get(rowIndex) === "skip") {
+        transactionIdByRowIndex.set(sourceRowIndex, candidate.candidate.id);
+      } else if (decisions.get(candidateIndex) === "skip") {
         duplicateCount += 1;
+        dispositions.set(sourceRowIndex, { disposition: "duplicate" });
       } else {
-        pendingTransactions.push({ ...candidate.candidate, id: randomUUID() });
+        const importedDuplicate = { ...candidate.candidate, id: randomUUID() };
+        pendingTransactions.push(importedDuplicate);
+        transactionIdByRowIndex.set(sourceRowIndex, importedDuplicate.id);
       }
     }
   }
@@ -400,6 +478,48 @@ export function runPdfImportWorkflow(
   const reportedDuplicateCount = input.duplicateDecisions === undefined
     ? transactions.length - insertedCount
     : duplicateCount;
+  const persistedTransactions = dependencies.getTransactionsForImportJob(input.importJobId);
+  const persistedTransactionIds = new Set(persistedTransactions.map((transaction) => transaction.id));
+  const reconciliationSourceRows = parseResult.sourceRows.map(
+    (row): ImportReconciliationSourceRow => {
+      const sourceRowIndex = row.lineNumber - 1;
+      const disposition = dispositions.get(sourceRowIndex);
+      if (disposition !== undefined) {
+        return {
+          importJobId: input.importJobId,
+          sourceRowIndex,
+          ...(row.amountMinor === undefined ? {} : { amountMinor: row.amountMinor }),
+          ...(row.currencyCode === undefined ? {} : { currencyCode: row.currencyCode }),
+          ...disposition,
+        };
+      }
+      const transactionId = transactionIdByRowIndex.get(sourceRowIndex);
+      return {
+        importJobId: input.importJobId,
+        sourceRowIndex,
+        ...(row.amountMinor === undefined ? {} : { amountMinor: row.amountMinor }),
+        ...(row.currencyCode === undefined ? {} : { currencyCode: row.currencyCode }),
+        ...(transactionId === undefined
+          ? {}
+          : {
+              disposition: persistedTransactionIds.has(transactionId)
+                ? "persisted" as const
+                : "not-persisted" as const,
+            }),
+      };
+    }
+  );
+  const defaultCurrencyCode = dependencies.getAccountCurrencyCode?.(input.accountId) ??
+    parseResult.sourceRows.find((row) => row.currencyCode !== undefined)?.currencyCode;
+  if (defaultCurrencyCode === undefined) {
+    throw new Error(`PDF import account currency is unavailable: ${input.accountId}`);
+  }
+  const reconciliation = reconcileImportJob(
+    input.importJobId,
+    reconciliationSourceRows,
+    persistedTransactions,
+    defaultCurrencyCode
+  );
   dependencies.onTransactionsPersisted?.(pendingTransactions);
 
   return {
@@ -411,5 +531,6 @@ export function runPdfImportWorkflow(
     excludedRowCount,
     adapterId: parseResult.adapterId,
     ...(reviewItems.length === 0 ? {} : { unresolvedRowCount: reviewItems.length }),
+    reconciliation,
   };
 }

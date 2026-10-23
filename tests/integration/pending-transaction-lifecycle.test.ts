@@ -53,6 +53,7 @@ describe("pending transaction lifecycle persistence", () => {
       loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
       getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
       appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
     };
 
     try {
@@ -162,6 +163,7 @@ describe("pending transaction lifecycle persistence", () => {
           loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
           getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         }
       );
       let replayResponse: ReturnType<typeof runCsvImportWorkflow> | undefined;
@@ -194,6 +196,7 @@ describe("pending transaction lifecycle persistence", () => {
             loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
             getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
             appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+            getTransactionsForImportJob: ledger.getTransactionsForImportJob,
           }
         );
       }).not.toThrow();
@@ -294,6 +297,7 @@ describe("pending transaction lifecycle persistence", () => {
           loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
           getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         }
       );
 
@@ -369,6 +373,7 @@ describe("pending transaction lifecycle persistence", () => {
           loadLedgerSnapshotData: sourceLedger.loadLedgerSnapshotData,
           getImportedTransactionsForSource: sourceLedger.getImportedTransactionsForSource,
           appendImportJobAndTransactions: sourceLedger.appendImportJobAndTransactions,
+          getTransactionsForImportJob: sourceLedger.getTransactionsForImportJob,
         }
       );
 
@@ -485,6 +490,7 @@ describe("pending transaction lifecycle persistence", () => {
           loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
           getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         }
       );
 
@@ -531,6 +537,7 @@ describe("pending transaction lifecycle persistence", () => {
         loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
         getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       };
       const pendingResponse = runCsvImportWorkflow(
         {
@@ -656,6 +663,7 @@ describe("pending transaction lifecycle persistence", () => {
       loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
       getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
       appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
     };
     const makeRow = (
       date: string,
@@ -758,6 +766,7 @@ describe("pending transaction lifecycle persistence", () => {
         appendImportJob: ledger.appendImportJob,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
         appendTransactions: ledger.appendTransactions,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       };
       const response = runPdfImportWorkflow(
         {

@@ -125,6 +125,13 @@ describe("pdfTextParser unit tests", () => {
           sourceType: "pdf",
         },
       ],
+      sourceRows: [
+        { lineNumber: 5, amountMinor: -1100, currencyCode: "NOK" },
+        { lineNumber: 6, amountMinor: 5_000_000, currencyCode: "NOK", candidateId: "pdf-2" },
+        { lineNumber: 11, amountMinor: -35000, currencyCode: "NOK" },
+        { lineNumber: 12, amountMinor: -1250, currencyCode: "NOK", candidateId: "pdf-1" },
+        { lineNumber: 18, amountMinor: -4100, currencyCode: "NOK" },
+      ],
       pendingObservations: [
         {
           id: "pdf-pending-4",
@@ -1192,7 +1199,11 @@ describe("pdfTextParser unit tests", () => {
       expect(reordered.ok).toBe(true);
       if (!original.ok || !reordered.ok) return;
 
-      expect(reordered).toEqual(original);
+      expect(reordered.transactions).toEqual(original.transactions);
+      expect(reordered.sourceRows.map(({ lineNumber, amountMinor }) => ({ lineNumber, amountMinor }))).toEqual([
+        { lineNumber: 4, amountMinor: -9770 },
+        { lineNumber: 5, amountMinor: 5_000_000 },
+      ]);
     });
 
     it("parsing the same reordered input twice produces identical results (deterministic)", () => {

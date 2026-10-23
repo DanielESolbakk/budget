@@ -1182,6 +1182,7 @@ app.whenReady().then(async () => {
           loadLedgerSnapshotData: localLedgerDatabase.loadLedgerSnapshotData,
           getImportedTransactionsForSource: localLedgerDatabase.getImportedTransactionsForSource,
           appendImportJobAndTransactions: localLedgerDatabase.appendImportJobAndTransactions,
+          getTransactionsForImportJob: localLedgerDatabase.getTransactionsForImportJob,
         });
         if (response.ok) {
           importPreviewRegistry.complete(parsedInput.previewId!);
@@ -1612,6 +1613,9 @@ app.whenReady().then(async () => {
           getTransactionsForImportJob: localLedgerDatabase.getTransactionsForImportJob,
           getImportedTransactionsForSource: localLedgerDatabase.getImportedTransactionsForSource,
           getExistingTransactionsForAccount: localLedgerDatabase.getTransactionsForAccount,
+          getAccountCurrencyCode: (accountId) =>
+            localLedgerDatabase.getAccountsForHousehold(householdId)
+              .find((account) => account.id === accountId)?.currencyCode,
           appendImportJob: localLedgerDatabase.appendImportJob,
           appendImportJobAndTransactions: localLedgerDatabase.appendImportJobAndTransactions,
           appendTransactions: localLedgerDatabase.appendTransactions,

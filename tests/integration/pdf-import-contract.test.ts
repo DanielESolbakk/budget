@@ -120,6 +120,7 @@ function runPdfImportOrchestration(
       appendImportJob: ledger.appendImportJob,
       appendTransactions: ledger.appendTransactions,
       appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
     }
   );
 }
@@ -292,6 +293,7 @@ describe("pdf import contract", () => {
       merchantRaw: "BANK-B SHOP",
       currencyCode: "NOK",
       sourceType: "pdf",
+      importJobId: "bank-b-import-job",
     };
     registry.register({
       id: "bank-b-pdf-v1",
@@ -303,6 +305,12 @@ describe("pdf import contract", () => {
         adapterId: "bank-b-pdf-v1",
         sourceIdentity: "no.bank-b.statement-pdf",
         candidates: [candidate],
+        sourceRows: [{
+          lineNumber: 1,
+          amountMinor: candidate.amountMinor,
+          ...(candidate.currencyCode === undefined ? {} : { currencyCode: candidate.currencyCode }),
+          candidateId: candidate.id,
+        }],
       }),
     });
     const sourceDocument: SourceDocument = {
@@ -340,6 +348,8 @@ describe("pdf import contract", () => {
         importedTransactions.push(...transactions);
         return transactions.length;
       },
+      getTransactionsForImportJob: (importJobId) =>
+        importedTransactions.filter((transaction) => transaction.importJobId === importJobId),
     });
 
     expect(response).toMatchObject({ ok: true, adapterId: "bank-b-pdf-v1", transactionCount: 1 });
@@ -372,6 +382,7 @@ describe("pdf import contract", () => {
         appendImportJob: ledger.appendImportJob,
         appendTransactions: ledger.appendTransactions,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       };
     }
 
@@ -526,6 +537,7 @@ describe("pdf import contract", () => {
           appendImportJob: ledger.appendImportJob,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           appendTransactions: ledger.appendTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         };
         const imported = runPdfImportWorkflow({
           ...importInput,
@@ -1168,6 +1180,7 @@ describe("pdf import contract", () => {
         appendImportJob: ledger.appendImportJob,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
         appendTransactions: ledger.appendTransactions,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       };
 
       try {
@@ -1312,6 +1325,7 @@ describe("pdf import contract", () => {
           appendImportJob: ledger.appendImportJob,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           appendTransactions: ledger.appendTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         });
 
         expect(response).toMatchObject({ ok: true, transactionCount: 2, duplicateCount: 0 });
@@ -1425,6 +1439,7 @@ describe("pdf import contract", () => {
           appendImportJob: ledger.appendImportJob,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           appendTransactions: ledger.appendTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         });
 
         expect(response).toMatchObject({ ok: true, transactionCount: 1, duplicateCount: oldParse.transactions.length });
@@ -1490,6 +1505,7 @@ describe("pdf import contract", () => {
           appendImportJob: ledger.appendImportJob,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           appendTransactions: ledger.appendTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         });
 
         expect(response).toMatchObject({ ok: true, transactionCount: 1, duplicateCount: 10 });
@@ -1657,6 +1673,7 @@ describe("pdf import contract", () => {
           parserRegistry: defaultParserAdapterRegistry,
           appendImportJob: ledger.appendImportJob,
           appendTransactions: ledger.appendTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
           onTransactionsPersisted: appendVisibleTransactions,
         }
       );
@@ -1678,6 +1695,7 @@ describe("pdf import contract", () => {
           parserRegistry: defaultParserAdapterRegistry,
           appendImportJob: ledger.appendImportJob,
           appendTransactions: ledger.appendTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
           onTransactionsPersisted: appendVisibleTransactions,
         }
       );

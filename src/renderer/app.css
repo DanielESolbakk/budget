@@ -1354,6 +1354,149 @@ section[aria-label="CSV Import"] [role="alert"] a {
   background: var(--paper);
 }
 
+.import-result-summary > .import-reconciliation {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.8rem;
+}
+
+.import-reconciliation h4 {
+  margin: 0 0 0.45rem;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.2rem;
+  line-height: 1.1;
+}
+
+.import-reconciliation-status {
+  margin: 0 0 0.65rem;
+  border: 1px solid var(--line-strong);
+  padding: 0.55rem 0.7rem;
+  background: var(--panel-soft);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.import-reconciliation-status.is-matched {
+  color: var(--success);
+}
+
+.import-reconciliation-status.is-unmatched {
+  color: var(--error);
+}
+
+.import-reconciliation-empty {
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.import-reconciliation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.import-reconciliation-table th,
+.import-reconciliation-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.import-reconciliation-table th {
+  color: var(--paper-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.import-reconciliation-table td[data-label="Source total"],
+.import-reconciliation-table td[data-label="Persisted transactions"],
+.import-reconciliation-table td[data-label="Difference"] {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.import-reconciliation-table td[data-label="Status"] {
+  color: var(--paper);
+}
+
+.import-reconciliation-dispositions {
+  margin-top: 0.75rem;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.import-reconciliation-dispositions p {
+  margin: 0 0 0.35rem;
+}
+
+.import-reconciliation-dispositions ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.import-reconciliation-dispositions li {
+  overflow-wrap: anywhere;
+}
+
+.import-reconciliation-review-note {
+  display: block;
+  color: var(--info);
+}
+
+@media (max-width: 38rem) {
+  .import-reconciliation-table {
+    display: block;
+  }
+
+  .import-reconciliation-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .import-reconciliation-table tbody {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .import-reconciliation-table tr {
+    display: grid;
+    min-width: 0;
+    border: 1px solid var(--line);
+    padding: 0.35rem 0.55rem;
+  }
+
+  .import-reconciliation-table td {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.45rem;
+    padding: 0.35rem 0;
+    overflow-wrap: anywhere;
+    text-align: right;
+    white-space: normal;
+  }
+
+  .import-reconciliation-table td::before {
+    content: attr(data-label);
+    color: var(--paper-muted);
+    font-size: 0.72rem;
+    text-align: left;
+  }
+}
+
 .import-history {
   margin-top: 2rem;
   border-top: 1px solid var(--line-strong);

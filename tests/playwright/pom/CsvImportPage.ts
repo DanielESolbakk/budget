@@ -74,6 +74,25 @@ export class CsvImportPage {
     });
   }
 
+  get reconciliationRegion() {
+    return this.importSection.getByRole("region", { name: "Import reconciliation", exact: true });
+  }
+
+  get reconciliationStatus() {
+    return this.reconciliationRegion.getByRole("status", { name: "Reconciliation status", exact: true });
+  }
+
+  get reconciliationTable() {
+    return this.reconciliationRegion.getByRole("table", {
+      name: "Import totals by currency and direction",
+      exact: true,
+    });
+  }
+
+  get sourceRowDispositions() {
+    return this.reconciliationRegion.getByRole("list", { name: "Source row dispositions", exact: true });
+  }
+
   /** Alert shown on runtime import failure (role="alert"). */
   get errorAlert() {
     return this.importSection.getByRole("alert").first();

@@ -32,7 +32,12 @@ const EMPTY_SNAPSHOT: LedgerSnapshotData = {
     name: "Review test household",
     createdAtIso: "2026-01-01T00:00:00Z",
   },
-  accounts: [],
+  accounts: [{
+    id: ACCOUNT_ID,
+    householdId: HOUSEHOLD_ID,
+    name: "Main account",
+    currencyCode: "NOK",
+  }],
   transactions: [],
   importJobs: [],
   monthlyCategoryTargets: [],
@@ -133,6 +138,7 @@ describe("cross-format import review", () => {
         if (reviewItems !== undefined) persistedReviewItems.push(...reviewItems);
         return transactions.length;
       },
+      getTransactionsForImportJob: () => persistedTransactions,
     });
 
     expect(persistedReviewItems).toEqual([

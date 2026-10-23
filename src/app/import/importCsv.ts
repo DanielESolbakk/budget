@@ -11,6 +11,7 @@ import {
   mapCsvRowToTransaction,
   normalizeCsvRow,
   previewCsvRows,
+  extractCsvSourceAmount,
 } from "../../domain/import/csvRowMapper.js";
 import type {
   BankTransactionStatus,
@@ -33,6 +34,12 @@ import { assignImportedTransactionIds } from "../../domain/import/assignImported
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { buildTransactionFingerprint } from "../../domain/import/buildTransactionFingerprint.js";
 import { categorizeTransactions } from "../../domain/categorization/categorizeTransaction.js";
+import {
+  reconcileImportJob,
+  type ImportReconciliation,
+  type ImportReconciliationDisposition,
+  type ImportReconciliationSourceRow,
+} from "../../domain/import/importReconciliation.js";
 
 /** Shape of a normalized import request passed from the renderer to the main process via IPC. */
 export interface CsvImportRequest {
@@ -50,6 +57,7 @@ export interface CsvImportSuccess {
   pendingCount?: number;
   duplicateCount: number;
   unresolvedCount: number;
+  reconciliation: ImportReconciliation;
 }
 
 /** Returned when a CSV import has validation errors and no transactions are persisted. */
@@ -91,6 +99,7 @@ export interface CsvImportWorkflowDependencies {
     reviewItems?: ImportReviewItem[],
     pendingObservations?: PendingTransactionObservation[]
   ) => number;
+  getTransactionsForImportJob: (importJobId: string) => Transaction[];
 }
 
 export interface CsvImportPreviewRow extends CsvRowPreview {
@@ -377,6 +386,16 @@ export function runCsvImportWorkflow(
   input: CsvImportWorkflowInput,
   dependencies: CsvImportWorkflowDependencies
 ): CsvImportResponse {
+  const snapshot = dependencies.loadLedgerSnapshotData();
+  const account = snapshot.accounts.find((candidate) => candidate.id === input.accountId);
+  if (account === undefined) {
+    throw new Error(`CSV import account not found: ${input.accountId}`);
+  }
+  const sourceRows = input.rows.map((row, sourceRowIndex): ImportReconciliationSourceRow => ({
+    importJobId: input.importJobId,
+    sourceRowIndex,
+    ...extractCsvSourceAmount(row, input.columnMapping),
+  }));
   const preview = previewCsvRows(input.rows, {
     householdId: input.householdId,
     accountId: input.accountId,
@@ -406,7 +425,6 @@ export function runCsvImportWorkflow(
     createdAtIso: input.finishedAtIso,
     updatedAtIso: input.finishedAtIso,
   }));
-  const snapshot = dependencies.loadLedgerSnapshotData();
   const previouslyImported = dependencies.getImportedTransactionsForSource(
     "csv",
     input.filePath,
@@ -452,17 +470,35 @@ export function runCsvImportWorkflow(
   }
 
   const pendingTransactions: Transaction[] = [];
+  const dispositions = new Map<number, {
+    disposition: ImportReconciliationDisposition;
+    reviewItemId?: string;
+  }>();
+  const transactionIdByRowIndex = new Map<number, string>();
+  for (const { rowIndex } of skipped) {
+    dispositions.set(rowIndex, {
+      disposition: "invalid",
+      reviewItemId: `${input.importJobId}:review:${rowIndex}`,
+    });
+  }
+  for (const observation of preview.pendingObservations ?? []) {
+    dispositions.set(observation.sourceRowIndex, { disposition: "pending" });
+  }
   let skippedDuplicateCount = 0;
   for (const { rowIndex, candidate } of classifiedCandidatesWithRowIndex) {
     if (candidate.duplicateMatch === undefined) {
       pendingTransactions.push(candidate.candidate);
+      transactionIdByRowIndex.set(rowIndex, candidate.candidate.id);
       continue;
     }
     if (decisions.get(rowIndex) === "skip") {
       skippedDuplicateCount += 1;
+      dispositions.set(rowIndex, { disposition: "duplicate" });
       continue;
     }
-    pendingTransactions.push({ ...candidate.candidate, id: randomUUID() });
+    const importedDuplicate = { ...candidate.candidate, id: randomUUID() };
+    pendingTransactions.push(importedDuplicate);
+    transactionIdByRowIndex.set(rowIndex, importedDuplicate.id);
   }
 
   const importJob: ImportJob = {
@@ -486,6 +522,20 @@ export function runCsvImportWorkflow(
     reviewItems,
     preview.pendingObservations
   );
+  const persistedTransactions = dependencies.getTransactionsForImportJob(input.importJobId);
+  const persistedTransactionIds = new Set(persistedTransactions.map((transaction) => transaction.id));
+  const reconciliationSourceRows = sourceRows.map((row) => {
+    const disposition = dispositions.get(row.sourceRowIndex);
+    if (disposition !== undefined) {
+      return { ...row, ...disposition };
+    }
+    const transactionId = transactionIdByRowIndex.get(row.sourceRowIndex);
+    if (transactionId === undefined) return row;
+    return {
+      ...row,
+      disposition: persistedTransactionIds.has(transactionId) ? "persisted" as const : "not-persisted" as const,
+    };
+  });
 
   return {
     ok: true,
@@ -496,5 +546,11 @@ export function runCsvImportWorkflow(
       : { pendingCount: preview.pendingObservations!.length }),
     duplicateCount: skippedDuplicateCount,
     unresolvedCount: reviewItems.length,
+    reconciliation: reconcileImportJob(
+      input.importJobId,
+      reconciliationSourceRows,
+      persistedTransactions,
+      account.currencyCode
+    ),
   };
 }

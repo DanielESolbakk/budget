@@ -75,6 +75,7 @@ function createReviewLedger(suffix: string) {
     loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
     getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
     appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+    getTransactionsForImportJob: ledger.getTransactionsForImportJob,
   });
   if (!response.ok) {
     ledger.close();
@@ -148,6 +149,7 @@ describe("import review persistence contract", () => {
         loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
         getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       });
 
       expect(response).toMatchObject({
@@ -252,6 +254,7 @@ describe("import review persistence contract", () => {
         appendImportJob: ledger.appendImportJob,
         appendTransactions: ledger.appendTransactions,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       });
 
       expect(response).toMatchObject({
