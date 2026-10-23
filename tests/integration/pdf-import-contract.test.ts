@@ -356,7 +356,7 @@ describe("pdf import contract", () => {
     expect(importedTransactions).toMatchObject([{ merchantRaw: "BANK-B SHOP", sourceType: "pdf" }]);
   });
 
-  describe("booked-only import acknowledgement", () => {
+  describe("pending bank transaction imports", () => {
     const mixedStatusText = [
       "ROGALAND SPAREBANK",
       "Transaksjoner Antall: 3",
@@ -375,7 +375,7 @@ describe("pdf import contract", () => {
       };
     }
 
-    it("reports excluded rows in the PDF preview before confirmation", () => {
+    it("reports pending observations in the PDF preview before confirmation", () => {
       const preview = previewPdfImportWorkflow({
         pdfText: mixedStatusText,
         filePath: "mixed-status-statement.pdf",
@@ -408,7 +408,7 @@ describe("pdf import contract", () => {
       });
     });
 
-    it("preserves paginated preview exclusions through acknowledgement and booked-only persistence", async () => {
+    it("preserves paginated pending observations through preview and import", async () => {
       const ledger = makeTestLedger(randomUUID());
       const existingTransaction: Transaction = {
         id: "existing-acknowledgement-ledger-row",
@@ -500,6 +500,23 @@ describe("pdf import contract", () => {
               description: "SYNTHETIC RESERVED LAST",
             },
           ],
+          pendingObservations: [
+            {
+              status: "reserved",
+              sourceStatus: "Reservert",
+              sourceRowIndex: 4,
+            },
+            {
+              status: "confirmed",
+              sourceStatus: "Bekreftet",
+              sourceRowIndex: 10,
+            },
+            {
+              status: "reserved",
+              sourceStatus: "Reservert",
+              sourceRowIndex: 16,
+            },
+          ],
         });
         if (preview === null || !preview.ok) throw new Error("Expected a valid batched PDF preview");
         expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
@@ -510,32 +527,22 @@ describe("pdf import contract", () => {
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           appendTransactions: ledger.appendTransactions,
         };
-        const rejected = runPdfImportWorkflow({
+        const imported = runPdfImportWorkflow({
           ...importInput,
-          importJobId: "paginated-status-no-ack-job",
+          importJobId: "paginated-status-job",
         }, dependencies);
-        expect(rejected).toMatchObject({
-          ok: false,
-          errors: [{ code: "PENDING_ROWS_ACKNOWLEDGEMENT_REQUIRED" }],
-        });
-        expect(ledger.loadLedgerSnapshotData()).toEqual(beforeImport);
-
-        const accepted = runPdfImportWorkflow({
-          ...importInput,
-          importJobId: "paginated-status-ack-job",
-          acknowledgeExcludedRows: true,
-        }, dependencies);
-        expect(accepted).toMatchObject({
+        expect(imported).toMatchObject({
           ok: true,
           transactionCount: 2,
+          pendingCount: 3,
           duplicateCount: 0,
           excludedRowCount: 3,
         });
-        const afterAcknowledgedImport = ledger.loadLedgerSnapshotData();
-        expect(afterAcknowledgedImport.transactions).toHaveLength(beforeImport.transactions.length + 2);
-        expect(afterAcknowledgedImport.transactions.filter((transaction) => transaction.id === existingTransaction.id))
+        const afterImport = ledger.loadLedgerSnapshotData();
+        expect(afterImport.transactions).toHaveLength(beforeImport.transactions.length + 2);
+        expect(afterImport.transactions.filter((transaction) => transaction.id === existingTransaction.id))
           .toEqual([existingTransaction]);
-        expect(afterAcknowledgedImport.transactions.filter((transaction) => transaction.sourceType === "pdf")
+        expect(afterImport.transactions.filter((transaction) => transaction.sourceType === "pdf")
           .map(({ householdId, accountId, bookedAtIso, amountMinor, merchantRaw }) => ({
             householdId,
             accountId,
@@ -558,15 +565,34 @@ describe("pdf import contract", () => {
             merchantRaw: "SYNTHETIC BOOKED FIRST",
           },
         ]);
+        expect(afterImport.pendingObservations
+          ?.map(({ sourceRowIndex, status, sourceStatus }) => ({
+            sourceRowIndex,
+            status,
+            sourceStatus,
+          }))
+          .sort((left, right) => left.sourceRowIndex - right.sourceRowIndex)
+        ).toEqual([
+          { sourceRowIndex: 4, status: "reserved", sourceStatus: "Reservert" },
+          { sourceRowIndex: 10, status: "confirmed", sourceStatus: "Bekreftet" },
+          { sourceRowIndex: 16, status: "reserved", sourceStatus: "Reservert" },
+        ]);
       } finally {
         ledger.close();
       }
     });
 
-    it("requires explicit acknowledgement before importing when pending rows are excluded", () => {
+    it("imports a pending-only statement without booked transactions", () => {
       const ledger = makeTestLedger(randomUUID());
+      const pendingOnlyText = [
+        "ROGALAND SPAREBANK",
+        "Transaksjoner Antall: 1",
+        "Kontonummer: ACCT-001",
+        "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+        "29.05.2026 Varekjøp ACCT-001 SYNTHETIC -45,00 NOK Reservert SYNTHETIC TRANSIT",
+      ].join("\n");
       const input = {
-        pdfText: mixedStatusText,
+        pdfText: pendingOnlyText,
         filePath: "mixed-status-statement.pdf",
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
@@ -579,17 +605,20 @@ describe("pdf import contract", () => {
         const response = runPdfImportWorkflow(input, makeDependencies(ledger));
 
         expect(response).toMatchObject({
-          ok: false,
-          errors: [{ code: "PENDING_ROWS_ACKNOWLEDGEMENT_REQUIRED" }],
+          ok: true,
+          transactionCount: 0,
+          pendingCount: 1,
         });
         expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(0);
-        expect(ledger.loadLedgerSnapshotData().importJobs).toHaveLength(0);
+        expect(ledger.listPendingTransactionObservations(SAMPLE_HOUSEHOLD.id)).toMatchObject([
+          { sourceStatus: "Reservert", status: "reserved" },
+        ]);
       } finally {
         ledger.close();
       }
     });
 
-    it("imports only booked candidates after acknowledging excluded pending rows", () => {
+    it("stores pending rows separately while importing booked candidates", () => {
       const ledger = makeTestLedger(randomUUID());
       const input = {
         pdfText: mixedStatusText,
@@ -599,7 +628,6 @@ describe("pdf import contract", () => {
         importJobId: "mixed-status-acknowledged-job",
         startedAtIso: "2026-05-29T00:00:00Z",
         finishedAtIso: "2026-05-29T00:00:00Z",
-        acknowledgeExcludedRows: true,
       };
 
       try {
@@ -608,6 +636,7 @@ describe("pdf import contract", () => {
         expect(response).toMatchObject({
           ok: true,
           transactionCount: 1,
+          pendingCount: 2,
           excludedRowCount: 2,
         });
         expect(ledger.loadLedgerSnapshotData().transactions).toMatchObject([
@@ -616,6 +645,10 @@ describe("pdf import contract", () => {
             amountMinor: -2000,
             merchantRaw: "SYNTHETIC SHOP",
           },
+        ]);
+        expect(ledger.listPendingTransactionObservations(SAMPLE_HOUSEHOLD.id)).toMatchObject([
+          { status: "reserved", sourceStatus: "Reservert" },
+          { status: "confirmed", sourceStatus: "Bekreftet" },
         ]);
       } finally {
         ledger.close();

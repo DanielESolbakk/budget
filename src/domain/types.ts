@@ -34,6 +34,28 @@ export interface Transaction {
   importJobId?: string;
 }
 
+export type ImportedTransactionStatus = "reserved" | "confirmed" | "booked";
+export type PendingTransactionStatus = Exclude<ImportedTransactionStatus, "booked">;
+export type BankTransactionStatus = "Reservert" | "Bekreftet" | "Bokført";
+
+export interface PendingTransactionObservation {
+  id: string;
+  householdId: string;
+  accountId: string;
+  transactionDateIso: string;
+  amountMinor: number;
+  merchantRaw: string;
+  sourceRowIndex: number;
+  currencyCode?: CurrencyCode;
+  sourceType: "csv" | "pdf";
+  sourceReference?: string;
+  importJobId?: string;
+  status: PendingTransactionStatus;
+  sourceStatus: Exclude<BankTransactionStatus, "Bokført">;
+  reconciledTransactionId?: string;
+  reconciledAtIso?: string;
+}
+
 export interface CategorizationRule {
   ruleId: string;
   merchantAlias: string;

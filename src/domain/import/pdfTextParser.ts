@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import type { Transaction } from "../types.js";
+import type {
+  ImportedTransactionStatus,
+  PendingTransactionObservation,
+  Transaction,
+} from "../types.js";
 
 /** Identifier for the Rogaland Sparebank text PDF adapter. */
 export const ROGALAND_ADAPTER_ID = "rogaland-sparebank-text-v1";
@@ -45,6 +49,7 @@ export interface PdfTextParseSuccess {
   ok: true;
   adapterId: string;
   transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
   unresolvedRows?: PdfTextUnresolvedRow[];
   excludedRows?: PdfTextExcludedRow[];
 }
@@ -151,6 +156,56 @@ export function isRogalandStatementText(text: string): boolean {
   return text.includes(ROGALAND_HEADER_TOKEN);
 }
 
+function parseBankExportMessage(
+  rawMessage: string,
+  fallbackDescription: string
+): { description: string; sourceReference?: string } {
+  const normalizedMessage = rawMessage.trim().replace(/\s+/g, " ");
+  const labeledReferenceMatch =
+    /\b(?:KID|REF(?:ERANSE|ERENCE)?|FAKT(?:URA)?\.?\s*NR\.?)\s*[:#]\s*([A-Z0-9][A-Z0-9._/-]*)\b/i.exec(
+      normalizedMessage
+    );
+  const bareReferenceMatch = labeledReferenceMatch === null
+    ? /\b(?:REF|KID)[-_][A-Z0-9][A-Z0-9._/-]*\b/i.exec(normalizedMessage) ??
+      /^\d{6,}$/.exec(normalizedMessage)
+    : null;
+  const referenceMatch = labeledReferenceMatch ?? bareReferenceMatch;
+  const sourceReference = labeledReferenceMatch?.[1] ?? bareReferenceMatch?.[0];
+  const description =
+    referenceMatch === null
+      ? normalizedMessage
+      : `${normalizedMessage.slice(0, referenceMatch.index)}${normalizedMessage.slice(
+          referenceMatch.index + referenceMatch[0].length
+        )}`
+          .trim()
+          .replace(/\s+/g, " ");
+
+  return {
+    description: description || fallbackDescription.trim().replace(/\s+/g, " "),
+    ...(sourceReference === undefined ? {} : { sourceReference }),
+  };
+}
+
+function mapBankTransactionStatus(status: string): ImportedTransactionStatus {
+  const normalized = status
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (normalized === "reservert") return "reserved";
+  if (normalized === "bekreftet") return "confirmed";
+  return "booked";
+}
+
+function buildPendingObservationId(prefix: string, sourceRowIndex: number): string {
+  return `${prefix}-pending-${sourceRowIndex}`;
+}
+
+function pendingObservationIdPrefix(text: string, options: PdfTextParseOptions): string {
+  return options.importJobId === undefined
+    ? options.idPrefix ?? "pdf"
+    : buildRogalandImportJobId(text, options);
+}
+
 interface BankExportRow {
   lineNumber: number;
   text: string;
@@ -222,11 +277,13 @@ function parseRogalandBankExport(
   lines: readonly string[],
   tableHeaderIndex: number,
   options: PdfTextParseOptions,
-  allowExcludedOnly = false
+  allowExcludedOnly = false,
+  pendingIdPrefix = options.importJobId ?? options.idPrefix ?? "pdf"
 ): PdfTextParseResult {
   const rows = collectBankExportRows(lines, tableHeaderIndex);
   const idPrefix = options.idPrefix ?? "pdf";
   const transactions: Transaction[] = [];
+  const pendingObservations: PendingTransactionObservation[] = [];
   const excludedRows: PdfTextExcludedRow[] = [];
   const unresolvedRows: PdfTextUnresolvedRow[] = [];
   const errors: PdfTextValidationError[] = [];
@@ -266,15 +323,57 @@ function parseRogalandBankExport(
     }
 
     const [, rawDate = "", prefix = "", rawAmount = "", currencyCode = "NOK", status = "", rawMessage = ""] = match;
-    if (status.toLowerCase() !== "bokført") {
-      const description = rawMessage.trim().replace(/\s+/g, " ") || prefix.trim().replace(/\s+/g, " ");
+    const importedStatus = mapBankTransactionStatus(status);
+    const parsedMessage = parseBankExportMessage(rawMessage, prefix);
+    if (importedStatus !== "booked") {
+      const sourceStatus = importedStatus === "reserved" ? "Reservert" : "Bekreftet";
       excludedRows.push({
         lineNumber: row.lineNumber,
-        status: status as PdfTextExcludedRow["status"],
+        status: sourceStatus,
         date: rawDate,
         amount: rawAmount,
         currencyCode,
-        description,
+        description: parsedMessage.description,
+      });
+
+      const transactionDateIso = parseNorwegianDate(rawDate);
+      const amount = parseNorwegianAmount(rawAmount);
+      if (transactionDateIso === null || amount === null) {
+        const error: PdfTextValidationError = transactionDateIso === null
+          ? {
+              code: "INVALID_DATE_FORMAT",
+              message: `Invalid bank-export transaction date at line ${row.lineNumber}.`,
+              lineNumber: row.lineNumber,
+              field: "date",
+            }
+          : {
+              code: "INVALID_AMOUNT_FORMAT",
+              message: `Invalid bank-export amount at line ${row.lineNumber}.`,
+              lineNumber: row.lineNumber,
+              field: "amount",
+            };
+        errors.push(error);
+        unresolvedRows.push({ lineNumber: row.lineNumber, rawRow: row.text, errors: [error] });
+        continue;
+      }
+
+      const sourceRowIndex = row.lineNumber - 1;
+      pendingObservations.push({
+        id: buildPendingObservationId(pendingIdPrefix, sourceRowIndex),
+        householdId: options.householdId,
+        accountId: options.accountId,
+        transactionDateIso,
+        amountMinor: toMinorUnits(amount),
+        merchantRaw: parsedMessage.description,
+        sourceRowIndex,
+        currencyCode,
+        sourceType: "pdf",
+        status: importedStatus,
+        sourceStatus,
+        ...(parsedMessage.sourceReference === undefined
+          ? {}
+          : { sourceReference: parsedMessage.sourceReference }),
+        ...(options.importJobId === undefined ? {} : { importJobId: options.importJobId }),
       });
       continue;
     }
@@ -305,7 +404,7 @@ function parseRogalandBankExport(
       continue;
     }
 
-    const merchantRaw = rawMessage.trim().replace(/\s+/g, " ") || prefix.trim().replace(/\s+/g, " ");
+    const merchantRaw = parsedMessage.description;
     if (merchantRaw.length === 0) {
       const error: PdfTextValidationError = {
         code: "MISSING_DESCRIPTION",
@@ -329,10 +428,18 @@ function parseRogalandBankExport(
       sourceType: "pdf",
     };
     if (options.importJobId !== undefined) transaction.importJobId = options.importJobId;
+    if (parsedMessage.sourceReference !== undefined) {
+      transaction.sourceReference = parsedMessage.sourceReference;
+    }
     transactions.push(transaction);
   }
 
-  if (transactions.length === 0 && unresolvedRows.length === 0 && !(allowExcludedOnly && excludedRows.length > 0)) {
+  if (
+    transactions.length === 0 &&
+    pendingObservations.length === 0 &&
+    unresolvedRows.length === 0 &&
+    !(allowExcludedOnly && excludedRows.length > 0)
+  ) {
     return {
       ok: false,
       errors: [{
@@ -355,6 +462,7 @@ function parseRogalandBankExport(
     ok: true,
     adapterId: ROGALAND_ADAPTER_ID,
     transactions,
+    ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
     ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
     ...(excludedRows.length === 0 ? {} : { excludedRows }),
   };
@@ -389,7 +497,13 @@ export function parseRogalandStatementText(
     BANK_EXPORT_TABLE_HEADER_PATTERN.test(line.trim())
   );
   if (bankExportHeaderIndex !== -1) {
-    return parseRogalandBankExport(lines, bankExportHeaderIndex, options);
+    return parseRogalandBankExport(
+      lines,
+      bankExportHeaderIndex,
+      options,
+      false,
+      pendingObservationIdPrefix(text, options)
+    );
   }
 
   // Find the header row that starts the transaction table.
@@ -549,7 +663,9 @@ export async function parseRogalandStatementTextInBatches(
     if (rows.length === 0) return parseRogalandStatementText(text, options);
 
     const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
+    const pendingIdPrefix = pendingObservationIdPrefix(text, options);
     const transactions: Transaction[] = [];
+    const pendingObservations: PendingTransactionObservation[] = [];
     const excludedRows: PdfTextExcludedRow[] = [];
     const unresolvedRows: PdfTextUnresolvedRow[] = [];
     const errors: PdfTextValidationError[] = [];
@@ -565,10 +681,23 @@ export async function parseRogalandStatementTextInBatches(
       const result = parseRogalandBankExport(batchLines, bankExportHeaderIndex, {
         ...options,
         idPrefix: `${options.idPrefix ?? "pdf"}-batch-${start}`,
-      }, true);
+      }, true, pendingIdPrefix);
 
       if (result.ok) {
         transactions.push(...result.transactions);
+        for (const pendingObservation of result.pendingObservations ?? []) {
+          const batchRowIndex = pendingObservation.sourceRowIndex - bankExportHeaderIndex - 1;
+          const sourceRow = rows[start + batchRowIndex];
+          pendingObservations.push(
+            sourceRow === undefined
+              ? pendingObservation
+              : {
+                  ...pendingObservation,
+                  id: buildPendingObservationId(pendingIdPrefix, sourceRow.lineNumber - 1),
+                  sourceRowIndex: sourceRow.lineNumber - 1,
+                }
+          );
+        }
         for (const unresolvedRow of result.unresolvedRows ?? []) {
           const batchRowIndex = unresolvedRow.lineNumber - bankExportHeaderIndex - 2;
           const sourceRow = rows[start + batchRowIndex];
@@ -606,7 +735,13 @@ export async function parseRogalandStatementTextInBatches(
 
     if (callbacks.isCancelled()) return null;
     if (errors.length > 0) return { ok: false, errors };
-    if (transactions.length === 0 && unresolvedRows.length === 0) return parseRogalandStatementText(text, options);
+    if (
+      transactions.length === 0 &&
+      pendingObservations.length === 0 &&
+      unresolvedRows.length === 0
+    ) {
+      return parseRogalandStatementText(text, options);
+    }
 
     transactions.sort((left, right) =>
       right.bookedAtIso.localeCompare(left.bookedAtIso) ||
@@ -622,6 +757,7 @@ export async function parseRogalandStatementTextInBatches(
       ok: true,
       adapterId: ROGALAND_ADAPTER_ID,
       transactions,
+      ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
       ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
       ...(excludedRows.length === 0 ? {} : { excludedRows }),
     };

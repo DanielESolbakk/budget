@@ -16,6 +16,7 @@ import {
   type ImportJob,
   type MerchantCategoryRule,
   type MonthlyCategoryTarget,
+  type PendingTransactionObservation,
   type Transaction,
 } from "../../domain/types.js";
 
@@ -100,6 +101,59 @@ function validateTransactions(
       invalidSnapshot(snapshotPath, "transactions");
     }
     transactionIds.add(transaction.id);
+  }
+}
+
+function validatePendingObservations(
+  value: unknown[],
+  householdId: string,
+  accountIds: Set<string>,
+  importJobIds: Set<string>,
+  transactionIds: Set<string>,
+  snapshotPath: string
+): asserts value is PendingTransactionObservation[] {
+  const observationIds = new Set<string>();
+  for (const observation of value) {
+    const statusIsValid = isRecord(observation) &&
+      (observation.status === "reserved" || observation.status === "confirmed");
+    const sourceStatusMatches = isRecord(observation) &&
+      ((observation.status === "reserved" && observation.sourceStatus === "Reservert") ||
+        (observation.status === "confirmed" && observation.sourceStatus === "Bekreftet"));
+    if (
+      !isRecord(observation) ||
+      !isNonEmptyString(observation.id) ||
+      !isNonEmptyString(observation.householdId) ||
+      !isNonEmptyString(observation.accountId) ||
+      !isNonEmptyString(observation.transactionDateIso) ||
+      Number.isNaN(Date.parse(observation.transactionDateIso)) ||
+      !Number.isSafeInteger(observation.amountMinor) ||
+      !isNonEmptyString(observation.merchantRaw) ||
+      typeof observation.sourceRowIndex !== "number" ||
+      !Number.isSafeInteger(observation.sourceRowIndex) ||
+      observation.sourceRowIndex < 0 ||
+      !isOptionalString(observation.currencyCode) ||
+      (observation.currencyCode !== undefined && !isCurrencyCode(observation.currencyCode)) ||
+      !isOptionalString(observation.sourceReference) ||
+      !isOptionalString(observation.importJobId) ||
+      !isOptionalString(observation.reconciledTransactionId) ||
+      !isOptionalString(observation.reconciledAtIso) ||
+      (observation.reconciledAtIso !== undefined &&
+        Number.isNaN(Date.parse(observation.reconciledAtIso))) ||
+      (observation.reconciledAtIso !== undefined &&
+        observation.reconciledTransactionId === undefined) ||
+      (observation.sourceType !== "csv" && observation.sourceType !== "pdf") ||
+      !statusIsValid ||
+      !sourceStatusMatches ||
+      observation.householdId !== householdId ||
+      !accountIds.has(observation.accountId) ||
+      (observation.importJobId !== undefined && !importJobIds.has(observation.importJobId)) ||
+      (observation.reconciledTransactionId !== undefined &&
+        !transactionIds.has(observation.reconciledTransactionId)) ||
+      observationIds.has(observation.id)
+    ) {
+      invalidSnapshot(snapshotPath, "pending observations");
+    }
+    observationIds.add(observation.id);
   }
 }
 
@@ -212,6 +266,12 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   const transactions = value.transactions as unknown[];
   const importJobs = value.importJobs as unknown[];
   const monthlyCategoryTargets = value.monthlyCategoryTargets as unknown[];
+  const pendingObservations = value.pendingObservations === undefined
+    ? []
+    : value.pendingObservations;
+  if (!Array.isArray(pendingObservations)) {
+    throw new Error(`Invalid snapshot pendingObservations collection: ${snapshotPath}`);
+  }
 
   if (
     !Number.isInteger(metadata.transactionCount) ||
@@ -236,6 +296,14 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     value.household.id,
     new Set(accounts.map((account) => account.id)),
     new Set(importJobs.map((importJob) => importJob.id)),
+    snapshotPath
+  );
+  validatePendingObservations(
+    pendingObservations,
+    value.household.id,
+    new Set(accounts.map((account) => account.id)),
+    new Set(importJobs.map((importJob) => importJob.id)),
+    new Set(transactions.map((transaction) => transaction.id)),
     snapshotPath
   );
 
@@ -297,6 +365,9 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     household: snapshot.household,
     accounts: snapshot.accounts,
     transactions: snapshot.transactions,
+    ...(snapshot.pendingObservations === undefined
+      ? {}
+      : { pendingObservations: snapshot.pendingObservations }),
     importJobs: snapshot.importJobs,
     monthlyCategoryTargets: snapshot.monthlyCategoryTargets,
     merchantCategoryRules:

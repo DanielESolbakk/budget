@@ -6,11 +6,20 @@ import type {
 } from "../../domain/import/csvRowMapper.js";
 import {
   CSV_COLUMN_NAMES,
+  createCsvPendingObservation,
+  mapCsvImportedStatus,
   mapCsvRowToTransaction,
   normalizeCsvRow,
   previewCsvRows,
 } from "../../domain/import/csvRowMapper.js";
-import type { ImportJob, ImportReviewItem, Transaction } from "../../domain/types.js";
+import type {
+  BankTransactionStatus,
+  ImportJob,
+  ImportReviewItem,
+  PendingTransactionObservation,
+  PendingTransactionStatus,
+  Transaction,
+} from "../../domain/types.js";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import {
   classifyDuplicateCandidates,
@@ -38,6 +47,7 @@ export interface CsvImportSuccess {
   ok: true;
   importJobId: string;
   transactionCount: number;
+  pendingCount?: number;
   duplicateCount: number;
   unresolvedCount: number;
 }
@@ -78,7 +88,8 @@ export interface CsvImportWorkflowDependencies {
   appendImportJobAndTransactions: (
     importJob: ImportJob,
     transactions: Transaction[],
-    reviewItems?: ImportReviewItem[]
+    reviewItems?: ImportReviewItem[],
+    pendingObservations?: PendingTransactionObservation[]
   ) => number;
 }
 
@@ -110,9 +121,22 @@ export async function previewCsvRowsWithProgress(
     onProgress: (completedRows: number, totalRows: number) => void;
     batchSize?: number;
   }
-): Promise<{ rows: CsvRowPreview[]; transactions: Transaction[] } | null> {
+): Promise<{
+  rows: CsvRowPreview[];
+  transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
+} | null> {
   const batchSize = callbacks.batchSize ?? 100;
-  const previews: CsvRowPreview[] = [];
+  type CsvPreviewCandidate =
+    | { rowIndex: number; transaction: Transaction; status: "booked" }
+    | {
+        rowIndex: number;
+        transaction: Transaction;
+        status: PendingTransactionStatus;
+        sourceStatus: Exclude<BankTransactionStatus, "Bokført">;
+      };
+  const candidates: CsvPreviewCandidate[] = [];
+  const previewsByRowIndex = new Map<number, CsvRowPreview>();
 
   for (let start = 0; start < rows.length; start += batchSize) {
     if (callbacks.isCancelled()) return null;
@@ -120,9 +144,21 @@ export async function previewCsvRowsWithProgress(
     for (let rowIndex = start; rowIndex < end; rowIndex += 1) {
       const row = rows[rowIndex]!;
       const result = mapCsvRowToTransaction(row, rowIndex, options);
-      previews.push(result.ok
-        ? { rowIndex, transaction: result.transaction, errors: [] }
-        : { rowIndex, errors: result.errors });
+      if (!result.ok) {
+        previewsByRowIndex.set(rowIndex, { rowIndex, errors: result.errors });
+        continue;
+      }
+
+      const normalizedRow = normalizeCsvRow(row, options.columnMapping);
+      const mappedStatus = mapCsvImportedStatus(normalizedRow[CSV_COLUMN_NAMES.status] ?? "");
+      candidates.push(mappedStatus.status === "booked"
+        ? { rowIndex, transaction: result.transaction, status: "booked" }
+        : {
+            rowIndex,
+            transaction: result.transaction,
+            status: mappedStatus.status,
+            sourceStatus: mappedStatus.sourceStatus,
+          });
     }
     callbacks.onProgress(end, rows.length);
     await new Promise<void>((resolveBatch) => setImmediate(resolveBatch));
@@ -130,25 +166,44 @@ export async function previewCsvRowsWithProgress(
 
   if (callbacks.isCancelled()) return null;
   const validTransactions = assignImportedTransactionIds(
-    previews.flatMap((preview) => preview.transaction === undefined ? [] : [preview.transaction]),
+    candidates.map(({ transaction }) => transaction),
     {
       ...(options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope }),
-      sourceReferences: previews.flatMap((preview) => preview.transaction === undefined
-        ? []
-        : [normalizeCsvRow(rows[preview.rowIndex]!, options.columnMapping)[CSV_COLUMN_NAMES.reference]]),
+      sourceReferences: candidates.map(({ transaction }) => transaction.sourceReference),
     }
   );
-  let validTransactionIndex = 0;
-  const normalizedPreviews = previews.map((preview) => {
-    if (preview.transaction === undefined) return preview;
-    const transaction = validTransactions[validTransactionIndex]!;
-    validTransactionIndex += 1;
-    return { ...preview, transaction };
+  const transactions: Transaction[] = [];
+  const pendingObservations: PendingTransactionObservation[] = [];
+  candidates.forEach((candidate, index) => {
+    const transaction = validTransactions[index]!;
+    if (candidate.status === "booked") {
+      transactions.push(transaction);
+      previewsByRowIndex.set(candidate.rowIndex, {
+        rowIndex: candidate.rowIndex,
+        transaction,
+        errors: [],
+      });
+      return;
+    }
+
+    const pendingObservation = createCsvPendingObservation(
+      transaction,
+      candidate.rowIndex,
+      candidate.status,
+      candidate.sourceStatus
+    );
+    pendingObservations.push(pendingObservation);
+    previewsByRowIndex.set(candidate.rowIndex, {
+      rowIndex: candidate.rowIndex,
+      pendingObservation,
+      errors: [],
+    });
   });
 
   return {
-    rows: normalizedPreviews,
-    transactions: normalizedPreviews.flatMap((preview) => preview.transaction === undefined ? [] : [preview.transaction]),
+    rows: Array.from({ length: rows.length }, (_, rowIndex) => previewsByRowIndex.get(rowIndex)!),
+    transactions,
+    ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
   };
 }
 
@@ -360,9 +415,22 @@ export function runCsvImportWorkflow(
     snapshot,
     { filePath: input.filePath, accountId: input.accountId, sourceIdentity: input.sourceIdentity }
   );
+  const sourceRowIndexByTransactionId = new Map<string, number>();
+  for (const row of preview.rows) {
+    if (row.transaction !== undefined) {
+      sourceRowIndexByTransactionId.set(row.transaction.id, row.rowIndex);
+    }
+  }
+  const classifiedCandidatesWithRowIndex = classifiedCandidates.map((candidate) => {
+    const rowIndex = sourceRowIndexByTransactionId.get(candidate.candidate.id);
+    if (rowIndex === undefined) {
+      throw new Error("CSV duplicate classification lost its source row index.");
+    }
+    return { rowIndex, candidate };
+  });
   const decisions = new Map((input.duplicateDecisions ?? []).map((decision) => [decision.rowIndex, decision.action]));
-  const duplicateRowIndices = new Set(classifiedCandidates.flatMap((candidate, index) =>
-    candidate.duplicateMatch === undefined ? [] : [index]
+  const duplicateRowIndices = new Set(classifiedCandidatesWithRowIndex.flatMap(({ rowIndex, candidate }) =>
+    candidate.duplicateMatch === undefined ? [] : [rowIndex]
   ));
   const missingDecisionIndex = Array.from(duplicateRowIndices).find((rowIndex) => !decisions.has(rowIndex));
   const unexpectedDecisionIndex = Array.from(decisions.keys()).find((rowIndex) => !duplicateRowIndices.has(rowIndex));
@@ -381,7 +449,7 @@ export function runCsvImportWorkflow(
 
   const pendingTransactions: Transaction[] = [];
   let skippedDuplicateCount = 0;
-  for (const [rowIndex, candidate] of classifiedCandidates.entries()) {
+  for (const { rowIndex, candidate } of classifiedCandidatesWithRowIndex) {
     if (candidate.duplicateMatch === undefined) {
       pendingTransactions.push(candidate.candidate);
       continue;
@@ -398,7 +466,7 @@ export function runCsvImportWorkflow(
     householdId: input.householdId,
     sourceType: "csv",
     sourceName: input.filePath,
-    candidateCount: preview.transactions.length,
+    candidateCount: preview.transactions.length + (preview.pendingObservations?.length ?? 0),
     validationFailureCount: skipped.length,
     startedAtIso: input.startedAtIso,
     finishedAtIso: input.finishedAtIso,
@@ -408,12 +476,20 @@ export function runCsvImportWorkflow(
       duplicateCount: skippedDuplicateCount,
     },
   };
-  const insertedCount = dependencies.appendImportJobAndTransactions(importJob, pendingTransactions, reviewItems);
+  const insertedCount = dependencies.appendImportJobAndTransactions(
+    importJob,
+    pendingTransactions,
+    reviewItems,
+    preview.pendingObservations
+  );
 
   return {
     ok: true,
     importJobId: input.importJobId,
     transactionCount: insertedCount,
+    ...((preview.pendingObservations?.length ?? 0) === 0
+      ? {}
+      : { pendingCount: preview.pendingObservations!.length }),
     duplicateCount: skippedDuplicateCount,
     unresolvedCount: reviewItems.length,
   };

@@ -291,7 +291,7 @@ describe("ParserAdapterRegistry", () => {
   });
 
   describe("default registry", () => {
-    it("preserves excluded bank-export statuses through the adapter", () => {
+    it("exposes pending bank-export observations through the adapter", () => {
       const text = [
         "ROGALAND SPAREBANK",
         "Transaksjoner Antall: 3",
@@ -307,6 +307,10 @@ describe("ParserAdapterRegistry", () => {
         ok: true,
         candidates: [{ merchantRaw: "SYNTHETIC SHOP" }],
         excludedRows: [{ status: "Reservert" }, { status: "Bekreftet" }],
+        pendingObservations: [
+          { status: "reserved", sourceStatus: "Reservert", amountMinor: -4500 },
+          { status: "confirmed", sourceStatus: "Bekreftet", amountMinor: -35000 },
+        ],
       });
     });
 

@@ -11,6 +11,10 @@ import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js
 import { createCorrectionProvenance } from "../../domain/review/correction.js";
 import { normalizeMerchantName } from "../../domain/merchant/normalizeMerchantName.js";
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
+import {
+  matchPendingTransactionObservations,
+  type PendingTransactionMatchCandidate,
+} from "../../domain/import/pendingTransactionMatching.js";
 import type { ImportJobHistoryEntry, UndoImportJobResult } from "../../domain/import/importJobHistory.js";
 import {
   DEFAULT_TRANSACTION_PAGE_SIZE,
@@ -33,6 +37,7 @@ import type {
   MerchantCorrectionProvenance,
   MerchantCategoryRule,
   MonthlyCategoryTarget,
+  PendingTransactionObservation,
   MonthlyTotal,
   SameMerchantPropagationInput,
   SameMerchantPropagationOperation,
@@ -67,6 +72,7 @@ export interface LocalLedgerDatabase {
   listMonthlyTotals: (householdId: string) => MonthlyTotal[];
   getTransactionsForMonth: (householdId: string, yearMonth: string) => Transaction[];
   getTransactionsForAccount: (accountId: string) => Transaction[];
+  listPendingTransactionObservations: (householdId: string) => PendingTransactionObservation[];
   getTransactionById: (transactionId: string) => Transaction | undefined;
   loadLedgerSnapshotData: () => LedgerSnapshotData;
   replaceLedgerSnapshotData: (snapshot: LedgerSnapshotData) => void;
@@ -104,7 +110,8 @@ export interface LocalLedgerDatabase {
   appendImportJobAndTransactions: (
     importJob: ImportJob,
     transactions: Transaction[],
-    reviewItems?: ImportReviewItem[]
+    reviewItems?: ImportReviewItem[],
+    pendingObservations?: PendingTransactionObservation[]
   ) => number;
   appendTransactions: (transactions: Transaction[]) => number;
   updateTransactionCategory: (transactionId: string, categoryId: string) => void;
@@ -140,6 +147,24 @@ interface TransactionRow {
   source_reference: string | null;
   category_id: string | null;
   import_job_id: string | null;
+}
+
+interface PendingTransactionObservationRow {
+  id: string;
+  household_id: string;
+  account_id: string;
+  transaction_date_iso: string;
+  amount_minor: number;
+  merchant_raw: string;
+  source_row_index: number;
+  currency_code: string | null;
+  source_type: PendingTransactionObservation["sourceType"];
+  source_reference: string | null;
+  import_job_id: string | null;
+  status: PendingTransactionObservation["status"];
+  source_status: PendingTransactionObservation["sourceStatus"];
+  reconciled_transaction_id: string | null;
+  reconciled_at_iso: string | null;
 }
 
 const transactionSortColumns: Record<TransactionSortField, string> = {
@@ -181,6 +206,31 @@ function mapTransactionRow(transaction: TransactionRow): Transaction {
   if (transaction.source_reference !== null) mapped.sourceReference = transaction.source_reference;
   if (transaction.category_id !== null) mapped.categoryId = transaction.category_id;
   if (transaction.import_job_id !== null) mapped.importJobId = transaction.import_job_id;
+  return mapped;
+}
+
+function mapPendingTransactionObservationRow(
+  observation: PendingTransactionObservationRow
+): PendingTransactionObservation {
+  const mapped: PendingTransactionObservation = {
+    id: observation.id,
+    householdId: observation.household_id,
+    accountId: observation.account_id,
+    transactionDateIso: observation.transaction_date_iso,
+    amountMinor: observation.amount_minor,
+    merchantRaw: observation.merchant_raw,
+    sourceRowIndex: observation.source_row_index,
+    sourceType: observation.source_type,
+    status: observation.status,
+    sourceStatus: observation.source_status,
+  };
+  if (observation.currency_code !== null) mapped.currencyCode = observation.currency_code;
+  if (observation.source_reference !== null) mapped.sourceReference = observation.source_reference;
+  if (observation.import_job_id !== null) mapped.importJobId = observation.import_job_id;
+  if (observation.reconciled_transaction_id !== null) {
+    mapped.reconciledTransactionId = observation.reconciled_transaction_id;
+  }
+  if (observation.reconciled_at_iso !== null) mapped.reconciledAtIso = observation.reconciled_at_iso;
   return mapped;
 }
 
@@ -269,7 +319,8 @@ function serializeTransactionForUndo(transaction: Transaction): string {
 function persistImportJobOperation(
   db: DatabaseSync,
   importJob: ImportJob,
-  importedTransactions: Transaction[]
+  importedTransactions: Transaction[],
+  importedPendingCount = 0
 ): void {
   const accountId = importJob.provenance?.accountId ?? importedTransactions[0]?.accountId ?? null;
   const candidateCount = importJob.candidateCount ?? importedTransactions.length;
@@ -282,14 +333,14 @@ function persistImportJobOperation(
       household_id = excluded.household_id,
       account_id = COALESCE(excluded.account_id, import_job_operations.account_id),
       candidate_count = excluded.candidate_count,
-      imported_count = excluded.imported_count,
+      imported_count = MAX(import_job_operations.imported_count, excluded.imported_count),
       duplicate_count = excluded.duplicate_count
   `).run(
     importJob.id,
     importJob.householdId,
     accountId,
     candidateCount,
-    importedTransactions.length,
+    importedTransactions.length + importedPendingCount,
     duplicateCount
   );
 }
@@ -337,6 +388,29 @@ function ensureSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS transactions_by_household_booked_at
       ON transactions (household_id, booked_at_iso);
+
+    CREATE TABLE IF NOT EXISTS pending_transaction_observations (
+      id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      transaction_date_iso TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL,
+      merchant_raw TEXT NOT NULL,
+      source_row_index INTEGER NOT NULL,
+      currency_code TEXT,
+      source_type TEXT NOT NULL CHECK (source_type IN ('csv', 'pdf')),
+      source_reference TEXT,
+      import_job_id TEXT,
+      status TEXT NOT NULL CHECK (status IN ('reserved', 'confirmed')),
+      source_status TEXT NOT NULL CHECK (source_status IN ('Reservert', 'Bekreftet')),
+      reconciled_transaction_id TEXT,
+      reconciled_at_iso TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS pending_observations_by_household_date
+      ON pending_transaction_observations (household_id, transaction_date_iso, id);
+    CREATE INDEX IF NOT EXISTS pending_observations_by_account_reference
+      ON pending_transaction_observations (account_id, source_reference);
 
     CREATE TABLE IF NOT EXISTS import_jobs (
       id TEXT PRIMARY KEY,
@@ -465,6 +539,16 @@ function ensureSchema(db: DatabaseSync): void {
       PRIMARY KEY (import_job_id, transaction_id)
     );
   `);
+
+  const pendingObservationColumns = db
+    .prepare("PRAGMA table_info(pending_transaction_observations)")
+    .all() as Array<{ name: string }>;
+  if (!pendingObservationColumns.some((column) => column.name === "reconciled_transaction_id")) {
+    db.exec("ALTER TABLE pending_transaction_observations ADD COLUMN reconciled_transaction_id TEXT");
+  }
+  if (!pendingObservationColumns.some((column) => column.name === "reconciled_at_iso")) {
+    db.exec("ALTER TABLE pending_transaction_observations ADD COLUMN reconciled_at_iso TEXT");
+  }
 
   const transactionColumns = db.prepare("PRAGMA table_info(transactions)").all() as Array<{ name: string }>;
   if (!transactionColumns.some((column) => column.name === "currency_code")) {
@@ -617,6 +701,33 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       importJob.startedAtIso,
       importJob.finishedAtIso ?? null,
       importJob.provenance ? JSON.stringify(importJob.provenance) : null
+    );
+  }
+
+  const insertPendingObservation = db.prepare(`
+    INSERT INTO pending_transaction_observations (
+      id, household_id, account_id, transaction_date_iso, amount_minor, merchant_raw,
+      source_row_index, currency_code, source_type, source_reference, import_job_id,
+      status, source_status, reconciled_transaction_id, reconciled_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const observation of snapshot.pendingObservations ?? []) {
+    insertPendingObservation.run(
+      observation.id,
+      observation.householdId,
+      observation.accountId,
+      observation.transactionDateIso,
+      observation.amountMinor,
+      observation.merchantRaw,
+      observation.sourceRowIndex,
+      observation.currencyCode ?? null,
+      observation.sourceType,
+      observation.sourceReference ?? null,
+      observation.importJobId ?? null,
+      observation.status,
+      observation.sourceStatus,
+      observation.reconciledTransactionId ?? null,
+      observation.reconciledAtIso ?? null
     );
   }
 
@@ -787,6 +898,20 @@ export function createLocalLedgerDatabase(
     return rows.map(mapTransactionRow);
   }
 
+  function listPendingTransactionObservations(
+    householdId: string
+  ): PendingTransactionObservation[] {
+    const rows = db.prepare(`
+      SELECT id, household_id, account_id, transaction_date_iso, amount_minor, merchant_raw,
+        source_row_index, currency_code, source_type, source_reference, import_job_id,
+        status, source_status, reconciled_transaction_id, reconciled_at_iso
+      FROM pending_transaction_observations
+      WHERE household_id = ? AND reconciled_transaction_id IS NULL
+      ORDER BY transaction_date_iso DESC, id ASC
+    `).all(householdId) as unknown as PendingTransactionObservationRow[];
+    return rows.map(mapPendingTransactionObservationRow);
+  }
+
   function getTransactionById(transactionId: string): Transaction | undefined {
     const row = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
@@ -894,6 +1019,15 @@ export function createLocalLedgerDatabase(
       import_job_id: string | null;
       categorization_json: string | null;
     }>;
+
+    const pendingObservations = db.prepare(`
+      SELECT id, household_id, account_id, transaction_date_iso, amount_minor, merchant_raw,
+        source_row_index, currency_code, source_type, source_reference, import_job_id,
+        status, source_status, reconciled_transaction_id, reconciled_at_iso
+      FROM pending_transaction_observations
+      ORDER BY id
+    `).all() as unknown as PendingTransactionObservationRow[];
+    const mappedPendingObservations = pendingObservations.map(mapPendingTransactionObservationRow);
 
     const importJobs = db
       .prepare(
@@ -1004,6 +1138,9 @@ export function createLocalLedgerDatabase(
         currencyCode: account.currency_code,
       })),
       transactions: mappedTransactions,
+      ...(mappedPendingObservations.length === 0
+        ? {}
+        : { pendingObservations: mappedPendingObservations }),
       importJobs: mappedImportJobs,
       monthlyCategoryTargets: monthlyCategoryTargets.map((target) => ({
         yearMonth: target.year_month,
@@ -1027,6 +1164,7 @@ export function createLocalLedgerDatabase(
         DELETE FROM same_merchant_propagation_operations;
         DELETE FROM merchant_correction_provenance;
         DELETE FROM monthly_category_targets;
+        DELETE FROM pending_transaction_observations;
         DELETE FROM transactions;
         DELETE FROM import_jobs;
         DELETE FROM merchant_category_rules;
@@ -1467,6 +1605,12 @@ export function createLocalLedgerDatabase(
       WHERE import_job_id = ?
       ORDER BY id
     `).all(importJobId) as unknown as TransactionRow[];
+    const pendingObservations = db.prepare(`
+      SELECT id, reconciled_transaction_id
+      FROM pending_transaction_observations
+      WHERE import_job_id = ?
+      ORDER BY id
+    `).all(importJobId) as Array<{ id: string; reconciled_transaction_id: string | null }>;
     const baselines = new Map(db.prepare(`
       SELECT transaction_id, baseline_json
       FROM import_job_transaction_baselines
@@ -1479,18 +1623,28 @@ export function createLocalLedgerDatabase(
     let removedCount = 0;
     let retainedCount = 0;
     const retainedTransactions: UndoImportJobResult["retainedTransactions"] = [];
+    const undoneAtIso = new Date().toISOString();
     db.exec("BEGIN");
     try {
       if (operation.undo_available === 1) {
         const deleteTransaction = db.prepare(
           "DELETE FROM transactions WHERE id = ? AND import_job_id = ?"
         );
+        const restorePendingObservation = db.prepare(`
+          UPDATE pending_transaction_observations
+          SET reconciled_transaction_id = NULL, reconciled_at_iso = NULL
+          WHERE reconciled_transaction_id = ?
+        `);
         for (const row of transactions) {
           const transaction = mapTransactionRow(row);
           const baselineJson = baselines.get(transaction.id);
           if (baselineJson !== undefined && serializeTransactionForUndo(transaction) === baselineJson) {
             const result = deleteTransaction.run(transaction.id, importJobId) as { changes: number | bigint };
-            removedCount += Number(result.changes);
+            const removedTransactionCount = Number(result.changes);
+            removedCount += removedTransactionCount;
+            if (removedTransactionCount > 0) {
+              restorePendingObservation.run(transaction.id);
+            }
           } else {
             retainedCount += 1;
             retainedTransactions.push({
@@ -1503,8 +1657,22 @@ export function createLocalLedgerDatabase(
             });
           }
         }
+        const undoPendingObservation = db.prepare(`
+          DELETE FROM pending_transaction_observations
+          WHERE id = ? AND reconciled_transaction_id IS NULL
+        `);
+        for (const observation of pendingObservations) {
+          if (observation.reconciled_transaction_id !== null) {
+            retainedCount += 1;
+            continue;
+          }
+          const result = undoPendingObservation.run(observation.id) as {
+            changes: number | bigint;
+          };
+          removedCount += Number(result.changes);
+        }
       } else {
-        retainedCount = transactions.length;
+        retainedCount = transactions.length + pendingObservations.length;
         for (const row of transactions) {
           const transaction = mapTransactionRow(row);
           retainedTransactions.push({
@@ -1518,7 +1686,6 @@ export function createLocalLedgerDatabase(
         }
       }
 
-      const undoneAtIso = new Date().toISOString();
       db.prepare(`
         UPDATE import_job_operations
         SET undone_at_iso = ?, undo_removed_count = ?, undo_retained_count = ?, undo_available = 0
@@ -1792,7 +1959,8 @@ export function createLocalLedgerDatabase(
   function appendImportJobAndTransactions(
     importJob: ImportJob,
     transactions: Transaction[],
-    reviewItems: ImportReviewItem[] = []
+    reviewItems: ImportReviewItem[] = [],
+    pendingObservations: PendingTransactionObservation[] = []
   ): number {
     const insertImportJob = db.prepare(
       "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -1806,6 +1974,26 @@ export function createLocalLedgerDatabase(
         source_row_index, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
         corrected_at_iso, corrected_transaction_id, correction_json, dismissal_reason, dismissed_at_iso
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertPendingObservation = db.prepare(`
+      INSERT OR IGNORE INTO pending_transaction_observations (
+        id, household_id, account_id, transaction_date_iso, amount_minor, merchant_raw,
+        source_row_index, currency_code, source_type, source_reference, import_job_id,
+        status, source_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const findPendingByReference = db.prepare(`
+      SELECT id, household_id, account_id, source_reference, reconciled_transaction_id
+      FROM pending_transaction_observations
+      WHERE household_id = ? AND account_id = ? AND TRIM(source_reference) = ?
+        AND reconciled_transaction_id IS NULL
+      ORDER BY id
+      LIMIT 2
+    `);
+    const markPendingReconciled = db.prepare(`
+      UPDATE pending_transaction_observations
+      SET reconciled_transaction_id = ?, reconciled_at_iso = ?
+      WHERE id = ? AND reconciled_transaction_id IS NULL
     `);
 
     db.exec("BEGIN");
@@ -1822,6 +2010,38 @@ export function createLocalLedgerDatabase(
         importJob.finishedAtIso ?? null,
         importJob.provenance ? JSON.stringify(importJob.provenance) : null
       );
+
+      let insertedPendingCount = 0;
+      for (const observation of pendingObservations) {
+        if (
+          observation.householdId !== importJob.householdId ||
+          (observation.importJobId !== undefined && observation.importJobId !== importJob.id)
+        ) {
+          throw new Error("Pending observations must belong to the import job and household being persisted.");
+        }
+        const accountExists = db.prepare(
+          "SELECT 1 FROM accounts WHERE id = ? AND household_id = ?"
+        ).get(observation.accountId, observation.householdId);
+        if (accountExists === undefined) {
+          throw new Error("Pending observation account must belong to its household.");
+        }
+        const result = insertPendingObservation.run(
+          observation.id,
+          observation.householdId,
+          observation.accountId,
+          observation.transactionDateIso,
+          observation.amountMinor,
+          observation.merchantRaw,
+          observation.sourceRowIndex,
+          observation.currencyCode ?? null,
+          observation.sourceType,
+          observation.sourceReference ?? null,
+          observation.importJobId ?? null,
+          observation.status,
+          observation.sourceStatus
+        ) as { changes: number | bigint };
+        insertedPendingCount += Number(result.changes);
+      }
 
       let insertedCount = 0;
       const insertedTransactions: Transaction[] = [];
@@ -1845,6 +2065,49 @@ export function createLocalLedgerDatabase(
           insertedCount += Number(result.changes);
           insertedTransactions.push(transaction);
         }
+      }
+
+      const pendingCandidates: PendingTransactionMatchCandidate[] = [];
+      const queriedReferenceKeys = new Set<string>();
+      for (const transaction of transactions) {
+        if (transaction.sourceType !== "csv" && transaction.sourceType !== "pdf") continue;
+        const sourceReference = transaction.sourceReference?.trim();
+        if (!sourceReference) continue;
+        const key = JSON.stringify([
+          transaction.householdId,
+          transaction.accountId,
+          sourceReference,
+        ]);
+        if (queriedReferenceKeys.has(key)) continue;
+        queriedReferenceKeys.add(key);
+        const pendingRows = findPendingByReference.all(
+          transaction.householdId,
+          transaction.accountId,
+          sourceReference
+        ) as Array<{
+          id: string;
+          household_id: string;
+          account_id: string;
+          source_reference: string | null;
+          reconciled_transaction_id: string | null;
+        }>;
+        pendingCandidates.push(...pendingRows.map((row) => ({
+          id: row.id,
+          householdId: row.household_id,
+          accountId: row.account_id,
+          ...(row.source_reference === null ? {} : { sourceReference: row.source_reference }),
+          ...(row.reconciled_transaction_id === null
+            ? {}
+            : { reconciledTransactionId: row.reconciled_transaction_id }),
+        })));
+      }
+
+      for (const match of matchPendingTransactionObservations(transactions, pendingCandidates)) {
+        markPendingReconciled.run(
+          match.transactionId,
+          importJob.finishedAtIso ?? importJob.startedAtIso,
+          match.pendingObservationId
+        );
       }
 
       for (const reviewItem of reviewItems) {
@@ -1873,7 +2136,7 @@ export function createLocalLedgerDatabase(
         );
       }
 
-      persistImportJobOperation(db, importJob, insertedTransactions);
+      persistImportJobOperation(db, importJob, insertedTransactions, insertedPendingCount);
       for (const transaction of insertedTransactions) {
         persistTransactionBaseline(db, importJob.id, transaction);
       }
@@ -2312,6 +2575,7 @@ export function createLocalLedgerDatabase(
     listMonthlyTotals,
     getTransactionsForMonth,
     getTransactionsForAccount,
+    listPendingTransactionObservations,
     getTransactionById,
     loadLedgerSnapshotData,
     replaceLedgerSnapshotData,

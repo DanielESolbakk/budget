@@ -1,4 +1,9 @@
-import type { Transaction } from "../types.js";
+import type {
+  BankTransactionStatus,
+  PendingTransactionObservation,
+  PendingTransactionStatus,
+  Transaction,
+} from "../types.js";
 import { buildTransactionFingerprint } from "./buildTransactionFingerprint.js";
 import { assignImportedTransactionIds } from "./assignImportedTransactionIds.js";
 import { CSV_COLUMN_NAMES } from "./csvColumns.js";
@@ -27,7 +32,8 @@ export type CsvRowValidationErrorCode =
   | "INVALID_DATE_FORMAT"
   | "MISSING_DESCRIPTION"
   | "AMBIGUOUS_AMOUNT"
-  | "INVALID_AMOUNT_FORMAT";
+  | "INVALID_AMOUNT_FORMAT"
+  | "UNSUPPORTED_TRANSACTION_STATUS";
 
 export interface CsvRowValidationError {
   code: CsvRowValidationErrorCode;
@@ -51,12 +57,14 @@ export type CsvRowMappingResult = CsvRowMappingSuccess | CsvRowMappingFailure;
 /** Stable output shape for a CSV import run consumed by downstream app-layer workflows. */
 export interface CsvImportResult {
   transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
   skipped: Array<{ rowIndex: number; errors: CsvRowValidationError[] }>;
 }
 
 export interface CsvRowPreview {
   rowIndex: number;
   transaction?: Transaction;
+  pendingObservation?: PendingTransactionObservation;
   errors: CsvRowValidationError[];
 }
 
@@ -77,6 +85,51 @@ function normalizeHeaderName(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "")
     .toLowerCase();
+}
+
+export function mapCsvImportedStatus(
+  value: string
+): { status: "booked" } | { status: PendingTransactionStatus; sourceStatus: Exclude<BankTransactionStatus, "Bokført"> } {
+  const normalized = normalizeHeaderName(value.trim());
+
+  if (normalized === "reservert") {
+    return { status: "reserved", sourceStatus: "Reservert" };
+  }
+  if (normalized === "bekreftet") {
+    return { status: "confirmed", sourceStatus: "Bekreftet" };
+  }
+  return { status: "booked" };
+}
+
+function isSupportedCsvImportedStatus(value: string): boolean {
+  const normalized = normalizeHeaderName(value.trim().replace(/[øØ]/g, "o"));
+  return normalized === "" ||
+    normalized === "reservert" ||
+    normalized === "bekreftet" ||
+    normalized === "bokfort";
+}
+
+export function createCsvPendingObservation(
+  transaction: Transaction,
+  sourceRowIndex: number,
+  status: PendingTransactionStatus,
+  sourceStatus: Exclude<BankTransactionStatus, "Bokført">
+): PendingTransactionObservation {
+  return {
+    id: transaction.id,
+    householdId: transaction.householdId,
+    accountId: transaction.accountId,
+    transactionDateIso: transaction.bookedAtIso,
+    amountMinor: transaction.amountMinor,
+    merchantRaw: transaction.merchantRaw,
+    sourceRowIndex,
+    sourceType: "csv",
+    status,
+    sourceStatus,
+    ...(transaction.currencyCode === undefined ? {} : { currencyCode: transaction.currencyCode }),
+    ...(transaction.sourceReference === undefined ? {} : { sourceReference: transaction.sourceReference }),
+    ...(transaction.importJobId === undefined ? {} : { importJobId: transaction.importJobId }),
+  };
 }
 
 /** Maps common bank export header variants to the canonical Norwegian columns. */
@@ -190,6 +243,15 @@ export function validateCsvRow(
       code: "MISSING_DESCRIPTION",
       message: "Row must have a non-empty Beskrivelse.",
       field: CSV_COLUMN_NAMES.description,
+    });
+  }
+
+  const status = (normalizedRow[CSV_COLUMN_NAMES.status] ?? "").trim();
+  if (!isSupportedCsvImportedStatus(status)) {
+    errors.push({
+      code: "UNSUPPORTED_TRANSACTION_STATUS",
+      message: `Transaction status "${status}" is not supported.`,
+      field: CSV_COLUMN_NAMES.status,
     });
   }
 
@@ -320,12 +382,29 @@ export function mapCsvRows(
   }
 
   const mappedTransactions: Transaction[] = [];
+  const pendingRows: Array<{
+    rowIndex: number;
+    transaction: Transaction;
+    status: PendingTransactionStatus;
+    sourceStatus: Exclude<BankTransactionStatus, "Bokført">;
+  }> = [];
   const skipped: Array<{ rowIndex: number; errors: CsvRowValidationError[] }> = [];
 
   for (let i = 0; i < rows.length; i++) {
     const result = mapCsvRowToTransaction(rows[i]!, i, options);
     if (result.ok) {
-      mappedTransactions.push(result.transaction);
+      const normalizedRow = normalizeCsvRow(rows[i]!, options.columnMapping);
+      const mappedStatus = mapCsvImportedStatus(normalizedRow[CSV_COLUMN_NAMES.status] ?? "");
+      if (mappedStatus.status === "booked") {
+        mappedTransactions.push(result.transaction);
+      } else {
+        pendingRows.push({
+          rowIndex: i,
+          transaction: result.transaction,
+          status: mappedStatus.status,
+          sourceStatus: mappedStatus.sourceStatus,
+        });
+      }
     } else {
       skipped.push({ rowIndex: result.rowIndex, errors: result.errors });
     }
@@ -335,13 +414,33 @@ export function mapCsvRows(
     return { transactions: [], skipped };
   }
 
+  const sourceScope = options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope };
+  const transactions = assignImportedTransactionIds(mappedTransactions, {
+    ...sourceScope,
+    sourceReferences: mappedTransactions.map((transaction) => transaction.sourceReference),
+  });
+  const identifiedPendingRows = assignImportedTransactionIds(
+    pendingRows.map(({ transaction }) => transaction),
+    {
+      ...sourceScope,
+      sourceReferences: pendingRows.map(({ transaction }) => transaction.sourceReference),
+    }
+  );
+
   return {
-    transactions: assignImportedTransactionIds(mappedTransactions, {
-      ...(options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope }),
-      sourceReferences: mappedTransactions.map((transaction, index) =>
-        normalizeCsvRow(rows[index]!, options.columnMapping)[CSV_COLUMN_NAMES.reference]
-      ),
-    }),
+    transactions,
+    ...(pendingRows.length === 0
+      ? {}
+      : {
+          pendingObservations: pendingRows.map((row, index) =>
+            createCsvPendingObservation(
+              identifiedPendingRows[index]!,
+              row.rowIndex,
+              row.status,
+              row.sourceStatus
+            )
+          ),
+        }),
     skipped,
   };
 }
@@ -350,41 +449,85 @@ export function mapCsvRows(
 export function previewCsvRows(
   rows: Array<Record<string, string>>,
   options: CsvRowMappingOptions
-): { rows: CsvRowPreview[]; transactions: Transaction[] } {
-  const previews = rows.map((row, rowIndex): CsvRowPreview => {
+): {
+  rows: CsvRowPreview[];
+  transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
+} {
+  type MappedRow =
+    | { rowIndex: number; errors: CsvRowValidationError[] }
+    | {
+        rowIndex: number;
+        transaction: Transaction;
+        status: "booked";
+        errors: [];
+      }
+    | {
+        rowIndex: number;
+        transaction: Transaction;
+        status: PendingTransactionStatus;
+        sourceStatus: Exclude<BankTransactionStatus, "Bokført">;
+        errors: [];
+      };
+
+  const mappedRows: MappedRow[] = rows.map((row, rowIndex) => {
     const result = mapCsvRowToTransaction(row, rowIndex, options);
-    return result.ok
-      ? { rowIndex, transaction: result.transaction, errors: [] }
-      : { rowIndex, errors: result.errors };
+    if (!result.ok) {
+      return { rowIndex, errors: result.errors };
+    }
+
+    const normalizedRow = normalizeCsvRow(row, options.columnMapping);
+    const mappedStatus = mapCsvImportedStatus(normalizedRow[CSV_COLUMN_NAMES.status] ?? "");
+    return mappedStatus.status === "booked"
+      ? { rowIndex, transaction: result.transaction, status: "booked", errors: [] }
+      : {
+          rowIndex,
+          transaction: result.transaction,
+          status: mappedStatus.status,
+          sourceStatus: mappedStatus.sourceStatus,
+          errors: [],
+        };
   });
+  const validRows = mappedRows.flatMap((row) =>
+    "transaction" in row ? [row] : []
+  );
   const validTransactions = assignImportedTransactionIds(
-    previews.flatMap((preview) =>
-      preview.transaction === undefined ? [] : [preview.transaction]
-    ),
+    validRows.map(({ transaction }) => transaction),
     {
       ...(options.sourceScope === undefined ? {} : { sourceScope: options.sourceScope }),
-      sourceReferences: previews.flatMap((preview) =>
-        preview.transaction === undefined
-          ? []
-          : [normalizeCsvRow(rows[preview.rowIndex]!, options.columnMapping)[CSV_COLUMN_NAMES.reference]]
-      ),
+      sourceReferences: validRows.map(({ transaction }) => transaction.sourceReference),
     }
   );
   let validTransactionIndex = 0;
-  const normalizedPreviews: CsvRowPreview[] = previews.map((preview) => {
-    if (preview.transaction === undefined) {
-      return preview;
+  const normalizedPreviews: CsvRowPreview[] = mappedRows.map((row) => {
+    if (!("transaction" in row)) {
+      return { rowIndex: row.rowIndex, errors: row.errors };
     }
 
     const transaction = validTransactions[validTransactionIndex]!;
     validTransactionIndex += 1;
-    return { ...preview, transaction };
+    return row.status === "booked"
+      ? { rowIndex: row.rowIndex, transaction, errors: [] }
+      : {
+          rowIndex: row.rowIndex,
+          pendingObservation: createCsvPendingObservation(
+            transaction,
+            row.rowIndex,
+            row.status,
+            row.sourceStatus
+          ),
+          errors: [],
+        };
   });
+  const pendingObservations = normalizedPreviews.flatMap((preview) =>
+    preview.pendingObservation === undefined ? [] : [preview.pendingObservation]
+  );
 
   return {
     rows: normalizedPreviews,
     transactions: normalizedPreviews.flatMap((preview) =>
       preview.transaction === undefined ? [] : [preview.transaction]
     ),
+    ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
   };
 }

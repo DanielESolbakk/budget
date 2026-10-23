@@ -445,7 +445,13 @@ describe("csv-import-runtime-contract", () => {
         const { sourceReference: _legacyReference, ...legacyTransaction } = transaction;
         return { ...legacyTransaction, id: `${oldImportJob.id}-${index + 1}` };
       });
-      expect(ledger.appendImportJobAndTransactions(oldImportJob, oldTransactions)).toBe(rows.length);
+      const oldPendingObservations = legacy.pendingObservations ?? [];
+      expect(ledger.appendImportJobAndTransactions(
+        oldImportJob,
+        oldTransactions,
+        [],
+        oldPendingObservations
+      )).toBe(legacy.transactions.length);
 
       const candidates = mapCsvRows(rows, options).transactions;
       const pending = filterPreviouslyImportedCsvTransactions(
@@ -454,7 +460,9 @@ describe("csv-import-runtime-contract", () => {
         { filePath: sourceName, accountId: SAMPLE_ACCOUNT.id, sourceIdentity: "file-digest" }
       );
       expect(pending).toEqual([]);
-      expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(rows.length);
+      const snapshot = ledger.loadLedgerSnapshotData();
+      expect(snapshot.transactions).toHaveLength(legacy.transactions.length);
+      expect(snapshot.pendingObservations).toHaveLength(oldPendingObservations.length);
     } finally {
       ledger.close();
     }
@@ -654,6 +662,65 @@ describe("csv-import-runtime-contract", () => {
         provenance: { sourceIdentity },
       }, pending)).toBe(0);
       expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(2);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("matches duplicate decisions to source row indexes when pending rows come first", () => {
+    const ledger = makeTestLedger(randomUUID());
+    const sourceName = "mixed-status-reimport.csv";
+    const sourceIdentity = "mixed-status-reimport-digest";
+    const rows = parseCsvText([
+      "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Status;Melding/KID/Fakt.nr",
+      "29.05.2026;;SYNTHETIC RESERVED FIRST;;-10.00;NOK;Reservert;REF-RESERVED-001",
+      "28.05.2026;;SYNTHETIC CONFIRMED SECOND;;-5.00;NOK;Bekreftet;REF-CONFIRMED-002",
+      "27.05.2026;27.05.2026;SYNTHETIC BOOKED THIRD;;-20.00;NOK;Bokført;REF-BOOKED-003",
+    ].join("\n"));
+    const sharedInput = {
+      rows,
+      filePath: sourceName,
+      householdId: SAMPLE_HOUSEHOLD.id,
+      accountId: SAMPLE_ACCOUNT.id,
+      sourceIdentity,
+      sourceScope: sourceName,
+    };
+    const dependencies = {
+      categoryRules: new Map<string, string>(),
+      loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
+      getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+      appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+    };
+
+    try {
+      const firstImport = runCsvImportWorkflow({
+        ...sharedInput,
+        importJobId: "mixed-status-first-import",
+        startedAtIso: "2026-05-29T00:00:00Z",
+        finishedAtIso: "2026-05-29T00:00:01Z",
+      }, dependencies);
+      expect(firstImport).toMatchObject({
+        ok: true,
+        transactionCount: 1,
+        pendingCount: 2,
+      });
+
+      const repeatedImport = runCsvImportWorkflow({
+        ...sharedInput,
+        importJobId: "mixed-status-second-import",
+        startedAtIso: "2026-05-29T00:01:00Z",
+        finishedAtIso: "2026-05-29T00:01:01Z",
+        duplicateDecisions: [{ rowIndex: 2, action: "skip" }],
+      }, dependencies);
+
+      expect(repeatedImport).toMatchObject({
+        ok: true,
+        transactionCount: 0,
+        pendingCount: 2,
+        duplicateCount: 1,
+      });
+      expect(ledger.loadLedgerSnapshotData().transactions).toHaveLength(1);
+      expect(ledger.listPendingTransactionObservations(SAMPLE_HOUSEHOLD.id)).toHaveLength(2);
     } finally {
       ledger.close();
     }

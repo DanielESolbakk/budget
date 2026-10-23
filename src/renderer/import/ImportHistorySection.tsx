@@ -117,6 +117,15 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
               {entries.map((entry) => {
                 const fileName = sourceFileName(entry.sourceName);
                 const accountName = accounts.find((account) => account.id === entry.accountId)?.name ?? entry.accountId ?? "Unavailable";
+                const removedItemCount = undoResult?.importJobId === entry.id
+                  ? undoResult.removedCount
+                  : entry.undoRemovedCount;
+                const retainedItemCount = undoResult?.importJobId === entry.id
+                  ? undoResult.retainedCount
+                  : entry.undoRetainedCount;
+                const retainedTransactions = undoResult?.importJobId === entry.id
+                  ? undoResult.retainedTransactions
+                  : entry.retainedTransactions;
                 return (
                   <React.Fragment key={entry.id}>
                   <tr>
@@ -159,7 +168,7 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                         >
                           <strong>Undo {fileName}?</strong>
                           <p id={`import-undo-explanation-${entry.id}`}>
-                            This removes unchanged transactions from this import. Transactions changed after import, or whose original values cannot be verified, will stay in your ledger. Categorization rules are not removed.
+                            This removes unchanged transactions and active pending items from this import. Transactions changed after import, or transactions whose original values cannot be verified, remain in your ledger. Pending items already reconciled to booked transactions will remain linked to those transactions. Categorization rules are not removed.
                           </p>
                           {undoError !== null && <p role="alert">Undo failed: {undoError}</p>}
                           <div>
@@ -193,36 +202,35 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                         <div className="import-undo-result" role="status" aria-label="Import undo result">
                           <strong>Undo complete</strong>
                           <p>
-                            {undoResult?.importJobId === entry.id ? undoResult.removedCount : entry.undoRemovedCount} transaction{(undoResult?.importJobId === entry.id ? undoResult.removedCount : entry.undoRemovedCount) === 1 ? "" : "s"} removed.
+                            {removedItemCount} imported item{removedItemCount === 1 ? "" : "s"} removed.
                           </p>
-                          {(undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount) === 0 && (
-                            <p>All transactions from this import were removed.</p>
+                          {retainedItemCount === 0 && (
+                            <p>No items from this import were retained.</p>
                           )}
-                          {(undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount) > 0 && (
+                          {retainedItemCount > 0 && (
                             <>
                               <p>
-                                {(undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount)} transaction{(undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount) === 1 ? "" : "s"} kept because they were changed after import or could not be verified.
+                                {retainedItemCount} imported item{retainedItemCount === 1 ? "" : "s"} kept because they could not be safely removed.
                               </p>
-                              <details open={undoResult?.importJobId === entry.id}>
-                                <summary>
-                                  View retained transactions ({undoResult?.importJobId === entry.id ? undoResult.retainedCount : entry.undoRetainedCount})
-                                </summary>
-                                <ul>
-                                  {(undoResult?.importJobId === entry.id
-                                    ? undoResult.retainedTransactions
-                                    : entry.retainedTransactions
-                                  ).map((transaction) => (
-                                    <li key={transaction.id}>
-                                      <span>{transaction.bookedAtIso.slice(0, 10)} · {transaction.merchantRaw} · {retainedAmount(transaction)}</span>
-                                      <small>
-                                        {transaction.reason === "changed-after-import"
-                                          ? "Changed after import; kept to protect your edits."
-                                          : "Original values could not be verified; kept safely."}
-                                      </small>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </details>
+                              {retainedTransactions.length > 0 && (
+                                <details open={undoResult?.importJobId === entry.id}>
+                                  <summary>
+                                    View retained transactions ({retainedTransactions.length})
+                                  </summary>
+                                  <ul>
+                                    {retainedTransactions.map((transaction) => (
+                                      <li key={transaction.id}>
+                                        <span>{transaction.bookedAtIso.slice(0, 10)} · {transaction.merchantRaw} · {retainedAmount(transaction)}</span>
+                                        <small>
+                                          {transaction.reason === "changed-after-import"
+                                            ? "Changed after import; kept to protect your edits."
+                                            : "Original values could not be verified; kept safely."}
+                                        </small>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              )}
                             </>
                           )}
                         </div>

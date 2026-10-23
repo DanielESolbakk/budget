@@ -72,7 +72,7 @@ describe("pdfTextParser unit tests", () => {
     });
   });
 
-  it.each([1, 5, 7])("preserves excluded-only page batches at batch size %i", async (batchSize) => {
+  it.each([1, 5, 7])("preserves pending-only page batches at batch size %i", async (batchSize) => {
     const tableHeader = "Dato       Type          Fra konto      Avsender          Til konto     Mottakernavn       Beløp     Valuta   Status     Melding/KID/Fakt.nr";
     const continuationColumn = tableHeader.indexOf("Melding/KID/Fakt.nr") - 8;
     const text = [
@@ -123,6 +123,47 @@ describe("pdfTextParser unit tests", () => {
           merchantRaw: "Fra: SYNTHETIC PAYROLL",
           currencyCode: "NOK",
           sourceType: "pdf",
+        },
+      ],
+      pendingObservations: [
+        {
+          id: "pdf-pending-4",
+          householdId: "hh-test",
+          accountId: "acc-test",
+          transactionDateIso: "2026-05-28T00:00:00Z",
+          amountMinor: -1100,
+          merchantRaw: "SYNTHETIC RESERVED FIRST",
+          sourceRowIndex: 4,
+          currencyCode: "NOK",
+          sourceType: "pdf",
+          status: "reserved",
+          sourceStatus: "Reservert",
+        },
+        {
+          id: "pdf-pending-10",
+          householdId: "hh-test",
+          accountId: "acc-test",
+          transactionDateIso: "2026-05-30T00:00:00Z",
+          amountMinor: -35000,
+          merchantRaw: "SYNTHETIC CONFIRMED MIDDLE",
+          sourceRowIndex: 10,
+          currencyCode: "NOK",
+          sourceType: "pdf",
+          status: "confirmed",
+          sourceStatus: "Bekreftet",
+        },
+        {
+          id: "pdf-pending-17",
+          householdId: "hh-test",
+          accountId: "acc-test",
+          transactionDateIso: "2026-05-26T00:00:00Z",
+          amountMinor: -4100,
+          merchantRaw: "SYNTHETIC RESERVED LAST",
+          sourceRowIndex: 17,
+          currencyCode: "NOK",
+          sourceType: "pdf",
+          status: "reserved",
+          sourceStatus: "Reservert",
         },
       ],
       excludedRows: [
@@ -717,7 +758,7 @@ describe("pdfTextParser unit tests", () => {
     ]);
   });
 
-  it("keeps the synchronous no-booked-rows failure for a wholly unbooked statement", () => {
+  it("maps a wholly unbooked statement without creating booked transactions", () => {
     const text = [
       "ROGALAND SPAREBANK",
       "Transaksjoner Antall: 2",
@@ -734,12 +775,33 @@ describe("pdfTextParser unit tests", () => {
 
     const result = parseRogalandStatementText(text, BASE_OPTIONS);
 
-    expect(result).toEqual({
-      ok: false,
-      errors: [{
-        code: "MISSING_TRANSACTION_SECTION",
-        message: "No bank-export transaction rows were found in the statement.",
-      }],
+    expect(result).toMatchObject({
+      ok: true,
+      transactions: [],
+      pendingObservations: [
+        {
+          householdId: "hh-test",
+          accountId: "acc-test",
+          transactionDateIso: "2026-05-28T00:00:00Z",
+          amountMinor: -1100,
+          merchantRaw: "SYNTHETIC RESERVED",
+          sourceRowIndex: 4,
+          sourceType: "pdf",
+          status: "reserved",
+          sourceStatus: "Reservert",
+        },
+        {
+          householdId: "hh-test",
+          accountId: "acc-test",
+          transactionDateIso: "2026-05-27T00:00:00Z",
+          amountMinor: -35000,
+          merchantRaw: "SYNTHETIC CONFIRMED",
+          sourceRowIndex: 9,
+          sourceType: "pdf",
+          status: "confirmed",
+          sourceStatus: "Bekreftet",
+        },
+      ],
     });
   });
 

@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-export type WorkspaceName = "Review" | "Transactions" | "Import" | "Data safety";
+export type WorkspaceName = "Review" | "Transactions" | "Pending" | "Import" | "Data safety";
 
 /**
  * Page Object Model for the Budget Planner application shell.

@@ -68,7 +68,10 @@ export class CsvImportPage {
 
   /** Status message shown on successful import (role="status"). */
   get successStatus() {
-    return this.importSection.getByRole("status");
+    return this.importSection.getByRole("status", {
+      name: "Transactions imported",
+      exact: true,
+    });
   }
 
   /** Alert shown on runtime import failure (role="alert"). */

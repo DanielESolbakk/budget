@@ -23,6 +23,7 @@ import type {
   MerchantCorrectionProvenance,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
+  PendingTransactionObservation,
   SameMerchantPropagationApplyRequest,
   SameMerchantPropagationPreview,
   SameMerchantPropagationPreviewRequest,
@@ -135,6 +136,10 @@ export interface LedgerApi {
   };
 }
 
+export interface PendingApi {
+  list: () => Promise<PendingTransactionObservation[]>;
+}
+
 export interface BackupApi {
   create: (outputPath: string) => Promise<BackupSnapshotFileOutput>;
   inspect: (input: RestoreSnapshotInput) => Promise<BackupSnapshotSummary>;
@@ -150,6 +155,7 @@ export interface BudgetApi {
   categoryTargets: CategoryTargetsApi;
   export: ExportApi;
   import: ImportApi;
+  pending: PendingApi;
   review: ReviewApi;
   ledger: LedgerApi;
   backup: BackupApi;
@@ -252,6 +258,10 @@ const budgetApi: BudgetApi = {
         ipcRenderer.invoke("ledgerView:save", input),
       delete: (viewId: string): Promise<boolean> => ipcRenderer.invoke("ledgerView:delete", viewId),
     },
+  },
+  pending: {
+    list: (): Promise<PendingTransactionObservation[]> =>
+      ipcRenderer.invoke("pending:list"),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

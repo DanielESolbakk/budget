@@ -13,7 +13,7 @@ type ImportState =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "cancelled" }
-  | { status: "success"; importJobId: string; sourceName: string; accountName: string; transactionCount: number; duplicateCount: number; excludedRowCount: number; unresolvedRowCount: number; adapterId: string }
+  | { status: "success"; importJobId: string; sourceName: string; accountName: string; transactionCount: number; pendingCount: number; duplicateCount: number; unresolvedRowCount: number; adapterId: string }
   | { status: "error"; message: string }
   | { status: "validation"; errors: PdfImportResponse & { ok: false }; source: "preview" | "import" };
 
@@ -28,6 +28,13 @@ const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
 
 function formatAmount(amountMinor: number): string {
   return nokCurrencyFormatter.format(amountMinor / 100);
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat("nb-NO", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(value));
 }
 
 function fileNameFromPath(filePath: string): string {
@@ -77,17 +84,15 @@ export function PdfImportSection({
   const [accountId, setAccountId] = React.useState("");
   const [accountLoadState, setAccountLoadState] = React.useState<"loading" | "ready" | "error">("loading");
   const [accountRefreshKey, setAccountRefreshKey] = React.useState(0);
-  const [acknowledgeExcludedRows, setAcknowledgeExcludedRows] = React.useState(false);
   const [duplicateDecisions, setDuplicateDecisions] = React.useState<Record<number, DuplicateImportDecision["action"]>>({});
   const duplicateCandidates = preview?.duplicateCandidates ?? [];
+  const pendingObservations = preview?.pendingObservations ?? [];
   const unresolvedRows = preview?.unresolvedRows ?? [];
   const unresolvedRowCount = unresolvedRows.length;
   const unresolvedDuplicateCandidates = duplicateCandidates.filter((candidate) =>
     duplicateDecisions[candidate.rowIndex] === undefined
   );
   const selectedDuplicateDecisionCount = duplicateCandidates.length - unresolvedDuplicateCandidates.length;
-  const excludedRowsAcknowledgementRequired = preview !== null &&
-    preview.excludedRowCount > 0 && !acknowledgeExcludedRows;
   const previewPageCount = Math.max(1, Math.ceil((preview?.transactions.length ?? 0) / PREVIEW_PAGE_SIZE));
   const visibleTransactions = preview?.transactions.slice(
     previewPage * PREVIEW_PAGE_SIZE,
@@ -108,7 +113,6 @@ export function PdfImportSection({
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
-    setAcknowledgeExcludedRows(false);
     setImportState({ status: "idle" });
     setStage(initialFilePath ? "map-and-validate" : "select-file");
   }, [fileSelectionId, initialFilePath]);
@@ -163,7 +167,6 @@ export function PdfImportSection({
     setIsPreviewExpanded(true);
     setStage("map-and-validate");
     setDuplicateDecisions({});
-    setAcknowledgeExcludedRows(false);
     setValidationReportPage(0);
     let wasCancelled = false;
 
@@ -232,7 +235,6 @@ export function PdfImportSection({
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
-    setAcknowledgeExcludedRows(false);
     setImportState({ status: "idle" });
     setStage("select-file");
   }
@@ -244,14 +246,13 @@ export function PdfImportSection({
     setPreviewPage(0);
     setValidationReportPage(0);
     setDuplicateDecisions({});
-    setAcknowledgeExcludedRows(false);
     setImportState({ status: "idle" });
     setStage(filePath.trim() ? "map-and-validate" : "select-file");
   }
 
   function handleImport(): void {
     const trimmedPath = filePath.trim();
-    if (!trimmedPath || !accountId || preview === null || unresolvedDuplicateCandidates.length > 0 || excludedRowsAcknowledgementRequired) return;
+    if (!trimmedPath || !accountId || preview === null || unresolvedDuplicateCandidates.length > 0) return;
 
     setImportState({ status: "pending" });
     setStage("confirm");
@@ -260,7 +261,6 @@ export function PdfImportSection({
         filePath: trimmedPath,
         previewId: preview.previewId,
         accountId,
-        acknowledgeExcludedRows,
         duplicateDecisions: Object.entries(duplicateDecisions).map(([rowIndex, action]) => ({
           rowIndex: Number(rowIndex),
           action,
@@ -275,8 +275,8 @@ export function PdfImportSection({
             sourceName: fileNameFromPath(trimmedPath),
             accountName: accounts.find((account) => account.id === accountId)?.name ?? "Unavailable",
             transactionCount: response.transactionCount,
+            pendingCount: response.pendingCount ?? 0,
             duplicateCount: response.duplicateCount,
-            excludedRowCount: response.excludedRowCount,
             unresolvedRowCount: response.unresolvedRowCount ?? 0,
             adapterId: response.adapterId,
           });
@@ -285,7 +285,6 @@ export function PdfImportSection({
           setPreview(null);
           setPreviewPage(0);
           setValidationReportPage(0);
-          setAcknowledgeExcludedRows(false);
           setDuplicateDecisions({});
           setTimeout(() => onImportSuccess(), 0);
         } else {
@@ -410,9 +409,13 @@ export function PdfImportSection({
             <p className="import-duplicate-summary">
               {importState.duplicateCount} duplicate row{importState.duplicateCount === 1 ? "" : "s"} skipped.
             </p>
-            {importState.excludedRowCount > 0 && (
-              <p className="import-excluded-summary">
-                {importState.excludedRowCount} row{importState.excludedRowCount === 1 ? "" : "s"} not yet booked were left out.
+            {importState.pendingCount > 0 && (
+              <p
+                className="import-excluded-summary"
+                role="status"
+                aria-label="Pending items imported"
+              >
+                {importState.pendingCount} pending item{importState.pendingCount === 1 ? " is" : "s are"} tracked in Pending.
               </p>
             )}
             {importState.unresolvedRowCount > 0 && (
@@ -524,31 +527,28 @@ export function PdfImportSection({
               }}
             />
           )}
-          {preview.excludedRowCount > 0 && (
+          {pendingObservations.length > 0 && (
             <>
-              <p className="import-excluded-summary">
-                {preview.excludedRowCount} row{preview.excludedRowCount === 1 ? "" : "s"} are not booked by the bank and will not be imported.
+              <p
+                className="import-pending-summary"
+                role="status"
+                aria-label="Pending rows in preview"
+              >
+                {pendingObservations.length} pending item{pendingObservations.length === 1 ? "" : "s"} will be tracked separately in Pending and excluded from booked totals, budgets and forecasts.
               </p>
-              <details className="import-excluded-rows">
-                <summary>Excluded rows ({preview.excludedRows.length})</summary>
-                <ul aria-label="Excluded rows">
-                  {preview.excludedRows.map((row, index) => (
-                    <li key={`${row.lineNumber}-${row.status}-${index}`}>
-                      Line {row.lineNumber} · {row.date} · {row.description} · {row.amount} {row.currencyCode} · {row.status}
+              <details className="import-pending-observations">
+                <summary>Pending rows ({pendingObservations.length})</summary>
+                <ul aria-label="PDF pending transactions">
+                  {pendingObservations.map((observation) => (
+                    <li key={observation.id}>
+                      Line {observation.sourceRowIndex + 1} · {formatDate(observation.transactionDateIso)} · {observation.merchantRaw} · {formatAmount(observation.amountMinor)} · {observation.sourceStatus}
+                      {observation.sourceReference === undefined
+                        ? " · No source reference"
+                        : ` · Reference ${observation.sourceReference}`}
                     </li>
                   ))}
                 </ul>
               </details>
-              <label className="import-excluded-acknowledgement">
-                <input
-                  type="checkbox"
-                  checked={acknowledgeExcludedRows}
-                  onChange={(event) => setAcknowledgeExcludedRows(event.target.checked)}
-                />
-                <span>
-                  I understand that these {preview.excludedRowCount} row{preview.excludedRowCount === 1 ? "" : "s"} are not booked and will be left out.
-                </span>
-              </label>
             </>
           )}
           {unresolvedRowCount > 0 && (
@@ -576,17 +576,15 @@ export function PdfImportSection({
               type="button"
               onClick={handleImport}
               aria-describedby="pdf-confirm-help"
-              disabled={importState.status === "pending" || preview === null || unresolvedDuplicateCandidates.length > 0 || excludedRowsAcknowledgementRequired}
+              disabled={importState.status === "pending" || preview === null || unresolvedDuplicateCandidates.length > 0}
             >
               Confirm statement import
             </button>
             <p id="pdf-confirm-help" className="import-action-help">
               {importState.status === "pending"
                 ? "Wait for the current import operation to finish."
-                : excludedRowsAcknowledgementRequired
-                  ? "Acknowledge the excluded rows before confirming this import."
                   : unresolvedRowCount > 0
-                    ? `Confirm to import valid rows and retain ${unresolvedRowCount} unresolved row${unresolvedRowCount === 1 ? "" : "s"} for review.`
+                      ? `Confirm to import valid rows and retain ${unresolvedRowCount} unresolved row${unresolvedRowCount === 1 ? "" : "s"} for review.`
                     : unresolvedDuplicateCandidates[0] !== undefined
                       ? <>
                           Choose whether to skip or import duplicate row {unresolvedDuplicateCandidates[0].rowIndex + 1} before confirming.{" "}

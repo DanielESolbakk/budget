@@ -64,7 +64,10 @@ export class PdfImportPage {
 
   /** Status message shown on successful import (role="status"). */
   get successStatus() {
-    return this.importSection.getByRole("status");
+    return this.importSection.getByRole("status", {
+      name: "Transactions imported",
+      exact: true,
+    });
   }
 
   get pendingStatus() {
