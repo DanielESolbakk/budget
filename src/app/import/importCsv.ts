@@ -493,7 +493,7 @@ export function runCsvImportWorkflow(
     }
     if (decisions.get(rowIndex) === "skip") {
       skippedDuplicateCount += 1;
-      dispositions.set(rowIndex, { disposition: "duplicate" });
+      dispositions.set(rowIndex, { disposition: "skipped" });
       continue;
     }
     const importedDuplicate = { ...candidate.candidate, id: randomUUID() };

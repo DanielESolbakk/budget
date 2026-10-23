@@ -145,6 +145,14 @@ describe("import reconciliation integration contract", () => {
         fullyReconciled: false,
       });
       expect(ledger.getTransactionsForImportJob("job-csv")).toHaveLength(3);
+      expect(ledger.listImportReviewItems(HOUSEHOLD.id)).toEqual([
+        expect.objectContaining({
+          id: "job-csv:review:3",
+          importJobId: "job-csv",
+          sourceRowIndex: 3,
+          status: "unresolved",
+        }),
+      ]);
     } finally {
       ledger.close();
       rmSync(directory, { recursive: true, force: true });
@@ -231,8 +239,16 @@ describe("import reconciliation integration contract", () => {
           ],
           rows: [
             { sourceRowIndex: 4, disposition: "persisted" },
-            { sourceRowIndex: 5, disposition: "invalid" },
-            { sourceRowIndex: 6, disposition: "invalid" },
+            {
+              sourceRowIndex: 5,
+              disposition: "unresolved",
+              reviewItemId: "job-a:review:6",
+            },
+            {
+              sourceRowIndex: 6,
+              disposition: "unresolved",
+              reviewItemId: "job-a:review:7",
+            },
           ],
           fullyReconciled: false,
         },
@@ -243,6 +259,213 @@ describe("import reconciliation integration contract", () => {
           importJobId: "job-a",
         }),
       ]);
+      expect(ledger.listImportReviewItems(HOUSEHOLD.id)).toEqual([
+        expect.objectContaining({
+          id: "job-a:review:6",
+          importJobId: "job-a",
+          sourceRowIndex: 5,
+          status: "unresolved",
+        }),
+        expect.objectContaining({
+          id: "job-a:review:7",
+          importJobId: "job-a",
+          sourceRowIndex: 6,
+          status: "unresolved",
+        }),
+      ]);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("distinguishes automatic duplicates from explicitly skipped duplicates", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-import-reconciliation-duplicates-"));
+    const ledger = createLocalLedgerDatabase({
+      dbPath: join(directory, "ledger.sqlite"),
+      seedData: {
+        household: HOUSEHOLD,
+        accounts: [ACCOUNT],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+    const pdfText = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 1",
+      "Kontonummer: SYNTHETIC-001",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "29.05.2026 Varekjøp SYNTHETIC-001 LOCAL_USER -12,50 NOK Bokført SYNTHETIC DUPLICATE ROW",
+    ].join("\n");
+    const input = (
+      importJobId: string,
+      duplicateDecisions?: Array<{ rowIndex: number; action: "skip" | "import" }>
+    ) => ({
+      pdfText,
+      filePath: "synthetic-duplicate.pdf",
+      householdId: HOUSEHOLD.id,
+      accountId: ACCOUNT.id,
+      importJobId,
+      startedAtIso: "2026-05-29T00:00:00Z",
+      finishedAtIso: "2026-05-29T00:00:01Z",
+      ...(duplicateDecisions === undefined ? {} : { duplicateDecisions }),
+    });
+    const dependencies = {
+      parserRegistry: defaultParserAdapterRegistry,
+      appendImportJob: ledger.appendImportJob,
+      appendTransactions: ledger.appendTransactions,
+      appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+      getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+      getExistingTransactionsForAccount: ledger.getTransactionsForAccount,
+    };
+
+    try {
+      const original = runPdfImportWorkflow(input("job-original"), dependencies);
+      expect(original.ok).toBe(true);
+      if (!original.ok) return;
+
+      const automaticDuplicate = runPdfImportWorkflow(input("job-duplicate"), dependencies);
+      expect(automaticDuplicate.ok).toBe(true);
+      if (!automaticDuplicate.ok) return;
+      expect(automaticDuplicate.reconciliation.rows).toEqual([
+        { sourceRowIndex: 4, amountMinor: -1250, currencyCode: "NOK", disposition: "duplicate" },
+      ]);
+      expect(automaticDuplicate.reconciliation.fullyReconciled).toBe(false);
+
+      const explicitlySkipped = runPdfImportWorkflow(
+        input("job-skipped", [{ rowIndex: 0, action: "skip" }]),
+        dependencies
+      );
+      expect(explicitlySkipped.ok).toBe(true);
+      if (!explicitlySkipped.ok) return;
+      expect(explicitlySkipped.reconciliation.rows).toEqual([
+        { sourceRowIndex: 4, amountMinor: -1250, currencyCode: "NOK", disposition: "skipped" },
+      ]);
+      expect(explicitlySkipped.reconciliation.fullyReconciled).toBe(false);
+      expect(ledger.getTransactionsForImportJob("job-skipped")).toEqual([]);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not fully reconcile a parser source row without a disposition", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-import-reconciliation-unaccounted-"));
+    const ledger = createLocalLedgerDatabase({
+      dbPath: join(directory, "ledger.sqlite"),
+      seedData: {
+        household: HOUSEHOLD,
+        accounts: [ACCOUNT],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const response = runPdfImportWorkflow(
+        {
+          pdfText: "synthetic source document",
+          filePath: "synthetic-unaccounted.pdf",
+          householdId: HOUSEHOLD.id,
+          accountId: ACCOUNT.id,
+          importJobId: "job-unaccounted",
+          startedAtIso: "2026-05-29T00:00:00Z",
+          finishedAtIso: "2026-05-29T00:00:01Z",
+        },
+        {
+          parserRegistry: {
+            parse: () => ({
+              ok: true,
+              adapterId: "synthetic-adapter",
+              sourceIdentity: "synthetic-source",
+              candidates: [],
+              sourceRows: [{ lineNumber: 1, amountMinor: -125, currencyCode: "NOK" }],
+            }),
+          },
+          appendImportJob: ledger.appendImportJob,
+          appendTransactions: ledger.appendTransactions,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+          getAccountCurrencyCode: () => ACCOUNT.currencyCode,
+        }
+      );
+
+      expect(response.ok).toBe(true);
+      if (!response.ok) return;
+      expect(response.reconciliation.rows).toEqual([
+        {
+          sourceRowIndex: 0,
+          amountMinor: -125,
+          currencyCode: "NOK",
+          disposition: "unaccounted",
+        },
+      ]);
+      expect(response.reconciliation.fullyReconciled).toBe(false);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("marks a duplicate row explicitly skipped during CSV import as skipped", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-csv-reconciliation-skipped-"));
+    const ledger = createLocalLedgerDatabase({
+      dbPath: join(directory, "ledger.sqlite"),
+      seedData: {
+        household: HOUSEHOLD,
+        accounts: [ACCOUNT],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+    const rows = [{
+      [CSV_COLUMN_NAMES.executionDate]: "29.05.2026",
+      [CSV_COLUMN_NAMES.description]: "SYNTHETIC DUPLICATE ROW",
+      [CSV_COLUMN_NAMES.amountIn]: "",
+      [CSV_COLUMN_NAMES.amountOut]: "-12.50",
+      [CSV_COLUMN_NAMES.currency]: "NOK",
+    }];
+    const input = (
+      importJobId: string,
+      duplicateDecisions?: Array<{ rowIndex: number; action: "skip" | "import" }>
+    ) => ({
+      filePath: "synthetic-duplicate.csv",
+      householdId: HOUSEHOLD.id,
+      accountId: ACCOUNT.id,
+      rows,
+      importJobId,
+      startedAtIso: "2026-05-29T00:00:00Z",
+      finishedAtIso: "2026-05-29T00:00:01Z",
+      sourceIdentity: "synthetic-duplicate-csv",
+      sourceScope: "synthetic-duplicate.csv",
+      ...(duplicateDecisions === undefined ? {} : { duplicateDecisions }),
+    });
+    const dependencies = {
+      categoryRules: new Map<string, string>(),
+      loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
+      getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+      appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+    };
+
+    try {
+      const original = runCsvImportWorkflow(input("job-csv-original"), dependencies);
+      expect(original.ok).toBe(true);
+      const skipped = runCsvImportWorkflow(
+        input("job-csv-skipped", [{ rowIndex: 0, action: "skip" }]),
+        dependencies
+      );
+
+      expect(skipped.ok).toBe(true);
+      if (!skipped.ok) return;
+      expect(skipped.reconciliation.rows).toEqual([
+        { sourceRowIndex: 0, amountMinor: -1250, currencyCode: "NOK", disposition: "skipped" },
+      ]);
+      expect(skipped.reconciliation.fullyReconciled).toBe(false);
     } finally {
       ledger.close();
       rmSync(directory, { recursive: true, force: true });

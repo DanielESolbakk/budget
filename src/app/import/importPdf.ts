@@ -380,7 +380,9 @@ export function runPdfImportWorkflow(
   }
   for (const row of unresolvedRows) {
     dispositions.set(row.lineNumber - 1, {
-      disposition: "invalid",
+      disposition: row.errors.some(({ code }) => code === "INVALID_TRANSACTION_ROW")
+        ? "invalid"
+        : "unresolved",
       reviewItemId: `${input.importJobId}:review:${row.lineNumber}`,
     });
   }
@@ -431,7 +433,7 @@ export function runPdfImportWorkflow(
         transactionIdByRowIndex.set(sourceRowIndex, candidate.candidate.id);
       } else if (decisions.get(candidateIndex) === "skip") {
         duplicateCount += 1;
-        dispositions.set(sourceRowIndex, { disposition: "duplicate" });
+        dispositions.set(sourceRowIndex, { disposition: "skipped" });
       } else {
         const importedDuplicate = { ...candidate.candidate, id: randomUUID() };
         pendingTransactions.push(importedDuplicate);
