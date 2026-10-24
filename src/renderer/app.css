@@ -6,6 +6,7 @@
   background: #090909;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --font-size-headline: 1.1rem;
   --ink: #090909;
   --paper: #f2eee5;
   --paper-muted: #c2bdb3;
@@ -1365,7 +1366,7 @@ section[aria-label="CSV Import"] [role="alert"] a {
   margin: 0 0 0.45rem;
   color: var(--paper);
   font-family: var(--display);
-  font-size: 1.2rem;
+  font-size: var(--font-size-headline);
   line-height: 1.1;
 }
 
@@ -1436,6 +1437,10 @@ section[aria-label="CSV Import"] [role="alert"] a {
   margin: 0 0 0.35rem;
 }
 
+.import-reconciliation-disposition-status {
+  font-size: 0.82rem;
+}
+
 .import-reconciliation-dispositions ul {
   display: grid;
   gap: 0.25rem;
@@ -1445,6 +1450,11 @@ section[aria-label="CSV Import"] [role="alert"] a {
 
 .import-reconciliation-dispositions li {
   overflow-wrap: anywhere;
+}
+
+.import-reconciliation-more {
+  min-height: 44px;
+  margin-top: 0.65rem;
 }
 
 .import-reconciliation-review-note {

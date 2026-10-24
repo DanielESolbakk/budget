@@ -4,6 +4,8 @@ import type {
   ImportReconciliationRow,
 } from "../../domain/import/importReconciliation.js";
 
+const DISPOSITION_BATCH_SIZE = 50;
+
 interface ImportReconciliationSummaryProps {
   reconciliation: ImportReconciliation;
 }
@@ -51,8 +53,32 @@ function reviewItemLabel(
 export function ImportReconciliationSummary({
   reconciliation,
 }: ImportReconciliationSummaryProps): React.JSX.Element {
-  const rowsNeedingAttention = reconciliation.rows.filter((row) => row.disposition !== "persisted");
-  const persistedRowCount = reconciliation.rows.length - rowsNeedingAttention.length;
+  const [visibleDispositionCount, setVisibleDispositionCount] = React.useState(DISPOSITION_BATCH_SIZE);
+  const dispositionStatusRef = React.useRef<HTMLParagraphElement>(null);
+  let persistedRowCount = 0;
+  let attentionRowCount = 0;
+  const visibleRows: ImportReconciliationRow[] = [];
+  for (const row of reconciliation.rows) {
+    if (row.disposition === "persisted") {
+      persistedRowCount += 1;
+      continue;
+    }
+    attentionRowCount += 1;
+    if (visibleRows.length < visibleDispositionCount) {
+      visibleRows.push(row);
+    }
+  }
+
+  function showMoreDispositions(): void {
+    const nextVisibleCount = Math.min(
+      visibleDispositionCount + DISPOSITION_BATCH_SIZE,
+      attentionRowCount
+    );
+    setVisibleDispositionCount(nextVisibleCount);
+    if (nextVisibleCount === attentionRowCount) {
+      dispositionStatusRef.current?.focus();
+    }
+  }
 
   return (
     <section className="import-reconciliation" aria-label="Import reconciliation">
@@ -109,16 +135,28 @@ export function ImportReconciliationSummary({
       )}
       <div className="import-reconciliation-dispositions">
         <p>
-            {reconciliation.rows.length === 0
-              ? "No source transaction rows were available."
-              : `${persistedRowCount} of ${reconciliation.rows.length} source transaction rows persisted.`}
+          {reconciliation.rows.length === 0
+            ? "No source transaction rows were available."
+            : `${persistedRowCount} of ${reconciliation.rows.length} source transaction rows persisted.`}
+        </p>
+        {attentionRowCount > 0 && (
+          <p
+            ref={dispositionStatusRef}
+            className="import-reconciliation-disposition-status"
+            role="status"
+            aria-live="polite"
+            tabIndex={-1}
+          >
+            Showing {visibleRows.length.toLocaleString("nb-NO")} of{" "}
+            {attentionRowCount.toLocaleString("nb-NO")} rows needing attention.
           </p>
-          <ul aria-label="Source row dispositions">
-            {reconciliation.rows.length === 0 ? (
-              <li>No source transaction row dispositions were returned.</li>
-            ) : rowsNeedingAttention.length === 0 ? (
-              <li>Every source transaction row was persisted.</li>
-          ) : rowsNeedingAttention.map((row) => (
+        )}
+        <ul aria-label="Source row dispositions">
+          {reconciliation.rows.length === 0 ? (
+            <li>No source transaction row dispositions were returned.</li>
+          ) : attentionRowCount === 0 ? (
+            <li>Every source transaction row was persisted.</li>
+          ) : visibleRows.map((row) => (
             <li key={row.sourceRowIndex}>
               <span>
                 Row {row.sourceRowIndex + 1}: {dispositionLabel(row.disposition)}
@@ -134,6 +172,15 @@ export function ImportReconciliationSummary({
             </li>
           ))}
         </ul>
+        {visibleRows.length < attentionRowCount && (
+          <button
+            type="button"
+            className="import-reconciliation-more"
+            onClick={showMoreDispositions}
+          >
+            Show more rows
+          </button>
+        )}
       </div>
     </section>
   );
