@@ -62,10 +62,10 @@ test.describe("single statement import entry", () => {
     });
   });
 
-  test.describe("CSV selection", () => {
+  test.describe("CSV selection", () =>
     test.use({ importFileDialogBehavior: "csv-selected" });
 
-    test("routes a selected CSV through the shared import action", async ({ appShell, window }) => {
+    test("routes a selected CSV through the shared import action", async ({ appShell, window }) =>
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
 
@@ -81,7 +81,7 @@ test.describe("single statement import entry", () => {
   test.describe("text statement selection", () =>
     test.use({ importFileDialogBehavior: "text-selected" });
 
-    test("routes a selected text statement through the shared import action", async ({ appShell, window }) => {
+    test("routes a selected text statement through the shared import action", async ({ appShell, window }) =>
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
 
