@@ -123,7 +123,7 @@ describe("PDF extraction import contract", () => {
       }, {
         parserRegistry: defaultParserAdapterRegistry,
         appendImportJob: ledgerResult.ledger.appendImportJob,
-        appendImportJobAndTransactions: ledgerResult.ledger.appendTransactions,
+        appendImportJobAndTransactions: ledgerResult.ledger.appendImportJobAndTransactions,
         appendTransactions: ledgerResult.ledger.appendTransactions,
         getTransactionsForImportJob: ledgerResult.ledger.getTransactionsForImportJob,
       });
