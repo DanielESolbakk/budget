@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import type { Locator, Page, Request } from "@playwright/test";
 import { test, expect } from "./fixtures/electron.js";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
+import { installMainProcessFetchProbe, mainProcessFetchRequests } from "./helpers/networkProbe.js";
 
 const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 const temporaryDirectories = new Set<string>();
@@ -93,26 +94,6 @@ async function setDesktopThenMobileViewport(
     }
     if (viewport.width === 390) await expectNoHorizontalOverflow(page);
   }
-}
-
-async function installMainProcessFetchProbe(electronApp: import("@playwright/test").ElectronApplication): Promise<void> {
-  await electronApp.evaluate(() => {
-    const state = globalThis as typeof globalThis & { __budgetMainFetchRequests?: string[] };
-    state.__budgetMainFetchRequests = [];
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input, init) => {
-      state.__budgetMainFetchRequests?.push(String(input));
-      return originalFetch(input, init);
-    };
-  });
-}
-
-async function mainProcessFetchRequests(
-  electronApp: import("@playwright/test").ElectronApplication
-): Promise<string[]> {
-  return electronApp.evaluate(() =>
-    (globalThis as typeof globalThis & { __budgetMainFetchRequests?: string[] }).__budgetMainFetchRequests ?? []
-  );
 }
 
 test.afterEach(() => {

@@ -1,11 +1,15 @@
 import { basename, join, resolve } from "node:path";
 import { _electron as electron } from "@playwright/test";
+import type { Request } from "@playwright/test";
 import { test, expect } from "./fixtures/electron.js";
 import { DatabaseSync } from "node:sqlite";
+import type { BudgetApi } from "../../src/renderer/preload.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
 import { CsvImportPage } from "./pom/CsvImportPage.js";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
+import { LedgerPage } from "./pom/LedgerPage.js";
 import { PdfImportPage } from "./pom/PdfImportPage.js";
+import { installMainProcessFetchProbe, mainProcessFetchRequests } from "./helpers/networkProbe.js";
 
 const CSV_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const TEXT_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
@@ -175,6 +179,101 @@ test.describe("single statement import entry", () => {
         expect((corrected as { import_job_id: string }).import_job_id).toMatch(/^import-csv-/);
       } finally {
         database.close();
+      }
+    });
+
+    test("refreshes dashboard and ledger after correction without duplicates or network requests", async ({
+      appShell,
+      csvImport,
+      databasePath,
+      dashboard,
+      electronApp,
+      window,
+    }) => {
+      const ledger = new LedgerPage(window);
+      const rendererRequests: string[] = [];
+      const onRequest = (request: Request): void => {
+        if (/^https?:/i.test(request.url())) rendererRequests.push(request.url());
+      };
+      window.on("request", onRequest);
+      await installMainProcessFetchProbe(electronApp);
+
+      try {
+        await appShell.openWorkspace("Transactions");
+        await expect(ledger.table).toBeVisible();
+        await appShell.openWorkspace("Import");
+
+        const importReview = new ImportReviewPage(window);
+        await importReview.chooseStatementFile();
+        await csvImport.enterFilePath(MIXED_CSV_PATH);
+        await csvImport.importButton.click();
+        await expect(csvImport.previewRegion).toBeVisible();
+        await csvImport.confirmImportButton.click();
+        await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
+
+        await appShell.openWorkspace("Review");
+        await dashboard.monthSelector.selectOption("2026-05");
+        await expect(dashboard.monthSelector).toHaveValue("2026-05");
+        const expensesBeforeCorrection = await dashboard.expenseValue.textContent();
+
+        await appShell.openWorkspace("Import");
+        await importReview.openReviewQueue();
+        await importReview.correctRow(2, {
+          date: "2026-05-19",
+          amount: "-9.99",
+          merchant: "SYNTHETIC LEDGER REFRESH ROW",
+          accountId: "sample-acc",
+          currency: "NOK",
+        });
+
+        const database = new DatabaseSync(databasePath);
+        let correctedReviewItemId: string | undefined;
+        try {
+          const row = database.prepare(
+            "SELECT id FROM import_review_items WHERE status = 'corrected' AND raw_row LIKE ?"
+          ).get("%SYNTHETIC UNRESOLVED ROW%") as { id: string } | undefined;
+          correctedReviewItemId = row?.id;
+        } finally {
+          database.close();
+        }
+        if (correctedReviewItemId === undefined) {
+          throw new Error("Corrected import review item was not persisted.");
+        }
+
+        const repeatedCorrectionSucceeded = await window.evaluate(async (reviewItemId) => {
+          const api = (globalThis as typeof globalThis & { budgetApi: BudgetApi }).budgetApi;
+          const result = await api.import.review.correct({
+            reviewItemId,
+            correction: {
+              bookedAtIso: "2026-05-19",
+              amountMinor: -999,
+              merchantRaw: "SYNTHETIC LEDGER REFRESH ROW",
+              accountId: "sample-acc",
+              currencyCode: "NOK",
+            },
+          });
+          return result.ok;
+        }, correctedReviewItemId);
+        expect(repeatedCorrectionSucceeded).toBe(true);
+
+        const databaseAfterRetry = new DatabaseSync(databasePath);
+        try {
+          const correctedRows = databaseAfterRetry.prepare(
+            "SELECT id FROM transactions WHERE merchant_raw = ?"
+          ).all("SYNTHETIC LEDGER REFRESH ROW");
+          expect(correctedRows).toHaveLength(1);
+        } finally {
+          databaseAfterRetry.close();
+        }
+
+        await appShell.openWorkspace("Transactions");
+        await expect(ledger.transactionsFor("SYNTHETIC LEDGER REFRESH ROW")).toHaveCount(1);
+        await appShell.openWorkspace("Review");
+        await expect(dashboard.expenseValue).not.toHaveText(expensesBeforeCorrection ?? "");
+        expect(rendererRequests).toEqual([]);
+        expect(await mainProcessFetchRequests(electronApp)).toEqual([]);
+      } finally {
+        window.off("request", onRequest);
       }
     });
 
@@ -359,8 +458,16 @@ test.describe("single statement import entry", () => {
       test("corrects a malformed text statement row with source provenance", async ({
         appShell,
         databasePath,
+        electronApp,
         window,
       }) => {
+        const rendererRequests: string[] = [];
+        const onRequest = (request: Request): void => {
+          if (/^https?:/i.test(request.url())) rendererRequests.push(request.url());
+        };
+        window.on("request", onRequest);
+        await installMainProcessFetchProbe(electronApp);
+
         await appShell.openWorkspace("Import");
         const importReview = new ImportReviewPage(window);
         const statementImport = new PdfImportPage(window);
@@ -404,6 +511,8 @@ test.describe("single statement import entry", () => {
         } finally {
           database.close();
         }
+        expect(rendererRequests).toEqual([]);
+        expect(await mainProcessFetchRequests(electronApp)).toEqual([]);
       });
     });
 
@@ -413,8 +522,16 @@ test.describe("single statement import entry", () => {
       test("corrects an unresolved row extracted from a binary PDF", async ({
         appShell,
         databasePath,
+        electronApp,
         window,
       }) => {
+        const rendererRequests: string[] = [];
+        const onRequest = (request: Request): void => {
+          if (/^https?:/i.test(request.url())) rendererRequests.push(request.url());
+        };
+        window.on("request", onRequest);
+        await installMainProcessFetchProbe(electronApp);
+
         await appShell.openWorkspace("Import");
         const importReview = new ImportReviewPage(window);
         const statementImport = new PdfImportPage(window);
@@ -469,6 +586,8 @@ test.describe("single statement import entry", () => {
         } finally {
           database.close();
         }
+        expect(rendererRequests).toEqual([]);
+        expect(await mainProcessFetchRequests(electronApp)).toEqual([]);
       });
     });
 
