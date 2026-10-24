@@ -486,6 +486,10 @@ test.describe("single statement import entry", () => {
         await importReview.openReviewQueue();
         const reviewRow = importReview.reviewRow(4);
         await expect(reviewRow).toContainText("SYNTHETIC PDF BROKEN");
+        const sourceEvidence = reviewRow.getByText("Text statement source evidence", { exact: true });
+        await expect(sourceEvidence).toBeVisible();
+        await sourceEvidence.click();
+        await expect(reviewRow.getByRole("list", { name: "Text statement page 1 source lines" })).toBeVisible();
         await importReview.correctRow(4, {
           date: "2026-05-27",
           amount: "-7.25",
