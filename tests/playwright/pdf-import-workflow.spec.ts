@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
+import { createSyntheticPdfWithText } from "../helpers/createSyntheticPdf.js";
 
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
 const BINARY_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
@@ -639,6 +640,36 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.importSection).toContainText("No page text was extracted.");
   });
 
+  test("rejects a text statement saved with a PDF extension without importing transactions", async ({
+    databasePath,
+    pdfImport,
+  }) => {
+    const transactionsBeforeImport = loadPersistedSnapshot(databasePath).transactions;
+    const disguisedPdfPath = join(createTemporaryDirectory(), `text-statement-${randomUUID()}.pdf`);
+    writeFileSync(disguisedPdfPath, readFileSync(FIXTURE_PATH));
+
+    await pdfImport.submitImport(disguisedPdfPath);
+
+    await expect(pdfImport.errorAlert).toBeVisible();
+    await expect(pdfImport.errorAlert).toContainText(/valid PDF/i);
+    expect(loadPersistedSnapshot(databasePath).transactions).toEqual(transactionsBeforeImport);
+  });
+
+  test("rejects binary PDF content saved with a text extension without importing transactions", async ({
+    databasePath,
+    pdfImport,
+  }) => {
+    const transactionsBeforeImport = loadPersistedSnapshot(databasePath).transactions;
+    const disguisedTextPath = join(createTemporaryDirectory(), `pdf-statement-${randomUUID()}.txt`);
+    writeFileSync(disguisedTextPath, readFileSync(BINARY_FIXTURE_PATH));
+
+    await pdfImport.submitImport(disguisedTextPath);
+
+    await expect(pdfImport.errorAlert).toBeVisible();
+    await expect(pdfImport.errorAlert).toContainText(/contains PDF data/i);
+    expect(loadPersistedSnapshot(databasePath).transactions).toEqual(transactionsBeforeImport);
+  });
+
   test("cancelling a 10,000-row PDF preflight leaves the ledger unchanged", async ({ pdfImport, databasePath }) => {
     const transactionsBeforePreview = loadPersistedSnapshot(databasePath).transactions;
     await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
@@ -748,6 +779,65 @@ test.describe("PDF import renderer workflow", () => {
         }),
       }),
     ]));
+  });
+
+  test("imports all ten binary Rogaland rows and refreshes the selected dashboard month", async ({
+    appShell,
+    pdfImport,
+    dashboard,
+    databasePath,
+  }) => {
+    const generatedPdfPath = join(createTemporaryDirectory(), `rogaland-ten-transactions-${randomUUID()}.pdf`);
+    writeFileSync(generatedPdfPath, createSyntheticPdfWithText(readFileSync(FIXTURE_PATH, "utf8")));
+
+    await appShell.openWorkspace("Review");
+    await dashboard.monthSelector.selectOption("2026-05");
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    const incomeBeforeImport = (await dashboard.incomeValue.textContent()) ?? "";
+
+    await appShell.openWorkspace("Import");
+    await pdfImport.submitImport(generatedPdfPath);
+    await expect(pdfImport.successStatus).toContainText("Added 10 transactions to your ledger.", {
+      timeout: 20_000,
+    });
+
+    const snapshot = loadPersistedSnapshot(databasePath);
+    const importedTransactions = snapshot.transactions.filter((transaction) => transaction.sourceType === "pdf");
+    expect(importedTransactions).toHaveLength(10);
+    expect(importedTransactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        bookedAtIso: "2026-05-27T00:00:00Z",
+        amountMinor: 5_000_000,
+        merchantRaw: "SALARY",
+        currencyCode: "NOK",
+      }),
+      expect.objectContaining({
+        bookedAtIso: "2026-05-26T00:00:00Z",
+        amountMinor: -9_770,
+        merchantRaw: "MERCHANT-005 Butikkkjøp",
+        currencyCode: "NOK",
+      }),
+      expect.objectContaining({
+        bookedAtIso: "2026-05-15T00:00:00Z",
+        amountMinor: 500_000,
+        merchantRaw: "SALARY_ADVANCE Forskudd",
+        currencyCode: "NOK",
+      }),
+    ]));
+    expect(snapshot.importJobs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sourceType: "pdf",
+        adapterId: "rogaland-sparebank-text-v1",
+        candidateCount: 10,
+        provenance: expect.objectContaining({
+          sourceIdentity: "no.rogaland-sparebank.statement-text",
+        }),
+      }),
+    ]));
+
+    await appShell.openWorkspace("Review");
+    await expect.poll(async () => (await dashboard.incomeValue.textContent()) ?? "")
+      .not.toBe(incomeBeforeImport);
   });
 
   test("Scenario 1: importing the supported synthetic text PDF fixture reports success and displays adapter identity", async ({

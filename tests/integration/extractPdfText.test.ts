@@ -98,6 +98,19 @@ describe("PDF text extraction service", () => {
     }
   });
 
+  it("rejects plain text stored at a PDF file path", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "budget-pdf-text-mismatch-"));
+    const filePath = join(tempDir, "statement.pdf");
+
+    try {
+      writeFileSync(filePath, "ROGALAND SPAREBANK\n28.05.2026 SYNTHETIC ROW -1,00 10,00", "utf8");
+
+      await expect(extractPdfTextFromFile(filePath)).rejects.toThrow(/valid PDF/i);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("propagates file-read failures without constructing a parser", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "budget-pdf-missing-"));
     const missingPath = join(tempDir, "missing.pdf");

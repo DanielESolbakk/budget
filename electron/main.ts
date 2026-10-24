@@ -72,6 +72,7 @@ import {
   type PdfImportResponse,
 } from "../src/app/import/importPdf.js";
 import { extractSourceDocumentFromBuffer } from "../src/app/import/extractPdfText.js";
+import { classifyImportFilePath } from "../src/domain/import/sourceDocument.js";
 import { decodeCsvBytes, parseRogalandCsvText } from "../src/domain/import/parseCsvText.js";
 import type { CsvImportProfile } from "../src/domain/import/csvImportProfile.js";
 import type { ImportJobHistoryEntry } from "../src/domain/import/importJobHistory.js";
@@ -637,6 +638,14 @@ function parseRendererImportInput(
     ...(duplicateDecisions === undefined ? {} : { duplicateDecisions }),
     ...(record.acknowledgeExcludedRows === undefined ? {} : { acknowledgeExcludedRows: record.acknowledgeExcludedRows }),
   };
+}
+
+function getPdfImportSourceFormat(filePath: string): "pdf" | "text" {
+  const format = classifyImportFilePath(filePath);
+  if (format !== "pdf" && format !== "text") {
+    throw new Error("Choose a .txt or .pdf statement file.");
+  }
+  return format;
 }
 
 function parseCsvImportProfileInput(input: unknown): {
@@ -1469,7 +1478,10 @@ app.whenReady().then(async () => {
         reportProgress("Extracting statement text", 0, 0);
         let sourceDocument: Awaited<ReturnType<typeof extractSourceDocumentFromBuffer>>;
         try {
-          sourceDocument = await extractSourceDocumentFromBuffer(pdfBytes);
+          sourceDocument = await extractSourceDocumentFromBuffer(
+            pdfBytes,
+            getPdfImportSourceFormat(request.filePath)
+          );
         } catch (error) {
           return normalizePdfImportErrors([{
             code: "FILE_READ_ERROR",
@@ -1582,7 +1594,10 @@ app.whenReady().then(async () => {
 
       let sourceDocument: Awaited<ReturnType<typeof extractSourceDocumentFromBuffer>>;
       try {
-        sourceDocument = await extractSourceDocumentFromBuffer(pdfBytes);
+        sourceDocument = await extractSourceDocumentFromBuffer(
+          pdfBytes,
+          getPdfImportSourceFormat(request.filePath)
+        );
       } catch (error) {
         importPreviewRegistry.release(parsedInput.previewId!);
         const message = error instanceof Error ? error.message : "Could not extract PDF text.";

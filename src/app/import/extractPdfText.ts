@@ -6,6 +6,7 @@ import { createTextSourceDocument } from "../../domain/import/sourceDocument.js"
 import type {
   SourceDocument,
   SourceDocumentPage,
+  SourceDocumentFormat,
   SourceTextLineClassification,
   SourceTextLineEvidence,
 } from "../../domain/import/sourceDocument.js";
@@ -231,8 +232,18 @@ function createPdfSourcePage(
   };
 }
 
-export async function extractSourceDocumentFromBuffer(data: Buffer): Promise<SourceDocument> {
-  if (data.subarray(0, 5).toString("ascii") !== "%PDF-") {
+export async function extractSourceDocumentFromBuffer(
+  data: Buffer,
+  expectedFormat?: SourceDocumentFormat
+): Promise<SourceDocument> {
+  const isBinaryPdf = data.subarray(0, 5).toString("ascii") === "%PDF-";
+  if (expectedFormat === "pdf" && !isBinaryPdf) {
+    throw new Error("The selected .pdf file does not have a valid PDF signature.");
+  }
+  if (expectedFormat === "text" && isBinaryPdf) {
+    throw new Error("The selected .txt file contains PDF data. Choose the .pdf file instead.");
+  }
+  if (!isBinaryPdf) {
     return createTextSourceDocument(data.toString("utf8"));
   }
 
@@ -281,10 +292,13 @@ export async function extractSourceDocumentFromBuffer(data: Buffer): Promise<Sou
   }
 }
 
-export async function extractPdfTextFromBuffer(data: Buffer): Promise<string> {
-  return (await extractSourceDocumentFromBuffer(data)).text;
+export async function extractPdfTextFromBuffer(
+  data: Buffer,
+  expectedFormat?: SourceDocumentFormat
+): Promise<string> {
+  return (await extractSourceDocumentFromBuffer(data, expectedFormat)).text;
 }
 
 export async function extractPdfTextFromFile(filePath: string): Promise<string> {
-  return extractPdfTextFromBuffer(await readFile(filePath));
+  return extractPdfTextFromBuffer(await readFile(filePath), "pdf");
 }
