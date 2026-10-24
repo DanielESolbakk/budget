@@ -4,6 +4,35 @@ export interface Household {
   createdAtIso: string;
 }
 
+export type SourceTextLineClassification =
+  | "document-metadata"
+  | "column-header"
+  | "transaction"
+  | "continuation"
+  | "document-decoration"
+  | "unclassified";
+
+export interface SourceTextItemEvidence {
+  text: string;
+  x: number;
+  y: number;
+}
+
+export interface SourceTextLineEvidence {
+  pageNumber: number;
+  lineNumber: number;
+  startOffset: number;
+  endOffset: number;
+  rawText: string;
+  classification?: SourceTextLineClassification;
+  items?: SourceTextItemEvidence[];
+}
+
+export interface SourceDocumentTextLineEvidence {
+  pageNumber: number;
+  sourceLines: SourceTextLineEvidence[];
+}
+
 export interface Account {
   id: string;
   householdId: string;
@@ -368,6 +397,7 @@ export interface ImportReviewItem {
   sourceName: string;
   sourceIdentity: string;
   sourceRowIndex: number;
+  sourceEvidence?: SourceDocumentTextLineEvidence;
   rawRow: string;
   parserErrors: ImportReviewDiagnostic[];
   status: ImportReviewStatus;

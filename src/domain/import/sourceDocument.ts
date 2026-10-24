@@ -1,3 +1,15 @@
+import type {
+  SourceDocumentTextLineEvidence,
+  SourceTextLineEvidence,
+} from "../types.js";
+
+export type {
+  SourceDocumentTextLineEvidence,
+  SourceTextLineClassification,
+  SourceTextLineEvidence,
+  SourceTextItemEvidence,
+} from "../types.js";
+
 export type SourceDocumentFormat = "pdf" | "text";
 export type ImportStatementFileFormat = "csv" | "pdf" | "text";
 
@@ -9,35 +21,12 @@ export type SourceDocumentCapability =
   | "standalone-text"
   | "binary-pdf";
 
-export interface SourceTextItemEvidence {
-  text: string;
-  x: number;
-  y: number;
-}
-
-export type SourceTextLineClassification =
-  | "document-metadata"
-  | "column-header"
-  | "transaction"
-  | "continuation"
-  | "document-decoration"
-  | "unclassified";
-
-export interface SourceTextLineEvidence {
-  pageNumber: number;
-  lineNumber: number;
-  startOffset: number;
-  endOffset: number;
-  rawText: string;
-  classification?: SourceTextLineClassification;
-  items?: SourceTextItemEvidence[];
-}
-
 export interface SourceDocumentPage {
   pageNumber: number;
   text: string;
   sourceText: string;
   sourceLines: SourceTextLineEvidence[];
+  textLineEvidence: SourceDocumentTextLineEvidence[];
 }
 
 export interface SourceDocument {
@@ -45,6 +34,7 @@ export interface SourceDocument {
   text: string;
   capabilities: readonly SourceDocumentCapability[];
   pages: SourceDocumentPage[];
+  textLineEvidence: SourceDocumentTextLineEvidence[];
 }
 
 export function classifyImportFilePath(filePath: string): ImportStatementFileFormat | undefined {
@@ -82,6 +72,12 @@ function createTextSourceLines(sourceText: string): SourceTextLineEvidence[] {
 }
 
 export function createTextSourceDocument(text: string): SourceDocument {
+  const sourceLines = createTextSourceLines(text);
+  const textLineEvidence = sourceLines.map((sourceLine) => ({
+    pageNumber: 1,
+    sourceLines: [sourceLine],
+  }));
+
   return {
     format: "text",
     text,
@@ -90,7 +86,9 @@ export function createTextSourceDocument(text: string): SourceDocument {
       pageNumber: 1,
       text,
       sourceText: text,
-      sourceLines: createTextSourceLines(text),
+      sourceLines,
+      textLineEvidence,
     }],
+    textLineEvidence,
   };
 }

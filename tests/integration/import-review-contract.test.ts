@@ -104,6 +104,75 @@ function createReviewLedger(suffix: string) {
 }
 
 describe("import review persistence contract", () => {
+  it("adds nullable PDF source evidence when opening a database with the prior review schema", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-import-review-source-migration-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    const legacyDatabase = new DatabaseSync(dbPath);
+    legacyDatabase.exec(`
+      CREATE TABLE import_review_items (
+        id TEXT PRIMARY KEY,
+        import_job_id TEXT NOT NULL,
+        household_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_name TEXT NOT NULL,
+        source_identity TEXT NOT NULL,
+        source_row_index INTEGER NOT NULL,
+        raw_row TEXT NOT NULL,
+        parser_errors_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at_iso TEXT NOT NULL,
+        updated_at_iso TEXT NOT NULL,
+        corrected_at_iso TEXT,
+        corrected_transaction_id TEXT,
+        correction_json TEXT,
+        dismissal_reason TEXT,
+        dismissed_at_iso TEXT
+      )
+    `);
+    legacyDatabase.prepare(`
+      INSERT INTO import_review_items (
+        id, import_job_id, household_id, account_id, source_type, source_name, source_identity,
+        source_row_index, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      "legacy-review-row",
+      "legacy-import-job",
+      HOUSEHOLD.id,
+      ACCOUNT.id,
+      "csv",
+      "legacy.csv",
+      "legacy-csv-v1",
+      4,
+      "legacy unresolved row",
+      "[]",
+      "unresolved",
+      "2026-05-21T12:00:00Z",
+      "2026-05-21T12:00:00Z"
+    );
+    legacyDatabase.close();
+
+    const ledger = createLocalLedgerDatabase({ dbPath });
+    try {
+      const database = new DatabaseSync(dbPath);
+      const columns = database.prepare("PRAGMA table_info(import_review_items)").all() as Array<{ name: string }>;
+      database.close();
+
+      expect(columns.map((column) => column.name)).toContain("source_evidence_json");
+      expect(ledger.listImportReviewItems(HOUSEHOLD.id)).toEqual([
+        expect.objectContaining({
+          id: "legacy-review-row",
+          sourceRowIndex: 4,
+          rawRow: "legacy unresolved row",
+          status: "unresolved",
+        }),
+      ]);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("persists valid CSV transactions and unresolved row evidence in one local import", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-import-review-"));
     const dbPath = join(directory, "ledger.sqlite");

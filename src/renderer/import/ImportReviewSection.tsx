@@ -405,6 +405,23 @@ export function ImportReviewSection({
               <summary>Original source row</summary>
               <pre>{item.rawRow}</pre>
             </details>
+            {item.sourceEvidence !== undefined && (
+              <details className="import-review-source-evidence">
+                <summary>PDF source page evidence</summary>
+                <p>Page {item.sourceEvidence.pageNumber}</p>
+                <ol aria-label={`PDF page ${item.sourceEvidence.pageNumber} source lines`}>
+                  {item.sourceEvidence.sourceLines.map((line) => (
+                    <li key={`${line.pageNumber}-${line.lineNumber}-${line.startOffset}`}>
+                      <p>
+                        Line {line.lineNumber} - offsets {line.startOffset}-{line.endOffset}
+                        {line.classification === undefined ? "" : ` - ${line.classification}`}
+                      </p>
+                      <pre>{line.rawText || "(blank line)"}</pre>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
             {item.parserErrors.length > 0 && (
               <div className="import-review-diagnostics">
                 <p className="import-review-diagnostic-summary">{parserDiagnosticSummary(item)}</p>

@@ -120,6 +120,39 @@ function createPaginatedRogalandStatement(): Buffer {
 }
 
 describe("position-aware PDF extraction", () => {
+  it("maps malformed rows from a later PDF page back to their original source lines", async () => {
+    const sourceDocument = await extractSourceDocumentFromBuffer(createSyntheticPdf([
+      createRogalandStatementPage("28.05.2026", "-10,00", "FIRST PAGE SHOP", "1/2 Rogaland Sparebank"),
+      createRogalandStatementPage("27.05.2026", "not-an-amount", "MALFORMED", "2/2 Rogaland Sparebank", "DESCRIPTION"),
+    ]));
+    const parseResult = defaultParserAdapterRegistry.parse(sourceDocument, {
+      householdId: "hh-test",
+      accountId: "acc-test",
+    });
+
+    expect(parseResult).toMatchObject({
+      ok: true,
+      unresolvedRows: [{
+        rawRow: expect.stringContaining("not-an-amount"),
+        sourceEvidence: {
+          pageNumber: 2,
+          sourceLines: expect.arrayContaining([
+            expect.objectContaining({
+              pageNumber: 2,
+              classification: "transaction",
+              rawText: expect.stringContaining("27.05.2026"),
+            }),
+            expect.objectContaining({
+              pageNumber: 2,
+              classification: "continuation",
+              rawText: "DESCRIPTION",
+            }),
+          ]),
+        },
+      }],
+    });
+  });
+
   it("preserves page roles and wrapped-row evidence across repeated headers and footers", async () => {
     const sourceDocument = await extractSourceDocumentFromBuffer(createPaginatedRogalandStatement());
     const repeatedExtraction = await extractSourceDocumentFromBuffer(createPaginatedRogalandStatement());

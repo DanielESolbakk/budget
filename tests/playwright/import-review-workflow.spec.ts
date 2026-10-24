@@ -552,6 +552,11 @@ test.describe("single statement import entry", () => {
 
         const reviewRow = importReview.reviewRow(7);
         await expect(reviewRow).toContainText("SYNTHETIC PDF BROKEN");
+        const pageEvidence = reviewRow.getByText("PDF source page evidence", { exact: true });
+        await expect(pageEvidence).toBeVisible();
+        await pageEvidence.click();
+        await expect(reviewRow).toContainText("Page 1");
+        await expect(reviewRow).toContainText("27.05.2026");
         await importReview.correctRow(7, {
           date: "2026-05-27",
           amount: "-7.25",

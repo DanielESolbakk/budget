@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type {
   ImportedTransactionStatus,
   PendingTransactionObservation,
+  SourceDocumentTextLineEvidence,
   Transaction,
 } from "../types.js";
 
@@ -66,6 +67,7 @@ export interface PdfTextUnresolvedRow {
   lineNumber: number;
   rawRow: string;
   errors: PdfTextValidationError[];
+  sourceEvidence?: SourceDocumentTextLineEvidence;
 }
 
 export interface PdfTextExcludedRow {

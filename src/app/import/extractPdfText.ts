@@ -7,6 +7,7 @@ import type {
   SourceDocument,
   SourceDocumentPage,
   SourceDocumentFormat,
+  SourceDocumentTextLineEvidence,
   SourceTextLineClassification,
   SourceTextLineEvidence,
 } from "../../domain/import/sourceDocument.js";
@@ -41,6 +42,11 @@ interface PdfJsTextItem {
 interface PositionedTextLine {
   y: number;
   items: PositionedTextItem[];
+}
+
+interface RenderedPdfTextLine {
+  text: string;
+  sourceLineIndexes: number[];
 }
 
 interface PdfColumnAnchor {
@@ -110,25 +116,42 @@ function renderCells(cells: readonly string[][]): string {
   return cells.map((parts) => parts.join(" ").trim()).filter(Boolean).join(" ");
 }
 
-function renderPageText(lines: readonly PositionedTextLine[], pageNumber: number): string[] {
+function renderPageText(lines: readonly PositionedTextLine[], pageNumber: number): RenderedPdfTextLine[] {
   const headerIndex = lines.findIndex((line) => findPdfColumnAnchors(line) !== null);
   if (headerIndex === -1) {
-    return lines.map((line) => line.items.map((item) => item.text.trim()).filter(Boolean).join(" "));
+    return lines.map((line, sourceLineIndex) => ({
+      text: line.items.map((item) => item.text.trim()).filter(Boolean).join(" "),
+      sourceLineIndexes: [sourceLineIndex],
+    }));
   }
 
   const columns = findPdfColumnAnchors(lines[headerIndex]!);
-  if (columns === null) return lines.map((line) => line.items.map((item) => item.text.trim()).join(" "));
+  if (columns === null) {
+    return lines.map((line, sourceLineIndex) => ({
+      text: line.items.map((item) => item.text.trim()).join(" "),
+      sourceLineIndexes: [sourceLineIndex],
+    }));
+  }
 
-  const rendered = [PDF_ROW_HEADERS.join(" ")];
+  const rendered: RenderedPdfTextLine[] = [
+    { text: `Transaksjoner ${pageNumber}`, sourceLineIndexes: [] },
+    { text: PDF_ROW_HEADERS.join(" "), sourceLineIndexes: [headerIndex] },
+  ];
   let currentCells: string[][] | undefined;
+  let currentSourceLineIndexes: number[] | undefined;
   const finishCurrentRow = (): void => {
     if (currentCells !== undefined) {
-      rendered.push(renderCells(currentCells));
+      rendered.push({
+        text: renderCells(currentCells),
+        sourceLineIndexes: currentSourceLineIndexes ?? [],
+      });
       currentCells = undefined;
+      currentSourceLineIndexes = undefined;
     }
   };
 
-  for (const line of lines.slice(headerIndex + 1)) {
+  for (const [offset, line] of lines.slice(headerIndex + 1).entries()) {
+    const sourceLineIndex = headerIndex + offset + 1;
     if (isDocumentDecoration(line)) {
       finishCurrentRow();
       continue;
@@ -138,6 +161,7 @@ function renderPageText(lines: readonly PositionedTextLine[], pageNumber: number
     if (hasDate) {
       finishCurrentRow();
       currentCells = PDF_ROW_HEADERS.map(() => []);
+      currentSourceLineIndexes = [sourceLineIndex];
       appendLineToCells(currentCells, line, columns);
       continue;
     }
@@ -149,14 +173,18 @@ function renderPageText(lines: readonly PositionedTextLine[], pageNumber: number
       firstItemX >= columns[0]!.x + PDF_CONTINUATION_X_TOLERANCE
     ) {
       appendLineToCells(currentCells, line, columns);
+      currentSourceLineIndexes?.push(sourceLineIndex);
     } else {
       finishCurrentRow();
-      rendered.push(line.items.map((item) => item.text.trim()).filter(Boolean).join(" "));
+      rendered.push({
+        text: line.items.map((item) => item.text.trim()).filter(Boolean).join(" "),
+        sourceLineIndexes: [sourceLineIndex],
+      });
     }
   }
 
   finishCurrentRow();
-  return [`Transaksjoner ${pageNumber}`, ...rendered];
+  return rendered;
 }
 
 function classifySourceLines(
@@ -223,12 +251,21 @@ function createPdfSourcePage(
     startOffset = endOffset + 1;
     return sourceLine;
   });
+  const renderedLines = renderPageText(lines, pageNumber);
+  const textLineEvidence: SourceDocumentTextLineEvidence[] = renderedLines.map(({ sourceLineIndexes }) => ({
+    pageNumber,
+    sourceLines: sourceLineIndexes.flatMap((sourceLineIndex) => {
+      const sourceLine = sourceLines[sourceLineIndex];
+      return sourceLine === undefined ? [] : [sourceLine];
+    }),
+  }));
 
   return {
     pageNumber,
-    text: renderPageText(lines, pageNumber).join("\n"),
+    text: renderedLines.map(({ text }) => text).join("\n"),
     sourceText,
     sourceLines,
+    textLineEvidence,
   };
 }
 
@@ -277,6 +314,10 @@ export async function extractSourceDocumentFromBuffer(
     }
 
     const pageText = pages.flatMap((page) => page.text.split("\n"));
+    const textLineEvidence = pages.flatMap((page) => page.textLineEvidence);
+    if (hasRogalandSource) {
+      textLineEvidence.unshift({ pageNumber: 1, sourceLines: [] });
+    }
     const text = hasRogalandSource
       ? [`ROGALAND SPAREBANK`, ...pageText].join("\n")
       : pageText.join("\n");
@@ -286,6 +327,7 @@ export async function extractSourceDocumentFromBuffer(
       text,
       capabilities: ["plain-text", "ordered-pages", "source-offsets", "positioned-text", "binary-pdf"],
       pages,
+      textLineEvidence,
     };
   } finally {
     await document.destroy();

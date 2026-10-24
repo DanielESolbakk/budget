@@ -26,6 +26,42 @@ const BASE_OPTIONS = {
 };
 
 describe("ParserAdapterRegistry", () => {
+  it("adds original source evidence to unresolved rows from registered adapters", () => {
+    const registry = new ParserAdapterRegistry();
+    registry.register({
+      id: "bank-b-text-v1",
+      sourceIdentity: "no.bank-b.statement-text",
+      requiredCapabilities: ["standalone-text"],
+      canHandle: (source) => source.text.startsWith("BANK-B"),
+      parse: () => ({
+        ok: true,
+        adapterId: "bank-b-text-v1",
+        sourceIdentity: "no.bank-b.statement-text",
+        candidates: [],
+        unresolvedRows: [{
+          lineNumber: 2,
+          rawRow: "MALFORMED BANK-B ROW",
+          errors: [{ code: "INVALID_TRANSACTION_ROW", message: "Malformed row." }],
+        }],
+      }),
+    });
+    const source = createTextSourceDocument("BANK-B statement\nMALFORMED BANK-B ROW");
+
+    expect(registry.parse(source, BASE_OPTIONS)).toMatchObject({
+      ok: true,
+      unresolvedRows: [{
+        sourceEvidence: {
+          pageNumber: 1,
+          sourceLines: [{
+            pageNumber: 1,
+            lineNumber: 2,
+            rawText: "MALFORMED BANK-B ROW",
+          }],
+        },
+      }],
+    });
+  });
+
   it("selects a stable adapter only when the source provides its required capabilities", () => {
     const registry = new ParserAdapterRegistry();
     const textOnlyAdapter = {
@@ -66,7 +102,14 @@ describe("ParserAdapterRegistry", () => {
       format: "pdf",
       text: "BANK-B statement",
       capabilities: ["plain-text", "ordered-pages", "source-offsets", "positioned-text"],
-      pages: [{ pageNumber: 1, text: "BANK-B statement", sourceText: "BANK-B statement", sourceLines: [] }],
+      pages: [{
+        pageNumber: 1,
+        text: "BANK-B statement",
+        sourceText: "BANK-B statement",
+        sourceLines: [],
+        textLineEvidence: [],
+      }],
+      textLineEvidence: [],
     };
 
     const result = registry.parse(source, BASE_OPTIONS);
@@ -96,7 +139,14 @@ describe("ParserAdapterRegistry", () => {
       format: "pdf",
       text: "BANK-B statement",
       capabilities: ["plain-text", "ordered-pages", "source-offsets"],
-      pages: [{ pageNumber: 1, text: "BANK-B statement", sourceText: "BANK-B statement", sourceLines: [] }],
+      pages: [{
+        pageNumber: 1,
+        text: "BANK-B statement",
+        sourceText: "BANK-B statement",
+        sourceLines: [],
+        textLineEvidence: [],
+      }],
+      textLineEvidence: [],
     };
 
     const result = registry.parse(source, BASE_OPTIONS);

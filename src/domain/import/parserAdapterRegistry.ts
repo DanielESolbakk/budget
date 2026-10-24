@@ -78,6 +78,21 @@ export interface UnsupportedSourceFailure {
 
 export type RegistryParseResult = AdapterParseResult | UnsupportedSourceFailure;
 
+function addSourceEvidenceToResult(
+  source: SourceDocument,
+  result: AdapterParseResult
+): AdapterParseResult {
+  if (!result.ok || result.unresolvedRows === undefined) return result;
+  const unresolvedRows = result.unresolvedRows.map((row) => {
+    if (row.sourceEvidence !== undefined) return row;
+    const sourceEvidence = source.textLineEvidence[row.lineNumber - 1];
+    return sourceEvidence === undefined || sourceEvidence.sourceLines.length === 0
+      ? row
+      : { ...row, sourceEvidence };
+  });
+  return { ...result, unresolvedRows };
+}
+
 /**
  * Registry that maps source text to a registered adapter and dispatches parsing.
  * Adapters are evaluated in registration order; the first match wins.
@@ -124,7 +139,7 @@ export class ParserAdapterRegistry {
       };
     }
 
-    return adapter.parse(document, options);
+    return addSourceEvidenceToResult(document, adapter.parse(document, options));
   }
 
   async parseInBatches(
@@ -145,11 +160,12 @@ export class ParserAdapterRegistry {
       };
     }
     if (adapter.parseInBatches !== undefined) {
-      return adapter.parseInBatches(document, options, callbacks);
+      const result = await adapter.parseInBatches(document, options, callbacks);
+      return result === null ? null : addSourceEvidenceToResult(document, result);
     }
     const result = adapter.parse(document, options);
     callbacks.onProgress(1, 1);
-    return result;
+    return addSourceEvidenceToResult(document, result);
   }
 
   /** Returns the ids of all registered adapters in registration order. */
