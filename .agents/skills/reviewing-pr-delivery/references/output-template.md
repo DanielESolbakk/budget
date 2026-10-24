@@ -44,9 +44,13 @@ If nothing was checked: `None.` In PR-only mode use `None (PR-only review; no is
 
 ## Not Checked — How To Fix
 
-List each unresolved checkbox item exactly once. Give it a stable gap ID and include pre-state, post-state, blocking reason, one fix, and a `Next Issue` reference or minimal new-issue plan for every unchecked feature story.
+List each unresolved checkbox item exactly once. Separate delivery evidence from issue checkbox state:
+- For a genuine delivery gap, name what is missing, the evidence/path gap, one implementation or validation fix, and a `Next Issue` reference or minimal new-issue plan for every unchecked feature story.
+- For code/tests proved complete but an unchecked issue box, label it `stale tracking checkbox`; give the live pre-state, target state, and sync result. If the update form is awaiting owner submission, say `sync pending (no mutation or post-read)` and give the concrete `Next Action` to submit the edit and re-read the issue. Do not describe this as missing product work or claim it is left unchecked without a confirming read. For a sync-only story, use `Next Issue: none (tracking-only; no new implementation issue needed)`.
+- Use one row per checkbox item and issue. Map each Test issue criterion to that issue's own assertions and reviewed-SHA validation; do not group criteria or infer child-test completion from parent evidence.
+- Preserve each checkbox's complete wording and assess all clauses in a conjunctive item together. Do not split one checkbox into invented sub-items; report the item's weakest unmet clause/path as `partially satisfied` or `unproven`.
 
-- [G1] #ISSUE § Section — Item | Pre: [state] | Post: [state] | Blocked by: [reason] | Fix: [one action] | Next Issue: [#NUMBER — title or new-issue plan, if feature story]
+- [G1] #ISSUE § Section — Item | Delivery: [satisfied|partial|unproven] | Checkbox: [pre-state → target; synced|stale tracking checkbox|sync pending] | Post-read: [state or not available] | Reason: [specific evidence or blocker] | Action: [one action] | Next Issue/Action: [issue reference or tracking-only owner action]
 
 If no unchecked gaps remain: `None.` In PR-only mode use `None (no issue checkbox items are in scope).`
 
@@ -62,11 +66,11 @@ In PR-only mode use `None (no source issue resolved).`
 
 ## Checkbox Sync Matrix
 
-Include every allowed checkbox item considered on the primary and related issues, including unchanged items. Record post-read state for every mutation.
+Include every allowed checkbox item considered on the primary and related issues, including unchanged items. Record the delivery status independently from checkbox pre/target/post state. Record post-read state for every completed mutation; if an update awaits submission, use `sync pending (no mutation or post-read)`.
 
-| Issue | Section   | Item   | Pre   | Target   | Evidence | Post   |
-| ----- | --------- | ------ | ----- | -------- | -------- | ------ |
-| #NUM  | [section] | [item] | [pre] | [target] | [E#]     | [post] |
+| Issue | Section | Item | Delivery | Pre | Target | Evidence | Post / sync result |
+| ----- | ------- | ---- | -------- | --- | ------ | -------- | ------------------ |
+| #NUM | [section] | [item] | [status] | [pre] | [target] | [E#] | [post-read or sync pending] |
 
 ## Checkbox Gap Closure
 

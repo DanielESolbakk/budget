@@ -1,6 +1,6 @@
 ---
 name: reviewing-pr-delivery
-description: Reviews a pull request against its source planning issue, repository plan documents, and related planning issues to detect missing scope, overlaps, regressions, and acceptance-criteria gaps. Use when the user asks for PR review, scope alignment checks, or issue-to-PR coverage validation.
+description: Use when reviewing a pull request against its source planning issue, repository plan documents, and related planning issues for scope, delivery, validation, or acceptance-criteria gaps.
 compatibility: Requires GitHub issue/PR read tools, local repository file access, and diff inspection.
 metadata:
   owner: budget-repo
@@ -50,8 +50,8 @@ Missing source issue blocks only issue-specific AC analysis and checkbox sync. I
 3. In issue-bound mode, validate planning inputs before content review:
   - source and related planning issues are not labeled `planning-invalid`
   - `Blocked by` references are resolved or explicitly accepted in PR scope
-  - required `Implementation Entry Points` exist in the repository or are reported as blockers
-  In PR-only mode, skip issue-planning gates, note that issue readiness/AC mapping is unverified, and continue technical review. If repository plan files are unavailable, report plan alignment as unverified and continue code/test review.
+  - required `Implementation Entry Points` paths exist in the repository or are reported as blockers
+  In PR-only mode, skip issue-planning gates, note that issue readiness/AC mapping is unverified, and continue technical PR review. If repository plan files are unavailable, report plan alignment as unverified and continue code/test review.
 4. Read `plan.md` and `docs/ways-of-work/plan/budget-planner/implementation-plan.md` when present. In PR-only mode, use them as architectural context, not as invented issue criteria.
 5. Build coverage and overlap analysis:
    - classify each AC as `satisfied`, `partially satisfied`, `unsatisfied`, or `unproven (validation blocked)`
@@ -110,7 +110,7 @@ Apply these rules throughout the review:
 - Evidence proves only the path it actually exercises. A contract test may satisfy an AC about persisted data or a service contract; it does not prove Electron startup hydration when it manually constructs the store, or renderer behavior when it calls a service directly.
 - Match the test level to the AC, not to a fixed framework rule. An integration test may prove startup behavior if it invokes the real startup hydration entry point. An AC requiring a new Electron process or visible renderer result needs evidence through that runtime path.
 - Treat lower-layer evidence as supporting proof when it does not exercise the complete AC. Classify the AC `partially satisfied` when that evidence proves a subset; use `unproven (validation blocked)` only when the required path could not be validated.
-- Evaluate a Test issue's own scenarios and pass criteria independently from its parent issue's ACs. Passing a Test issue may close its test criteria without closing any parent AC that requires a broader or different path.
+- Evaluate a Test issue's own scenarios and pass criteria independently; passing them does not automatically update parent-story or feature ACs.
 - In the coverage map and checkbox sync matrix, record the path exercised and any missing AC path. Do not promote child-test completion to parent-AC completion by inference.
 
 ## Checkbox Sync
@@ -122,17 +122,30 @@ Apply these rules throughout the review:
 - Preserve all non-checkbox text exactly, except for the one-to-one narrative story conversion explicitly permitted in Story-Line Handling.
 - Do not edit the PR body or post sync comments.
 
+### Delivery State vs Checkbox State
+
+- Determine delivery status from the reviewed diff and validation evidence independently of the live checkbox. An unchecked box does not prove the behavior is missing.
+- If the reviewed PR diff implements the complete item and the required reviewed-SHA validation passes, report `Delivery: satisfied` and classify the unchecked issue box as `stale tracking checkbox (target: checked)`. Do not describe it as a product gap or recommend duplicate implementation work.
+- If implementation is present but its required path or validation is absent, report the actual status (`partially satisfied` or `unproven`) rather than calling the checkbox stale.
+- Make the stale determination per checkbox item. Do not group multiple ACs, scenarios, pass criteria, or issues into one row or infer a Test issue's completion from the parent's evidence; map each issue's own requirement to its own code/test assertion and applicable reviewed-SHA validation.
+- Keep the issue state truthful: `stale` describes a mismatch between proved delivery and the checkbox, not a successful issue update. Only claim the checkbox was synced after a successful write and post-write read.
+- If an issue update tool returns `awaiting_user_submission`, no mutation occurred. Follow the tool's stop-and-wait instruction. If the review resumes without a confirmed submission, report `Sync pending — owner submission required`; state the last-read checkbox and target, say no post-read exists, and give the exact next action: submit the pending issue edit, then re-read the issue. Do not use another tool or API to bypass the confirmation.
+- For a sync-only item, the fix is the issue-checkbox update and verification—not a code change, new issue, or reopening a closed issue. Reopen or create follow-up scope only when evidence shows behavior is genuinely missing.
+- Apply this distinction independently to source and linked Test issue checkboxes; do not promote a parent item's proof to a Test issue or vice versa.
+- Quote the complete checkbox item as written, and keep each actual checkbox as one row. For conjunctive items, assess every clause together: mark `satisfied` only if all are proved; otherwise report the item as `partially satisfied` or `unproven` with the missing clause/path. Do not split one checkbox into invented sub-items.
+
 ### Per-Issue Sync Matrix
 
 Build one sync matrix covering the primary source issue and every directly related planning issue in scope:
 
 ```text
-Issue | Section | Checkbox item | Pre-state | Target state | Proof artifact | Post-state
+Issue | Section | Checkbox item | Delivery | Pre-state | Target state | Proof artifact | Post-state
 ```
 
 - Enumerate every allowed checkbox item considered, including unchanged checked items and unresolved unchecked items.
 - Sync each issue whose target differs from its pre-state. Do not sync only the primary issue when a related issue has proved, contradicted, or deferred scope.
 - Re-read every mutated issue body after writes. A mutation is not complete until the post-state matches the matrix; otherwise stop with the post-sync stop condition.
+- When a write is awaiting owner submission, record `Post-state: sync pending (no mutation or post-read)`; do not claim it is `left unchecked` or synced.
 - Do not infer a related test issue's completion from a parent issue checkbox. Test issue evidence must match that test issue's own scope and assertions.
 
 ### PR Body Guard
@@ -159,9 +172,10 @@ Issue | Section | Checkbox item | Pre-state | Target state | Proof artifact | Po
 ## Story-Reason Reporting
 
 - If any feature user story ends unchecked after reconciliation, state why in the `Not Checked — How To Fix` section.
-- Use one of these reasons: insufficient hard proof, evidence maps to a different issue section, narrative story text could not be matched to the PR evidence, or renderer UI trigger missing.
+- Use one of these reasons for delivery gaps: insufficient hard proof, evidence maps to a different issue section, narrative story text could not be matched to the PR evidence, or renderer UI trigger missing. If delivery is proved but issue mutation is pending, say `delivery proved; MUTATION_PROOF pending` and label it stale tracking state, not missing implementation.
 - Do not leave unchecked user stories without a Fix action.
-- For every unchecked user story, add a **Next Issue** line: search the related-issue set and open issues for an existing issue that covers the missing scope. If one exists, reference it (`Next Issue: #NUMBER — title`). If none exists, outline a minimal new issue plan: title, parent feature, one-line scope, and the single implementation entry point needed.
+- For every unchecked user story with missing scope, add a **Next Issue** line: search the related-issue set and open issues for an existing issue that covers the missing scope. If one exists, reference it (`Next Issue: #NUMBER — title`). If none exists, outline a minimal new issue plan: title, parent feature, one-line scope, and the single implementation entry point needed.
+- For a story whose only remaining checkbox requirement is pending mutation, give a **Next Action** to submit and verify the existing checkbox update. State `Next Issue: none (tracking-only; no new implementation issue needed)`.
 
 ## Hard-Proof Contract (Story Sync)
 
@@ -171,7 +185,8 @@ Issue | Section | Checkbox item | Pre-state | Target state | Proof artifact | Po
   3. `MUTATION_PROOF`: issue-update evidence showing the story checkbox state changed and post-update re-read confirmed it.
 - `MUTATION_PROOF` is produced by a normal sync flow: write checkbox update, then re-read issue body and record the changed line.
 - If CODE_PROOF and VALIDATION_PROOF exist, sync must be attempted to obtain MUTATION_PROOF.
-- If any artifact remains missing after attempt, keep `unchecked` with reason `insufficient hard proof`.
+- If code and validation proof exist but mutation is pending or unconfirmed, keep the issue checkbox `unchecked` until MUTATION_PROOF exists, with reason `delivery proved; MUTATION_PROOF pending`. Identify this as stale tracking state, not an implementation gap, and give the owner action needed to complete synchronization.
+- If code or validation proof is absent after the sync attempt, keep `unchecked` with reason `insufficient hard proof` and identify the missing delivery evidence.
 - If a story's target state is `unchecked` and the pre-sync state is `checked`, sync must attempt to uncheck it and verify the post-sync state.
 - Do not report an item as `left unchecked` unless the post-sync issue body actually shows it unchecked.
 
@@ -202,7 +217,8 @@ Before finalizing output, enforce these gates:
 3. Story sync gate:
 - `checked` story requires CODE_PROOF + VALIDATION_PROOF + MUTATION_PROOF.
 - User-facing stories ("As a [role]…") require a renderer-triggerable path as part of CODE_PROOF; backend-only delivery does not satisfy them.
-- Every story remaining unchecked must appear in `Not Checked — How To Fix` with a fix action and a Next Issue reference or new-issue plan.
+- Every story remaining unchecked because delivery is missing must appear in `Not Checked — How To Fix` with a fix action and a Next Issue reference or new-issue plan.
+- Every proved-delivered but unsynced item must be labeled `stale tracking checkbox` or `sync pending`; its action must be to submit/retry the issue-body update and verify it, not to reimplement the behavior. For sync-only stories, use `Next Action` and `Next Issue: none (tracking-only)`.
 - Conditional `Regression Guard` items with no defect fixed in their issue scope are `not applicable` and are excluded from checkbox-gap reporting.
 
 4. Output completeness gate:
@@ -241,7 +257,7 @@ If neither exists, report a traceability ambiguity finding.
 
 - Prefer PR-head command output or CI evidence tied to the reviewed SHA for positive claims.
 - If validation ran only on local main, treat it as baseline evidence; do not use it to prove PR-head behavior.
-- Do not treat dependency-resolution failures, shell-policy failures, or test-runner startup failures as product validation failures until a cheap rerun rules out environment/setup causes.
+- Do not treat dependency-resolution failures, shell-policy failures, or test-runner startup failures as product validation failures until a rerun rules out environment/setup causes.
 
 ## Stop Conditions
 Stop and escalate when any apply:
