@@ -279,6 +279,50 @@ test.describe("matched digital PDF import reconciliation", () => {
 test.describe("mismatched CSV import reconciliation", () => {
   test.use({ importFileDialogBehavior: "csv-selected" });
 
+  test("renders reconciliation details incrementally for large imports", async ({ csvImport, window }) => {
+    const invalidRows = Array.from(
+      { length: 60 },
+      (_, index) => `99.05.2026;SYNTHETIC INVALID ROW ${index + 1};-1.00;NOK`
+    );
+    const filePath = writeCsvFixture([
+      "Date;Description;Amount Out;Currency",
+      "28.05.2026;SYNTHETIC VALID ROW;-12.34;NOK",
+      ...invalidRows,
+    ].join("\n"));
+
+    await csvImport.submitImport(filePath);
+    await expect(csvImport.successStatus).toHaveText("Added 1 transaction to your ledger.");
+
+    const dispositions = csvImport.sourceRowDispositions;
+    const visibleRowCount = csvImport.reconciliationRegion
+      .getByRole("status")
+      .filter({ hasText: "rows needing attention" });
+    await expect(dispositions.getByRole("listitem")).toHaveCount(50);
+    await expect(visibleRowCount).toHaveText("Showing 50 of 60 rows needing attention.");
+    await expect(dispositions).toContainText("Row 51: Invalid, sent to review");
+    await expect(dispositions).not.toContainText("Row 52: Invalid, sent to review");
+
+    const showMoreButton = csvImport.reconciliationRegion.getByRole("button", {
+      name: "Show more rows",
+    });
+    expect(
+      await showMoreButton.evaluate((element) => Number.parseFloat(getComputedStyle(element).minHeight))
+    ).toBeGreaterThanOrEqual(44);
+    await showMoreButton.focus();
+    await expect(showMoreButton).toBeFocused();
+    await showMoreButton.press("Enter");
+
+    await expect(dispositions.getByRole("listitem")).toHaveCount(60);
+    await expect(visibleRowCount).toHaveText("Showing 60 of 60 rows needing attention.");
+    await expect(visibleRowCount).toBeFocused();
+    await expect(dispositions).toContainText("Row 61: Invalid, sent to review");
+    for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+      await window.setViewportSize(viewport);
+      await expect(csvImport.reconciliationRegion).toBeVisible();
+      await expectNoHorizontalOverflow(window);
+    }
+  });
+
   test("shows the signed difference and skipped/invalid rows and opens review by keyboard", async ({
     csvImport,
     electronApp,
