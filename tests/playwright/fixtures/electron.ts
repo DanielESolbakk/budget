@@ -3,6 +3,7 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { preserveFailedRunDatabase } from "./preserveFailedRunDatabase.js";
 import { AppShellPage } from "../pom/AppShellPage.js";
 import { CategoryTargetPage } from "../pom/CategoryTargetPage.js";
 import { CsvImportPage } from "../pom/CsvImportPage.js";
@@ -69,13 +70,31 @@ export const test = base.extend<ElectronFixtures>({
   nodeEnvironment: ["test", { option: true }],
   restoreSnapshotDialogBehavior: ["native", { option: true }],
   // eslint-disable-next-line no-empty-pattern
-  databasePath: async ({}, use) => {
+  databasePath: async ({}, use, testInfo) => {
     const databaseDirectory = mkdtempSync(join(tmpdir(), "budget-playwright-"));
     const databasePath = join(databaseDirectory, "budget.sqlite");
 
     try {
       await use(databasePath);
     } finally {
+      const artifacts = preserveFailedRunDatabase({
+        databasePath,
+        artifactDirectory: testInfo.outputPath("database-diagnostics"),
+        status: testInfo.status,
+        expectedStatus: testInfo.expectedStatus,
+      });
+      if (artifacts !== undefined) {
+        await testInfo.attach("database-path.txt", {
+          path: artifacts.sourcePathFile,
+          contentType: "text/plain",
+        });
+        if (artifacts.databaseFile !== undefined) {
+          await testInfo.attach("budget.sqlite", {
+            path: artifacts.databaseFile,
+            contentType: "application/vnd.sqlite3",
+          });
+        }
+      }
       rmSync(databaseDirectory, { recursive: true, force: true });
     }
   },
