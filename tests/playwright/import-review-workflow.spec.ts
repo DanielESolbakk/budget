@@ -62,10 +62,10 @@ test.describe("single statement import entry", () => {
     });
   });
 
-  test.describe("CSV selection", () =>
+  test.describe("CSV selection", () => {
     test.use({ importFileDialogBehavior: "csv-selected" });
 
-    test("routes a selected CSV through the shared import action", async ({ appShell, window }) =>
+    test("routes a selected CSV through the shared import action", async ({ appShell, window }) => {
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
 
@@ -78,10 +78,10 @@ test.describe("single statement import entry", () => {
     });
   });
 
-  test.describe("text statement selection", () =>
+  test.describe("text statement selection", () => {
     test.use({ importFileDialogBehavior: "text-selected" });
 
-    test("routes a selected text statement through the shared import action", async ({ appShell, window }) =>
+    test("routes a selected text statement through the shared import action", async ({ appShell, window }) => {
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
 
@@ -93,10 +93,10 @@ test.describe("single statement import entry", () => {
     });
   });
 
-  test.describe("binary PDF selection", () =>
+  test.describe("binary PDF selection", () => {
     test.use({ importFileDialogBehavior: "pdf-selected" });
 
-    test("routes a selected binary PDF through the shared import action", async ({ appShell, window }) =>
+    test("routes a selected binary PDF through the shared import action", async ({ appShell, window }) => {
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
 
@@ -108,7 +108,7 @@ test.describe("single statement import entry", () => {
     });
   });
 
-  test.describe("unresolved CSV rows", () =>
+  test.describe("unresolved CSV rows", () => {
     test.use({ importFileDialogBehavior: "csv-selected" });
 
     test("corrects an unresolved row and persists one transaction with import provenance", async ({
@@ -516,7 +516,7 @@ test.describe("single statement import entry", () => {
       });
     });
 
-    test.describe("unresolved binary PDF rows", () =>
+    test.describe("unresolved binary PDF rows", () => {
       test.use({ importFileDialogBehavior: "pdf-selected" });
 
       test("corrects an unresolved row extracted from a binary PDF", async ({
