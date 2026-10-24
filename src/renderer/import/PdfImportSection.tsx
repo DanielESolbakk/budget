@@ -5,15 +5,28 @@ import type {
 } from "../../app/import/importPdf.js";
 import type { Account } from "../../domain/types.js";
 import type { DuplicateImportDecision } from "../../domain/import/filterPreviouslyImportedTransactions.js";
+import type { ImportReconciliation } from "../../domain/import/importReconciliation.js";
 import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage } from "./ImportStageProgress.js";
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
 import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
+import { ImportReconciliationSummary } from "./ImportReconciliationSummary.js";
 
 type ImportState =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "cancelled" }
-  | { status: "success"; importJobId: string; sourceName: string; accountName: string; transactionCount: number; pendingCount: number; duplicateCount: number; unresolvedRowCount: number; adapterId: string }
+  | {
+      status: "success";
+      importJobId: string;
+      sourceName: string;
+      accountName: string;
+      transactionCount: number;
+      pendingCount: number;
+      duplicateCount: number;
+      unresolvedRowCount: number;
+      adapterId: string;
+      reconciliation: ImportReconciliation;
+    }
   | { status: "error"; message: string }
   | { status: "validation"; errors: PdfImportResponse & { ok: false }; source: "preview" | "import" };
 
@@ -279,6 +292,7 @@ export function PdfImportSection({
             duplicateCount: response.duplicateCount,
             unresolvedRowCount: response.unresolvedRowCount ?? 0,
             adapterId: response.adapterId,
+            reconciliation: response.reconciliation,
           });
           setStage("complete");
           setFilePath("");
@@ -423,6 +437,7 @@ export function PdfImportSection({
                 {importState.unresolvedRowCount} row{importState.unresolvedRowCount === 1 ? "" : "s"} {importState.unresolvedRowCount === 1 ? "was" : "were"} sent to review during import.
               </p>
             )}
+            <ImportReconciliationSummary reconciliation={importState.reconciliation} />
             <p className="import-original-file-note">
               The original statement file stays in its original folder. The import saves transaction rows and a history record, not a copy of the statement.
             </p>

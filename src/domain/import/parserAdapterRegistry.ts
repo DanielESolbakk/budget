@@ -8,6 +8,7 @@ import type {
   PdfTextExcludedRow,
   PdfTextParseBatchCallbacks,
   PdfTextParseOptions,
+  PdfTextSourceRow,
   PdfTextUnresolvedRow,
   PdfTextValidationError,
 } from "./pdfTextParser.js";
@@ -29,6 +30,7 @@ export interface AdapterParseSuccess {
   adapterId: string;
   sourceIdentity: string;
   candidates: Transaction[];
+  sourceRows?: PdfTextSourceRow[];
   pendingObservations?: PendingTransactionObservation[];
   unresolvedRows?: PdfTextUnresolvedRow[];
   excludedRows?: PdfTextExcludedRow[];
@@ -171,6 +173,7 @@ const rogalandAdapter: ParserAdapter = {
         adapterId: result.adapterId,
         sourceIdentity: ROGALAND_SOURCE_ID,
         candidates: result.transactions,
+        sourceRows: result.sourceRows,
         ...(result.pendingObservations === undefined
           ? {}
           : { pendingObservations: result.pendingObservations }),
@@ -189,6 +192,7 @@ const rogalandAdapter: ParserAdapter = {
         adapterId: result.adapterId,
         sourceIdentity: ROGALAND_SOURCE_ID,
         candidates: result.transactions,
+        sourceRows: result.sourceRows,
         ...(result.pendingObservations === undefined
           ? {}
           : { pendingObservations: result.pendingObservations }),

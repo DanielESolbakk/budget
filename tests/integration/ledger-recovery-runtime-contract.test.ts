@@ -99,11 +99,18 @@ function runDeferredPdfImport(
         adapterId: "deferred-test-adapter",
         sourceIdentity: "deferred-test-source",
         candidates: [candidate],
+        sourceRows: [{
+          lineNumber: 1,
+          amountMinor: candidate.amountMinor,
+          currencyCode: "NOK",
+          candidateId: candidate.id,
+        }],
       }),
     },
     appendImportJob: database.appendImportJob,
     appendImportJobAndTransactions: database.appendImportJobAndTransactions,
     appendTransactions: database.appendTransactions,
+    getTransactionsForImportJob: database.getTransactionsForImportJob,
   });
 }
 

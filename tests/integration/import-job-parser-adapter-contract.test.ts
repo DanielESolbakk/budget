@@ -86,6 +86,7 @@ function runWorkflow(
       appendImportJob: ledger.appendImportJob,
       appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
       appendTransactions: ledger.appendTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
     }
   );
 }

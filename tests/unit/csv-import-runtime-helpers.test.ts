@@ -158,6 +158,12 @@ describe("csv-import-runtime-helpers", () => {
         transactionCount: 42,
         duplicateCount: 0,
         unresolvedCount: 0,
+        reconciliation: {
+          importJobId: "job-123",
+          amounts: [],
+          rows: [],
+          fullyReconciled: false,
+        },
       };
 
       expect(success.ok).toBe(true);

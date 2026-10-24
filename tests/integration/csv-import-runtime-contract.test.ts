@@ -690,6 +690,7 @@ describe("csv-import-runtime-contract", () => {
       loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
       getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
       appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
     };
 
     try {
@@ -817,6 +818,7 @@ describe("csv-import-runtime-contract", () => {
           loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
           getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+          getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         });
 
         expect(response).toMatchObject({

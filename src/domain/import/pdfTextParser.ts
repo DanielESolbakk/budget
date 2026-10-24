@@ -49,9 +49,17 @@ export interface PdfTextParseSuccess {
   ok: true;
   adapterId: string;
   transactions: Transaction[];
+  sourceRows: PdfTextSourceRow[];
   pendingObservations?: PendingTransactionObservation[];
   unresolvedRows?: PdfTextUnresolvedRow[];
   excludedRows?: PdfTextExcludedRow[];
+}
+
+export interface PdfTextSourceRow {
+  lineNumber: number;
+  amountMinor?: number;
+  currencyCode?: string;
+  candidateId?: string;
 }
 
 export interface PdfTextUnresolvedRow {
@@ -146,6 +154,24 @@ function parseNorwegianAmount(raw: string): number | null {
 
 function toMinorUnits(amount: number): number {
   return Math.round(amount * 100);
+}
+
+function assignSortedTransactionIds(
+  transactions: Transaction[],
+  sourceRows: PdfTextSourceRow[],
+  idPrefix: string
+): void {
+  const sourceRowsByCandidateId = new Map(
+    sourceRows.flatMap((row) =>
+      row.candidateId === undefined ? [] : [[row.candidateId, row] as const]
+    )
+  );
+  transactions.forEach((transaction, index) => {
+    const previousId = transaction.id;
+    transaction.id = `${idPrefix}-${index + 1}`;
+    const sourceRow = sourceRowsByCandidateId.get(previousId);
+    if (sourceRow !== undefined) sourceRow.candidateId = transaction.id;
+  });
 }
 
 /**
@@ -283,6 +309,7 @@ function parseRogalandBankExport(
   const rows = collectBankExportRows(lines, tableHeaderIndex);
   const idPrefix = options.idPrefix ?? "pdf";
   const transactions: Transaction[] = [];
+  const sourceRows: PdfTextSourceRow[] = [];
   const pendingObservations: PendingTransactionObservation[] = [];
   const excludedRows: PdfTextExcludedRow[] = [];
   const unresolvedRows: PdfTextUnresolvedRow[] = [];
@@ -291,8 +318,16 @@ function parseRogalandBankExport(
     /^(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+([+-]?\d[\d ]*,\d{2})\s+([A-Z]{3})\s+(Bokført|Reservert|Bekreftet)\s*(.*)$/i;
 
   for (const row of rows) {
+    const sourceRow: PdfTextSourceRow = { lineNumber: row.lineNumber };
+    sourceRows.push(sourceRow);
     const match = bankExportRowPattern.exec(row.text);
     if (match === null) {
+      const sourceAmountMatch = /([+-]?\d[\d ]*,\d{2})\s+([A-Z]{3})\s+\S+/i.exec(row.text);
+      if (sourceAmountMatch !== null) {
+        sourceRow.currencyCode = sourceAmountMatch[2]!.toUpperCase();
+        const sourceAmount = parseNorwegianAmount(sourceAmountMatch[1]!);
+        if (sourceAmount !== null) sourceRow.amountMinor = toMinorUnits(sourceAmount);
+      }
       const hasDateLikePrefix = BANK_EXPORT_DATE_LIKE_PREFIX_PATTERN.test(row.text);
       const hasValidDatePrefix = BANK_EXPORT_TRANSACTION_DATE_PATTERN.test(row.text);
       let error: PdfTextValidationError;
@@ -323,6 +358,9 @@ function parseRogalandBankExport(
     }
 
     const [, rawDate = "", prefix = "", rawAmount = "", currencyCode = "NOK", status = "", rawMessage = ""] = match;
+    sourceRow.currencyCode = currencyCode;
+    const sourceAmount = parseNorwegianAmount(rawAmount);
+    if (sourceAmount !== null) sourceRow.amountMinor = toMinorUnits(sourceAmount);
     const importedStatus = mapBankTransactionStatus(status);
     const parsedMessage = parseBankExportMessage(rawMessage, prefix);
     if (importedStatus !== "booked") {
@@ -431,6 +469,7 @@ function parseRogalandBankExport(
     if (parsedMessage.sourceReference !== undefined) {
       transaction.sourceReference = parsedMessage.sourceReference;
     }
+    sourceRow.candidateId = transaction.id;
     transactions.push(transaction);
   }
 
@@ -454,14 +493,13 @@ function parseRogalandBankExport(
     left.amountMinor - right.amountMinor ||
     left.merchantRaw.localeCompare(right.merchantRaw)
   );
-  transactions.forEach((transaction, index) => {
-    transaction.id = `${idPrefix}-${index + 1}`;
-  });
+  assignSortedTransactionIds(transactions, sourceRows, idPrefix);
 
   return {
     ok: true,
     adapterId: ROGALAND_ADAPTER_ID,
     transactions,
+    sourceRows,
     ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
     ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
     ...(excludedRows.length === 0 ? {} : { excludedRows }),
@@ -525,6 +563,7 @@ export function parseRogalandStatementText(
 
   const idPrefix = options.idPrefix ?? "pdf";
   const transactions: Transaction[] = [];
+  const sourceRows: PdfTextSourceRow[] = [];
   const unresolvedRows: PdfTextUnresolvedRow[] = [];
   let rowIndex = 0;
 
@@ -549,12 +588,17 @@ export function parseRogalandStatementText(
         };
       }
       if (error !== undefined) {
+        sourceRows.push({ lineNumber, currencyCode: "NOK" });
         unresolvedRows.push({ lineNumber, rawRow: line.trim(), errors: [error] });
       }
       continue;
     }
 
     const [, rawDate = "", rawDescription = "", rawAmount = ""] = match;
+    const sourceRow: PdfTextSourceRow = { lineNumber, currencyCode: "NOK" };
+    sourceRows.push(sourceRow);
+    const sourceAmount = parseNorwegianAmount(rawAmount);
+    if (sourceAmount !== null) sourceRow.amountMinor = toMinorUnits(sourceAmount);
 
     const bookedAtIso = parseNorwegianDate(rawDate);
     if (!bookedAtIso) {
@@ -607,6 +651,7 @@ export function parseRogalandStatementText(
       transaction.importJobId = options.importJobId;
     }
 
+    sourceRow.candidateId = transaction.id;
     transactions.push(transaction);
     rowIndex++;
   }
@@ -635,14 +680,13 @@ export function parseRogalandStatementText(
     return 0;
   });
 
-  transactions.forEach((transaction, index) => {
-    transaction.id = `${idPrefix}-${index + 1}`;
-  });
+  assignSortedTransactionIds(transactions, sourceRows, idPrefix);
 
   return {
     ok: true,
     adapterId: ROGALAND_ADAPTER_ID,
     transactions,
+    sourceRows,
     ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
   };
 }
@@ -665,6 +709,7 @@ export async function parseRogalandStatementTextInBatches(
     const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
     const pendingIdPrefix = pendingObservationIdPrefix(text, options);
     const transactions: Transaction[] = [];
+    const sourceRows: PdfTextSourceRow[] = [];
     const pendingObservations: PendingTransactionObservation[] = [];
     const excludedRows: PdfTextExcludedRow[] = [];
     const unresolvedRows: PdfTextUnresolvedRow[] = [];
@@ -685,6 +730,14 @@ export async function parseRogalandStatementTextInBatches(
 
       if (result.ok) {
         transactions.push(...result.transactions);
+        for (const sourceAccountingRow of result.sourceRows) {
+          const batchRowIndex = sourceAccountingRow.lineNumber - bankExportHeaderIndex - 2;
+          const originalRow = rows[start + batchRowIndex];
+          sourceRows.push({
+            ...sourceAccountingRow,
+            ...(originalRow === undefined ? {} : { lineNumber: originalRow.lineNumber }),
+          });
+        }
         for (const pendingObservation of result.pendingObservations ?? []) {
           const batchRowIndex = pendingObservation.sourceRowIndex - bankExportHeaderIndex - 1;
           const sourceRow = rows[start + batchRowIndex];
@@ -749,14 +802,13 @@ export async function parseRogalandStatementTextInBatches(
       left.merchantRaw.localeCompare(right.merchantRaw)
     );
     const idPrefix = options.idPrefix ?? "pdf";
-    transactions.forEach((transaction, index) => {
-      transaction.id = `${idPrefix}-${index + 1}`;
-    });
+    assignSortedTransactionIds(transactions, sourceRows, idPrefix);
 
     return {
       ok: true,
       adapterId: ROGALAND_ADAPTER_ID,
       transactions,
+      sourceRows,
       ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
       ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
       ...(excludedRows.length === 0 ? {} : { excludedRows }),
@@ -772,6 +824,7 @@ export async function parseRogalandStatementTextInBatches(
   const batchSize = Math.max(1, Math.floor(callbacks.batchSize ?? 100));
   const headerText = lines.slice(0, tableHeaderIndex + 1).join("\n");
   const transactions: Transaction[] = [];
+  const sourceRows: PdfTextSourceRow[] = [];
   const unresolvedRows: PdfTextUnresolvedRow[] = [];
   const errors: PdfTextValidationError[] = [];
 
@@ -785,6 +838,10 @@ export async function parseRogalandStatementTextInBatches(
     });
     if (result.ok) {
       transactions.push(...result.transactions);
+      sourceRows.push(...result.sourceRows.map((row) => ({
+        ...row,
+        lineNumber: row.lineNumber + start,
+      })));
       unresolvedRows.push(...(result.unresolvedRows ?? []).map((row) => ({
         ...row,
         lineNumber: row.lineNumber + start,
@@ -814,14 +871,13 @@ export async function parseRogalandStatementTextInBatches(
     return left.merchantRaw.localeCompare(right.merchantRaw);
   });
   const idPrefix = options.idPrefix ?? "pdf";
-  transactions.forEach((transaction, index) => {
-    transaction.id = `${idPrefix}-${index + 1}`;
-  });
+  assignSortedTransactionIds(transactions, sourceRows, idPrefix);
 
   return {
     ok: true,
     adapterId: ROGALAND_ADAPTER_ID,
     transactions,
+    sourceRows,
     ...(unresolvedRows.length === 0 ? {} : { unresolvedRows }),
   };
 }

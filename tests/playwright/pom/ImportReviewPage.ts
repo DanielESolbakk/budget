@@ -18,6 +18,10 @@ export class ImportReviewPage {
     }
   }
 
+  async openUnresolvedRowsFromCompletion(): Promise<void> {
+    await this.page.getByRole("button", { name: "Review unresolved rows", exact: true }).click();
+  }
+
   reviewRow(rowNumber: number) {
     return this.reviewQueue.getByRole("group", { name: `Import review row ${rowNumber}`, exact: true });
   }

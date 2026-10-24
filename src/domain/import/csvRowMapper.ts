@@ -4,6 +4,7 @@ import type {
   PendingTransactionStatus,
   Transaction,
 } from "../types.js";
+import { isCurrencyCode } from "../types.js";
 import { buildTransactionFingerprint } from "./buildTransactionFingerprint.js";
 import { assignImportedTransactionIds } from "./assignImportedTransactionIds.js";
 import { CSV_COLUMN_NAMES } from "./csvColumns.js";
@@ -33,6 +34,7 @@ export type CsvRowValidationErrorCode =
   | "MISSING_DESCRIPTION"
   | "AMBIGUOUS_AMOUNT"
   | "INVALID_AMOUNT_FORMAT"
+  | "INVALID_CURRENCY_CODE"
   | "UNSUPPORTED_TRANSACTION_STATUS";
 
 export interface CsvRowValidationError {
@@ -199,6 +201,37 @@ function toMinorUnits(amount: number): number {
   return Math.round(amount * 100);
 }
 
+export function extractCsvSourceAmount(
+  row: Record<string, string>,
+  columnMapping?: CsvColumnMapping
+): { amountMinor?: number; currencyCode?: string } {
+  const normalizedRow = normalizeCsvRow(row, columnMapping);
+  const amountInRaw = (normalizedRow[CSV_COLUMN_NAMES.amountIn] ?? "").trim();
+  const amountOutRaw = (normalizedRow[CSV_COLUMN_NAMES.amountOut] ?? "").trim();
+  const amountIn = amountInRaw === "" ? 0 : parseAmount(amountInRaw);
+  const amountOut = amountOutRaw === "" ? 0 : parseAmount(amountOutRaw);
+  const currencyCode = (normalizedRow[CSV_COLUMN_NAMES.currency] ?? "").trim();
+  const result: { amountMinor?: number; currencyCode?: string } = {};
+
+  if (currencyCode && !isCurrencyCode(currencyCode.toUpperCase())) return result;
+  if (currencyCode) result.currencyCode = currencyCode;
+  if (
+    amountIn === null ||
+    amountOut === null ||
+    (amountIn !== 0 && amountOut !== 0)
+  ) {
+    return result;
+  }
+
+  const amountMinor = amountIn !== 0
+    ? toMinorUnits(amountIn)
+    : amountOut !== 0
+      ? -Math.abs(toMinorUnits(amountOut))
+      : 0;
+  if (Number.isSafeInteger(amountMinor)) result.amountMinor = amountMinor;
+  return result;
+}
+
 /**
  * Validates a raw CSV row object against the supported Norwegian bank CSV format.
  * Returns an array of validation errors; an empty array means the row is valid.
@@ -243,6 +276,15 @@ export function validateCsvRow(
       code: "MISSING_DESCRIPTION",
       message: "Row must have a non-empty Beskrivelse.",
       field: CSV_COLUMN_NAMES.description,
+    });
+  }
+
+  const currencyCode = (normalizedRow[CSV_COLUMN_NAMES.currency] ?? "").trim();
+  if (currencyCode && !isCurrencyCode(currencyCode.toUpperCase())) {
+    errors.push({
+      code: "INVALID_CURRENCY_CODE",
+      message: `Currency code "${currencyCode}" must contain three letters.`,
+      field: CSV_COLUMN_NAMES.currency,
     });
   }
 
