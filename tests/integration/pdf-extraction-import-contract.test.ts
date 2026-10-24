@@ -150,6 +150,105 @@ describe("PDF extraction import contract", () => {
     }
   });
 
+  it("keeps a malformed binary PDF row in review without persisting it as a transaction", async () => {
+    const malformedRow = "27.05.2026 Varekjop ACCT-001 SYNTHETIC DEST-001 SYNTHETIC SHOP not-an-amount NOK Bokført SYNTHETIC MALFORMED ROW";
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjop ACCT-001 SYNTHETIC DEST-001 SYNTHETIC SHOP -10,00 NOK Bokført SYNTHETIC VALID ROW",
+      malformedRow,
+    ].join("\n");
+    const sourceDocument = await extractSourceDocumentFromBuffer(
+      createSyntheticPdfWithText(text),
+      "pdf"
+    );
+    const ledgerResult = createLedger("malformed-binary-row");
+
+    try {
+      const result = importDocument(
+        sourceDocument.text,
+        sourceDocument,
+        "malformed-rogaland-statement.pdf",
+        "import-pdf-malformed-binary-row",
+        ledgerResult.ledger
+      );
+
+      expect(result).toMatchObject({
+        ok: true,
+        transactionCount: 1,
+        unresolvedRowCount: 1,
+      });
+      expect(ledgerResult.ledger.loadLedgerSnapshotData().transactions).toEqual([
+        expect.objectContaining({
+          amountMinor: -1000,
+          merchantRaw: "SYNTHETIC VALID ROW",
+          sourceType: "pdf",
+        }),
+      ]);
+      expect(ledgerResult.ledger.listImportReviewItems(HOUSEHOLD.id)).toEqual([
+        expect.objectContaining({
+          rawRow: malformedRow,
+          status: "unresolved",
+          sourceEvidence: {
+            pageNumber: 1,
+            sourceLines: [
+              expect.objectContaining({
+                pageNumber: 1,
+                lineNumber: 5,
+                rawText: malformedRow,
+              }),
+            ],
+          },
+        }),
+      ]);
+    } finally {
+      ledgerResult.close();
+    }
+  });
+
+  it("retains an unknown binary PDF as unresolved input without writing ledger records", async () => {
+    const unknownText = "UNKNOWN BANK\nUNRECOGNIZED STATEMENT ROW";
+    const sourceDocument = await extractSourceDocumentFromBuffer(
+      createSyntheticPdfWithText(unknownText),
+      "pdf"
+    );
+    const ledgerResult = createLedger("unknown-binary-layout");
+
+    try {
+      const result = importDocument(
+        sourceDocument.text,
+        sourceDocument,
+        "unknown-bank-statement.pdf",
+        "import-pdf-unknown-binary",
+        ledgerResult.ledger
+      );
+
+      expect(result).toMatchObject({
+        ok: false,
+        errors: [{ code: "UNSUPPORTED_LAYOUT" }],
+        unresolvedInput: {
+          sourceName: "unknown-bank-statement.pdf",
+          sourceDocument: {
+            format: "pdf",
+            pages: [
+              expect.objectContaining({
+                pageNumber: 1,
+                sourceText: unknownText,
+              }),
+            ],
+          },
+        },
+      });
+      expect(ledgerResult.ledger.loadLedgerSnapshotData()).toMatchObject({
+        transactions: [],
+        importJobs: [],
+      });
+    } finally {
+      ledgerResult.close();
+    }
+  });
+
   it("persists equivalent ordered text and binary PDF candidates with matching provenance and dashboard totals", async () => {
     const text = readFileSync(TEXT_FIXTURE_PATH, "utf8");
     const textDocument = createTextSourceDocument(text);
