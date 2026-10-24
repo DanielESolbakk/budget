@@ -83,30 +83,49 @@ test.describe("single statement import entry", () => {
   test.describe("text statement selection", () => {
     test.use({ importFileDialogBehavior: "text-selected" });
 
-    test("routes a selected text statement through the shared import action", async ({ appShell, window }) => {
+    test("imports a natively selected text statement", async ({ appShell, window }) => {
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
+      const statementImport = new PdfImportPage(window);
 
       await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
       await importReview.chooseStatementFile();
 
       await expect(window.getByRole("region", { name: "Digital statement import", exact: true })).toBeVisible();
       await expect(window.getByText(basename(TEXT_PATH), { exact: true })).toBeVisible();
+      await statementImport.importButton.click();
+      await expect(statementImport.previewRegion).toBeVisible();
+      await statementImport.confirmImportButton.click();
+      await expect(statementImport.successStatus).toContainText("Added 10 transactions to your ledger.");
     });
   });
 
   test.describe("binary PDF selection", () => {
     test.use({ importFileDialogBehavior: "pdf-selected" });
 
-    test("routes a selected binary PDF through the shared import action", async ({ appShell, window }) => {
+    test("imports a natively selected binary PDF and displays its adapter identity", async ({ appShell, window }) => {
       await appShell.openWorkspace("Import");
       const importReview = new ImportReviewPage(window);
+      const statementImport = new PdfImportPage(window);
 
       await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
       await importReview.chooseStatementFile();
 
       await expect(window.getByRole("region", { name: "Digital statement import", exact: true })).toBeVisible();
       await expect(window.getByText(basename(PDF_PATH), { exact: true })).toBeVisible();
+      await statementImport.importButton.click();
+      await expect(statementImport.previewRegion).toBeVisible();
+      await statementImport.confirmImportButton.click();
+      await expect(statementImport.successStatus).toContainText("Added 2 transactions to your ledger.");
+
+      await window.getByRole("button", { name: "Import history", exact: true }).click();
+      const historyTable = window.getByRole("region", { name: "Import history", exact: true })
+        .getByRole("table", { name: "Completed local import jobs" });
+      const importedRow = historyTable.getByRole("row").filter({ hasText: basename(PDF_PATH) }).first();
+      await expect(importedRow).toContainText("Rogaland Sparebank");
+      const adapterId = importedRow.getByText("Adapter ID", { exact: true });
+      await adapterId.click();
+      await expect(importedRow).toContainText("rogaland-sparebank-text-v1");
     });
   });
 
