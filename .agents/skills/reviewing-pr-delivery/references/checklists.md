@@ -3,8 +3,8 @@
 ## Source Issue Resolution
 
 - Select issue-bound mode when one primary planning issue can be resolved; verify its ACs and validation commands.
-- If no primary issue can be resolved, select PR-only mode: do not invent ACs or claim issue coverage, do not mutate issue checkboxes, and continue the full technical PR review.
-- In issue-bound mode, the related-issue set combines PR-linked planning issues and source-issue links.
+- If no primary source issue can be resolved, select PR-only mode: do not invent ACs or claim issue coverage, do not mutate issue checkboxes, and continue the full technical PR review.
+- In issue-bound mode, the related-issue set combines PR-linked planning issues and source-issue linked sections.
 - In issue-bound mode, source and required related planning issues are not `planning-invalid`.
 - In issue-bound mode, `Blocked by` references are resolved or explicitly treated as scope blockers.
 - In issue-bound mode, required `Implementation Entry Points` paths exist, or missing paths are reported as blockers.
@@ -39,7 +39,7 @@ Apply this section only in issue-bound mode. In PR-only mode, mark issue/AC cove
 - Flag overlap when the PR adds work likely owned by a sibling issue.
 - Flag gaps when companion work is implied but not addressed or deferred.
 - If a Test issue PR needs missing runtime behavior, treat it as a boundary gap or semantic conflict.
-- Require explicit coverage mapping or explicit deferral for each additional planning issue.
+- Require explicit coverage mapping or explicit deferral for each additional issue.
 
 ## Delivery Hygiene Checks
 
@@ -56,7 +56,7 @@ Apply this section only in issue-bound mode. In PR-only mode, mark issue/AC cove
 - On Windows PowerShell policy blocks, npm commands were rerun via npm.cmd.
 - Failures were classified as baseline vs PR-introduced.
 - If a command fails before tests/assertions execute, attempt one cheap rerun to rule out environment/setup causes before treating it as product validation failure.
-- Dependency-resolution failures, shell-policy failures, and test-runner startup errors are environment/setup blockers unless a rerun confirms the same failure under a valid repository install.
+- Dependency-resolution failures, shell-policy failures, and test-runner startup failures are environment/setup blockers unless a rerun confirms the same failure under a valid repository install.
 - Positive PR claims require PR-head or CI evidence tied to the reviewed SHA; local-main output is baseline evidence only.
 - High-risk summary claims are labeled as `observed`, `inferred`, or `unverified`.
 - If PR-head validation status is `unproven`, AC status cannot be `satisfied`.
@@ -82,6 +82,11 @@ Apply checkbox sync only in issue-bound mode after the evidence requirements are
 - `User Stories In This Feature` is an allowed sync section when story evidence is sufficient.
 - `Technical Tasks` may be checked from direct code diff evidence alone.
 - Parent Story or Feature `Acceptance Criteria` stay unchecked without PR-head or reviewed-SHA validation evidence that exercises the complete behavior/path named by each AC.
+- Determine delivery status independently from the live checkbox. If the reviewed diff and required reviewed-SHA validation prove an item complete while its issue box is unchecked, call it a `stale tracking checkbox`, not a product gap, and target checkbox synchronization rather than reimplementation.
+- Make that determination separately for each checkbox: map a Test issue's own criterion to its own assertions and reviewed-SHA validation. Do not bundle issue items into one status or infer child-test completion from a parent issue.
+- Use the complete checkbox wording as the row label. Assess every clause in conjunctive items; never turn one checkbox into multiple invented sub-items.
+- If an issue write awaits owner submission, record `sync pending (no mutation or post-read)` and give the exact next action: submit the pending issue edit, then re-read the issue. Do not claim the checkbox changed.
+- A tracking-only mismatch does not justify reopening a closed issue or creating duplicate implementation scope; use an owner `Next Action` and `Next Issue: none (tracking-only)`.
 - Test-issue `Pass Criteria` may be checked from passing reviewed-SHA evidence for that test issue's own assertions; do not infer parent-AC completion from it.
 - Feature `User Stories In This Feature` stay unchecked without CODE_PROOF + VALIDATION_PROOF + MUTATION_PROOF.
 - Test-issue `Test Scenarios` may be checked from direct test-file evidence alone.
