@@ -12,14 +12,21 @@ export function getImportPendingMessage(stage: ImportWorkflowStage): string {
 }
 
 interface ImportStageProgressProps {
-  format: "CSV" | "PDF";
+  format: "CSV" | "PDF" | "Text statement";
   stage: ImportWorkflowStage;
 }
 
 export function ImportStageProgress({ format, stage }: ImportStageProgressProps): React.JSX.Element {
   const stages: Array<{ id: Exclude<ImportWorkflowStage, "complete">; label: string }> = [
     { id: "select-file", label: "Select file" },
-    { id: "map-and-validate", label: format === "PDF" ? "Extract and validate" : "Map and validate" },
+    {
+      id: "map-and-validate",
+      label: format === "PDF"
+        ? "Extract and validate"
+        : format === "Text statement"
+          ? "Validate text"
+          : "Map and validate",
+    },
     { id: "review", label: "Review" },
     { id: "confirm", label: "Confirm" },
   ];

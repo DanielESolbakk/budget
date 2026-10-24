@@ -59,7 +59,9 @@ export class PdfImportPage {
   }
 
   get previewRegion() {
-    return this.importSection.getByRole("region", { name: "PDF import preview" });
+    return this.importSection.getByRole("region", {
+      name: /^(PDF|Text statement) import preview$/,
+    });
   }
 
   /** Status message shown on successful import (role="status"). */

@@ -1,8 +1,13 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import {
   extractPdfTextFromBuffer,
   extractSourceDocumentFromBuffer,
 } from "../../src/app/import/extractPdfText.js";
+import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
 import { defaultParserAdapterRegistry } from "../../src/domain/import/parserAdapterRegistry.js";
 import { parseRogalandStatementText } from "../../src/domain/import/pdfTextParser.js";
 
@@ -120,6 +125,113 @@ function createPaginatedRogalandStatement(): Buffer {
 }
 
 describe("position-aware PDF extraction", () => {
+  it("maps malformed rows from a later PDF page back to their original source lines", async () => {
+    const sourceDocument = await extractSourceDocumentFromBuffer(createSyntheticPdf([
+      createRogalandStatementPage("28.05.2026", "-10,00", "FIRST PAGE SHOP", "1/2 Rogaland Sparebank"),
+      createRogalandStatementPage("27.05.2026", "not-an-amount", "MALFORMED", "2/2 Rogaland Sparebank", "DESCRIPTION"),
+    ]));
+    const parseResult = defaultParserAdapterRegistry.parse(sourceDocument, {
+      householdId: "hh-test",
+      accountId: "acc-test",
+    });
+
+    expect(parseResult).toMatchObject({
+      ok: true,
+      unresolvedRows: [{
+        rawRow: expect.stringContaining("not-an-amount"),
+        sourceEvidence: {
+          pageNumber: 2,
+          sourceLines: expect.arrayContaining([
+            expect.objectContaining({
+              pageNumber: 2,
+              classification: "transaction",
+              rawText: expect.stringContaining("27.05.2026"),
+            }),
+            expect.objectContaining({
+              pageNumber: 2,
+              classification: "continuation",
+              rawText: "DESCRIPTION",
+            }),
+          ]),
+        },
+      }],
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "budget-pdf-review-page-evidence-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    const household = {
+      id: "hh-positioned-review",
+      name: "Positioned review test household",
+      createdAtIso: "2026-01-01T00:00:00Z",
+    };
+    const account = {
+      id: "acc-positioned-review",
+      householdId: household.id,
+      name: "Main account",
+      currencyCode: "NOK" as const,
+    };
+    let ledger = createLocalLedgerDatabase({
+      dbPath,
+      seedData: {
+        household,
+        accounts: [account],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const imported = runPdfImportWorkflow({
+        pdfText: sourceDocument.text,
+        sourceDocument,
+        filePath: "synthetic-paginated-rogaland.pdf",
+        householdId: household.id,
+        accountId: account.id,
+        importJobId: "positioned-page-evidence-import",
+        startedAtIso: "2026-06-01T12:00:00Z",
+        finishedAtIso: "2026-06-01T12:00:01Z",
+      }, {
+        parserRegistry: defaultParserAdapterRegistry,
+        appendImportJob: ledger.appendImportJob,
+        appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+        appendTransactions: ledger.appendTransactions,
+        getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+        getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+        getExistingTransactionsForAccount: ledger.getTransactionsForAccount,
+        getAccountCurrencyCode: () => account.currencyCode,
+      });
+      expect(imported).toMatchObject({ ok: true, transactionCount: 1, unresolvedRowCount: 1 });
+
+      ledger.close();
+      ledger = createLocalLedgerDatabase({ dbPath });
+
+      expect(ledger.getTransactionsForImportJob("positioned-page-evidence-import")).toHaveLength(1);
+      expect(ledger.listImportReviewItems(household.id)).toMatchObject([
+        expect.objectContaining({
+          sourceEvidence: {
+            pageNumber: 2,
+            sourceLines: expect.arrayContaining([
+              expect.objectContaining({
+                pageNumber: 2,
+                classification: "transaction",
+                rawText: expect.stringContaining("27.05.2026"),
+              }),
+              expect.objectContaining({
+                pageNumber: 2,
+                classification: "continuation",
+                rawText: "DESCRIPTION",
+              }),
+            ]),
+          },
+        }),
+      ]);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("preserves page roles and wrapped-row evidence across repeated headers and footers", async () => {
     const sourceDocument = await extractSourceDocumentFromBuffer(createPaginatedRogalandStatement());
     const repeatedExtraction = await extractSourceDocumentFromBuffer(createPaginatedRogalandStatement());

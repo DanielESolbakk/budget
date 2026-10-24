@@ -59,7 +59,11 @@ function transactionFields(transactions: readonly Transaction[]) {
       transaction.accountId,
       transaction.householdId,
       transaction.sourceType,
-    ])
+    ]);
+}
+
+function persistedTransactionFields(transactions: readonly Transaction[]) {
+  return transactionFields(transactions)
     .sort((left, right) => String(left[0]).localeCompare(String(right[0])));
 }
 
@@ -93,12 +97,79 @@ function importDocument(
 }
 
 describe("PDF extraction import contract", () => {
+  it("persists original source page and line evidence with unresolved PDF rows", () => {
+    const ledgerResult = createLedger("review-evidence");
+    const malformedRow = "27.05.2026 Varekjop ACCT-001 SYNTHETIC DEST-001 SYNTHETIC SHOP not-an-amount NOK Bokført MALFORMED ROW";
+    const text = [
+      "ROGALAND SPAREBANK",
+      "Transaksjoner Antall: 2",
+      "Dato Type Fra konto Avsender Til konto Mottakernavn Beløp Valuta Status Melding/KID/Fakt.nr",
+      "28.05.2026 Varekjop ACCT-001 SYNTHETIC DEST-001 SYNTHETIC SHOP -10,00 NOK Bokført VALID ROW",
+      malformedRow,
+    ].join("\n");
+    const sourceDocument = createTextSourceDocument(text);
+    const timestamp = "2026-06-01T12:00:00Z";
+
+    try {
+      const result = runPdfImportWorkflow({
+        pdfText: text,
+        sourceDocument,
+        filePath: "synthetic-review-evidence.txt",
+        householdId: HOUSEHOLD.id,
+        accountId: ACCOUNT.id,
+        importJobId: "import-pdf-review-evidence",
+        startedAtIso: timestamp,
+        finishedAtIso: timestamp,
+      }, {
+        parserRegistry: defaultParserAdapterRegistry,
+        appendImportJob: ledgerResult.ledger.appendImportJob,
+        appendImportJobAndTransactions: ledgerResult.ledger.appendImportJobAndTransactions,
+        appendTransactions: ledgerResult.ledger.appendTransactions,
+        getTransactionsForImportJob: ledgerResult.ledger.getTransactionsForImportJob,
+      });
+
+      expect(result).toMatchObject({ ok: true, transactionCount: 1, unresolvedRowCount: 1 });
+      expect(ledgerResult.ledger.listImportReviewItems(HOUSEHOLD.id)).toEqual([
+        expect.objectContaining({
+          rawRow: malformedRow,
+          status: "unresolved",
+          sourceEvidence: {
+            pageNumber: 1,
+            sourceLines: [
+              expect.objectContaining({
+                pageNumber: 1,
+                lineNumber: 5,
+                rawText: malformedRow,
+              }),
+            ],
+          },
+        }),
+      ]);
+    } finally {
+      ledgerResult.close();
+    }
+  });
+
   it("persists equivalent ordered text and binary PDF candidates with matching provenance and dashboard totals", async () => {
     const text = readFileSync(TEXT_FIXTURE_PATH, "utf8");
     const textDocument = createTextSourceDocument(text);
     const pdfDocument = await extractSourceDocumentFromBuffer(
       createSyntheticPdfWithText(text),
       "pdf"
+    );
+    const parseOptions = {
+      householdId: HOUSEHOLD.id,
+      accountId: ACCOUNT.id,
+    };
+    const textParseResult = defaultParserAdapterRegistry.parse(textDocument, parseOptions);
+    const pdfParseResult = defaultParserAdapterRegistry.parse(pdfDocument, parseOptions);
+    expect(textParseResult).toMatchObject({ ok: true, adapterId: "rogaland-sparebank-text-v1" });
+    expect(pdfParseResult).toMatchObject({ ok: true, adapterId: "rogaland-sparebank-text-v1" });
+    if (!textParseResult.ok || !pdfParseResult.ok) {
+      throw new Error("The equivalent statement inputs did not produce parser candidates.");
+    }
+    expect(transactionFields(pdfParseResult.candidates)).toEqual(
+      transactionFields(textParseResult.candidates)
     );
     const textLedger = createLedger("text");
     const pdfLedger = createLedger("pdf");
@@ -135,8 +206,8 @@ describe("PDF extraction import contract", () => {
       const pdfSnapshot = pdfLedger.ledger.loadLedgerSnapshotData();
       expect(textSnapshot.transactions).toHaveLength(10);
       expect(pdfSnapshot.transactions).toHaveLength(10);
-      expect(transactionFields(pdfSnapshot.transactions)).toEqual(
-        transactionFields(textSnapshot.transactions)
+      expect(persistedTransactionFields(pdfSnapshot.transactions)).toEqual(
+        persistedTransactionFields(textSnapshot.transactions)
       );
       expect(textSnapshot.importJobs[0]).toMatchObject({
         candidateCount: 10,

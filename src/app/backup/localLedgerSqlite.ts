@@ -39,6 +39,10 @@ import type {
   MonthlyCategoryTarget,
   PendingTransactionObservation,
   MonthlyTotal,
+  SourceDocumentTextLineEvidence,
+  SourceTextLineClassification,
+  SourceTextLineEvidence,
+  SourceTextItemEvidence,
   SameMerchantPropagationInput,
   SameMerchantPropagationOperation,
   Transaction,
@@ -234,6 +238,53 @@ function mapPendingTransactionObservationRow(
   return mapped;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSourceTextItemEvidence(value: unknown): value is SourceTextItemEvidence {
+  if (!isRecord(value)) return false;
+  return typeof value.text === "string" &&
+    typeof value.x === "number" && Number.isFinite(value.x) &&
+    typeof value.y === "number" && Number.isFinite(value.y);
+}
+
+function isSourceTextLineClassification(value: unknown): value is SourceTextLineClassification {
+  return value === "document-metadata" ||
+    value === "column-header" ||
+    value === "transaction" ||
+    value === "continuation" ||
+    value === "document-decoration" ||
+    value === "unclassified";
+}
+
+function isSourceTextLineEvidence(value: unknown): value is SourceTextLineEvidence {
+  if (!isRecord(value)) return false;
+  return typeof value.pageNumber === "number" && Number.isSafeInteger(value.pageNumber) && value.pageNumber > 0 &&
+    typeof value.lineNumber === "number" && Number.isSafeInteger(value.lineNumber) && value.lineNumber > 0 &&
+    typeof value.startOffset === "number" && Number.isSafeInteger(value.startOffset) && value.startOffset >= 0 &&
+    typeof value.endOffset === "number" && Number.isSafeInteger(value.endOffset) &&
+      value.endOffset >= value.startOffset &&
+    typeof value.rawText === "string" &&
+    (value.classification === undefined || isSourceTextLineClassification(value.classification)) &&
+    (value.items === undefined || (
+      Array.isArray(value.items) && value.items.every(isSourceTextItemEvidence)
+    ));
+}
+
+function isSourceDocumentTextLineEvidence(
+  value: unknown
+): value is SourceDocumentTextLineEvidence {
+  if (!isRecord(value)) return false;
+  return typeof value.pageNumber === "number" &&
+    Number.isSafeInteger(value.pageNumber) &&
+    value.pageNumber > 0 &&
+    Array.isArray(value.sourceLines) &&
+    value.sourceLines.every((line) =>
+      isSourceTextLineEvidence(line) && line.pageNumber === value.pageNumber
+    );
+}
+
 function mapImportReviewItemRow(row: Record<string, unknown>): ImportReviewItem {
   const requiredString = (column: string): string => {
     const value = row[column];
@@ -272,6 +323,13 @@ function mapImportReviewItemRow(row: Record<string, unknown>): ImportReviewItem 
   )) {
     throw new Error("Invalid import review item parser diagnostics.");
   }
+  const sourceEvidenceJson = optionalString("source_evidence_json");
+  const sourceEvidence: unknown = sourceEvidenceJson === undefined
+    ? undefined
+    : JSON.parse(sourceEvidenceJson);
+  if (sourceEvidence !== undefined && !isSourceDocumentTextLineEvidence(sourceEvidence)) {
+    throw new Error("Invalid import review item source evidence.");
+  }
   const correctedAtIso = optionalString("corrected_at_iso");
   const correctedTransactionId = optionalString("corrected_transaction_id");
   const correctionJson = optionalString("correction_json");
@@ -287,6 +345,7 @@ function mapImportReviewItemRow(row: Record<string, unknown>): ImportReviewItem 
     sourceName: requiredString("source_name"),
     sourceIdentity: requiredString("source_identity"),
     sourceRowIndex,
+    ...(sourceEvidence === undefined ? {} : { sourceEvidence }),
     rawRow: requiredString("raw_row"),
     parserErrors,
     status,
@@ -434,6 +493,7 @@ function ensureSchema(db: DatabaseSync): void {
       source_name TEXT NOT NULL,
       source_identity TEXT NOT NULL,
       source_row_index INTEGER NOT NULL,
+      source_evidence_json TEXT,
       raw_row TEXT NOT NULL,
       parser_errors_json TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('unresolved', 'corrected', 'dismissed')),
@@ -650,6 +710,12 @@ function ensureSchema(db: DatabaseSync): void {
     if (!importJobColumns.some((column) => column.name === columnName)) {
       db.exec(`ALTER TABLE import_jobs ADD COLUMN ${columnName} ${columnType}`);
     }
+  }
+  const importReviewItemColumns = db
+    .prepare("PRAGMA table_info(import_review_items)")
+    .all() as Array<{ name: string }>;
+  if (!importReviewItemColumns.some((column) => column.name === "source_evidence_json")) {
+    db.exec("ALTER TABLE import_review_items ADD COLUMN source_evidence_json TEXT");
   }
 }
 
@@ -1712,7 +1778,7 @@ export function createLocalLedgerDatabase(
     return (
       db.prepare(`
         SELECT id, import_job_id, household_id, account_id, source_type, source_name, source_identity,
-          source_row_index, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
+          source_row_index, source_evidence_json, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
           corrected_at_iso, corrected_transaction_id, correction_json, dismissal_reason, dismissed_at_iso
         FROM import_review_items
         WHERE household_id = ?
@@ -1724,7 +1790,7 @@ export function createLocalLedgerDatabase(
   function getImportReviewItemById(reviewItemId: string): ImportReviewItem | undefined {
     const row = db.prepare(`
       SELECT id, import_job_id, household_id, account_id, source_type, source_name, source_identity,
-        source_row_index, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
+        source_row_index, source_evidence_json, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
         corrected_at_iso, corrected_transaction_id, correction_json, dismissal_reason, dismissed_at_iso
       FROM import_review_items
       WHERE id = ?
@@ -1971,9 +2037,9 @@ export function createLocalLedgerDatabase(
     const insertReviewItem = db.prepare(`
       INSERT OR IGNORE INTO import_review_items (
         id, import_job_id, household_id, account_id, source_type, source_name, source_identity,
-        source_row_index, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
+        source_row_index, source_evidence_json, raw_row, parser_errors_json, status, created_at_iso, updated_at_iso,
         corrected_at_iso, corrected_transaction_id, correction_json, dismissal_reason, dismissed_at_iso
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertPendingObservation = db.prepare(`
       INSERT OR IGNORE INTO pending_transaction_observations (
@@ -2123,6 +2189,7 @@ export function createLocalLedgerDatabase(
           reviewItem.sourceName,
           reviewItem.sourceIdentity,
           reviewItem.sourceRowIndex,
+          reviewItem.sourceEvidence === undefined ? null : JSON.stringify(reviewItem.sourceEvidence),
           reviewItem.rawRow,
           JSON.stringify(reviewItem.parserErrors),
           reviewItem.status,

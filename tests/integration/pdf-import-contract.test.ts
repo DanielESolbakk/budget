@@ -268,7 +268,9 @@ describe("pdf import contract", () => {
         text: "BANK-B statement",
         sourceText: "BANK-B statement",
         sourceLines: [],
+        textLineEvidence: [],
       }],
+      textLineEvidence: [],
     };
 
     const preview = previewPdfImportWorkflow({
@@ -322,7 +324,9 @@ describe("pdf import contract", () => {
         text: "BANK-B statement",
         sourceText: "BANK-B statement",
         sourceLines: [],
+        textLineEvidence: [],
       }],
+      textLineEvidence: [],
     };
     const importJobs: ImportJob[] = [];
     const importedTransactions: Transaction[] = [];

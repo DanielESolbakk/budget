@@ -5,6 +5,7 @@ import { extractSourceDocumentFromBuffer } from "../../src/app/import/extractPdf
 import { defaultParserAdapterRegistry } from "../../src/domain/import/parserAdapterRegistry.js";
 import { createTextSourceDocument } from "../../src/domain/import/sourceDocument.js";
 import type { Transaction } from "../../src/domain/types.js";
+import { createPaginatedRogalandPdfWithMalformedSecondPage } from "../helpers/createPaginatedRogalandPdf.js";
 import { createSyntheticPdfWithText } from "../helpers/createSyntheticPdf.js";
 
 const TEXT_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
@@ -39,6 +40,59 @@ function transactionFields(transactions: readonly Transaction[]) {
 }
 
 describe("binary PDF extraction", () => {
+  it("routes standalone statement text through the shared source-document contract", async () => {
+    const text = readFileSync(TEXT_FIXTURE_PATH, "utf8");
+    const sourceDocument = await extractSourceDocumentFromBuffer(Buffer.from(text, "utf8"), "text");
+    const parseResult = defaultParserAdapterRegistry.parse(sourceDocument, PARSE_OPTIONS);
+
+    expect(sourceDocument).toMatchObject({
+      format: "text",
+      text,
+      capabilities: expect.arrayContaining(["plain-text", "standalone-text", "source-offsets"]),
+      pages: [{ pageNumber: 1, sourceText: text }],
+    });
+    expect(sourceDocument.capabilities).not.toContain("binary-pdf");
+    expect(parseResult).toMatchObject({
+      ok: true,
+      adapterId: "rogaland-sparebank-text-v1",
+      sourceIdentity: "no.rogaland-sparebank.statement-text",
+    });
+  });
+
+  it("preserves source page and continuation evidence while extracting a multi-page PDF", async () => {
+    const sourceDocument = await extractSourceDocumentFromBuffer(
+      createPaginatedRogalandPdfWithMalformedSecondPage(),
+      "pdf"
+    );
+    const malformedLineIndex = sourceDocument.text.split("\n").findIndex((line) =>
+      line.includes("not-an-amount")
+    );
+
+    expect(sourceDocument.pages.map((page) => page.pageNumber)).toEqual([1, 2]);
+    expect(malformedLineIndex).toBeGreaterThanOrEqual(0);
+    expect(sourceDocument.textLineEvidence[malformedLineIndex]).toMatchObject({
+      pageNumber: 2,
+      sourceLines: expect.arrayContaining([
+        expect.objectContaining({
+          pageNumber: 2,
+          classification: "transaction",
+          rawText: expect.stringContaining("27.05.2026"),
+        }),
+        expect.objectContaining({
+          pageNumber: 2,
+          classification: "continuation",
+          rawText: "DESCRIPTION",
+        }),
+      ]),
+    });
+  });
+
+  it("rejects unreadable binary PDF bytes instead of returning an empty source document", async () => {
+    await expect(
+      extractSourceDocumentFromBuffer(Buffer.from("%PDF-1.4\ninvalid synthetic PDF data", "ascii"), "pdf")
+    ).rejects.toThrow();
+  });
+
   it("preserves the exact ordered Rogaland transaction candidates from equivalent text and PDF sources", async () => {
     const text = readFileSync(TEXT_FIXTURE_PATH, "utf8");
     const textResult = defaultParserAdapterRegistry.parse(

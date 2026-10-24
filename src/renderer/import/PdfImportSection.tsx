@@ -6,6 +6,7 @@ import type {
 import type { Account } from "../../domain/types.js";
 import type { DuplicateImportDecision } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import type { ImportReconciliation } from "../../domain/import/importReconciliation.js";
+import { classifyImportFilePath } from "../../domain/import/sourceDocument.js";
 import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage } from "./ImportStageProgress.js";
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
 import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
@@ -77,6 +78,8 @@ export function PdfImportSection({
   onReviewImportItems,
 }: PdfImportSectionProps): React.JSX.Element {
   const [filePath, setFilePath] = React.useState(initialFilePath);
+  const statementFormat = classifyImportFilePath(filePath) === "text" ? "Text statement" : "PDF";
+  const previewFormatLabel = statementFormat === "PDF" ? "PDF statement" : statementFormat;
   const [importState, setImportState] = React.useState<ImportState>({ status: "idle" });
   const [activePreflightRequestId, setActivePreflightRequestId] = React.useState<string | undefined>();
   const [preflightProgress, setPreflightProgress] = React.useState<{
@@ -343,7 +346,7 @@ export function PdfImportSection({
           disabled={importState.status === "pending"}
         />
       )}
-      {importState.status !== "success" && <ImportStageProgress format="PDF" stage={stage} />}
+      {importState.status !== "success" && <ImportStageProgress format={statementFormat} stage={stage} />}
       {importState.status !== "success" && (
         <div className="import-file-source">
           <p aria-live="polite" className="import-selected-file">
@@ -364,7 +367,7 @@ export function PdfImportSection({
           type="text"
           value={filePath}
           onChange={(event) => updateFilePath(event.target.value)}
-          placeholder="C:\\path\\to\\statement.pdf"
+          placeholder="C:\\path\\to\\statement.pdf or statement.txt"
           disabled={importState.status === "pending"}
         />
       </details>
@@ -468,7 +471,7 @@ export function PdfImportSection({
           <p>{validationErrors.length} issue{validationErrors.length === 1 ? "" : "s"} found. No transactions were saved.</p>
           <p>Open the validation report, correct the source, then preview again.</p>
           <details className="import-validation-report">
-            <summary>PDF validation report ({importState.errors.errors.length} issue{importState.errors.errors.length === 1 ? "" : "s"})</summary>
+            <summary>{statementFormat} validation report ({importState.errors.errors.length} issue{importState.errors.errors.length === 1 ? "" : "s"})</summary>
             <ul>
               {visibleValidationErrors.map((error, index) => (
                 <li key={`${error.code}-${error.lineNumber ?? "statement"}-${index}`}>
@@ -478,7 +481,7 @@ export function PdfImportSection({
               ))}
             </ul>
             {validationReportPageCount > 1 && (
-              <div className="import-preview-pagination" aria-label="PDF validation report pages">
+              <div className="import-preview-pagination" aria-label={`${statementFormat} validation report pages`}>
                 <button type="button" disabled={validationReportPage === 0} onClick={() => setValidationReportPage((page) => Math.max(0, page - 1))}>Previous report page</button>
                 <span>Page {validationReportPage + 1} of {validationReportPageCount}</span>
                 <button type="button" disabled={validationReportPage + 1 >= validationReportPageCount} onClick={() => setValidationReportPage((page) => Math.min(validationReportPageCount - 1, page + 1))}>Next report page</button>
@@ -515,7 +518,7 @@ export function PdfImportSection({
         <div id="pdf-preview-panel" className="import-preview-panel" hidden={!isPreviewExpanded}>
           <section
             ref={previewRegionRef}
-            aria-label="PDF import preview"
+            aria-label={`${statementFormat} import preview`}
             className="import-preview-region"
             tabIndex={-1}
           >
@@ -553,7 +556,7 @@ export function PdfImportSection({
               </p>
               <details className="import-pending-observations">
                 <summary>Pending rows ({pendingObservations.length})</summary>
-                <ul aria-label="PDF pending transactions">
+                <ul aria-label={`${statementFormat} pending transactions`}>
                   {pendingObservations.map((observation) => (
                     <li key={observation.id}>
                       Line {observation.sourceRowIndex + 1} · {formatDate(observation.transactionDateIso)} · {observation.merchantRaw} · {formatAmount(observation.amountMinor)} · {observation.sourceStatus}
@@ -569,7 +572,7 @@ export function PdfImportSection({
           {unresolvedRowCount > 0 && (
             <details className="import-validation-report">
               <summary>Unresolved rows for review ({unresolvedRowCount})</summary>
-              <ul aria-label="PDF unresolved rows">
+              <ul aria-label={`${statementFormat} unresolved rows`}>
                 {unresolvedRows.map((row, index) => (
                   <li key={`${row.lineNumber}-${index}`}>
                     Line {row.lineNumber}: <pre>{row.rawRow}</pre>
@@ -621,7 +624,7 @@ export function PdfImportSection({
           <p>Statement format recognized: {preview.adapterId === "rogaland-sparebank-text-v1" ? "Rogaland Sparebank digital statement" : "supported bank statement"}.</p>
           <div className="preview-table-wrap">
             <table className="import-preview-table">
-              <caption>PDF statement preview rows and duplicate decisions</caption>
+              <caption>{previewFormatLabel} preview rows and duplicate decisions</caption>
               <thead>
                 <tr><th scope="col">Date</th><th scope="col">Merchant</th><th scope="col">Amount</th><th scope="col">Currency</th><th scope="col">Status and duplicate decision</th></tr>
               </thead>
@@ -664,7 +667,7 @@ export function PdfImportSection({
             </table>
           </div>
           {preview.transactions.length > PREVIEW_PAGE_SIZE && (
-            <div className="import-preview-pagination" aria-label="PDF preview pages">
+            <div className="import-preview-pagination" aria-label={`${statementFormat} preview pages`}>
               <button type="button" disabled={previewPage === 0} onClick={() => setPreviewPage((page) => Math.max(0, page - 1))}>Previous rows</button>
               <span aria-live="polite">
                 Rows {previewPage * PREVIEW_PAGE_SIZE + 1}-{Math.min((previewPage + 1) * PREVIEW_PAGE_SIZE, preview.transactions.length)} of {preview.transactions.length.toLocaleString("nb-NO")} · Page {previewPage + 1} of {previewPageCount}

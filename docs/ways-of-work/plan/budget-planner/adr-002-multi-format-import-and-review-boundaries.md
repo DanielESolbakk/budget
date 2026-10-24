@@ -59,9 +59,13 @@ Rogaland Sparebank remains the initial regression adapter. DNB, Bank2, and futur
 
 Each import can produce valid candidates and unresolved review items. Valid candidates persist immediately with import provenance. Unresolved rows do not create transactions until corrected. A correction validates canonical date, amount, merchant, account, and currency fields before creating one transaction with correction provenance.
 
+Unresolved PDF review items retain the original page number and every contributing physical source line with offsets and parser diagnostics, including continuation lines for wrapped rows. This evidence is optional and added through an additive SQLite migration.
+
 A dismissal creates no transaction and records the raw row, source identity, parser diagnostics, user reason, and timestamp. Repeated correction or dismissal commands are deterministic and duplicate-safe.
 
 Review items, correction history, and dismissal audit data are stored locally through additive SQLite migrations. The import job retains source and adapter provenance for both successful and partial outcomes.
+
+Import history displays the stable adapter identifier for each completed statement import so the selected parser is auditable from the desktop workflow.
 
 ### Privacy Boundary
 

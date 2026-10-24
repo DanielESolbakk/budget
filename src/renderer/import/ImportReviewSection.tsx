@@ -5,6 +5,7 @@ import type {
 } from "../../app/reviewService.js";
 import type { Account, ImportReviewItem } from "../../domain/types.js";
 import { CSV_COLUMN_NAMES } from "../../domain/import/csvColumns.js";
+import { classifyImportFilePath } from "../../domain/import/sourceDocument.js";
 
 interface ImportReviewSectionProps {
   isActive: boolean;
@@ -30,6 +31,26 @@ const IMPORT_REVIEW_DRAFT_STORAGE_PREFIX = "budget.import-review-draft.v1:";
 
 function importReviewDraftStorageKey(itemId: string): string {
   return `${IMPORT_REVIEW_DRAFT_STORAGE_PREFIX}${itemId}`;
+}
+
+function getSourceEvidenceLabels(sourceName: string, pageNumber: number): { summary: string; lines: string } {
+  const format = classifyImportFilePath(sourceName);
+  if (format === "text") {
+    return {
+      summary: "Text statement source evidence",
+      lines: `Text statement page ${pageNumber} source lines`,
+    };
+  }
+  if (format === "pdf") {
+    return {
+      summary: "PDF source page evidence",
+      lines: `PDF page ${pageNumber} source lines`,
+    };
+  }
+  return {
+    summary: "Statement source evidence",
+    lines: `Page ${pageNumber} source lines`,
+  };
 }
 
 function isImportReviewDraft(value: unknown): value is ImportReviewDraft {
@@ -393,6 +414,10 @@ export function ImportReviewSection({
     const rowNumber = item.sourceRowIndex + 1;
     const draft = drafts[item.id];
     const isPending = pendingItemId === item.id;
+    const sourceEvidence = item.sourceEvidence;
+    const sourceEvidenceLabels = sourceEvidence === undefined
+      ? undefined
+      : getSourceEvidenceLabels(item.sourceName, sourceEvidence.pageNumber);
 
     return (
       <li key={item.id}>
@@ -405,6 +430,23 @@ export function ImportReviewSection({
               <summary>Original source row</summary>
               <pre>{item.rawRow}</pre>
             </details>
+            {sourceEvidence !== undefined && sourceEvidenceLabels !== undefined && (
+              <details className="import-review-source-evidence">
+                <summary>{sourceEvidenceLabels.summary}</summary>
+                <p>Page {sourceEvidence.pageNumber}</p>
+                <ol aria-label={sourceEvidenceLabels.lines}>
+                  {sourceEvidence.sourceLines.map((line) => (
+                    <li key={`${line.pageNumber}-${line.lineNumber}-${line.startOffset}`}>
+                      <p>
+                        Line {line.lineNumber} - offsets {line.startOffset}-{line.endOffset}
+                        {line.classification === undefined ? "" : ` - ${line.classification}`}
+                      </p>
+                      <pre>{line.rawText || "(blank line)"}</pre>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
             {item.parserErrors.length > 0 && (
               <div className="import-review-diagnostics">
                 <p className="import-review-diagnostic-summary">{parserDiagnosticSummary(item)}</p>

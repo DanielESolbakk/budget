@@ -347,6 +347,7 @@ export function runPdfImportWorkflow(
     sourceName: input.filePath,
     sourceIdentity: parseResult.sourceIdentity,
     sourceRowIndex: Math.max(0, row.lineNumber - 1),
+    ...(row.sourceEvidence === undefined ? {} : { sourceEvidence: row.sourceEvidence }),
     rawRow: row.rawRow,
     parserErrors: row.errors.map(({ code, message, field }) => ({
       code,
