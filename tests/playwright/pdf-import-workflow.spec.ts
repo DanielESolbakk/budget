@@ -322,14 +322,14 @@ test.describe("PDF import renderer workflow", () => {
     await window.screenshot({ path: testInfo.outputPath("statement-preview-reopened.png") });
   });
 
-  test("keeps the preview toggle fully visible above a long reopened preview", async ({ pdfImport, window }, testInfo) => {
+  test("keeps the preview toggle visible above a long text-statement preview", async ({ pdfImport, window }, testInfo) => {
     await window.setViewportSize({ width: 1280, height: 800 });
     await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
     const previewTable = pdfImport.previewRegion.getByRole("table", {
-      name: "PDF statement preview rows and duplicate decisions",
+      name: "Text statement preview rows and duplicate decisions",
     });
     await expect(previewTable.getByRole("row")).toHaveCount(101);
     const toggle = window.getByRole("button", { name: "Hide preview", exact: true });
@@ -585,12 +585,12 @@ test.describe("PDF import renderer workflow", () => {
     expect(result).toContain("acknowledgeExcludedRows must be a boolean when provided.");
   });
 
-  test("10,000-row PDF preview renders a bounded page with navigation", async ({ pdfImport }) => {
+  test("10,000-row text-statement preview renders a bounded page with navigation", async ({ pdfImport }) => {
     await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
-    const previewTable = pdfImport.previewRegion.getByRole("table", { name: "PDF statement preview rows and duplicate decisions" });
+    const previewTable = pdfImport.previewRegion.getByRole("table", { name: "Text statement preview rows and duplicate decisions" });
     await expect(previewTable.getByRole("row")).toHaveCount(101);
     await pdfImport.previewRegion.getByRole("button", { name: "Next rows", exact: true }).click();
     await expect(previewTable.getByRole("row")).toHaveCount(101);
@@ -693,14 +693,14 @@ test.describe("PDF import renderer workflow", () => {
     expect(loadPersistedSnapshot(databasePath).transactions).toEqual(transactionsBeforePreview);
   });
 
-  test("history keeps repeated imports of the same PDF as separate runs", async ({ pdfImport, window }) => {
+  test("history keeps repeated text-statement imports as separate runs", async ({ pdfImport, window }) => {
     await pdfImport.submitImport(FIXTURE_PATH);
     await pdfImport.enterFilePath(FIXTURE_PATH);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
     const previewRows = pdfImport.previewRegion.getByRole("table", {
-      name: "PDF statement preview rows and duplicate decisions",
+      name: "Text statement preview rows and duplicate decisions",
     }).getByRole("row").filter({ hasText: "Duplicate candidate" });
     for (const row of await previewRows.all()) {
       await row.getByRole("radio", { name: "Skip duplicate" }).check();
@@ -713,13 +713,13 @@ test.describe("PDF import renderer workflow", () => {
     await expect(historyTable.getByRole("row")).toHaveCount(3);
   });
 
-  test("PDF duplicate candidates support one bulk import choice with an individual override", async ({ pdfImport }) => {
+  test("text-statement duplicate candidates support bulk choice and individual override", async ({ pdfImport }) => {
     await pdfImport.submitImport(FIXTURE_PATH);
     await pdfImport.enterFilePath(FIXTURE_PATH);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
-    const previewTable = pdfImport.previewRegion.getByRole("table", { name: "PDF statement preview rows and duplicate decisions" });
+    const previewTable = pdfImport.previewRegion.getByRole("table", { name: "Text statement preview rows and duplicate decisions" });
     const duplicateRows = previewTable.getByRole("row").filter({ hasText: "Duplicate candidate" });
     await expect(duplicateRows).toHaveCount(10);
     await expect(duplicateRows.first()).toContainText(/Matched by (source reference|transaction fingerprint)/);
@@ -876,7 +876,33 @@ test.describe("PDF import renderer workflow", () => {
     const historyTable = window.getByRole("region", { name: "Import history", exact: true })
       .getByRole("table", { name: "Completed local import jobs" });
     const importedRow = historyTable.getByRole("row").filter({ hasText: basename(generatedPdfPath) }).first();
+    await expect(importedRow).toContainText("Rogaland Sparebank");
+    const adapterId = importedRow.getByText("Adapter ID", { exact: true });
+    await adapterId.click();
     await expect(importedRow).toContainText("rogaland-sparebank-text-v1");
+    const completedAt = importedRow.locator("time");
+    await expect(completedAt).toHaveAttribute("datetime", /^\d{4}-\d{2}-\d{2}T/);
+    expect(await completedAt.textContent()).not.toMatch(/T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+  });
+
+  test("labels standalone text correctly during preview and in import history", async ({
+    pdfImport,
+    window,
+  }) => {
+    await pdfImport.enterFilePath(FIXTURE_PATH);
+    await pdfImport.importButton.click();
+
+    await expect(window.getByRole("navigation", { name: "Text statement import stages" })).toBeVisible();
+    await expect(window.getByRole("region", { name: "Text statement import preview" })).toBeVisible();
+    await expect(pdfImport.confirmImportButton).toBeEnabled();
+    await pdfImport.confirmImportButton.click();
+    await expect(pdfImport.successStatus).toContainText("Added 10 transactions to your ledger.");
+
+    await window.getByRole("button", { name: "Import history", exact: true }).click();
+    const historyTable = window.getByRole("region", { name: "Import history", exact: true })
+      .getByRole("table", { name: "Completed local import jobs" });
+    const importedRow = historyTable.getByRole("row").filter({ hasText: basename(FIXTURE_PATH) }).first();
+    await expect(importedRow.getByRole("cell", { name: "Text", exact: true })).toBeVisible();
   });
 
   test("Scenario 1: importing the supported synthetic text PDF fixture reports success and displays adapter identity", async ({
@@ -908,7 +934,7 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.successStatus).toContainText(/Added 10 transactions to your ledger/i, {
       timeout: 10_000,
     });
-    await expect(pdfImport.importSection.getByRole("navigation", { name: "PDF import stages" })).not.toBeVisible();
+    await expect(pdfImport.importSection.getByRole("navigation", { name: "Text statement import stages" })).not.toBeVisible();
 
     // AC-4: the import completes with user-facing feedback; adapter provenance is persisted separately.
 
@@ -943,7 +969,7 @@ test.describe("PDF import renderer workflow", () => {
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
     const duplicateRows = pdfImport.previewRegion.getByRole("table", {
-      name: "PDF statement preview rows and duplicate decisions",
+      name: "Text statement preview rows and duplicate decisions",
     }).getByRole("row").filter({ hasText: "Duplicate candidate" });
     await expect(duplicateRows).toHaveCount(10);
     for (const row of await duplicateRows.all()) {

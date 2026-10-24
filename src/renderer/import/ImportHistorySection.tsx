@@ -5,6 +5,7 @@ import type {
   RetainedImportTransaction,
   UndoImportJobResult,
 } from "../../domain/import/importJobHistory.js";
+import { classifyImportFilePath } from "../../domain/import/sourceDocument.js";
 
 interface ImportHistorySectionProps {
   refreshKey: number;
@@ -21,6 +22,35 @@ function importedLabel(count: number): string {
 
 function duplicateLabel(count: number): string {
   return `${count} skipped`;
+}
+
+function sourceFormatLabel(entry: ImportJobHistoryEntry): string {
+  const format = classifyImportFilePath(entry.sourceName);
+  if (format === "text") return "Text";
+  if (format === "pdf") return "PDF";
+  if (format === "csv") return "CSV";
+  return entry.sourceType.toUpperCase();
+}
+
+function parserDisplayName(adapterId: string | null): string {
+  if (adapterId === null) return "Not recorded";
+  const sourceName = adapterId
+    .replace(/-(?:text|pdf|csv)-v\d+$/i, "")
+    .replace(/-v\d+$/i, "")
+    .replace(/-(?:text|pdf|csv)$/i, "");
+  const words = sourceName.split(/[-_.]+/).filter(Boolean);
+  return words.length === 0
+    ? "Not recorded"
+    : words.map((word) => `${word[0]!.toUpperCase()}${word.slice(1)}`).join(" ");
+}
+
+function formatCompletedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("nb-NO", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function retainedAmount(transaction: RetainedImportTransaction): string {
@@ -107,7 +137,7 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
               <tr>
                 <th scope="col">Completed</th>
                 <th scope="col">Format</th>
-                <th scope="col">Parser adapter</th>
+                <th scope="col">Statement source</th>
                 <th scope="col">Source</th>
                 <th scope="col">Account</th>
                 <th scope="col">Outcome</th>
@@ -118,6 +148,7 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
               {entries.map((entry) => {
                 const fileName = sourceFileName(entry.sourceName);
                 const accountName = accounts.find((account) => account.id === entry.accountId)?.name ?? entry.accountId ?? "Unavailable";
+                const completedAt = entry.finishedAtIso ?? entry.startedAtIso;
                 const removedItemCount = undoResult?.importJobId === entry.id
                   ? undoResult.removedCount
                   : entry.undoRemovedCount;
@@ -130,9 +161,19 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                 return (
                   <React.Fragment key={entry.id}>
                   <tr>
-                    <td data-label="Completed">{entry.finishedAtIso ?? entry.startedAtIso}</td>
-                    <td data-label="Format">{entry.sourceType.toUpperCase()}</td>
-                    <td data-label="Parser adapter">{entry.adapterId ?? "Not recorded"}</td>
+                    <td data-label="Completed">
+                      <time dateTime={completedAt} title={completedAt}>{formatCompletedAt(completedAt)}</time>
+                    </td>
+                    <td data-label="Format">{sourceFormatLabel(entry)}</td>
+                    <td data-label="Statement source">
+                      <span>{parserDisplayName(entry.adapterId)}</span>
+                      {entry.adapterId !== null && (
+                        <details className="import-history-adapter-id">
+                          <summary>Adapter ID</summary>
+                          <code>{entry.adapterId}</code>
+                        </details>
+                      )}
+                    </td>
                     <td data-label="Source" title={entry.sourceName}>{fileName}</td>
                     <td data-label="Account">{accountName}</td>
                     <td data-label="Outcome">{importedLabel(entry.importedCount)} · {duplicateLabel(entry.duplicateCount)}</td>
