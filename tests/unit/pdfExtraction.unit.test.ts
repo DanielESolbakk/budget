@@ -39,6 +39,12 @@ function transactionFields(transactions: readonly Transaction[]) {
 }
 
 describe("binary PDF extraction", () => {
+  it("rejects unreadable binary PDF bytes instead of returning an empty source document", async () => {
+    await expect(
+      extractSourceDocumentFromBuffer(Buffer.from("%PDF-1.4\ninvalid synthetic PDF data", "ascii"), "pdf")
+    ).rejects.toThrow();
+  });
+
   it("preserves the exact ordered Rogaland transaction candidates from equivalent text and PDF sources", async () => {
     const text = readFileSync(TEXT_FIXTURE_PATH, "utf8");
     const textResult = defaultParserAdapterRegistry.parse(

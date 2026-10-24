@@ -107,6 +107,7 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
               <tr>
                 <th scope="col">Completed</th>
                 <th scope="col">Format</th>
+                <th scope="col">Parser adapter</th>
                 <th scope="col">Source</th>
                 <th scope="col">Account</th>
                 <th scope="col">Outcome</th>
@@ -131,6 +132,7 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                   <tr>
                     <td data-label="Completed">{entry.finishedAtIso ?? entry.startedAtIso}</td>
                     <td data-label="Format">{entry.sourceType.toUpperCase()}</td>
+                    <td data-label="Parser adapter">{entry.adapterId ?? "Not recorded"}</td>
                     <td data-label="Source" title={entry.sourceName}>{fileName}</td>
                     <td data-label="Account">{accountName}</td>
                     <td data-label="Outcome">{importedLabel(entry.importedCount)} · {duplicateLabel(entry.duplicateCount)}</td>
@@ -158,7 +160,7 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                   </tr>
                   {pendingUndo?.id === entry.id && (
                     <tr className="import-history-detail-row">
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div
                           ref={confirmationRef}
                           className="import-undo-confirmation"
@@ -198,7 +200,7 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                   )}
                   {(undoResult?.importJobId === entry.id || entry.undoneAtIso !== null) && (
                     <tr className="import-history-detail-row">
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div className="import-undo-result" role="status" aria-label="Import undo result">
                           <strong>Undo complete</strong>
                           <p>

@@ -59,7 +59,11 @@ function transactionFields(transactions: readonly Transaction[]) {
       transaction.accountId,
       transaction.householdId,
       transaction.sourceType,
-    ])
+    ]);
+}
+
+function persistedTransactionFields(transactions: readonly Transaction[]) {
+  return transactionFields(transactions)
     .sort((left, right) => String(left[0]).localeCompare(String(right[0])));
 }
 
@@ -153,6 +157,20 @@ describe("PDF extraction import contract", () => {
       createSyntheticPdfWithText(text),
       "pdf"
     );
+    const parseOptions = {
+      householdId: HOUSEHOLD.id,
+      accountId: ACCOUNT.id,
+    };
+    const textParseResult = defaultParserAdapterRegistry.parse(textDocument, parseOptions);
+    const pdfParseResult = defaultParserAdapterRegistry.parse(pdfDocument, parseOptions);
+    expect(textParseResult).toMatchObject({ ok: true, adapterId: "rogaland-sparebank-text-v1" });
+    expect(pdfParseResult).toMatchObject({ ok: true, adapterId: "rogaland-sparebank-text-v1" });
+    if (!textParseResult.ok || !pdfParseResult.ok) {
+      throw new Error("The equivalent statement inputs did not produce parser candidates.");
+    }
+    expect(transactionFields(pdfParseResult.candidates)).toEqual(
+      transactionFields(textParseResult.candidates)
+    );
     const textLedger = createLedger("text");
     const pdfLedger = createLedger("pdf");
 
@@ -188,8 +206,8 @@ describe("PDF extraction import contract", () => {
       const pdfSnapshot = pdfLedger.ledger.loadLedgerSnapshotData();
       expect(textSnapshot.transactions).toHaveLength(10);
       expect(pdfSnapshot.transactions).toHaveLength(10);
-      expect(transactionFields(pdfSnapshot.transactions)).toEqual(
-        transactionFields(textSnapshot.transactions)
+      expect(persistedTransactionFields(pdfSnapshot.transactions)).toEqual(
+        persistedTransactionFields(textSnapshot.transactions)
       );
       expect(textSnapshot.importJobs[0]).toMatchObject({
         candidateCount: 10,

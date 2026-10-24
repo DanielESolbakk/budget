@@ -65,6 +65,8 @@ A dismissal creates no transaction and records the raw row, source identity, par
 
 Review items, correction history, and dismissal audit data are stored locally through additive SQLite migrations. The import job retains source and adapter provenance for both successful and partial outcomes.
 
+Import history displays the stable adapter identifier for each completed statement import so the selected parser is auditable from the desktop workflow.
+
 ### Privacy Boundary
 
 PDF extraction, text parsing, CSV mapping, review, correction, and persistence run locally. No transaction content is sent to cloud services, bank APIs, telemetry, analytics, or background network calls.

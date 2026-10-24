@@ -29,6 +29,16 @@ import { createSyntheticPdfWithText } from "../helpers/createSyntheticPdf.js";
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
 const BINARY_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 const temporaryDirectories = new Set<string>();
+const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
+  style: "currency",
+  currency: "NOK",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatAmountMinor(amountMinor: number): string {
+  return nokCurrencyFormatter.format(amountMinor / 100);
+}
 
 interface PdfTextPlacement {
   x: number;
@@ -786,14 +796,25 @@ test.describe("PDF import renderer workflow", () => {
     pdfImport,
     dashboard,
     databasePath,
+    window,
   }) => {
     const generatedPdfPath = join(createTemporaryDirectory(), `rogaland-ten-transactions-${randomUUID()}.pdf`);
     writeFileSync(generatedPdfPath, createSyntheticPdfWithText(readFileSync(FIXTURE_PATH, "utf8")));
+    const baselineTransactions = loadPersistedSnapshot(databasePath).transactions.filter((transaction) =>
+      transaction.bookedAtIso.startsWith("2026-05")
+    );
+    const baselineIncomeMinor = baselineTransactions.reduce(
+      (total, transaction) => total + Math.max(0, transaction.amountMinor),
+      0
+    );
+    const baselineExpenseMinor = baselineTransactions.reduce(
+      (total, transaction) => total + Math.max(0, -transaction.amountMinor),
+      0
+    );
 
     await appShell.openWorkspace("Review");
     await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
-    const incomeBeforeImport = (await dashboard.incomeValue.textContent()) ?? "";
 
     await appShell.openWorkspace("Import");
     await pdfImport.submitImport(generatedPdfPath);
@@ -804,6 +825,14 @@ test.describe("PDF import renderer workflow", () => {
     const snapshot = loadPersistedSnapshot(databasePath);
     const importedTransactions = snapshot.transactions.filter((transaction) => transaction.sourceType === "pdf");
     expect(importedTransactions).toHaveLength(10);
+    expect(importedTransactions.reduce(
+      (total, transaction) => total + Math.max(0, transaction.amountMinor),
+      0
+    )).toBe(5_500_000);
+    expect(importedTransactions.reduce(
+      (total, transaction) => total + Math.max(0, -transaction.amountMinor),
+      0
+    )).toBe(241_430);
     expect(importedTransactions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         bookedAtIso: "2026-05-27T00:00:00Z",
@@ -836,8 +865,18 @@ test.describe("PDF import renderer workflow", () => {
     ]));
 
     await appShell.openWorkspace("Review");
-    await expect.poll(async () => (await dashboard.incomeValue.textContent()) ?? "")
-      .not.toBe(incomeBeforeImport);
+    await expect(dashboard.incomeValue).toHaveText(formatAmountMinor(baselineIncomeMinor + 5_500_000));
+    await expect(dashboard.expenseValue).toHaveText(formatAmountMinor(baselineExpenseMinor + 241_430));
+    await expect(dashboard.netValue).toHaveText(
+      formatAmountMinor(baselineIncomeMinor - baselineExpenseMinor + 5_258_570)
+    );
+
+    await appShell.openWorkspace("Import");
+    await window.getByRole("button", { name: "Import history", exact: true }).click();
+    const historyTable = window.getByRole("region", { name: "Import history", exact: true })
+      .getByRole("table", { name: "Completed local import jobs" });
+    const importedRow = historyTable.getByRole("row").filter({ hasText: basename(generatedPdfPath) }).first();
+    await expect(importedRow).toContainText("rogaland-sparebank-text-v1");
   });
 
   test("Scenario 1: importing the supported synthetic text PDF fixture reports success and displays adapter identity", async ({

@@ -1,14 +1,16 @@
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { _electron as electron } from "@playwright/test";
 import type { Request } from "@playwright/test";
 import { test, expect } from "./fixtures/electron.js";
 import { DatabaseSync } from "node:sqlite";
+import { writeFileSync } from "node:fs";
 import type { BudgetApi } from "../../src/renderer/preload.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
 import { CsvImportPage } from "./pom/CsvImportPage.js";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 import { LedgerPage } from "./pom/LedgerPage.js";
 import { PdfImportPage } from "./pom/PdfImportPage.js";
+import { createPaginatedRogalandPdfWithMalformedSecondPage } from "../helpers/createPaginatedRogalandPdf.js";
 import { installMainProcessFetchProbe, mainProcessFetchRequests } from "./helpers/networkProbe.js";
 
 const CSV_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
@@ -593,6 +595,39 @@ test.describe("single statement import entry", () => {
         }
         expect(rendererRequests).toEqual([]);
         expect(await mainProcessFetchRequests(electronApp)).toEqual([]);
+      });
+
+      test("shows original page-two evidence for a malformed row in a multi-page PDF", async ({
+        appShell,
+        databasePath,
+        window,
+      }) => {
+        const paginatedPdfPath = join(dirname(databasePath), "paginated-rogaland.pdf");
+        writeFileSync(paginatedPdfPath, createPaginatedRogalandPdfWithMalformedSecondPage());
+
+        await appShell.openWorkspace("Import");
+        const importReview = new ImportReviewPage(window);
+        const statementImport = new PdfImportPage(window);
+        await importReview.chooseStatementFile();
+        await statementImport.enterFilePath(paginatedPdfPath);
+        await statementImport.importButton.click();
+        await expect(statementImport.previewRegion).toBeVisible();
+        await expect(statementImport.previewRegion.getByText(/1 unresolved row will be saved for review/)).toBeVisible();
+        await statementImport.confirmImportButton.click();
+        await expect(statementImport.successStatus).toContainText("Added 1 transaction to your ledger.");
+        await statementImport.importSection.getByRole("button", {
+          name: "Review unresolved rows",
+          exact: true,
+        }).click();
+        await expect(importReview.reviewQueue).toBeInViewport();
+
+        const reviewRow = importReview.reviewRow(7);
+        await expect(reviewRow).toContainText("MALFORMED DESCRIPTION");
+        const pageEvidence = reviewRow.getByText("PDF source page evidence", { exact: true });
+        await pageEvidence.click();
+        await expect(reviewRow).toContainText("Page 2");
+        await expect(reviewRow).toContainText("27.05.2026");
+        await expect(reviewRow).toContainText("DESCRIPTION");
       });
     });
 
