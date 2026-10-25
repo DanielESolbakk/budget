@@ -1,13 +1,26 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { parseExchangeRateCsv } from "../../src/app/exchangeRateImport.js";
 import * as dashboardApi from "../../src/app/dashboardApi.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import type { Account, ExchangeRate, Transaction } from "../../src/domain/types.js";
+
+const networkFetch = vi.fn(() => {
+  throw new Error("Network access is not allowed in exchange-rate integration tests.");
+});
+
+beforeEach(() => {
+  networkFetch.mockClear();
+  vi.stubGlobal("fetch", networkFetch);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const accounts: Account[] = [
   { id: "acc-eur", householdId: "hh-rates", name: "Euro account", currencyCode: "EUR" },
@@ -198,6 +211,7 @@ describe("exchange-rate local persistence and reports", () => {
       } finally {
         reopened.close();
       }
+      expect(networkFetch).not.toHaveBeenCalled();
     } finally {
       if (!isClosed) ledger.close();
       rmSync(directory, { recursive: true, force: true });
@@ -228,6 +242,7 @@ describe("exchange-rate local persistence and reports", () => {
     expect(result.partialNokSubtotalMinor).toBe(115_000);
     expect(result.nokSubtotalMinor).toBeNull();
     expect(result.incompleteCurrencies).toEqual(["SEK"]);
+    expect(networkFetch).not.toHaveBeenCalled();
   });
 
   it("uses an explicitly selected monthly estimate and confines latest-rate restatement to scenarios", () => {
@@ -292,5 +307,6 @@ describe("exchange-rate local persistence and reports", () => {
       nokAmountMinor: 120_000,
       isScenarioRestatement: true,
     });
+    expect(networkFetch).not.toHaveBeenCalled();
   });
 });

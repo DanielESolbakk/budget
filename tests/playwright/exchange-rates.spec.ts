@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { _electron as electron, type Locator, type Page } from "@playwright/test";
 import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
+import { installMainProcessFetchProbe, mainProcessFetchRequests } from "./helpers/networkProbe.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -92,8 +93,14 @@ test.describe("local dated exchange-rate workflow", () => {
       },
     });
 
+    const rendererRequests: string[] = [];
     try {
+      await installMainProcessFetchProbe(ratesApp);
       const window = await ratesApp.firstWindow();
+      await window.route(/^https?:\/\//, async (route) => {
+        rendererRequests.push(route.request().url());
+        await route.abort();
+      });
       await window.waitForLoadState("domcontentloaded");
       await window.setViewportSize({ width: 1280, height: 800 });
       const settingsButton = window.getByRole("button", { name: "Settings" });
@@ -221,6 +228,8 @@ test.describe("local dated exchange-rate workflow", () => {
         document.documentElement.scrollWidth > document.documentElement.clientWidth
       );
       expect(horizontalOverflow).toBe(false);
+      expect(rendererRequests).toEqual([]);
+      expect(await mainProcessFetchRequests(ratesApp)).toEqual([]);
     } finally {
       await ratesApp.close();
     }
