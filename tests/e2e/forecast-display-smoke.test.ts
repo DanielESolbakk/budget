@@ -40,6 +40,6 @@ describe("forecast display smoke", () => {
       React.createElement(ForecastSection, { dashboardData: fallbackData })
     );
 
-    expect(markup).toContain("Insufficient history");
+    expect(markup).toContain("Not enough recorded months yet; showing a zero-value fallback estimate.");
   });
 });

@@ -283,6 +283,11 @@ test.describe("account statement coverage and checkpoints", () => {
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     const statementForm = coverage.locator('form[aria-label="Record statement coverage"]');
     const checkpointForm = coverage.locator('form[aria-label="Add balance checkpoint"]');
+    await expect(statementForm).toBeVisible();
+    await expect(checkpointForm).toBeVisible();
+    await expect.poll(async () =>
+      statementForm.evaluate((form) => getComputedStyle(form).gridTemplateColumns.split(" ").length)
+    ).toBe(2);
     const statementBounds = await statementForm.boundingBox();
     const checkpointBounds = await checkpointForm.boundingBox();
 
