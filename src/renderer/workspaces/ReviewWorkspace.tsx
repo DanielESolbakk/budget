@@ -5,7 +5,6 @@ import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySect
 import { ForecastSection } from "../dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "../dashboard/MonthlyTotalsSection.js";
 import { TargetVsActualSection } from "../dashboard/TargetVsActualSection.js";
-import { AccountCoverageSection } from "../dashboard/AccountCoverageSection.js";
 import type { ReviewState } from "./types.js";
 
 const monthFormatter = new Intl.DateTimeFormat("nb-NO", {
@@ -35,6 +34,7 @@ interface ReviewWorkspaceProps {
   refreshError: string | null;
   onMonthChange: (yearMonth: string) => void;
   onOpenTransactions: () => void;
+  onOpenCoverage: () => void;
   onRetry: () => void;
 }
 
@@ -47,6 +47,7 @@ export function ReviewWorkspace({
   refreshError,
   onMonthChange,
   onOpenTransactions,
+  onOpenCoverage,
   onRetry,
 }: ReviewWorkspaceProps): React.JSX.Element {
   const viewContract: DashboardViewContract | null = state.status === "ready" ? state.viewContract : null;
@@ -161,7 +162,15 @@ export function ReviewWorkspace({
               <ForecastSection dashboardData={state.dashboardData} />
             </aside>
           </div>
-          {isActive && <AccountCoverageSection />}
+          {isActive && (
+            <section className="account-coverage-quicklink" aria-label="Account coverage quick link">
+              <div>
+                <h3>Account coverage</h3>
+                <p>Review statement periods and reconcile dated balances before relying on account trends.</p>
+              </div>
+              <button type="button" onClick={onOpenCoverage}>Review account coverage</button>
+            </section>
+          )}
         </>
       )}
     </section>

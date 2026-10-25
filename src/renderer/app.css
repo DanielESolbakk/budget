@@ -2406,6 +2406,38 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   min-width: 0;
 }
 
+section.account-coverage-quicklink[aria-label] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--panel);
+}
+
+.account-coverage-quicklink h3,
+.account-coverage-quicklink p {
+  margin: 0;
+}
+
+.account-coverage-quicklink h3 {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.15rem;
+}
+
+.account-coverage-quicklink p {
+  max-width: 65ch;
+  margin-top: 0.3rem;
+  color: var(--paper-muted);
+  line-height: 1.45;
+}
+
+.account-coverage-quicklink button {
+  flex: 0 0 auto;
+}
+
 .account-coverage-section,
 .exchange-rates-section {
   display: grid;
@@ -2417,6 +2449,7 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
 .account-coverage-forms {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 1rem;
 }
 
@@ -2432,18 +2465,107 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   background: var(--panel-raised);
 }
 
+.account-coverage-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-coverage-form-heading {
+  grid-column: 1 / -1;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.65rem;
+}
+
+.account-coverage-form-heading h3,
+.account-coverage-form-heading p {
+  margin: 0;
+}
+
+.account-coverage-form-heading h3 {
+  color: var(--paper);
+  font-size: 1rem;
+}
+
+.account-coverage-form-heading p {
+  margin-top: 0.25rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+}
+
+.account-coverage-form > label:first-of-type,
+.account-coverage-form > button,
+.account-coverage-form > p {
+  grid-column: 1 / -1;
+}
+
+.account-coverage-form > p {
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.account-coverage-form > button {
+  justify-self: start;
+}
+
+.account-coverage-account-context strong {
+  color: var(--paper);
+}
+
+.account-coverage-message {
+  margin: 0;
+  border: 1px solid var(--line);
+  padding: 0.65rem 0.8rem;
+}
+
+.account-coverage-section .account-coverage-message.is-error,
+.exchange-rates-section .exchange-rate-message.is-error {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.account-coverage-section .account-coverage-message.is-success,
+.exchange-rates-section .exchange-rate-message.is-success {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.account-coverage-list-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.5rem;
+}
+
+.account-coverage-list-heading h3 {
+  margin: 0;
+  color: var(--paper);
+  font-size: 1rem;
+}
+
+.account-coverage-list-heading span {
+  color: var(--paper-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
 .account-coverage-period-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 0.75rem;
   min-width: 0;
 }
 
 .account-coverage-period {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.65rem;
   min-width: 0;
   border: 1px solid var(--line-strong);
-  padding: 0.8rem;
+  padding: 0.9rem;
+  background: var(--panel-soft);
 }
 
 .account-coverage-period legend {
@@ -2457,8 +2579,116 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   margin: 0;
 }
 
+.account-coverage-statuses {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.account-coverage-statuses p {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 0.45rem;
+  font-size: 0.78rem;
+}
+
+.account-coverage-statuses strong {
+  color: var(--paper);
+}
+
+.account-coverage-statuses .coverage-status.is-confirmed strong,
+.account-coverage-statuses .checkpoint-status.is-confirmed strong {
+  color: var(--success);
+}
+
+.account-coverage-statuses .coverage-status.is-unknown strong,
+.account-coverage-statuses .checkpoint-status.is-missing strong,
+.account-coverage-statuses .checkpoint-status.is-stale strong,
+.account-coverage-statuses .checkpoint-status.is-mismatch strong {
+  color: var(--error);
+}
+
+.account-coverage-period-description {
+  color: var(--paper-muted);
+  font-size: 0.85rem;
+}
+
+.account-coverage-difference strong {
+  color: var(--paper);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-coverage-provenance {
+  border-top: 1px solid var(--line);
+  padding-top: 0.55rem;
+}
+
+.account-coverage-provenance p + p {
+  margin-top: 0.3rem;
+}
+
+.account-coverage-provenance strong,
+.account-coverage-provenance code {
+  color: var(--paper);
+  overflow-wrap: anywhere;
+}
+
+.account-coverage-provenance code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.75rem;
+}
+
 .account-coverage-period ul {
-  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.4rem;
+  border-top: 1px solid var(--line);
+  padding: 0.65rem 0 0 1.2rem;
+}
+
+.account-coverage-period li {
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.account-coverage-period li strong {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-coverage-period li time {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.exchange-rate-entry {
+  display: grid;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+}
+
+.exchange-rate-subheading h3,
+.exchange-rate-subheading p {
+  margin: 0;
+}
+
+.exchange-rate-subheading h3 {
+  color: var(--paper);
+  font-size: 1rem;
+}
+
+.exchange-rate-subheading p {
+  max-width: 70ch;
+  margin-top: 0.25rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .exchange-rate-form {
@@ -2470,36 +2700,196 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   justify-self: start;
 }
 
-.saved-exchange-rates ul,
-.converted-monthly-report ul {
+.saved-exchange-rates,
+.monthly-reference-selection,
+.converted-monthly-report {
+  min-width: 0;
+}
+
+.exchange-rates-section section[aria-label] {
+  overflow: visible;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.saved-exchange-rates {
   display: grid;
-  gap: 0.4rem;
-  margin: 0;
-  padding-left: 1.25rem;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+}
+
+.saved-rate-table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.saved-exchange-rates table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.saved-exchange-rates th,
+.saved-exchange-rates td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.6rem 0.65rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.saved-exchange-rates th {
+  white-space: nowrap;
+}
+
+.saved-exchange-rates td {
+  color: var(--paper);
+  font-size: 0.88rem;
+}
+
+.saved-exchange-rates .financial-value,
+.saved-exchange-rates time {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.saved-exchange-rates td small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--paper-muted);
+  font-size: 0.7rem;
 }
 
 .monthly-reference-selection {
   display: grid;
   gap: 0.6rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
 }
 
-.monthly-reference-selection label,
-.converted-report-form label {
+.monthly-reference-selection label {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.45rem 0;
+  color: var(--paper-muted);
+}
+
+.monthly-reference-selection input[type="checkbox"],
+.latest-rate-scenario-toggle input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  accent-color: var(--orange);
+}
+
+.converted-report-form {
+  grid-template-columns: minmax(9rem, 0.45fr) minmax(15rem, 1fr) auto;
+  align-items: end;
+}
+
+.converted-report-form > label:first-child {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.converted-report-form .latest-rate-scenario-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  color: var(--paper);
+}
+
+.latest-rate-scenario-toggle strong,
+.latest-rate-scenario-toggle small {
+  display: block;
+}
+
+.latest-rate-scenario-toggle small {
+  margin-top: 0.2rem;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .converted-monthly-report {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.85rem;
   min-width: 0;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 1rem;
 }
 
-.converted-monthly-report h3,
-.converted-monthly-report h4 {
+.converted-report-heading h3,
+.converted-report-heading p,
+.native-currency-subtotals h4 {
   margin: 0;
+}
+
+.converted-report-heading p {
+  margin-top: 0.25rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+}
+
+.native-currency-subtotals {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.native-currency-subtotals dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.native-currency-subtotals dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.45rem 0;
+}
+
+.native-currency-subtotals dt {
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.native-currency-subtotals dd {
+  margin: 0;
+  color: var(--paper);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.converted-report-status {
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  padding: 0.7rem 0.8rem;
+  line-height: 1.45;
+}
+
+.converted-report-status.is-complete {
+  color: var(--success);
+}
+
+.converted-report-status.is-incomplete {
+  color: var(--error);
+}
+
+.converted-monthly-report ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .converted-monthly-report [role="group"] {
@@ -2510,16 +2900,54 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   padding: 0.65rem 0;
 }
 
+.converted-monthly-report [role="group"] h4,
+.converted-monthly-report [role="group"] p {
+  margin: 0;
+}
+
+.converted-monthly-report [role="group"] p {
+  line-height: 1.45;
+}
+
+.converted-monthly-report .scenario-amount {
+  color: var(--info);
+}
+
 .transaction-allocation-editor {
   display: grid;
-  gap: 0.65rem;
-  min-width: min(60rem, calc(100vw - 4rem));
-  padding: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  gap: 0.8rem;
+  padding: 0.85rem;
+  background: var(--panel-soft);
 }
 
 .transaction-allocation-editor h3,
 .transaction-allocation-editor p {
   margin: 0;
+}
+
+.transaction-allocation-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  border: 1px solid var(--line);
+  padding: 0.65rem;
+}
+
+.transaction-allocation-summary p {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.75rem;
+}
+
+.transaction-allocation-summary strong {
+  color: var(--paper);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .transaction-allocation-rows {
@@ -2538,6 +2966,19 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+
+.transaction-allocation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.transaction-allocation-actions [role="alert"] {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--error);
 }
 
 .review-primary {
@@ -3317,7 +3758,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
   .primary-navigation {
     position: static;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .review-grid {
@@ -3326,6 +3767,10 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
   .account-coverage-forms,
   .exchange-rate-form {
+    grid-template-columns: 1fr;
+  }
+
+  .account-coverage-period-list {
     grid-template-columns: 1fr;
   }
 
@@ -3396,7 +3841,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   .primary-navigation {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.2rem;
   }
 
@@ -3452,6 +3897,92 @@ section[aria-label="Category Target Entry"] [role="status"] {
   .review-intro > div:first-child {
     min-width: 0;
     flex: 1 1 0;
+  }
+
+  section.account-coverage-quicklink[aria-label] {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .account-coverage-form,
+  .exchange-rate-form,
+  .converted-report-form {
+    grid-template-columns: 1fr;
+  }
+
+  .account-coverage-form > label:first-of-type,
+  .account-coverage-form > button,
+  .account-coverage-form > p {
+    grid-column: auto;
+  }
+
+  .account-coverage-form-heading {
+    grid-column: auto;
+  }
+
+  .account-coverage-statuses {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-allocation-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .saved-rate-table-scroll {
+    overflow: visible;
+  }
+
+  .saved-exchange-rates table,
+  .saved-exchange-rates tbody,
+  .saved-exchange-rates tr,
+  .saved-exchange-rates td {
+    display: block;
+    width: 100%;
+  }
+
+  .saved-exchange-rates thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .saved-exchange-rates tbody {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .saved-exchange-rates tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 0.75rem;
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.25rem 0 0.55rem;
+  }
+
+  .saved-exchange-rates td {
+    display: grid;
+    gap: 0.15rem;
+    border: 0;
+    padding: 0.45rem 0;
+    overflow-wrap: anywhere;
+  }
+
+  .saved-exchange-rates td::before {
+    content: attr(data-label);
+    color: var(--paper-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .saved-exchange-rates td[data-label="Effective date"],
+  .saved-exchange-rates td[data-label="Source"] {
+    grid-column: 1 / -1;
   }
 
   .review-intro .intro-copy {

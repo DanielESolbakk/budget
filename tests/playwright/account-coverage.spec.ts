@@ -237,6 +237,44 @@ async function tabTo(window: Page, target: Locator): Promise<void> {
 }
 
 test.describe("account statement coverage and checkpoints", () => {
+  test("keeps monthly review focused and opens coverage from its dedicated entry point", async ({
+    window,
+  }) => {
+    await window.setViewportSize({ width: 390, height: 844 });
+    const coverage = window.getByRole("region", { name: "Account statement coverage" });
+    await expect(coverage).not.toBeVisible();
+
+    await window.getByRole("button", { name: "Review account coverage", exact: true }).click();
+    await expect(coverage).toBeVisible();
+
+    const navigation = window.getByRole("navigation", { name: "Primary" });
+    const navigationRows = await navigation.locator("button").evaluateAll((buttons) =>
+      [...new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top)))]
+    );
+    expect(navigationRows).toHaveLength(2);
+  });
+
+  test("@visual Visual: coverage workspace is composed for desktop and compact windows", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Coverage");
+    const coverage = window.getByRole("region", { name: "Account statement coverage" });
+    await expect(coverage).toContainText("No statement periods recorded.");
+
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await expect(window).toHaveScreenshot("account-coverage-desktop.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect(window).toHaveScreenshot("account-coverage-mobile.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+  });
+
   test("records imported statement provenance and displays an exact account reconciliation", async ({
     databasePath,
     electronApp,
@@ -255,6 +293,7 @@ test.describe("account statement coverage and checkpoints", () => {
     try {
       const window = await coverageApp.firstWindow();
       await window.waitForLoadState("domcontentloaded");
+      await window.getByRole("button", { name: "Coverage", exact: true }).click();
       const coverage = window.getByRole("region", { name: "Account statement coverage" });
       const accountSelect = coverage.getByLabel("Coverage account");
       await expect(accountSelect).toHaveValue("sample-acc");
@@ -298,6 +337,7 @@ test.describe("account statement coverage and checkpoints", () => {
   });
 
   test("keeps an empty unconfirmed period unknown until the user confirms it", async ({ window }) => {
+    await window.getByRole("button", { name: "Coverage", exact: true }).click();
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await expect(coverage).toBeVisible();
     await coverage.getByLabel("Coverage account").selectOption("sample-acc");
@@ -319,6 +359,7 @@ test.describe("account statement coverage and checkpoints", () => {
     window,
   }) => {
     await window.setViewportSize({ width: 1280, height: 800 });
+    await window.getByRole("button", { name: "Coverage", exact: true }).click();
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await coverage.getByLabel("Coverage account").selectOption("sample-acc");
     await expect(coverage.getByLabel("Coverage account")).toContainText("Brukskonto (NOK)");
@@ -340,9 +381,9 @@ test.describe("account statement coverage and checkpoints", () => {
     await coverage.getByRole("button", { name: "Save balance checkpoint" }).click();
     await expect(period).toContainText(/Difference:\s*NOK\s*5,00/);
     const checkpointHistory = period.getByRole("list", { name: "Balance checkpoint history" });
-    await expect(checkpointHistory).toContainText("2026-03-01");
+    await expect(checkpointHistory.locator('time[datetime="2026-03-01"]')).toBeVisible();
     await expect(checkpointHistory).toContainText("Synthetic opening balance");
-    await expect(checkpointHistory).toContainText("2026-03-31");
+    await expect(checkpointHistory.locator('time[datetime="2026-03-31"]')).toBeVisible();
     await expect(checkpointHistory).toContainText("Synthetic closing balance");
 
     await window.setViewportSize({ width: 390, height: 844 });
@@ -371,6 +412,7 @@ test.describe("account statement coverage and checkpoints", () => {
     try {
       const window = await coverageApp.firstWindow();
       await window.waitForLoadState("domcontentloaded");
+      await window.getByRole("button", { name: "Coverage", exact: true }).click();
       const coverage = window.getByRole("region", { name: "Account statement coverage" });
 
       const overlappingPeriod = coverage.getByRole("group", {
@@ -424,6 +466,7 @@ test.describe("account statement coverage and checkpoints", () => {
     try {
       const window = await coverageApp.firstWindow();
       await window.waitForLoadState("domcontentloaded");
+      await window.getByRole("button", { name: "Coverage", exact: true }).click();
       const coverage = window.getByRole("region", { name: "Account statement coverage" });
       const focusTargets = [
         coverage.getByLabel("Statement start date"),
@@ -500,6 +543,7 @@ test.describe("account statement coverage and checkpoints", () => {
     window.on("request", onRequest);
     await installMainProcessFetchProbe(electronApp);
 
+    await window.getByRole("button", { name: "Coverage", exact: true }).click();
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await coverage.getByLabel("Coverage account").selectOption("sample-acc");
     await coverage.getByLabel("Statement start date").fill("2026-03-01");
@@ -536,6 +580,7 @@ test.describe("account statement coverage and checkpoints", () => {
       restartedWindow = await restartedApp.firstWindow();
       restartedWindow.on("request", onRequest);
       await restartedWindow.waitForLoadState("domcontentloaded");
+      await restartedWindow.getByRole("button", { name: "Coverage", exact: true }).click();
       const restartedCoverage = restartedWindow.getByRole("region", {
         name: "Account statement coverage",
       });
@@ -551,9 +596,9 @@ test.describe("account statement coverage and checkpoints", () => {
       const restartedHistory = restartedPeriod.getByRole("list", {
         name: "Balance checkpoint history",
       });
-      await expect(restartedHistory).toContainText("2026-03-01");
+      await expect(restartedHistory.locator('time[datetime="2026-03-01"]')).toBeVisible();
       await expect(restartedHistory).toContainText("Synthetic opening balance");
-      await expect(restartedHistory).toContainText("2026-03-31");
+      await expect(restartedHistory.locator('time[datetime="2026-03-31"]')).toBeVisible();
       await expect(restartedHistory).toContainText("Synthetic closing balance");
       expect(rendererRequests).toEqual([]);
       expect([

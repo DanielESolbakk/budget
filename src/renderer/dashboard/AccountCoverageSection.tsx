@@ -11,9 +11,19 @@ const amountFormatter = new Intl.NumberFormat("nb-NO", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+const dateFormatter = new Intl.DateTimeFormat("nb-NO", {
+  dateStyle: "long",
+  timeZone: "UTC",
+});
 
 function displayMinorAmount(amountMinor: number, currencyCode: string): string {
   return `${currencyCode} ${amountFormatter.format(amountMinor / 100)}`;
+}
+
+function displayDate(dateIso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateIso);
+  if (match === null) return dateIso;
+  return dateFormatter.format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))));
 }
 
 function parseAmountMinor(value: string): number | null {
@@ -211,12 +221,16 @@ export function AccountCoverageSection(): React.JSX.Element {
         <p>Record confirmed statement periods and dated balance checkpoints before relying on account trends.</p>
       </div>
 
-      {error !== null && <p role="alert">{error}</p>}
-      {statusMessage !== null && <p role="status">{statusMessage}</p>}
-      {isLoading && <p role="status">Loading account coverage...</p>}
+      {error !== null && <p className="account-coverage-message is-error" role="alert">{error}</p>}
+      {statusMessage !== null && <p className="account-coverage-message is-success" role="status">{statusMessage}</p>}
+      {isLoading && <p className="account-coverage-message" role="status">Loading account coverage...</p>}
 
       <div className="account-coverage-forms">
         <form className="account-coverage-form" aria-label="Record statement coverage" onSubmit={(event) => void saveCoveragePeriod(event)}>
+          <div className="account-coverage-form-heading">
+            <h3>Statement period</h3>
+            <p>Record the exact dates and source shown on the statement.</p>
+          </div>
           <label>
             Coverage account
             <select
@@ -286,6 +300,10 @@ export function AccountCoverageSection(): React.JSX.Element {
         </form>
 
         <form className="account-coverage-form" aria-label="Add balance checkpoint" onSubmit={(event) => void saveCheckpoint(event)}>
+          <div className="account-coverage-form-heading">
+            <h3>Balance checkpoint</h3>
+            <p>Keep opening and closing observations as dated history.</p>
+          </div>
           <label>
             Checkpoint date
             <input type="date" value={checkpointDateIso} onChange={(event) => setCheckpointDateIso(event.target.value)} />
@@ -304,16 +322,35 @@ export function AccountCoverageSection(): React.JSX.Element {
             <input value={checkpointSource} onChange={(event) => setCheckpointSource(event.target.value)} />
           </label>
           <p id="checkpoint-balance-hint">Enter the account balance in {selectedAccount?.currencyCode ?? "account currency"}.</p>
+          <p className="account-coverage-account-context">
+            Recording for <strong>{selectedAccount?.name ?? "the selected account"}</strong>
+            {selectedAccount === undefined ? "" : ` (${selectedAccount.currencyCode})`}
+          </p>
           <button type="submit" disabled={selectedAccountId === "" || isLoading}>
             Save balance checkpoint
           </button>
         </form>
       </div>
 
-      {data.periods.length === 0 && !isLoading && <p>No statement periods recorded.</p>}
+      {data.periods.length === 0 && !isLoading && (
+        <div className="empty-state">
+          <strong>No statement periods recorded.</strong>
+          <p>Start with a statement period, then add its opening and closing balance checkpoints.</p>
+        </div>
+      )}
+      {data.periods.length > 0 && (
+        <div className="account-coverage-list-heading">
+          <h3>Recorded statement periods</h3>
+          <span>{data.periods.length}</span>
+        </div>
+      )}
       <div className="account-coverage-period-list">
         {data.periods.map((period) => {
           const assessment = data.assessments.get(period.id);
+          const coverageStatus = assessment?.coverageStatus === "confirmed"
+            ? "Coverage confirmed"
+            : "Unknown";
+          const checkpointStatus = assessment?.checkpointStatus ?? "Loading";
           const periodCheckpoints = data.checkpoints.filter((checkpoint) =>
             checkpoint.accountId === period.accountId &&
             checkpoint.dateIso >= period.startDateIso &&
@@ -325,10 +362,19 @@ export function AccountCoverageSection(): React.JSX.Element {
               key={period.id}
               aria-label={`Coverage period ${period.startDateIso} to ${period.endDateIso}`}
             >
-              <legend>{period.startDateIso} to {period.endDateIso}</legend>
-              <p>Coverage status: {assessment?.coverageStatus === "confirmed" ? "Coverage confirmed" : "Unknown"}</p>
-              <p>
-                {assessment?.periodStatus === "empty"
+              <legend>{displayDate(period.startDateIso)} – {displayDate(period.endDateIso)}</legend>
+              <div className="account-coverage-statuses">
+                <p className={`coverage-status ${period.confirmed ? "is-confirmed" : "is-unknown"}`}>
+                  Coverage status: <strong>{coverageStatus}</strong>
+                </p>
+                <p className={`checkpoint-status is-${assessment?.checkpointStatus ?? "loading"}`}>
+                  Checkpoint status: <strong>{checkpointStatus}</strong>
+                </p>
+              </div>
+              <p className="account-coverage-period-description">
+                {assessment === undefined
+                  ? "Checking booked activity for this period."
+                  : assessment.periodStatus === "empty"
                   ? "No booked transactions in this period."
                   : assessment?.periodStatus === "overlapping"
                     ? "Overlapping statement period requires review."
@@ -336,21 +382,28 @@ export function AccountCoverageSection(): React.JSX.Element {
                       ? "Late-arriving import requires review."
                       : "Booked activity is present in this period."}
               </p>
-              <p>Checkpoint status: {assessment?.checkpointStatus ?? "Loading"}</p>
               {assessment?.differenceMinor !== null && assessment?.differenceMinor !== undefined && (
-                <p>Difference: {displayMinorAmount(assessment.differenceMinor, period.currencyCode)}</p>
+                <p className="account-coverage-difference">
+                  Difference: <strong>{displayMinorAmount(assessment.differenceMinor, period.currencyCode)}</strong>
+                </p>
               )}
-              <p>Source: {period.sourceName} ({period.sourceType})</p>
-              {period.importJobId !== undefined && <p>Import job: {period.importJobId}</p>}
+              <div className="account-coverage-provenance">
+                <p>Source: <strong>{period.sourceName}</strong> ({period.sourceType})</p>
+                {period.importJobId !== undefined && <p>Import job: <code>{period.importJobId}</code></p>}
+              </div>
               {!period.confirmed && (
-                <button type="button" onClick={() => void confirmPeriod(period)}>
+                <button className="action-secondary" type="button" onClick={() => void confirmPeriod(period)}>
                   Confirm coverage
                 </button>
               )}
               <ul aria-label="Balance checkpoint history">
                 {periodCheckpoints.map((checkpoint) => (
                   <li key={checkpoint.id}>
-                    {checkpoint.dateIso}: {displayMinorAmount(checkpoint.balanceMinor, checkpoint.currencyCode)} — {checkpoint.source}
+                    <time dateTime={checkpoint.dateIso}>{displayDate(checkpoint.dateIso)}</time>
+                    {" — "}
+                    <strong>{displayMinorAmount(checkpoint.balanceMinor, checkpoint.currencyCode)}</strong>
+                    {" — "}
+                    {checkpoint.source}
                   </li>
                 ))}
               </ul>

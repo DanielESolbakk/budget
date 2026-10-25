@@ -31,6 +31,7 @@ export function ExchangeRatesSection(): React.JSX.Element {
   const [useLatestRateScenario, setUseLatestRateScenario] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
+  const [isBuildingReport, setIsBuildingReport] = React.useState(false);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -126,6 +127,7 @@ export function ExchangeRatesSection(): React.JSX.Element {
     event.preventDefault();
     setError(null);
     setStatusMessage(null);
+    setIsBuildingReport(true);
     try {
       const request = {
         yearMonth: reportMonth,
@@ -143,6 +145,8 @@ export function ExchangeRatesSection(): React.JSX.Element {
         : null);
     } catch (reportError: unknown) {
       setError(errorMessage(reportError, "Unable to build the converted monthly report."));
+    } finally {
+      setIsBuildingReport(false);
     }
   }
 
@@ -150,16 +154,25 @@ export function ExchangeRatesSection(): React.JSX.Element {
   const reportCurrencies = report?.nativeSubtotals.map((subtotal) => subtotal.currencyCode) ?? [];
 
   return (
-    <section className="exchange-rates-section" aria-label="Exchange rates" aria-busy={isLoading || isSaving}>
+    <section
+      className="exchange-rates-section"
+      aria-label="Exchange rates"
+      aria-busy={isLoading || isSaving || isBuildingReport}
+    >
       <div className="section-heading">
         <h2>Local exchange rates</h2>
         <p>Record or import dated NOK rates. Native amounts remain unchanged; no rates are fetched online.</p>
       </div>
 
-      {error !== null && <p role="alert">{error}</p>}
-      {statusMessage !== null && <p role="status">{statusMessage}</p>}
-      {isLoading && <p role="status">Loading local exchange rates...</p>}
+      {error !== null && <p className="exchange-rate-message is-error" role="alert">{error}</p>}
+      {statusMessage !== null && <p className="exchange-rate-message is-success" role="status">{statusMessage}</p>}
+      {isLoading && <p className="exchange-rate-message" role="status">Loading local exchange rates...</p>}
 
+      <div className="exchange-rate-entry">
+        <div className="exchange-rate-subheading">
+          <h3>Maintain the local rate list</h3>
+          <p>Use a rate from the transaction date. Monthly reference rates stay estimates until you select them.</p>
+        </div>
       <form className="exchange-rate-form" aria-label="Record exchange rate" onSubmit={(event) => void saveRate(event)}>
         <label>
           Rate currency
@@ -195,31 +208,61 @@ export function ExchangeRatesSection(): React.JSX.Element {
           <input value={source} onChange={(event) => setSource(event.target.value)} />
         </label>
         <button type="submit" disabled={isSaving}>Save local exchange rate</button>
-        <button type="button" onClick={() => void importRates()} disabled={isSaving}>
+        <button className="action-secondary" type="button" onClick={() => void importRates()} disabled={isSaving}>
           Import local rate CSV
         </button>
       </form>
+      </div>
 
       <section className="saved-exchange-rates" aria-label="Saved local exchange rates">
-        <h3>Saved rates</h3>
+        <div className="exchange-rate-subheading">
+          <h3>Saved rates</h3>
+          <p>Each row keeps its source and effective date with the NOK-per-unit value.</p>
+        </div>
         {rates.length === 0 ? (
-          <p>No local exchange rates recorded.</p>
+          <div className="empty-state">
+            <strong>No local exchange rates recorded.</strong>
+            <p>Add a rate above or import a local CSV to build a converted report.</p>
+          </div>
         ) : (
-          <ul>
-            {rates.map((rate) => (
-              <li key={rate.id}>
-                {rate.currencyCode} {rate.rateNokPerUnit} NOK per unit, effective {rate.effectiveDate}
-                {" — "}{rate.source} ({rate.provenance === "local-file" ? "local file" : "manual"})
-                {rate.kind === "monthly-reference" ? " — estimate" : ""}
-              </li>
-            ))}
-          </ul>
+          <div className="saved-rate-table-scroll">
+            <table aria-label="Saved local exchange rates">
+              <thead>
+                <tr>
+                  <th scope="col">Currency</th>
+                  <th scope="col">NOK per unit</th>
+                  <th scope="col">Effective date</th>
+                  <th scope="col">Rate type</th>
+                  <th scope="col">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rates.map((rate) => (
+                  <tr key={rate.id}>
+                    <td data-label="Currency">{rate.currencyCode}</td>
+                    <td data-label="NOK per unit" className="financial-value">{rate.rateNokPerUnit}</td>
+                    <td data-label="Effective date"><time dateTime={rate.effectiveDate}>{rate.effectiveDate}</time></td>
+                    <td data-label="Rate type">
+                      {rate.kind === "monthly-reference" ? "Monthly estimate" : "Dated actual"}
+                    </td>
+                    <td data-label="Source">
+                      <span>{rate.source}</span>
+                      <small>{rate.provenance === "local-file" ? "Local file" : "Manual"}</small>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
       {monthlyReferenceRates.length > 0 && (
         <section className="monthly-reference-selection" aria-label="Monthly reference rate selection">
-          <h3>Explicit monthly estimates</h3>
+          <div className="exchange-rate-subheading">
+            <h3>Monthly reference estimates</h3>
+            <p>Select an estimate only for the currency and month where it should be used.</p>
+          </div>
           {monthlyReferenceRates.map((rate) => (
             <label key={rate.id}>
               Use monthly estimate for {rate.currencyCode} ({rate.effectiveDate})
@@ -240,13 +283,16 @@ export function ExchangeRatesSection(): React.JSX.Element {
         </section>
       )}
 
+      <div className="exchange-rate-subheading">
+        <h3>Convert a month</h3>
+        <p>Historical totals use transaction-date rates; the latest-rate scenario is shown separately.</p>
+      </div>
       <form className="converted-report-form" aria-label="Converted monthly report request" onSubmit={(event) => void loadReport(event)}>
         <label>
           Report month
           <input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
         </label>
-        <label>
-          Use latest rate scenario
+        <label className="latest-rate-scenario-toggle">
           <input
             type="checkbox"
             checked={useLatestRateScenario}
@@ -271,31 +317,43 @@ export function ExchangeRatesSection(): React.JSX.Element {
                 });
             }}
           />
-          <span>Scenario only; historical actual reporting does not change.</span>
+          <span>
+            <strong>Use latest rate scenario</strong>
+            <small>Scenario only. Historical actuals do not change.</small>
+          </span>
         </label>
-        <button type="submit">Load converted report</button>
+        <button type="submit" disabled={isBuildingReport}>
+          {isBuildingReport ? "Building report..." : "Load converted report"}
+        </button>
       </form>
+      {isBuildingReport && <p className="exchange-rate-message" role="status">Building the converted monthly report...</p>}
 
       {report !== null && (
         <section className="converted-monthly-report" aria-label="Converted monthly report">
-          <h3>Converted report for {report.yearMonth}</h3>
-          <section aria-label="Native currency subtotals">
+          <div className="converted-report-heading">
+            <h3>Converted report for {report.yearMonth}</h3>
+            <p>Native amounts remain visible beside the transaction-date NOK conversion.</p>
+          </div>
+          <div className="native-currency-subtotals" role="group" aria-label="Native currency subtotals">
             <h4>Native-currency subtotals</h4>
-            <ul>
+            <dl>
               {report.nativeSubtotals.map((subtotal) => (
-                <li key={subtotal.currencyCode}>
-                  {formatMinor(subtotal.totalMinor, subtotal.currencyCode)}
-                </li>
+                <div key={subtotal.currencyCode}>
+                  <dt>{subtotal.currencyCode}</dt>
+                  <dd>{formatMinor(subtotal.totalMinor, subtotal.currencyCode)}</dd>
+                </div>
               ))}
-            </ul>
-          </section>
+            </dl>
+          </div>
           {report.nokSubtotalMinor === null ? (
-            <p role="status">
+            <p className="converted-report-status is-incomplete" role="status">
               NOK subtotal incomplete. Missing rates: {report.incompleteCurrencies.join(", ")}.
               Partial converted subtotal: {formatMinor(report.partialNokSubtotalMinor, "NOK")}.
             </p>
           ) : (
-            <p>NOK subtotal: {formatMinor(report.nokSubtotalMinor, "NOK")}</p>
+            <p className="converted-report-status is-complete" role="status">
+              NOK subtotal: {formatMinor(report.nokSubtotalMinor, "NOK")}
+            </p>
           )}
           <ul aria-label="Converted transaction amounts">
             {report.transactions.map((item) => {
@@ -321,7 +379,7 @@ export function ExchangeRatesSection(): React.JSX.Element {
                       </p>
                     )}
                     {scenarioItem?.nokAmountMinor !== null && scenarioItem !== undefined && (
-                      <p>Scenario NOK {formatMinor(scenarioItem.nokAmountMinor, "NOK").replace(/^NOK\s*/, "")}</p>
+                      <p className="scenario-amount">Scenario NOK {formatMinor(scenarioItem.nokAmountMinor, "NOK").replace(/^NOK\s*/, "")}</p>
                     )}
                   </section>
                 </li>

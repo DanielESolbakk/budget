@@ -40,22 +40,39 @@ export function TransactionAllocationEditor({
     <section
       className="transaction-allocation-editor"
       aria-label={`Transaction category allocations for ${transaction.merchantRaw}`}
+      aria-describedby={error === null ? undefined : "transaction-allocation-error"}
     >
       <h3>Split {transaction.merchantRaw} across categories</h3>
-      <p>
-        Source transaction: {currencyFormatter.format(transaction.amountMinor / 100)}
-      </p>
-      <p>
-        Allocation total: {totalMinor === null
-          ? "Incomplete"
-          : currencyFormatter.format(totalMinor / 100)}
-        {totalMinor === null
-          ? ""
-          : `; remaining ${currencyFormatter.format((transaction.amountMinor - totalMinor) / 100)}`}
-      </p>
+      <div className="transaction-allocation-summary">
+        <p>
+          Source transaction:
+          <strong>{currencyFormatter.format(transaction.amountMinor / 100)}</strong>
+        </p>
+        <p>
+          Allocation total:
+          <strong>
+            {totalMinor === null
+              ? "Incomplete"
+              : currencyFormatter.format(totalMinor / 100)}
+          </strong>
+        </p>
+        <p>
+          Remaining to allocate:
+          <strong>
+            {totalMinor === null
+              ? "Incomplete"
+              : currencyFormatter.format((transaction.amountMinor - totalMinor) / 100)}
+          </strong>
+        </p>
+      </div>
       <div className="transaction-allocation-rows">
         {allocations.map((allocation, index) => (
-          <div className="transaction-allocation-row" key={`${transaction.id}-${index}`}>
+          <div
+            className="transaction-allocation-row"
+            key={`${transaction.id}-${index}`}
+            role="group"
+            aria-label={`Allocation ${index + 1}`}
+          >
             <label>
               Allocation category {index + 1}
               <select
@@ -81,6 +98,7 @@ export function TransactionAllocationEditor({
             <div className="transaction-allocation-row-actions">
               <button
                 type="button"
+                className="action-secondary"
                 aria-label={`Move allocation ${index + 1} up`}
                 disabled={index === 0}
                 onClick={() => onMove(index, -1)}
@@ -89,6 +107,7 @@ export function TransactionAllocationEditor({
               </button>
               <button
                 type="button"
+                className="action-secondary"
                 aria-label={`Move allocation ${index + 1} down`}
                 disabled={index === allocations.length - 1}
                 onClick={() => onMove(index, 1)}
@@ -98,6 +117,7 @@ export function TransactionAllocationEditor({
               {allocations.length > 2 && (
                 <button
                   type="button"
+                  className="action-secondary"
                   aria-label={`Remove allocation ${index + 1}`}
                   onClick={() => onRemove(index)}
                 >
@@ -108,12 +128,16 @@ export function TransactionAllocationEditor({
           </div>
         ))}
       </div>
-      <button type="button" onClick={onAdd}>Add allocation</button>
-      {error !== null && <p role="alert">{error}</p>}
-      <button type="button" onClick={onSave}>
-        Save allocations for {transaction.merchantRaw}
-      </button>
-      <button type="button" onClick={onCancel}>Cancel allocation editing</button>
+      <div className="transaction-allocation-actions">
+        <button className="action-secondary" type="button" onClick={onAdd}>Add allocation</button>
+        {error !== null && <p id="transaction-allocation-error" role="alert">{error}</p>}
+        <button type="button" onClick={onSave}>
+          Save allocations for {transaction.merchantRaw}
+        </button>
+        <button className="action-secondary" type="button" onClick={onCancel}>
+          Cancel allocation editing
+        </button>
+      </div>
     </section>
   );
 }

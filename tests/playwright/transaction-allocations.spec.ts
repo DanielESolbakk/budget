@@ -36,6 +36,49 @@ test.describe("transaction category allocations", () => {
       .toBeVisible();
   });
 
+  test("shows the remaining amount separately from the allocation total", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+
+    const allocationEditor = window.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    await expect(allocationEditor.getByText(/Allocation total:/))
+      .toContainText(/72,00\s*kr/);
+    await expect(allocationEditor.getByText(/Remaining to allocate:/))
+      .toContainText(/0,00\s*kr/);
+  });
+
+  test("@visual Visual: allocation balance summary fits desktop and compact windows", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    const allocationEditor = window.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    await expect(allocationEditor.getByText(/Remaining to allocate:/))
+      .toContainText(/0,00\s*kr/);
+
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-desktop.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-mobile.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+  });
+
   test("announces an invalid sum and preserves the previous allocations", async ({
     appShell,
     window,

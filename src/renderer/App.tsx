@@ -9,6 +9,7 @@ import { ImportWorkspace } from "./workspaces/ImportWorkspace.js";
 import { PendingTransactionsWorkspace } from "./workspaces/PendingTransactionsWorkspace.js";
 import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
 import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
+import { AccountCoverageSection } from "./dashboard/AccountCoverageSection.js";
 import { ExchangeRatesSection } from "./settings/ExchangeRatesSection.js";
 import { HouseholdSetup } from "./setup/HouseholdSetup.js";
 import { toLocalYearMonth } from "./localDate.js";
@@ -17,11 +18,12 @@ import type { ReviewState } from "./workspaces/types.js";
 const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
 type AppState = ReviewState;
 
-type WorkspaceId = "review" | "transactions" | "pending" | "import" | "data-safety" | "settings";
+type WorkspaceId = "review" | "transactions" | "coverage" | "pending" | "import" | "data-safety" | "settings";
 
 const WORKSPACES: Array<{ id: WorkspaceId; label: string; description: string }> = [
   { id: "review", label: "Review", description: "Monthly position" },
   { id: "transactions", label: "Transactions", description: "Ledger and corrections" },
+  { id: "coverage", label: "Coverage", description: "Statements and balances" },
   { id: "pending", label: "Pending", description: "Waiting to book" },
   { id: "import", label: "Import", description: "Bring in activity" },
   { id: "data-safety", label: "Data safety", description: "Backup and export" },
@@ -244,6 +246,7 @@ export function App(): React.JSX.Element {
             refreshError={refreshError}
             onMonthChange={handleMonthChange}
             onOpenTransactions={() => openWorkspace("transactions")}
+            onOpenCoverage={() => openWorkspace("coverage")}
             onRetry={() => setRefreshCounter((counter) => counter + 1)}
           />
           {visitedWorkspaces.has("transactions") && (
@@ -253,6 +256,15 @@ export function App(): React.JSX.Element {
               reviewQueueFocusRequest={reviewQueueFocusRequest}
               onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
             />
+          )}
+          {visitedWorkspaces.has("coverage") && (
+            <section
+              className="destination-workspace"
+              aria-label="Coverage workspace"
+              hidden={activeWorkspace !== "coverage"}
+            >
+              <AccountCoverageSection />
+            </section>
           )}
           {visitedWorkspaces.has("pending") && (
             <PendingTransactionsWorkspace
