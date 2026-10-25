@@ -44,7 +44,7 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 - [ ] The decision is based on changed functionality, contract, or runtime behavior (not preference).
 - [ ] If test issue is required, linked test issue verifies created functionality at the correct pyramid layer.
 - [ ] If test issue is not required, issue body contains no placeholder/conditional test language.
-- [ ] If the issue is itself a Test issue, it does not implicitly require missing product/runtime behavior under `src/`, `electron/`, `preload`, IPC handlers, or renderer wiring.
+- [ ] If the issue is itself a Test issue, all required product/runtime behavior is either available for assignment or explicitly tracked as implementation-issue blockers. A blocked planning record is allowed, but fails assignment readiness until those prerequisites exist.
 - [ ] Decision avoids "tests for tests sake" by tying verification to concrete risk.
 
 ---
@@ -102,6 +102,7 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 - [ ] If the issue type is Test, Technical Tasks are limited to test files, test-only helpers, or test harness work.
 - [ ] If new production behavior is required in `src/`, `electron/`, `preload`, IPC, or renderer modules, that work is linked to a story/enabler issue instead of being hidden in the Test issue.
 - [ ] Out Of Scope or Preconditions explicitly say the runtime/product path must already exist before the test issue is assigned.
+- [ ] Do not confuse this assignment gate with creation: concrete, blocked Test planning is permitted alongside an approved Story before product code exists; no coverage anchor or placeholder is needed.
 
 ---
 

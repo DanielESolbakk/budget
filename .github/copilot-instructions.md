@@ -5,7 +5,7 @@
 All code changes require pull requests via GitHub MCP tools:
 - Create feature branches for all work
 - Use `mcp_github_mcp_se_create_pull_request` to submit changes
-- Wait for human approval before merge (Git CLI unavailable; branch protection enforces server-side)
+- Wait for human approval before merge; branch protection enforces server-side rules.
 
 ## Product Intent
 
@@ -125,6 +125,15 @@ Avoid inventing near-duplicates for the same concept.
 - Playwright end-to-end (focused): critical user journeys only; cannot substitute for cheaper lower-layer tests.
 - Every Story/Feature must state coverage plan (unit/integration/Playwright); excluded layers must link follow-up issue.
 
+### Planning-First Test Lifecycle
+
+- Create concrete Test planning issues alongside an owner-approved Story or Enabler, before product implementation starts. Planning the tests does not require delivered or active product code.
+- Each Test issue must name its immediate implementation owner and parent AC IDs, own one test layer, specify at least two reproducible scenarios with expected results, identify sanitized/synthetic fixtures, list existing entry-point directories and explicit test-file creation tasks, and provide scoped validation commands.
+- Record missing product capabilities as explicit implementation-issue blockers and retain `needs-grooming`. Product implementation stays in the Story/Enabler, never hidden in a Test issue. Test issues may specify required future behavior without claiming it exists.
+- Creation, structural validation, assignment readiness, test execution, and passing evidence are separate states. A planned Test can exist while blocked; do not assign it with unresolved blockers or missing product prerequisites. New test files belong in creation tasks, not nonexistent implementation entry points.
+- TDD tests may be authored before or alongside the parent implementation, but expected red tests are not passing evidence or completion. Standalone Test assignment still requires its runtime/scaffolding prerequisites and all readiness gates.
+- Do not create coverage anchors, reserved scenarios, placeholder commands, empty triangle-completeness issues, or Tests for unapproved roadmap ideas. Reuse or repurpose existing matching issues before creating new ones.
+
 ## Playwright Implementation Policy
 
 - Canonical detailed contract: `.agents/skills/playwright-skill/SKILL.md`. Do not create a second Playwright rule set in issue bodies or other instruction files.
@@ -146,7 +155,7 @@ Avoid inventing near-duplicates for the same concept.
 
 ## Available Tooling
 
-- Prefer the GitHub MCP tools. Git CLI is unavailable and branch protection rules enforce server-side operations.
+- Prefer GitHub MCP for issue and pull-request operations. Check actual tool availability and authentication; do not assume Git CLI or Actions tools are unavailable. Local Git operations do not bypass server-side branch protection.
 
 ## Agent Instruction Entry Points
 
@@ -159,8 +168,19 @@ Avoid inventing near-duplicates for the same concept.
 - For PR AC mapping, default to the primary planning issue as the AC source unless the PR explicitly requests aggregate scope across additional planning issues. Describe in the "Acceptance Criteria to Test Mapping" section how this PR helps satisfy each AC from the linked issue. Format is free-form prose (not structured rows). Focus on clarity and completeness; manual reviewer verification will determine if coverage is adequate. You do not need to follow strict syntax rules, but ensure each AC is mentioned clearly. Mark at least one test command checkbox in "Test Evidence" to confirm validation was performed.
 - Permission mismatch can happen: an agent may be able to comment while being unable to edit issue/PR body fields. When this occurs, post one concise owner action checklist and stop repeating retries.
 - Avoid looped remediation comments. Repeat only when validation output changed, permissions changed, or new evidence was collected.
-- For MCP issue-update forms, fetch the current issue and populate its full title, body, and complete intended label set, even for a label-only change. A rendered form is not a saved edit; verify GitHub after submission. If an empty form is unusable, do not ask repeatedly for an impossible submission or cancellation. An owner-authorized replacement request must preserve the current content and be verified before continuing.
+- Follow the GitHub MCP Interactive Writes contract below for complete form payloads, pending-state reporting, replacement requests, and saved-state verification.
 - Determine available GitHub capabilities from the authenticated MCP tools, not browser sign-in or assumptions about tool names. Inspect actual validation results: a successful Actions run may still report issue-level planning failures.
+
+## GitHub MCP Interactive Writes
+
+1. **Read and prepare before writing.** Confirm repository, operation, target number, and current saved content. Check the selected tool really performs that operation: branch creation is not PR creation, and an existing issue needs update, not create. Complete prerequisites before the write; never run a create in parallel with its duplicate check or branch publication.
+2. **Populate the complete form.** For an issue update, send the freshly fetched full `title`, full `body`, and complete intended `labels`, even for a label-only change; preserve unrelated content and labels. For a PR, supply a non-empty title and the full repository-template body, plus the intended repository/base/head. Do not send partial, empty, or "pending publication" placeholder forms: a missing required field can disable the user's green submit button.
+3. **Verify a PR's remote head first.** Publish the intended commits, then read the remote branch/head commit and confirm it contains changes relative to the intended base. Check for an existing PR with that head/base before creating one. A local branch name alone is not sufficient; an unpublished/deleted head can produce `PullRequest.head (invalid)`.
+4. **Report the observed state, not assumed UI delivery.** `awaiting_user_submission` means an approval request is pending, not that GitHub changed or the user can see a usable form. Say "MCP returned a pending approval request; the GitHub change is not yet verified," not "I sent you the form" or "updated." Distinguish requested, pending, user-reported submission, and read-back-verified states.
+5. **Reconcile after submission or interruption.** Read the saved issue/PR and verify title, body, labels, branch, and hierarchy as applicable. An interrupted call has an unknown outcome, not automatic failure. A returned creation number is a successful create: reuse it and never replay that create. Before retrying an unknown create, reconcile matching records across open, closed, and merged states and verify the exact scope.
+6. **Recover an unusable update once, with authorization.** If the user reports an invisible/empty form or disabled button, acknowledge that report; do not insist that it is visible or require cancellation the UI does not offer. If the user explicitly authorizes a replacement update to a known issue/PR, fetch its current state, verify the original change is absent, then send one fully populated replacement for that same target. This is not permission to duplicate a non-idempotent create. Identify the replacement by target and tell the user to submit only the intended replacement, not older forms.
+7. **Stop only the affected write.** If the form remains unusable, record the exact blocked operation once and continue independent authorized work. Do not repeatedly ask for the same impossible submit/cancel action, bypass approval, manufacture alternate empty forms, or claim all MCP access is unavailable because the browser is signed out.
+8. **Recheck after a human merge or branch switch.** Before the next commit/push/PR write, inspect the current local branch/worktree and the PR's remote state. If the previous PR merged and its branch was deleted, preserve uncommitted work and use a fresh feature branch for the next authorized change; do not reopen the merged PR or create against its stale head.
 
 ## Planning Issue Body Format (Linter Enforced)
 

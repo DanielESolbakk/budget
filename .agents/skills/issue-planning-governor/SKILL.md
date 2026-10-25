@@ -5,7 +5,7 @@ compatibility: Requires GitHub MCP issue tools and repository planning rules in 
 metadata:
   owner: budget-repo
   workflow: issue-planning
-  version: "1.4"
+  version: "1.6"
 ---
 
 # Issue Planning Governor
@@ -16,16 +16,19 @@ Govern Feature, Story, Enabler, and Test planning, not implementation. Epics are
 
 - Never delete; close only for completed criteria or a linked successor.
 - `planning-invalid` blocks readiness. Repair only after a fresh failure, at most twice. Timeout, unresolved blockers, or permission failures stop the run.
-- Use GitHub MCP, never `gh`; MCP cannot dispatch or inspect Actions runs. Issue-record updates need no PR; repository-file changes do.
+- Use GitHub MCP, never `gh`; inspect available Actions tools rather than assuming capabilities. Issue-record updates need no PR; repository-file changes do.
 - Serialize GitHub MCP issue writes. Never parallelize issue creation; verify each created issue before creating the next.
 - Keep transaction content local; add no cloud processing, telemetry, or analytics.
 - Use `- #NUMBER` references in structured sections; ban uncertainty in tasks, criteria, and validation commands.
 - A workflow pass proves structure only. Preserve `needs-grooming` until G1-G9 pass with quoted evidence.
+- Plan concrete Tests alongside approved Stories/Enablers before product code exists. Require parent ACs, one layer, expected scenarios, fixtures, file-creation tasks, commands, and product blockers; missing implementation blocks assignment, not planning. Never create coverage anchors.
 - Apply R16/G9 to visible UI; non-renderer work is exempt. Impeccable is opt-in.
 
 ## Workflow
 
 Before any issue mutation, read and follow [Issue Batch Governance](references/issue-batch-governance.md). Use [templates](references/templates.md), [checklists](references/checklists.md), and the [readiness deep dive](references/assignment-readiness-deep-dive.md) for issue content and readiness.
+
+For interactive forms, follow the repository-wide [GitHub MCP Interactive Writes contract](../../../.github/copilot-instructions.md#github-mcp-interactive-writes); pending requests are neither verified UI delivery nor saved writes.
 
 Run G1-G9 from the deep-dive. Quote each pass with evidence only after fresh structural validation; keep `needs-grooming` until applicable checks pass. After 180 seconds without one, stop without repair.
 

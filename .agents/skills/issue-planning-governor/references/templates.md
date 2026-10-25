@@ -254,8 +254,9 @@ Link only real Stories under this Enabler's Parent Feature Issue. Search all exi
 
 ### Preconditions
 
-- Runtime/product behavior under test already exists in implementation issues or delivered code.
-- If missing `src/`, `electron/`, `preload`, IPC, or renderer behavior is discovered, stop and create or link a story/enabler issue instead of expanding this test issue.
+- This concrete Test planning record is permitted before product code exists; the approved parent Story/Enabler owns that implementation.
+- Missing product/runtime prerequisites are listed under Blocked by. Keep needs-grooming and do not assign until those prerequisites and the semantic readiness gates pass.
+- Before standalone assignment, verify the required `src/`, `electron/`, preload, IPC, renderer, and test-harness seams exist. Do not implement missing product behavior from this Test issue.
 
 ### Technical Tasks
 
@@ -288,4 +289,10 @@ Link only real Stories under this Enabler's Parent Feature Issue. Search all exi
 ### Regression Guard
 
 - [ ] [regression expectation]
+
+### Dependencies
+
+#### Blocked by
+
+- #IMPLEMENTATION_PREREQUISITE
 ```

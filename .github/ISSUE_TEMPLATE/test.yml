@@ -1,5 +1,5 @@
 name: Test
-description: Create a quality and verification issue linked to a story, enabler, feature, or epic-wide scope. Use this for test-only work instead of folding it into a story or feature issue.
+description: Plan concrete test-only verification alongside approved implementation, including before product code exists. Record product prerequisites as blockers; planning does not imply assignment readiness.
 title: "Test: "
 labels:
   - test
@@ -71,6 +71,7 @@ body:
       options:
         - Unit
         - Integration
+        - Playwright
         - End-to-end
         - Performance
         - Privacy and No-network
@@ -87,9 +88,32 @@ body:
       required: true
 
   - type: textarea
+    id: preconditions
+    attributes:
+      label: Preconditions
+      description: State which product behavior and test seams must exist before assignment. A concrete Test may be planned before those prerequisites are delivered.
+      placeholder: |
+        - Planned test-only scope for the approved parent Story; product implementation remains in that Story.
+        - Keep needs-grooming and do not assign while the product prerequisites below are unresolved.
+        - Before assignment, verify the parent behavior, runtime/IPC seams, and test harness exist.
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical_tasks
+    attributes:
+      label: Technical Tasks
+      description: List concrete test files or test-only helpers to create. Do not add missing product behavior from this issue.
+      placeholder: |
+        - [ ] Create tests/unit/example.test.ts with the scenarios and expected results below.
+        - [ ] Add deterministic synthetic fixtures and regression assertions.
+    validations:
+      required: true
+
+  - type: textarea
     id: fixtures
     attributes:
-      label: Fixture Requirements
+      label: Fixture Or Example Inputs
       description: Use sanitized or synthetic fixtures only.
       placeholder: |
         - Fixture type:
@@ -101,14 +125,41 @@ body:
     id: implementation_entry_points
     attributes:
       label: Implementation Entry Points
-      description: Identify the expected test files, supporting modules, and validation commands for this test work.
+      description: List existing test directories and available supporting modules. Put new files under Technical Tasks; put missing product behavior in linked implementation blockers.
       placeholder: |
-        Likely files to change:
-        - tests/integration/...
-        - src/tooling/fixtures/...
+        - tests/unit/
+        - tests/fixtures/synthetic/
+    validations:
+      required: true
 
-        Validation commands:
-        - npm run test:integration
+  - type: textarea
+    id: validation_commands
+    attributes:
+      label: Validation Commands
+      description: Give scoped executable commands for the planned coverage. Do not claim commands have passed before the tests exist.
+      placeholder: |
+        - npm run test:unit -- tests/unit/example.test.ts
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link product/runtime prerequisite issues explicitly. Open blockers prevent assignment, not creation of this planning record.
+      placeholder: |
+        #### Blocked by
+        - #789
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out Of Scope
+      placeholder: |
+        - Product implementation, which remains owned by the parent Story or Enabler.
+        - Tests belonging to another verification layer.
     validations:
       required: true
 
@@ -130,6 +181,7 @@ body:
     id: scenarios
     attributes:
       label: Test Scenarios
+      description: Include at least two reproducible scenarios with concrete expected results, not reserved coverage or placeholder cases.
       placeholder: |
         - [ ] Scenario 1
         - [ ] Scenario 2
