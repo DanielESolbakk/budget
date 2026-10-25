@@ -70,7 +70,7 @@ function addSyntheticForeignCurrencyActivity(databasePath: string): void {
 }
 
 test.describe("local dated exchange-rate workflow", () => {
-  test("shows native and NOK values, incomplete totals, and scenario-only latest-rate restatement", async ({
+  test("reports local rate provenance and supports keyboard entry at desktop and compact widths", async ({
     databasePath,
     electronApp,
   }) => {
@@ -187,6 +187,36 @@ test.describe("local dated exchange-rate workflow", () => {
       await window.keyboard.press("Enter");
       await expect(euroTransaction)
         .toContainText("Rate 11.50 NOK per EUR — 2026-05-01, Synthetic manual rate");
+
+      await latestRateScenario.focus();
+      await window.keyboard.press("Space");
+      await expect(latestRateScenario).not.toBeChecked();
+      await rateCurrency.focus();
+      await window.keyboard.press("ArrowUp");
+      await expect(rateCurrency).toHaveValue("EUR");
+      await window.keyboard.press("ArrowDown");
+      await expect(rateCurrency).toHaveValue("SEK");
+      await tabTo(window, rateAmount);
+      await window.keyboard.press("Control+A");
+      await window.keyboard.insertText("1.06");
+      await tabTo(window, rateDate);
+      await expect(rateDate).toHaveValue("2026-05-01");
+      await tabTo(window, rateType);
+      await window.keyboard.press("ArrowUp");
+      await expect(rateType).toHaveValue("dated");
+      await tabTo(window, rateSource);
+      await window.keyboard.press("Control+A");
+      await window.keyboard.insertText("Synthetic compact rate");
+      await tabTo(window, saveRateButton);
+      await window.keyboard.press("Enter");
+      await expect(rates.getByText("Synthetic compact rate")).toBeVisible();
+      await loadReportButton.focus();
+      await window.keyboard.press("Enter");
+      await expect(kronaTransaction).toContainText(/NOK\s*[−-]53,00/);
+      await expect(kronaTransaction)
+        .toContainText("Rate 1.06 NOK per SEK — 2026-05-01, Synthetic compact rate");
+      await expect(kronaTransaction).not.toContainText("estimate");
+
       const horizontalOverflow = await window.evaluate(() =>
         document.documentElement.scrollWidth > document.documentElement.clientWidth
       );
