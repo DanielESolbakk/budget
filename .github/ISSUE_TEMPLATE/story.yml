@@ -108,10 +108,12 @@ body:
     id: linked_enablers
     attributes:
       label: Linked Enabler Issues
-      description: Link all required enablers for this story.
+      description: Link real same-feature enablers using issue-reference bullets. When this Story owns all implementation and needs no separate Enabler, use the None declaration with a concrete rationale. Do not create or borrow an Enabler to satisfy validation.
       placeholder: |
-        - #301 Enabler: ...
-        - #302 Enabler: ...
+        - #301
+
+        Or, when no separate Enabler is required:
+        - None - This Story owns its implementation; no shared enabling work is required.
     validations:
       required: true
 
