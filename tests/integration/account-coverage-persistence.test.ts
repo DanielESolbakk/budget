@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { queryAccountCoverageAssessment } from "../../src/app/dashboardApi.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
@@ -80,6 +80,19 @@ const coverageImportJob: ImportJob = {
   startedAtIso: "2026-06-01T09:00:00Z",
 };
 
+const networkFetch = vi.fn(() => {
+  throw new Error("Network access is not allowed in account-coverage integration tests.");
+});
+
+beforeEach(() => {
+  networkFetch.mockClear();
+  vi.stubGlobal("fetch", networkFetch);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 interface AccountCoverageLedger {
   saveAccountStatementCoveragePeriod: (value: AccountStatementCoveragePeriod) => void;
   appendAccountBalanceCheckpoint: (value: AccountBalanceCheckpoint) => void;
@@ -147,6 +160,7 @@ describe("account coverage local persistence", () => {
         differenceMinor: -12_500,
         reconciliationStatus: "mismatch",
       });
+      expect(networkFetch).not.toHaveBeenCalled();
     } finally {
       ledger.close();
       rmSync(directory, { recursive: true, force: true });
@@ -219,6 +233,7 @@ describe("account coverage local persistence", () => {
       } finally {
         reopened.close();
       }
+      expect(networkFetch).not.toHaveBeenCalled();
     } finally {
       if (!isClosed) ledger.close();
       rmSync(directory, { recursive: true, force: true });
@@ -297,6 +312,7 @@ describe("account coverage local persistence", () => {
         period.id,
         "2026-06-04T00:00:00Z"
       ).differenceMinor).toBe(0);
+      expect(networkFetch).not.toHaveBeenCalled();
     } finally {
       ledger.close();
       rmSync(directory, { recursive: true, force: true });
@@ -377,6 +393,7 @@ describe("account coverage local persistence", () => {
         eurPeriod.id,
         "2026-06-04T00:00:00Z"
       ).differenceMinor).toBe(5_000);
+      expect(networkFetch).not.toHaveBeenCalled();
     } finally {
       ledger.close();
       rmSync(directory, { recursive: true, force: true });
