@@ -320,6 +320,7 @@ test.describe("account statement coverage and checkpoints", () => {
     await window.setViewportSize({ width: 1280, height: 800 });
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await coverage.getByLabel("Coverage account").selectOption("sample-acc");
+    await expect(coverage.getByLabel("Coverage account")).toContainText("Brukskonto (NOK)");
     await coverage.getByLabel("Statement start date").fill("2026-03-01");
     await coverage.getByLabel("Statement end date").fill("2026-03-31");
     await coverage.getByLabel("Statement source").fill("Synthetic March statement");
@@ -336,8 +337,12 @@ test.describe("account statement coverage and checkpoints", () => {
     await coverage.getByLabel("Checkpoint balance").fill("1005.00");
     await coverage.getByLabel("Checkpoint source").fill("Synthetic closing balance");
     await coverage.getByRole("button", { name: "Save balance checkpoint" }).click();
-    await expect(period).toContainText(/Difference.*5,00/);
-    await expect(period.getByRole("list", { name: "Balance checkpoint history" })).toHaveCount(1);
+    await expect(period).toContainText(/Difference:\s*NOK\s*5,00/);
+    const checkpointHistory = period.getByRole("list", { name: "Balance checkpoint history" });
+    await expect(checkpointHistory).toContainText("2026-03-01");
+    await expect(checkpointHistory).toContainText("Synthetic opening balance");
+    await expect(checkpointHistory).toContainText("2026-03-31");
+    await expect(checkpointHistory).toContainText("Synthetic closing balance");
 
     await window.setViewportSize({ width: 390, height: 844 });
     await expect(period.getByRole("list", { name: "Balance checkpoint history" })).toBeVisible();
@@ -522,6 +527,8 @@ test.describe("account statement coverage and checkpoints", () => {
       const restartedCoverage = restartedWindow.getByRole("region", {
         name: "Account statement coverage",
       });
+      await expect(restartedCoverage.getByLabel("Coverage account"))
+        .toContainText("Brukskonto (NOK)");
       const restartedPeriod = restartedCoverage.getByRole("group", {
         name: "Coverage period 2026-03-01 to 2026-03-31",
       });
@@ -529,10 +536,13 @@ test.describe("account statement coverage and checkpoints", () => {
       await expect(restartedPeriod).toContainText("Coverage confirmed");
       await expect(restartedPeriod).toContainText("Synthetic relaunch statement");
       await expect(restartedPeriod).toContainText(/Difference.*5,00/);
-      await expect(restartedPeriod.getByRole("list", { name: "Balance checkpoint history" }))
-        .toContainText("Synthetic opening balance");
-      await expect(restartedPeriod.getByRole("list", { name: "Balance checkpoint history" }))
-        .toContainText("Synthetic closing balance");
+      const restartedHistory = restartedPeriod.getByRole("list", {
+        name: "Balance checkpoint history",
+      });
+      await expect(restartedHistory).toContainText("2026-03-01");
+      await expect(restartedHistory).toContainText("Synthetic opening balance");
+      await expect(restartedHistory).toContainText("2026-03-31");
+      await expect(restartedHistory).toContainText("Synthetic closing balance");
     } finally {
       await restartedApp.close();
     }
