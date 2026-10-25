@@ -13,6 +13,7 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Follow PR guardrails from `.github/copilot-instructions.md`: AC mapping, test evidence checkbox, and planning-validity checks.
 - Follow planning formatting and hierarchy rules from `.github/copilot-instructions.md` and issue templates.
 - Self-contained Stories may declare `- None - <concrete rationale>` under Linked Enabler Issues; never invent Enablers. Structural validation does not remove `needs-grooming` or establish readiness.
+- Plan concrete layer-specific Tests alongside approved Stories before product code exists. Name the parent ACs, expected scenarios, fixtures, test-file tasks, scoped commands, and product blockers; keep blocked Tests unassignable and `needs-grooming`. Do not create coverage anchors.
 - Follow privacy and architecture constraints from `.github/copilot-instructions.md`; do not add cloud processing or telemetry for transaction content.
 - For Playwright issues, treat `.agents/skills/playwright-skill/SKILL.md` as the only detailed implementation authority; `.github/instructions/playwright.instructions.md` is a pointer, not a competing rule set.
 - If permissions prevent issue/PR body edits, post one concise owner action checklist and stop retry loops.

@@ -10,5 +10,6 @@ description: "Use when creating or editing planning documentation under docs/way
 - Record dependencies, risks, out-of-scope items, and validation commands explicitly.
 - A Story that owns its implementation may declare `- None - <concrete rationale>` under `### Linked Enabler Issues`. Otherwise link only real same-feature Enablers; never create placeholders to satisfy validation.
 - Structural validity is separate from semantic readiness. Preserve `needs-grooming` until the readiness checks pass, and resolve validator/policy conflicts through tested governance changes rather than invented links.
+- Plan concrete, test-only issues alongside approved implementation Stories/Enablers before product code exists. Require parent ACs, one layer, expected scenarios, fixtures, test-file tasks, scoped commands, and explicit product blockers. Missing implementation blocks assignment, not planning; coverage anchors and empty placeholders remain prohibited.
 - Keep repository paths relative and avoid machine-specific absolute paths.
 - Reference only sanitized or synthetic financial artifacts.

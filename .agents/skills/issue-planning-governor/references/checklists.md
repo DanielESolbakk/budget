@@ -6,7 +6,7 @@
 - Never delete issues. Close only after acceptance criteria are complete or a superseding issue is linked.
 - `planning-invalid` blocks readiness. A stale label does not prove a fresh validation failure.
 - Keep financial content local by default; do not introduce cloud processing, telemetry, or analytics for transaction content.
-- Keep product implementation out of Test issues. Test issues verify existing behavior.
+- Keep product implementation out of Test issues. Concrete Tests may be planned against approved future behavior; missing implementation blocks assignment, not issue creation.
 - Use `- #NUMBER` for structured issue references. Avoid uncertainty terms in Technical Tasks, Acceptance Criteria, and Validation Commands.
 
 ## Preflight Checklist
@@ -22,6 +22,7 @@ Run before editing any issue.
 - Confirm issue references are bullet format in structured sections.
 - Confirm once per batch that an authorized human can trigger fresh validation and verify its result through GitHub UI after the issue edits; MCP issue access does not imply Actions access.
 - Run Test Necessity Decision and capture one outcome: no test issue needed now, or test issue required.
+- For a planned Test before product code exists, verify the approved immediate owner, parent ACs, one layer, expected scenarios, fixtures, file-creation tasks, existing test directories, commands, and explicit product blockers. Preserve `needs-grooming`; do not require delivered behavior merely to create the planning record.
 - If the issue is an Epic, stop before mutation; Epic lifecycle work is out of scope.
 - Treat a scope or hierarchy conflict as local to that issue and its dependents. Continue unrelated issues the user authorized in the same batch unless a global blocker applies.
 

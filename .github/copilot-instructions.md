@@ -125,6 +125,15 @@ Avoid inventing near-duplicates for the same concept.
 - Playwright end-to-end (focused): critical user journeys only; cannot substitute for cheaper lower-layer tests.
 - Every Story/Feature must state coverage plan (unit/integration/Playwright); excluded layers must link follow-up issue.
 
+### Planning-First Test Lifecycle
+
+- Create concrete Test planning issues alongside an owner-approved Story or Enabler, before product implementation starts. Planning the tests does not require delivered or active product code.
+- Each Test issue must name its immediate implementation owner and parent AC IDs, own one test layer, specify at least two reproducible scenarios with expected results, identify sanitized/synthetic fixtures, list existing entry-point directories and explicit test-file creation tasks, and provide scoped validation commands.
+- Record missing product capabilities as explicit implementation-issue blockers and retain `needs-grooming`. Product implementation stays in the Story/Enabler, never hidden in a Test issue. Test issues may specify required future behavior without claiming it exists.
+- Creation, structural validation, assignment readiness, test execution, and passing evidence are separate states. A planned Test can exist while blocked; do not assign it with unresolved blockers or missing product prerequisites. New test files belong in creation tasks, not nonexistent implementation entry points.
+- TDD tests may be authored before or alongside the parent implementation, but expected red tests are not passing evidence or completion. Standalone Test assignment still requires its runtime/scaffolding prerequisites and all readiness gates.
+- Do not create coverage anchors, reserved scenarios, placeholder commands, empty triangle-completeness issues, or Tests for unapproved roadmap ideas. Reuse or repurpose existing matching issues before creating new ones.
+
 ## Playwright Implementation Policy
 
 - Canonical detailed contract: `.agents/skills/playwright-skill/SKILL.md`. Do not create a second Playwright rule set in issue bodies or other instruction files.

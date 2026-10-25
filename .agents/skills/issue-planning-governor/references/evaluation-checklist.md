@@ -37,7 +37,8 @@ Use this checklist to evaluate whether a skill run met repository planning gover
 
 - Unscheduled or deferred ideas remained roadmap-only.
 - Each Enabler enables a real same-Feature Story; no Story exists only to satisfy validation.
-- Each Test has an immediate Story/Enabler owning delivered or active implementation, one dominant layer, executable scenarios, and a runnable command.
+- Each Test has an approved immediate Story/Enabler, parent AC IDs, one dominant layer, at least two scenarios with expected results, synthetic fixtures, file-creation tasks, existing entry-point directories, and scoped commands. Product code need not exist at planning time.
+- Missing implementation is recorded as explicit blockers; the Test remains needs-grooming and unassignable until prerequisites exist. Planning and structural validity are not passing-test evidence.
 - No coverage anchors, reserved scenarios, placeholder commands, or validator-only Tests were created.
 
 ## Validation Loop Checks
