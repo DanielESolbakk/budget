@@ -114,6 +114,8 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(appShell.destination("Data safety")).toBeFocused();
     await window.keyboard.press("Tab");
+    await expect(appShell.destination("Settings")).toBeFocused();
+    await window.keyboard.press("Tab");
     await expect(dashboard.monthSelector).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(dashboard.reviewQueueAction).toBeFocused();
@@ -164,6 +166,8 @@ test.describe("Keyboard accessibility smoke", () => {
 
     await appShell.destination("Data safety").focus();
     await window.keyboard.press("Enter");
+    await window.keyboard.press("Tab");
+    await expect(appShell.destination("Settings")).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(recovery.backupPathInput).toBeFocused();
     await recovery.backupPathInput.fill(backupPath);

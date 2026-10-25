@@ -12,6 +12,7 @@ export const EXPORT_CSV_HEADERS = [
   "sourceReference",
   "categoryId",
   "importJobId",
+  "categoryAllocations",
 ] as const;
 
 export type ExportCsvHeader = (typeof EXPORT_CSV_HEADERS)[number];
@@ -35,6 +36,14 @@ export function buildCsvRow(transaction: Transaction): ExportCsvRow {
     sourceReference: transaction.sourceReference ?? "",
     categoryId: transaction.categoryId ?? "",
     importJobId: transaction.importJobId ?? "",
+    categoryAllocations: transaction.categoryAllocations === undefined
+      ? ""
+      : JSON.stringify(
+          [...transaction.categoryAllocations].sort((left, right) =>
+            left.categoryId.localeCompare(right.categoryId) ||
+            left.amountMinor - right.amountMinor
+          )
+        ),
   };
 }
 

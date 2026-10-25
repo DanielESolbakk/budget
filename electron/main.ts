@@ -4,10 +4,11 @@ import { createDashboardProvider } from "./dashboardProvider.js";
 import {
   createBackupOutputDialog,
   createCsvExportDialog,
+  createExchangeRateImportDialog,
   createImportStatementDialog,
   createRestoreSnapshotDialog,
 } from "./fileDialogProvider.js";
-import { dirname, join, resolve } from "path";
+import { basename, dirname, extname, join, resolve } from "path";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -15,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import {
   buildDashboardData,
   buildDashboardViewContract,
+  buildNokMonthlyReport,
   createMonthlyCategoryTargetStore,
   reloadMonthlyCategoryTargets,
   type DashboardData,
@@ -59,6 +61,7 @@ import {
   ImportPreviewRegistry,
   digestImportBytes,
 } from "../src/app/import/importPreviewRegistry.js";
+import { parseExchangeRateCsv } from "../src/app/exchangeRateImport.js";
 import {
   submitManualEntry,
   type ManualEntryResponse,
@@ -74,6 +77,7 @@ import {
 import { extractSourceDocumentFromBuffer } from "../src/app/import/extractPdfText.js";
 import { classifyImportFilePath } from "../src/domain/import/sourceDocument.js";
 import { decodeCsvBytes, parseRogalandCsvText } from "../src/domain/import/parseCsvText.js";
+import { validateExchangeRate } from "../src/domain/money/exchangeRates.js";
 import type { CsvImportProfile } from "../src/domain/import/csvImportProfile.js";
 import type { ImportJobHistoryEntry } from "../src/domain/import/importJobHistory.js";
 import type { ImportPreflightProgress } from "../src/app/import/importPreflight.js";
@@ -99,9 +103,12 @@ import type {
   RestoreSnapshotInput,
   RestoreSnapshotResult,
 } from "../src/domain/backup/snapshotContract.js";
+import type { NokMonthlyReport } from "../src/app/dashboardApi.js";
 import {
   isCurrencyCode,
   validateMonthlyCategoryTargetInput,
+  type AccountBalanceCheckpoint,
+  type AccountStatementCoveragePeriod,
   type Household,
   type Account,
   type ManualEntryInput,
@@ -110,6 +117,7 @@ import {
   type SameMerchantPropagationInput,
   type SameMerchantPropagationPreviewRequest,
   type Transaction,
+  type TransactionCategoryAllocation,
 } from "../src/domain/types.js";
 
 const sampleHousehold: Household = {
@@ -529,6 +537,124 @@ function parseCategoryTargetInput(input: unknown): MonthlyCategoryTargetInput {
   };
 }
 
+function parseOptionalDateTime(record: Record<string, unknown>, fieldName: string): string | undefined {
+  const value = record[fieldName];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
+    throw new Error(`${fieldName} must be a valid ISO date-time when provided.`);
+  }
+  return value;
+}
+
+function parseAccountStatementCoveragePeriodInput(input: unknown): AccountStatementCoveragePeriod {
+  if (typeof input !== "object" || input === null) {
+    throw new Error("Account statement coverage period must be an object.");
+  }
+  const record = input as Record<string, unknown>;
+  const currencyCode = record.currencyCode;
+  const sourceType = record.sourceType;
+  if (!isCurrencyCode(currencyCode)) {
+    throw new Error("Account coverage currencyCode must be a three-letter currency code.");
+  }
+  if (sourceType !== "manual" && sourceType !== "csv" && sourceType !== "pdf") {
+    throw new Error("Account coverage sourceType must be manual, csv, or pdf.");
+  }
+  if (typeof record.confirmed !== "boolean") {
+    throw new Error("Account coverage confirmed must be a boolean.");
+  }
+  const importedAtIso = parseOptionalDateTime(record, "importedAtIso");
+  const confirmedAtIso = parseOptionalDateTime(record, "confirmedAtIso");
+  const period: AccountStatementCoveragePeriod = {
+    id: parseNonEmptyString(record.id, "id"),
+    accountId: parseNonEmptyString(record.accountId, "accountId"),
+    startDateIso: parseNonEmptyString(record.startDateIso, "startDateIso"),
+    endDateIso: parseNonEmptyString(record.endDateIso, "endDateIso"),
+    currencyCode,
+    sourceName: parseNonEmptyString(record.sourceName, "sourceName"),
+    sourceType,
+    confirmed: record.confirmed,
+    ...(record.importJobId === undefined
+      ? {}
+      : { importJobId: parseNonEmptyString(record.importJobId, "importJobId") }),
+    ...(importedAtIso === undefined ? {} : { importedAtIso }),
+    ...(confirmedAtIso === undefined ? {} : { confirmedAtIso }),
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(period.startDateIso) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(period.endDateIso)) {
+    throw new Error("Account coverage dates must use YYYY-MM-DD.");
+  }
+  return period;
+}
+
+function parseAccountBalanceCheckpointInput(input: unknown): AccountBalanceCheckpoint {
+  if (typeof input !== "object" || input === null) {
+    throw new Error("Account balance checkpoint must be an object.");
+  }
+  const record = input as Record<string, unknown>;
+  const balanceMinor = record.balanceMinor;
+  if (
+    !isCurrencyCode(record.currencyCode) ||
+    typeof balanceMinor !== "number" ||
+    !Number.isSafeInteger(balanceMinor)
+  ) {
+    throw new Error("Account balance checkpoint currency or balance is invalid.");
+  }
+  const sourceReference = record.sourceReference;
+  if (sourceReference !== undefined && typeof sourceReference !== "string") {
+    throw new Error("Account checkpoint sourceReference must be a string when provided.");
+  }
+  const checkpoint: AccountBalanceCheckpoint = {
+    id: parseNonEmptyString(record.id, "id"),
+    accountId: parseNonEmptyString(record.accountId, "accountId"),
+    dateIso: parseNonEmptyString(record.dateIso, "dateIso"),
+    currencyCode: record.currencyCode,
+    balanceMinor,
+    source: parseNonEmptyString(record.source, "source"),
+    recordedAtIso: parseNonEmptyString(record.recordedAtIso, "recordedAtIso"),
+    ...(sourceReference === undefined ? {} : { sourceReference }),
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkpoint.dateIso) ||
+    Number.isNaN(Date.parse(checkpoint.recordedAtIso))) {
+    throw new Error("Account checkpoint date or recordedAtIso is invalid.");
+  }
+  return checkpoint;
+}
+
+function parseTransactionCategoryAllocations(input: unknown): TransactionCategoryAllocation[] {
+  if (!Array.isArray(input)) {
+    throw new Error("Transaction category allocations must be an array.");
+  }
+  return input.map((value, index) => {
+    if (typeof value !== "object" || value === null) {
+      throw new Error(`Transaction category allocation ${index + 1} must be an object.`);
+    }
+    const record = value as Record<string, unknown>;
+    const amountMinor = record.amountMinor;
+    if (typeof amountMinor !== "number" || !Number.isSafeInteger(amountMinor)) {
+      throw new Error(`allocations[${index}].amountMinor must be a safe integer.`);
+    }
+    return {
+      categoryId: parseNonEmptyString(record.categoryId, `allocations[${index}].categoryId`),
+      amountMinor,
+    };
+  });
+}
+
+function parseMonthlyReferenceRateIds(input: unknown): Record<string, string> | undefined {
+  if (input === undefined) return undefined;
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("monthlyReferenceRateIds must be an object.");
+  }
+  const result: Record<string, string> = {};
+  for (const [currencyCode, rateId] of Object.entries(input)) {
+    if (!isCurrencyCode(currencyCode)) {
+      throw new Error(`Invalid monthly reference currency code: ${currencyCode}`);
+    }
+    result[currencyCode] = parseNonEmptyString(rateId, `monthlyReferenceRateIds.${currencyCode}`);
+  }
+  return result;
+}
+
 function parseRestoreSnapshotInput(input: unknown): RestoreSnapshotInput {
   if (typeof input !== "object" || input === null) {
     throw new Error("Restore input must be an object.");
@@ -769,6 +895,7 @@ app.whenReady().then(async () => {
   });
   const backupOutputDialog = createBackupOutputDialog();
   const csvExportDialog = createCsvExportDialog();
+  const exchangeRateImportDialog = createExchangeRateImportDialog();
   const importStatementDialog = createImportStatementDialog();
   const restoreSnapshotDialog = createRestoreSnapshotDialog();
 
@@ -843,6 +970,117 @@ app.whenReady().then(async () => {
   ipcMain.handle("categoryTarget:listByMonth", (event, yearMonth: unknown) => {
     assertTrustedRenderer(event);
     return reloadMonthlyCategoryTargets(sampleTargetStore, parseNonEmptyString(yearMonth, "yearMonth"));
+  });
+
+  ipcMain.handle("exchangeRate:list", (event, currencyCode: unknown) => {
+    assertTrustedRenderer(event);
+    if (currencyCode === undefined || currencyCode === null || currencyCode === "") {
+      return localLedgerDatabase.listExchangeRates();
+    }
+    if (!isCurrencyCode(currencyCode)) {
+      throw new Error("Exchange rate currencyCode must be a three-letter currency code.");
+    }
+    return localLedgerDatabase.listExchangeRates(currencyCode);
+  });
+
+  ipcMain.handle("exchangeRate:record", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const rate = validateExchangeRate(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      localLedgerDatabase.upsertExchangeRate(rate);
+      return rate;
+    });
+  });
+
+  ipcMain.handle("exchangeRate:importFromFile", async (event) => {
+    assertTrustedRenderer(event);
+    const dialogResult = await exchangeRateImportDialog({
+      properties: ["openFile"],
+      filters: [{ name: "CSV files", extensions: ["csv"] }],
+    });
+    const filePath = dialogResult.canceled ? null : dialogResult.filePaths[0] ?? null;
+    if (filePath === null) return null;
+    if (extname(filePath).toLowerCase() !== ".csv") {
+      throw new Error("Exchange rate import requires a CSV file.");
+    }
+    const rates = parseExchangeRateCsv(await readFile(filePath, "utf8"), basename(filePath));
+    return ledgerOperationCoordinator.runExclusive(() => {
+      localLedgerDatabase.upsertExchangeRates(rates);
+      return rates;
+    });
+  });
+
+  ipcMain.handle("exchangeRate:monthlyReport", (event, input: unknown): NokMonthlyReport => {
+    assertTrustedRenderer(event);
+    if (typeof input !== "object" || input === null) {
+      throw new Error("Converted report request must be an object.");
+    }
+    const record = input as Record<string, unknown>;
+    if (
+      record.useLatestRateScenario !== undefined &&
+      typeof record.useLatestRateScenario !== "boolean"
+    ) {
+      throw new Error("useLatestRateScenario must be a boolean when provided.");
+    }
+    const yearMonth = parseNonEmptyString(record.yearMonth, "yearMonth");
+    const snapshot = localLedgerDatabase.loadLedgerSnapshotData();
+    const monthlyReferenceRateIds = parseMonthlyReferenceRateIds(record.monthlyReferenceRateIds);
+    return buildNokMonthlyReport({
+      transactions: snapshot.transactions,
+      accounts: snapshot.accounts,
+      rates: localLedgerDatabase.listExchangeRates(),
+      yearMonth,
+      ...(monthlyReferenceRateIds === undefined
+        ? {}
+        : { monthlyReferenceRateIds }),
+      ...(record.useLatestRateScenario === undefined
+        ? {}
+        : { useLatestRateScenario: record.useLatestRateScenario }),
+    });
+  });
+
+  ipcMain.handle("accountCoverage:periods:list", (event, accountId: unknown) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listAccountStatementCoveragePeriods(
+      parseNonEmptyString(accountId, "accountId")
+    );
+  });
+
+  ipcMain.handle("accountCoverage:period:save", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const period = parseAccountStatementCoveragePeriodInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      localLedgerDatabase.saveAccountStatementCoveragePeriod(period);
+      return period;
+    });
+  });
+
+  ipcMain.handle("accountCoverage:checkpoints:list", (event, accountId: unknown) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.listAccountBalanceCheckpoints(
+      parseNonEmptyString(accountId, "accountId")
+    );
+  });
+
+  ipcMain.handle("accountCoverage:checkpoint:append", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const checkpoint = parseAccountBalanceCheckpointInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      localLedgerDatabase.appendAccountBalanceCheckpoint(checkpoint);
+      return checkpoint;
+    });
+  });
+
+  ipcMain.handle("accountCoverage:assessment:get", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    if (typeof input !== "object" || input === null) {
+      throw new Error("Account coverage assessment request must be an object.");
+    }
+    const record = input as Record<string, unknown>;
+    return localLedgerDatabase.getAccountCoverageAssessment(
+      parseNonEmptyString(record.periodId, "periodId"),
+      parseNonEmptyString(record.evaluatedAtIso, "evaluatedAtIso")
+    );
   });
 
   ipcMain.handle("account:list", (event, householdId: unknown): Account[] => {
@@ -1432,6 +1670,19 @@ app.whenReady().then(async () => {
       });
     }
   );
+
+  ipcMain.handle("transaction:updateCategoryAllocations", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    if (typeof input !== "object" || input === null) {
+      throw new Error("Transaction allocation update input must be an object.");
+    }
+    const record = input as Record<string, unknown>;
+    const transactionId = parseNonEmptyString(record.transactionId, "transactionId");
+    const allocations = parseTransactionCategoryAllocations(record.allocations);
+    return ledgerOperationCoordinator.runExclusive(() =>
+      localLedgerDatabase.updateTransactionCategoryAllocations(transactionId, allocations)
+    );
+  });
 
   ipcMain.handle(
     "import:pdfPreview",

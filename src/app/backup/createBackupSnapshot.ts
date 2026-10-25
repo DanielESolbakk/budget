@@ -47,6 +47,27 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
       left.merchantAlias.localeCompare(right.merchantAlias) ||
       left.categoryId.localeCompare(right.categoryId)
   );
+  const accountStatementCoveragePeriods = [
+    ...(input.accountStatementCoveragePeriods ?? []),
+  ].sort((left, right) =>
+    left.accountId.localeCompare(right.accountId) ||
+    left.startDateIso.localeCompare(right.startDateIso) ||
+    left.id.localeCompare(right.id)
+  );
+  const accountBalanceCheckpoints = [...(input.accountBalanceCheckpoints ?? [])].sort(
+    (left, right) =>
+      left.accountId.localeCompare(right.accountId) ||
+      left.dateIso.localeCompare(right.dateIso) ||
+      left.recordedAtIso.localeCompare(right.recordedAtIso) ||
+      left.id.localeCompare(right.id)
+  );
+  const exchangeRates = [...(input.exchangeRates ?? [])].sort(
+    (left, right) =>
+      left.currencyCode.localeCompare(right.currencyCode) ||
+      left.effectiveDate.localeCompare(right.effectiveDate) ||
+      left.kind.localeCompare(right.kind) ||
+      left.id.localeCompare(right.id)
+  );
 
   return {
     metadata: {
@@ -62,6 +83,9 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     importJobs,
     monthlyCategoryTargets,
     merchantCategoryRules,
+    accountStatementCoveragePeriods,
+    accountBalanceCheckpoints,
+    exchangeRates,
   };
 }
 

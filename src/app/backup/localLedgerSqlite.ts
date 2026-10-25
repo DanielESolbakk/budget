@@ -27,7 +27,13 @@ import {
   type TransactionSortDirection,
   type TransactionSortField,
 } from "../../domain/ledger/filterTransactions.js";
+import { assessAccountCoverage } from "../../domain/ledger/accountCoverage.js";
+import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
+import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
 import type {
+  AccountBalanceCheckpoint,
+  AccountCoverageAssessment,
+  AccountStatementCoveragePeriod,
   Account,
   CategorizationDecision,
   Household,
@@ -37,6 +43,7 @@ import type {
   MerchantCorrectionProvenance,
   MerchantCategoryRule,
   MonthlyCategoryTarget,
+  ExchangeRate,
   PendingTransactionObservation,
   MonthlyTotal,
   SourceDocumentTextLineEvidence,
@@ -46,16 +53,22 @@ import type {
   SameMerchantPropagationInput,
   SameMerchantPropagationOperation,
   Transaction,
+  TransactionCategoryAllocation,
+  CurrencyCode,
 } from "../../domain/types.js";
-import { isYearMonth } from "../../domain/types.js";
+import { isCurrencyCode, isYearMonth } from "../../domain/types.js";
 
 interface LocalLedgerSeedData {
   household: Household;
   accounts: Account[];
   transactions: Transaction[];
+  pendingObservations?: PendingTransactionObservation[];
   importJobs: ImportJob[];
   monthlyCategoryTargets: MonthlyCategoryTarget[];
   merchantCategoryRules?: MerchantCategoryRule[];
+  accountStatementCoveragePeriods?: AccountStatementCoveragePeriod[];
+  accountBalanceCheckpoints?: AccountBalanceCheckpoint[];
+  exchangeRates?: ExchangeRate[];
 }
 
 export interface LocalLedgerRuntimeMetadata {
@@ -78,6 +91,21 @@ export interface LocalLedgerDatabase {
   getTransactionsForAccount: (accountId: string) => Transaction[];
   listPendingTransactionObservations: (householdId: string) => PendingTransactionObservation[];
   getTransactionById: (transactionId: string) => Transaction | undefined;
+  updateTransactionCategoryAllocations: (
+    transactionId: string,
+    allocations: TransactionCategoryAllocation[]
+  ) => Transaction;
+  saveAccountStatementCoveragePeriod: (period: AccountStatementCoveragePeriod) => void;
+  appendAccountBalanceCheckpoint: (checkpoint: AccountBalanceCheckpoint) => void;
+  listAccountStatementCoveragePeriods: (accountId: string) => AccountStatementCoveragePeriod[];
+  listAccountBalanceCheckpoints: (accountId: string) => AccountBalanceCheckpoint[];
+  getAccountCoverageAssessment: (
+    periodId: string,
+    evaluatedAtIso: string
+  ) => AccountCoverageAssessment;
+  upsertExchangeRate: (rate: ExchangeRate) => void;
+  upsertExchangeRates: (rates: ExchangeRate[]) => void;
+  listExchangeRates: (currencyCode?: string) => ExchangeRate[];
   loadLedgerSnapshotData: () => LedgerSnapshotData;
   replaceLedgerSnapshotData: (snapshot: LedgerSnapshotData) => void;
   saveBackupSnapshot: (entry: BackupSnapshotCatalogEntry) => void;
@@ -151,6 +179,7 @@ interface TransactionRow {
   source_reference: string | null;
   category_id: string | null;
   import_job_id: string | null;
+  category_allocations_json?: string | null;
 }
 
 interface PendingTransactionObservationRow {
@@ -210,7 +239,46 @@ function mapTransactionRow(transaction: TransactionRow): Transaction {
   if (transaction.source_reference !== null) mapped.sourceReference = transaction.source_reference;
   if (transaction.category_id !== null) mapped.categoryId = transaction.category_id;
   if (transaction.import_job_id !== null) mapped.importJobId = transaction.import_job_id;
+  if (transaction.category_allocations_json != null) {
+    const parsed: unknown = JSON.parse(transaction.category_allocations_json);
+    if (!Array.isArray(parsed)) {
+      throw new Error(`Invalid category allocations for transaction ${transaction.id}.`);
+    }
+    const allocations: TransactionCategoryAllocation[] = parsed.map((value) => {
+      if (
+        typeof value !== "object" ||
+        value === null ||
+        !("categoryId" in value) ||
+        typeof value.categoryId !== "string" ||
+        !("amountMinor" in value) ||
+        typeof value.amountMinor !== "number"
+      ) {
+        throw new Error(`Invalid category allocations for transaction ${transaction.id}.`);
+      }
+      return { categoryId: value.categoryId, amountMinor: value.amountMinor };
+    });
+    mapped.categoryAllocations = validateTransactionCategoryAllocations(
+      mapped,
+      allocations,
+      CATEGORY_OPTIONS.map((category) => category.id)
+    );
+  }
   return mapped;
+}
+
+function serializeTransactionCategoryAllocations(transaction: Transaction): string | null {
+  if (transaction.categoryAllocations === undefined || transaction.categoryAllocations.length === 0) {
+    return null;
+  }
+  const allocations = validateTransactionCategoryAllocations(
+    transaction,
+    transaction.categoryAllocations,
+    CATEGORY_OPTIONS.map((category) => category.id)
+  ).sort((left, right) =>
+    left.categoryId.localeCompare(right.categoryId) ||
+    left.amountMinor - right.amountMinor
+  );
+  return JSON.stringify(allocations);
 }
 
 function mapPendingTransactionObservationRow(
@@ -371,6 +439,7 @@ function serializeTransactionForUndo(transaction: Transaction): string {
     sourceType: transaction.sourceType ?? null,
     sourceReference: transaction.sourceReference ?? null,
     categoryId: transaction.categoryId ?? null,
+    categoryAllocations: transaction.categoryAllocations ?? null,
     importJobId: transaction.importJobId ?? null,
   });
 }
@@ -442,7 +511,8 @@ function ensureSchema(db: DatabaseSync): void {
       source_reference TEXT,
       category_id TEXT,
       import_job_id TEXT,
-      categorization_json TEXT
+      categorization_json TEXT,
+      category_allocations_json TEXT
     );
 
     CREATE INDEX IF NOT EXISTS transactions_by_household_booked_at
@@ -514,6 +584,48 @@ function ensureSchema(db: DatabaseSync): void {
       category_id TEXT NOT NULL,
       target_minor INTEGER NOT NULL,
       PRIMARY KEY (year_month, category_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS account_statement_coverage_periods (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      start_date_iso TEXT NOT NULL,
+      end_date_iso TEXT NOT NULL,
+      currency_code TEXT NOT NULL,
+      source_name TEXT NOT NULL,
+      source_type TEXT NOT NULL CHECK (source_type IN ('manual', 'csv', 'pdf')),
+      import_job_id TEXT,
+      imported_at_iso TEXT,
+      confirmed INTEGER NOT NULL CHECK (confirmed IN (0, 1)),
+      confirmed_at_iso TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS account_coverage_by_account_period
+      ON account_statement_coverage_periods (account_id, start_date_iso, end_date_iso, id);
+
+    CREATE TABLE IF NOT EXISTS account_balance_checkpoints (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      date_iso TEXT NOT NULL,
+      currency_code TEXT NOT NULL,
+      balance_minor INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      source_reference TEXT,
+      recorded_at_iso TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS account_checkpoints_by_account_date
+      ON account_balance_checkpoints (account_id, date_iso, recorded_at_iso, id);
+
+    CREATE TABLE IF NOT EXISTS exchange_rates (
+      id TEXT PRIMARY KEY,
+      currency_code TEXT NOT NULL,
+      rate_nok_per_unit TEXT NOT NULL,
+      effective_date TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('dated', 'monthly-reference')),
+      source TEXT NOT NULL,
+      provenance TEXT NOT NULL CHECK (provenance IN ('manual', 'local-file')),
+      UNIQUE (currency_code, effective_date, kind)
     );
 
     CREATE TABLE IF NOT EXISTS merchant_category_rules (
@@ -623,6 +735,9 @@ function ensureSchema(db: DatabaseSync): void {
   if (!transactionColumns.some((column) => column.name === "categorization_json")) {
     db.exec("ALTER TABLE transactions ADD COLUMN categorization_json TEXT");
   }
+  if (!transactionColumns.some((column) => column.name === "category_allocations_json")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN category_allocations_json TEXT");
+  }
   if (!transactionColumns.some((column) => column.name === "merchant_search")) {
     db.exec("ALTER TABLE transactions ADD COLUMN merchant_search TEXT NOT NULL DEFAULT ''");
   }
@@ -679,7 +794,7 @@ function ensureSchema(db: DatabaseSync): void {
 
   const backupSnapshotColumns = db.prepare("PRAGMA table_info(backup_snapshots)").all() as Array<{ name: string }>;
   if (!backupSnapshotColumns.some((column) => column.name === "version")) {
-    db.exec("ALTER TABLE backup_snapshots ADD COLUMN version TEXT NOT NULL DEFAULT '2'");
+    db.exec("ALTER TABLE backup_snapshots ADD COLUMN version TEXT NOT NULL DEFAULT '3'");
   }
 
   db.exec(`
@@ -691,6 +806,8 @@ function ensureSchema(db: DatabaseSync): void {
       ON transactions (household_id, amount_minor, id);
     CREATE INDEX IF NOT EXISTS idx_transactions_household_category_id
       ON transactions (household_id, category_id, id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_household_allocations
+      ON transactions (household_id, category_allocations_json);
     CREATE INDEX IF NOT EXISTS idx_merchant_correction_provenance_corrected_at
       ON merchant_correction_provenance (corrected_at_iso, id);
     CREATE INDEX IF NOT EXISTS idx_same_merchant_propagation_applied_at
@@ -732,7 +849,7 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   }
 
   const insertTransaction = db.prepare(
-  "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json, category_allocations_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   );
   for (const transaction of snapshot.transactions) {
     insertTransaction.run(
@@ -748,7 +865,8 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       transaction.sourceReference ?? null,
       transaction.categoryId ?? null,
       transaction.importJobId ?? null,
-      transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
+      transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
+      serializeTransactionCategoryAllocations(transaction)
     );
   }
 
@@ -802,6 +920,64 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   );
   for (const target of snapshot.monthlyCategoryTargets) {
     insertTarget.run(target.yearMonth, target.categoryId, target.targetMinor);
+  }
+
+  const insertCoveragePeriod = db.prepare(`
+    INSERT INTO account_statement_coverage_periods (
+      id, account_id, start_date_iso, end_date_iso, currency_code, source_name,
+      source_type, import_job_id, imported_at_iso, confirmed, confirmed_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const period of snapshot.accountStatementCoveragePeriods ?? []) {
+    insertCoveragePeriod.run(
+      period.id,
+      period.accountId,
+      period.startDateIso,
+      period.endDateIso,
+      period.currencyCode,
+      period.sourceName,
+      period.sourceType,
+      period.importJobId ?? null,
+      period.importedAtIso ?? null,
+      period.confirmed ? 1 : 0,
+      period.confirmedAtIso ?? null
+    );
+  }
+
+  const insertCheckpoint = db.prepare(`
+    INSERT INTO account_balance_checkpoints (
+      id, account_id, date_iso, currency_code, balance_minor, source,
+      source_reference, recorded_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const checkpoint of snapshot.accountBalanceCheckpoints ?? []) {
+    insertCheckpoint.run(
+      checkpoint.id,
+      checkpoint.accountId,
+      checkpoint.dateIso,
+      checkpoint.currencyCode,
+      checkpoint.balanceMinor,
+      checkpoint.source,
+      checkpoint.sourceReference ?? null,
+      checkpoint.recordedAtIso
+    );
+  }
+
+  const insertExchangeRate = db.prepare(`
+    INSERT INTO exchange_rates (
+      id, currency_code, rate_nok_per_unit, effective_date, kind, source, provenance
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const rate of snapshot.exchangeRates ?? []) {
+    insertExchangeRate.run(
+      rate.id,
+      rate.currencyCode,
+      rate.rateNokPerUnit,
+      rate.effectiveDate,
+      rate.kind,
+      rate.source,
+      rate.provenance
+    );
   }
 
   const insertMerchantCategoryRule = db.prepare(
@@ -945,7 +1121,8 @@ export function createLocalLedgerDatabase(
     if (!isYearMonth(yearMonth)) throw new Error(`Invalid dashboard month: ${yearMonth}`);
     const rows = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-        currency_code, source_type, source_reference, category_id, import_job_id
+        currency_code, source_type, source_reference, category_id, import_job_id,
+        category_allocations_json
       FROM transactions
       WHERE household_id = ? AND booked_at_iso >= ? AND booked_at_iso < ?
       ORDER BY booked_at_iso ASC, id ASC
@@ -956,7 +1133,8 @@ export function createLocalLedgerDatabase(
   function getTransactionsForAccount(accountId: string): Transaction[] {
     const rows = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-        currency_code, source_type, source_reference, category_id, import_job_id
+        currency_code, source_type, source_reference, category_id, import_job_id,
+        category_allocations_json
       FROM transactions
       WHERE account_id = ?
       ORDER BY booked_at_iso ASC, id ASC
@@ -981,11 +1159,373 @@ export function createLocalLedgerDatabase(
   function getTransactionById(transactionId: string): Transaction | undefined {
     const row = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-        currency_code, source_type, source_reference, category_id, import_job_id
+        currency_code, source_type, source_reference, category_id, import_job_id,
+        category_allocations_json
       FROM transactions
       WHERE id = ?
     `).get(transactionId) as TransactionRow | undefined;
     return row === undefined ? undefined : mapTransactionRow(row);
+  }
+
+  function updateTransactionCategoryAllocations(
+    transactionId: string,
+    allocations: TransactionCategoryAllocation[]
+  ): Transaction {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const transaction = getTransactionById(transactionId);
+      if (transaction === undefined) {
+        throw new Error(`Transaction not found: ${transactionId}`);
+      }
+      const validated = allocations.length === 0
+        ? []
+        : validateTransactionCategoryAllocations(
+            transaction,
+            allocations,
+            CATEGORY_OPTIONS.map((category) => category.id)
+          );
+      const result = db.prepare(
+        "UPDATE transactions SET category_allocations_json = ? WHERE id = ?"
+      ).run(
+        validated.length === 0 ? null : JSON.stringify(
+          [...validated].sort((left, right) =>
+            left.categoryId.localeCompare(right.categoryId) ||
+            left.amountMinor - right.amountMinor
+          )
+        ),
+        transactionId
+      ) as { changes: number | bigint };
+      if (Number(result.changes) !== 1) {
+        throw new Error(`Transaction not found: ${transactionId}`);
+      }
+      db.exec("COMMIT");
+      const updated: Transaction = { ...transaction };
+      if (validated.length === 0) {
+        delete updated.categoryAllocations;
+      } else {
+        updated.categoryAllocations = validated;
+      }
+      return updated;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function saveAccountStatementCoveragePeriod(period: AccountStatementCoveragePeriod): void {
+    const isValidDate = (value: string): boolean =>
+      /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+      !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) &&
+      new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+    if (
+      period.id.trim().length === 0 ||
+      period.accountId.trim().length === 0 ||
+      !isValidDate(period.startDateIso) ||
+      !isValidDate(period.endDateIso) ||
+      period.startDateIso > period.endDateIso ||
+      !isCurrencyCode(period.currencyCode) ||
+      period.sourceName.trim().length === 0 ||
+      (period.sourceType !== "manual" && period.sourceType !== "csv" && period.sourceType !== "pdf") ||
+      typeof period.confirmed !== "boolean" ||
+      (period.importedAtIso !== undefined && Number.isNaN(Date.parse(period.importedAtIso))) ||
+      (period.confirmedAtIso !== undefined && Number.isNaN(Date.parse(period.confirmedAtIso))) ||
+      (period.confirmed && period.confirmedAtIso === undefined)
+    ) {
+      throw new Error("Account statement coverage period is invalid.");
+    }
+    const account = db.prepare(
+      "SELECT household_id, currency_code FROM accounts WHERE id = ?"
+    ).get(period.accountId) as { household_id: string; currency_code: string } | undefined;
+    if (account === undefined) {
+      throw new Error(`Account not found: ${period.accountId}`);
+    }
+    if (period.currencyCode !== account.currency_code) {
+      throw new Error("Account coverage currency must match the account currency.");
+    }
+    if (
+      period.importJobId !== undefined &&
+      db.prepare("SELECT 1 FROM import_jobs WHERE id = ? AND household_id = ?")
+        .get(period.importJobId, account.household_id) === undefined
+    ) {
+      throw new Error(`Import job not found for account coverage period: ${period.importJobId}`);
+    }
+
+    db.prepare(`
+      INSERT INTO account_statement_coverage_periods (
+        id, account_id, start_date_iso, end_date_iso, currency_code, source_name,
+        source_type, import_job_id, imported_at_iso, confirmed, confirmed_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        account_id = excluded.account_id,
+        start_date_iso = excluded.start_date_iso,
+        end_date_iso = excluded.end_date_iso,
+        currency_code = excluded.currency_code,
+        source_name = excluded.source_name,
+        source_type = excluded.source_type,
+        import_job_id = excluded.import_job_id,
+        imported_at_iso = excluded.imported_at_iso,
+        confirmed = excluded.confirmed,
+        confirmed_at_iso = excluded.confirmed_at_iso
+    `).run(
+      period.id,
+      period.accountId,
+      period.startDateIso,
+      period.endDateIso,
+      period.currencyCode,
+      period.sourceName,
+      period.sourceType,
+      period.importJobId ?? null,
+      period.importedAtIso ?? null,
+      period.confirmed ? 1 : 0,
+      period.confirmedAtIso ?? null
+    );
+  }
+
+  function appendAccountBalanceCheckpoint(checkpoint: AccountBalanceCheckpoint): void {
+    if (
+      checkpoint.id.trim().length === 0 ||
+      checkpoint.accountId.trim().length === 0 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(checkpoint.dateIso) ||
+      Number.isNaN(Date.parse(`${checkpoint.dateIso}T00:00:00.000Z`)) ||
+      new Date(`${checkpoint.dateIso}T00:00:00.000Z`).toISOString().slice(0, 10) !== checkpoint.dateIso ||
+      !isCurrencyCode(checkpoint.currencyCode) ||
+      !Number.isSafeInteger(checkpoint.balanceMinor) ||
+      checkpoint.source.trim().length === 0 ||
+      (checkpoint.sourceReference !== undefined && checkpoint.sourceReference.trim().length === 0) ||
+      Number.isNaN(Date.parse(checkpoint.recordedAtIso))
+    ) {
+      throw new Error("Account balance checkpoint is invalid.");
+    }
+    const account = db.prepare(
+      "SELECT currency_code FROM accounts WHERE id = ?"
+    ).get(checkpoint.accountId) as { currency_code: string } | undefined;
+    if (account === undefined) {
+      throw new Error(`Account not found: ${checkpoint.accountId}`);
+    }
+    if (checkpoint.currencyCode !== account.currency_code) {
+      throw new Error("Account checkpoint currency must match the account currency.");
+    }
+    db.prepare(`
+      INSERT INTO account_balance_checkpoints (
+        id, account_id, date_iso, currency_code, balance_minor, source,
+        source_reference, recorded_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      checkpoint.id,
+      checkpoint.accountId,
+      checkpoint.dateIso,
+      checkpoint.currencyCode,
+      checkpoint.balanceMinor,
+      checkpoint.source,
+      checkpoint.sourceReference ?? null,
+      checkpoint.recordedAtIso
+    );
+  }
+
+  function listAccountStatementCoveragePeriods(accountId: string): AccountStatementCoveragePeriod[] {
+    return db.prepare(`
+      SELECT id, account_id, start_date_iso, end_date_iso, currency_code, source_name,
+        source_type, import_job_id, imported_at_iso, confirmed, confirmed_at_iso
+      FROM account_statement_coverage_periods
+      WHERE account_id = ?
+      ORDER BY start_date_iso, end_date_iso, id
+    `).all(accountId).map((row) => {
+      const period = row as {
+        id: string;
+        account_id: string;
+        start_date_iso: string;
+        end_date_iso: string;
+        currency_code: string;
+        source_name: string;
+        source_type: AccountStatementCoveragePeriod["sourceType"];
+        import_job_id: string | null;
+        imported_at_iso: string | null;
+        confirmed: number;
+        confirmed_at_iso: string | null;
+      };
+      return {
+        id: period.id,
+        accountId: period.account_id,
+        startDateIso: period.start_date_iso,
+        endDateIso: period.end_date_iso,
+        currencyCode: period.currency_code,
+        sourceName: period.source_name,
+        sourceType: period.source_type,
+        ...(period.import_job_id === null ? {} : { importJobId: period.import_job_id }),
+        ...(period.imported_at_iso === null ? {} : { importedAtIso: period.imported_at_iso }),
+        confirmed: period.confirmed === 1,
+        ...(period.confirmed_at_iso === null ? {} : { confirmedAtIso: period.confirmed_at_iso }),
+      };
+    });
+  }
+
+  function listAccountBalanceCheckpoints(accountId: string): AccountBalanceCheckpoint[] {
+    return db.prepare(`
+      SELECT id, account_id, date_iso, currency_code, balance_minor, source,
+        source_reference, recorded_at_iso
+      FROM account_balance_checkpoints
+      WHERE account_id = ?
+      ORDER BY date_iso, recorded_at_iso, id
+    `).all(accountId).map((row) => {
+      const checkpoint = row as {
+        id: string;
+        account_id: string;
+        date_iso: string;
+        currency_code: string;
+        balance_minor: number;
+        source: string;
+        source_reference: string | null;
+        recorded_at_iso: string;
+      };
+      return {
+        id: checkpoint.id,
+        accountId: checkpoint.account_id,
+        dateIso: checkpoint.date_iso,
+        currencyCode: checkpoint.currency_code,
+        balanceMinor: checkpoint.balance_minor,
+        source: checkpoint.source,
+        ...(checkpoint.source_reference === null ? {} : { sourceReference: checkpoint.source_reference }),
+        recordedAtIso: checkpoint.recorded_at_iso,
+      };
+    });
+  }
+
+  function getAccountCoverageAssessment(
+    periodId: string,
+    evaluatedAtIso: string
+  ): AccountCoverageAssessment {
+    const period = db.prepare(`
+      SELECT id, account_id, start_date_iso, end_date_iso, currency_code, source_name,
+        source_type, import_job_id, imported_at_iso, confirmed, confirmed_at_iso
+      FROM account_statement_coverage_periods
+      WHERE id = ?
+    `).get(periodId) as {
+      id: string;
+      account_id: string;
+      start_date_iso: string;
+      end_date_iso: string;
+      currency_code: string;
+      source_name: string;
+      source_type: AccountStatementCoveragePeriod["sourceType"];
+      import_job_id: string | null;
+      imported_at_iso: string | null;
+      confirmed: number;
+      confirmed_at_iso: string | null;
+    } | undefined;
+    if (period === undefined) {
+      throw new Error(`Account statement coverage period not found: ${periodId}`);
+    }
+    const mappedPeriod: AccountStatementCoveragePeriod = {
+      id: period.id,
+      accountId: period.account_id,
+      startDateIso: period.start_date_iso,
+      endDateIso: period.end_date_iso,
+      currencyCode: period.currency_code,
+      sourceName: period.source_name,
+      sourceType: period.source_type,
+      ...(period.import_job_id === null ? {} : { importJobId: period.import_job_id }),
+      ...(period.imported_at_iso === null ? {} : { importedAtIso: period.imported_at_iso }),
+      confirmed: period.confirmed === 1,
+      ...(period.confirmed_at_iso === null ? {} : { confirmedAtIso: period.confirmed_at_iso }),
+    };
+    const account = db.prepare(
+      "SELECT household_id FROM accounts WHERE id = ?"
+    ).get(mappedPeriod.accountId) as { household_id: string } | undefined;
+    if (account === undefined) {
+      throw new Error(`Account not found: ${mappedPeriod.accountId}`);
+    }
+    const snapshot = loadLedgerSnapshotData();
+    return assessAccountCoverage({
+      period: mappedPeriod,
+      relatedPeriods: listAccountStatementCoveragePeriods(mappedPeriod.accountId),
+      checkpoints: listAccountBalanceCheckpoints(mappedPeriod.accountId),
+      transactions: getTransactionsForAccount(mappedPeriod.accountId),
+      pendingObservations: listPendingTransactionObservations(account.household_id),
+      importJobs: snapshot.importJobs,
+      evaluatedAtIso,
+    });
+  }
+
+  function upsertExchangeRate(rate: ExchangeRate): void {
+    const validated = validateExchangeRate(rate);
+    db.prepare(`
+      INSERT INTO exchange_rates (
+        id, currency_code, rate_nok_per_unit, effective_date, kind, source, provenance
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        currency_code = excluded.currency_code,
+        rate_nok_per_unit = excluded.rate_nok_per_unit,
+        effective_date = excluded.effective_date,
+        kind = excluded.kind,
+        source = excluded.source,
+        provenance = excluded.provenance
+    `).run(
+      validated.id,
+      validated.currencyCode,
+      validated.rateNokPerUnit,
+      validated.effectiveDate,
+      validated.kind,
+      validated.source,
+      validated.provenance
+    );
+  }
+
+  function upsertExchangeRates(rates: ExchangeRate[]): void {
+    const validatedRates = rates.map(validateExchangeRate);
+    const keys = new Set<string>();
+    for (const rate of validatedRates) {
+      const key = `${rate.currencyCode}/${rate.effectiveDate}/${rate.kind}`;
+      if (keys.has(key)) {
+        throw new Error(`Duplicate exchange rate for ${key}.`);
+      }
+      keys.add(key);
+    }
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const rate of validatedRates) upsertExchangeRate(rate);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function listExchangeRates(currencyCode?: CurrencyCode): ExchangeRate[] {
+    if (currencyCode !== undefined && !isCurrencyCode(currencyCode)) {
+      throw new Error("Exchange rate currency code is invalid.");
+    }
+    const rows = currencyCode === undefined
+      ? db.prepare(`
+          SELECT id, currency_code, rate_nok_per_unit, effective_date, kind, source, provenance
+          FROM exchange_rates
+          ORDER BY currency_code, effective_date, kind, id
+        `).all()
+      : db.prepare(`
+          SELECT id, currency_code, rate_nok_per_unit, effective_date, kind, source, provenance
+          FROM exchange_rates
+          WHERE currency_code = ?
+          ORDER BY effective_date, kind, id
+        `).all(currencyCode);
+    return rows.map((row) => {
+      const rate = row as {
+        id: string;
+        currency_code: string;
+        rate_nok_per_unit: string;
+        effective_date: string;
+        kind: ExchangeRate["kind"];
+        source: string;
+        provenance: ExchangeRate["provenance"];
+      };
+      return {
+        id: rate.id,
+        currencyCode: rate.currency_code,
+        rateNokPerUnit: rate.rate_nok_per_unit,
+        effectiveDate: rate.effective_date,
+        kind: rate.kind,
+        source: rate.source,
+        provenance: rate.provenance,
+      };
+    });
   }
 
   function backfillImportJobHistory(): void {
@@ -1014,7 +1554,8 @@ export function createLocalLedgerDatabase(
       for (const job of legacyJobs) {
         const transactions = db.prepare(`
           SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-            currency_code, source_type, source_reference, category_id, import_job_id
+            currency_code, source_type, source_reference, category_id, import_job_id,
+            category_allocations_json
           FROM transactions
           WHERE import_job_id = ?
         `).all(job.id) as unknown as TransactionRow[];
@@ -1069,7 +1610,7 @@ export function createLocalLedgerDatabase(
 
     const transactions = db
       .prepare(
-        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json FROM transactions ORDER BY id"
+        "SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json, category_allocations_json FROM transactions ORDER BY id"
       )
       .all() as Array<{
       id: string;
@@ -1084,6 +1625,7 @@ export function createLocalLedgerDatabase(
       category_id: string | null;
       import_job_id: string | null;
       categorization_json: string | null;
+      category_allocations_json: string | null;
     }>;
 
     const pendingObservations = db.prepare(`
@@ -1124,38 +1666,74 @@ export function createLocalLedgerDatabase(
       )
       .all() as Array<{ merchant_alias: string; category_id: string }>;
 
-    const mappedTransactions: Transaction[] = transactions.map((transaction) => {
-      const mapped: Transaction = {
-        id: transaction.id,
-        householdId: transaction.household_id,
-        accountId: transaction.account_id,
-        bookedAtIso: transaction.booked_at_iso,
-        amountMinor: transaction.amount_minor,
-        merchantRaw: transaction.merchant_raw,
+    const accountStatementCoveragePeriods = db.prepare(`
+      SELECT id, account_id, start_date_iso, end_date_iso, currency_code, source_name,
+        source_type, import_job_id, imported_at_iso, confirmed, confirmed_at_iso
+      FROM account_statement_coverage_periods
+      ORDER BY account_id, start_date_iso, end_date_iso, id
+    `).all().map((row) => {
+      const period = row as {
+        id: string;
+        account_id: string;
+        start_date_iso: string;
+        end_date_iso: string;
+        currency_code: string;
+        source_name: string;
+        source_type: AccountStatementCoveragePeriod["sourceType"];
+        import_job_id: string | null;
+        imported_at_iso: string | null;
+        confirmed: number;
+        confirmed_at_iso: string | null;
       };
+      return {
+        id: period.id,
+        accountId: period.account_id,
+        startDateIso: period.start_date_iso,
+        endDateIso: period.end_date_iso,
+        currencyCode: period.currency_code,
+        sourceName: period.source_name,
+        sourceType: period.source_type,
+        ...(period.import_job_id === null ? {} : { importJobId: period.import_job_id }),
+        ...(period.imported_at_iso === null ? {} : { importedAtIso: period.imported_at_iso }),
+        confirmed: period.confirmed === 1,
+        ...(period.confirmed_at_iso === null ? {} : { confirmedAtIso: period.confirmed_at_iso }),
+      };
+    });
 
-      if (transaction.currency_code !== null) {
-        mapped.currencyCode = transaction.currency_code;
-      }
-      if (transaction.source_type !== null) {
-        mapped.sourceType = transaction.source_type;
-      }
+    const accountBalanceCheckpoints = db.prepare(`
+      SELECT id, account_id, date_iso, currency_code, balance_minor, source,
+        source_reference, recorded_at_iso
+      FROM account_balance_checkpoints
+      ORDER BY account_id, date_iso, recorded_at_iso, id
+    `).all().map((row) => {
+      const checkpoint = row as {
+        id: string;
+        account_id: string;
+        date_iso: string;
+        currency_code: string;
+        balance_minor: number;
+        source: string;
+        source_reference: string | null;
+        recorded_at_iso: string;
+      };
+      return {
+        id: checkpoint.id,
+        accountId: checkpoint.account_id,
+        dateIso: checkpoint.date_iso,
+        currencyCode: checkpoint.currency_code,
+        balanceMinor: checkpoint.balance_minor,
+        source: checkpoint.source,
+        ...(checkpoint.source_reference === null ? {} : { sourceReference: checkpoint.source_reference }),
+        recordedAtIso: checkpoint.recorded_at_iso,
+      };
+    });
+    const exchangeRates = listExchangeRates();
 
-      if (transaction.source_reference !== null) {
-        mapped.sourceReference = transaction.source_reference;
-      }
-
-      if (transaction.category_id !== null) {
-        mapped.categoryId = transaction.category_id;
-      }
-
-      if (transaction.import_job_id !== null) {
-        mapped.importJobId = transaction.import_job_id;
-      }
+    const mappedTransactions: Transaction[] = transactions.map((transaction) => {
+      const mapped = mapTransactionRow(transaction);
       if (transaction.categorization_json !== null) {
         mapped.categorization = JSON.parse(transaction.categorization_json) as CategorizationDecision;
       }
-
       return mapped;
     });
 
@@ -1217,6 +1795,9 @@ export function createLocalLedgerDatabase(
         merchantAlias: rule.merchant_alias,
         categoryId: rule.category_id,
       })),
+      accountStatementCoveragePeriods,
+      accountBalanceCheckpoints,
+      exchangeRates,
     };
   }
 
@@ -1229,6 +1810,9 @@ export function createLocalLedgerDatabase(
         DELETE FROM same_merchant_propagation_changes;
         DELETE FROM same_merchant_propagation_operations;
         DELETE FROM merchant_correction_provenance;
+        DELETE FROM exchange_rates;
+        DELETE FROM account_balance_checkpoints;
+        DELETE FROM account_statement_coverage_periods;
         DELETE FROM monthly_category_targets;
         DELETE FROM pending_transaction_observations;
         DELETE FROM transactions;
@@ -1483,7 +2067,7 @@ export function createLocalLedgerDatabase(
     const transactionRows = db.prepare(`
       SELECT t.id, t.household_id, t.account_id, t.booked_at_iso, t.amount_minor,
         t.merchant_raw, t.currency_code, t.source_type, t.source_reference,
-        t.category_id, t.import_job_id
+        t.category_id, t.import_job_id, t.category_allocations_json
       ${fromClause}
       WHERE ${whereClause}
       ORDER BY ${transactionSortColumns[sortBy]} ${sortDirection.toUpperCase()}, t.id ASC
@@ -1501,7 +2085,8 @@ export function createLocalLedgerDatabase(
   function listUncategorizedTransactions(householdId: string): Transaction[] {
     const transactions = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-        currency_code, source_type, source_reference, category_id, import_job_id
+        currency_code, source_type, source_reference, category_id, import_job_id,
+        category_allocations_json
       FROM transactions
       WHERE household_id = ? AND category_id IS NULL
       ORDER BY substr(booked_at_iso, 1, 10) ASC, id ASC
@@ -1557,7 +2142,8 @@ export function createLocalLedgerDatabase(
   function retainedImportTransactions(importJobId: string): UndoImportJobResult["retainedTransactions"] {
     const transactions = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-        currency_code, source_type, source_reference, category_id, import_job_id
+        currency_code, source_type, source_reference, category_id, import_job_id,
+        category_allocations_json
       FROM transactions
       WHERE import_job_id = ?
       ORDER BY booked_at_iso, id
@@ -1666,7 +2252,8 @@ export function createLocalLedgerDatabase(
 
     const transactions = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-        currency_code, source_type, source_reference, category_id, import_job_id
+        currency_code, source_type, source_reference, category_id, import_job_id,
+        category_allocations_json
       FROM transactions
       WHERE import_job_id = ?
       ORDER BY id
@@ -1835,8 +2422,9 @@ export function createLocalLedgerDatabase(
       const result = db.prepare(`
         INSERT OR IGNORE INTO transactions (
           id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search,
-          currency_code, source_type, source_reference, category_id, import_job_id, categorization_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          currency_code, source_type, source_reference, category_id, import_job_id, categorization_json,
+          category_allocations_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         transaction.id,
         transaction.householdId,
@@ -1850,7 +2438,8 @@ export function createLocalLedgerDatabase(
         transaction.sourceReference ?? null,
         transaction.categoryId ?? null,
         transaction.importJobId ?? null,
-        transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
+        transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
+        serializeTransactionCategoryAllocations(transaction)
       ) as { changes: number | bigint };
       if (Number(result.changes) !== 1) {
         throw new Error(`Corrected transaction already exists: ${transaction.id}`);
@@ -1972,7 +2561,7 @@ export function createLocalLedgerDatabase(
 
   function appendTransactions(transactions: Transaction[]): number {
     const insertTransaction = db.prepare(
-  "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json, category_allocations_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     let insertedCount = 0;
     const insertedTransactions: Transaction[] = [];
@@ -1992,7 +2581,8 @@ export function createLocalLedgerDatabase(
           transaction.sourceReference ?? null,
           transaction.categoryId ?? null,
           transaction.importJobId ?? null,
-          transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
+          transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
+          serializeTransactionCategoryAllocations(transaction)
         ) as { changes: number | bigint };
         if (Number(result.changes) > 0) {
           insertedCount += Number(result.changes);
@@ -2032,7 +2622,7 @@ export function createLocalLedgerDatabase(
       "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-  "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json, category_allocations_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertReviewItem = db.prepare(`
       INSERT OR IGNORE INTO import_review_items (
@@ -2125,7 +2715,8 @@ export function createLocalLedgerDatabase(
           transaction.sourceReference ?? null,
           transaction.categoryId ?? null,
           transaction.importJobId ?? null,
-          transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
+          transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
+          serializeTransactionCategoryAllocations(transaction)
         ) as { changes: number | bigint };
         if (Number(result.changes) > 0) {
           insertedCount += Number(result.changes);
@@ -2594,7 +3185,7 @@ export function createLocalLedgerDatabase(
       "INSERT INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const insertTransaction = db.prepare(
-  "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json, category_allocations_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     db.exec("BEGIN");
@@ -2624,7 +3215,8 @@ export function createLocalLedgerDatabase(
         transaction.sourceReference ?? null,
         transaction.categoryId ?? null,
         transaction.importJobId ?? null,
-        transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization)
+        transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
+        serializeTransactionCategoryAllocations(transaction)
       );
       persistImportJobOperation(db, importJob, [transaction]);
       persistTransactionBaseline(db, importJob.id, transaction);
@@ -2644,6 +3236,15 @@ export function createLocalLedgerDatabase(
     getTransactionsForAccount,
     listPendingTransactionObservations,
     getTransactionById,
+    updateTransactionCategoryAllocations,
+    saveAccountStatementCoveragePeriod,
+    appendAccountBalanceCheckpoint,
+    listAccountStatementCoveragePeriods,
+    listAccountBalanceCheckpoints,
+    getAccountCoverageAssessment,
+    upsertExchangeRate,
+    upsertExchangeRates,
+    listExchangeRates,
     loadLedgerSnapshotData,
     replaceLedgerSnapshotData,
     queryTransactions,

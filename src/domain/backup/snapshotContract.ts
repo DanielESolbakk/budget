@@ -1,5 +1,8 @@
 import type {
+  AccountBalanceCheckpoint,
+  AccountStatementCoveragePeriod,
   Account,
+  ExchangeRate,
   Household,
   ImportJob,
   MerchantCategoryRule,
@@ -9,9 +12,9 @@ import type {
 } from "../types.js";
 
 /** Snapshot format version – increment when the schema changes in a breaking way. */
-export const SNAPSHOT_VERSION = "2" as const;
+export const SNAPSHOT_VERSION = "3" as const;
 
-export type SnapshotVersion = "1" | typeof SNAPSHOT_VERSION;
+export type SnapshotVersion = "1" | "2" | typeof SNAPSHOT_VERSION;
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {
@@ -41,6 +44,9 @@ export interface BackupSnapshot {
   importJobs: ImportJob[];
   monthlyCategoryTargets: MonthlyCategoryTarget[];
   merchantCategoryRules: MerchantCategoryRule[];
+  accountStatementCoveragePeriods: AccountStatementCoveragePeriod[];
+  accountBalanceCheckpoints: AccountBalanceCheckpoint[];
+  exchangeRates: ExchangeRate[];
 }
 
 /**
@@ -57,6 +63,9 @@ export interface LedgerSnapshotData {
   importJobs: ImportJob[];
   monthlyCategoryTargets: MonthlyCategoryTarget[];
   merchantCategoryRules?: MerchantCategoryRule[];
+  accountStatementCoveragePeriods?: AccountStatementCoveragePeriod[];
+  accountBalanceCheckpoints?: AccountBalanceCheckpoint[];
+  exchangeRates?: ExchangeRate[];
   /** Override the creation timestamp (ISO 8601). Defaults to current UTC time. */
   createdAtIso?: string;
 }
@@ -126,6 +135,9 @@ export interface RestoreSnapshotOutput {
   importJobs: ImportJob[];
   monthlyCategoryTargets: MonthlyCategoryTarget[];
   merchantCategoryRules: MerchantCategoryRule[];
+  accountStatementCoveragePeriods: AccountStatementCoveragePeriod[];
+  accountBalanceCheckpoints: AccountBalanceCheckpoint[];
+  exchangeRates: ExchangeRate[];
   /** Number of transactions that were restored. */
   transactionCount: number;
 }

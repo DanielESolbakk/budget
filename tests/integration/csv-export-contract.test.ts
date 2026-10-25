@@ -56,6 +56,7 @@ describe("csv export contract", () => {
         "sourceReference",
         "categoryId",
         "importJobId",
+        "categoryAllocations",
       ]);
     });
 
@@ -225,6 +226,7 @@ describe("csv export contract", () => {
       expect(row.sourceReference).toBe("");
       expect(row.categoryId).toBe("");
       expect(row.importJobId).toBe("");
+      expect(row).toHaveProperty("categoryAllocations", "");
     });
 
     it("buildCsvRow propagates present optional fields", () => {
@@ -239,12 +241,42 @@ describe("csv export contract", () => {
         sourceReference: "BANK-REFERENCE-42",
         categoryId: "groceries",
         importJobId: "job-99",
+        categoryAllocations: [
+          { categoryId: "groceries", amountMinor: -700 },
+          { categoryId: "housing", amountMinor: -300 },
+        ],
       };
       const row = buildCsvRow(tx);
       expect(row.merchantAlias).toBe("REMA");
       expect(row.sourceReference).toBe("BANK-REFERENCE-42");
       expect(row.categoryId).toBe("groceries");
       expect(row.importJobId).toBe("job-99");
+      expect(row).toHaveProperty(
+        "categoryAllocations",
+        JSON.stringify(tx.categoryAllocations)
+      );
+    });
+
+    it("serializes allocation details in deterministic category order", () => {
+      const transaction: Transaction = {
+        id: "tx-allocation-order",
+        householdId: "hh-x",
+        accountId: "acc-x",
+        bookedAtIso: "2026-03-15T00:00:00Z",
+        amountMinor: -1_000,
+        merchantRaw: "Rema 1000",
+        categoryAllocations: [
+          { categoryId: "housing", amountMinor: -300 },
+          { categoryId: "groceries", amountMinor: -700 },
+        ],
+      };
+
+      expect(buildCsvRow(transaction).categoryAllocations).toBe(
+        JSON.stringify([
+          { categoryId: "groceries", amountMinor: -700 },
+          { categoryId: "housing", amountMinor: -300 },
+        ])
+      );
     });
   });
 

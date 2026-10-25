@@ -60,6 +60,9 @@ function createSnapshotData(): LedgerSnapshotData {
       { yearMonth: "2026-05", categoryId: "restored", targetMinor: 15000 },
     ],
     merchantCategoryRules: [],
+    accountStatementCoveragePeriods: [],
+    accountBalanceCheckpoints: [],
+    exchangeRates: [],
   };
 }
 

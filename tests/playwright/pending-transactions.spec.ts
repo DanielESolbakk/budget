@@ -198,6 +198,8 @@ test("reaches the Pending empty state and its ledger action by keyboard", async 
   await window.keyboard.press("Tab");
   await expect(appShell.destination("Data safety")).toBeFocused();
   await window.keyboard.press("Tab");
+  await expect(appShell.destination("Settings")).toBeFocused();
+  await window.keyboard.press("Tab");
   const openTransactions = window.getByRole("button", {
     name: "Open transactions",
     exact: true,

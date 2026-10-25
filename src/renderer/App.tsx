@@ -9,6 +9,7 @@ import { ImportWorkspace } from "./workspaces/ImportWorkspace.js";
 import { PendingTransactionsWorkspace } from "./workspaces/PendingTransactionsWorkspace.js";
 import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
 import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
+import { ExchangeRatesSection } from "./settings/ExchangeRatesSection.js";
 import { HouseholdSetup } from "./setup/HouseholdSetup.js";
 import { toLocalYearMonth } from "./localDate.js";
 import type { ReviewState } from "./workspaces/types.js";
@@ -16,7 +17,7 @@ import type { ReviewState } from "./workspaces/types.js";
 const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
 type AppState = ReviewState;
 
-type WorkspaceId = "review" | "transactions" | "pending" | "import" | "data-safety";
+type WorkspaceId = "review" | "transactions" | "pending" | "import" | "data-safety" | "settings";
 
 const WORKSPACES: Array<{ id: WorkspaceId; label: string; description: string }> = [
   { id: "review", label: "Review", description: "Monthly position" },
@@ -24,6 +25,7 @@ const WORKSPACES: Array<{ id: WorkspaceId; label: string; description: string }>
   { id: "pending", label: "Pending", description: "Waiting to book" },
   { id: "import", label: "Import", description: "Bring in activity" },
   { id: "data-safety", label: "Data safety", description: "Backup and export" },
+  { id: "settings", label: "Settings", description: "Local exchange rates" },
 ];
 
 export function App(): React.JSX.Element {
@@ -273,6 +275,19 @@ export function App(): React.JSX.Element {
               isActive={activeWorkspace === "data-safety"}
               onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)}
             />
+          )}
+          {visitedWorkspaces.has("settings") && (
+            <section
+              className="destination-workspace"
+              aria-label="Settings workspace"
+              hidden={activeWorkspace !== "settings"}
+            >
+              <div className="destination-heading">
+                <h2>Settings</h2>
+                <p>Manage local household rate data.</p>
+              </div>
+              <ExchangeRatesSection />
+            </section>
           )}
         </main>
       </div>

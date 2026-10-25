@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DashboardData, DashboardViewContract } from "../app/dashboardApi.js";
+import type { DashboardData, DashboardViewContract, NokMonthlyReport } from "../app/dashboardApi.js";
 import type { ExportCsvSummary } from "../app/exportCsv.js";
 import type {
   CsvImportPreviewResponse,
@@ -15,7 +15,11 @@ import type {
   PdfImportResponse,
 } from "../app/import/importPdf.js";
 import type {
+  AccountBalanceCheckpoint,
+  AccountCoverageAssessment,
+  AccountStatementCoveragePeriod,
   Account,
+  ExchangeRate,
   ForecastEntry,
   ImportReviewCorrectionInput,
   ImportReviewItem,
@@ -29,6 +33,7 @@ import type {
   SameMerchantPropagationPreviewRequest,
   SameMerchantPropagationOperation,
   Transaction,
+  TransactionCategoryAllocation,
 } from "../domain/types.js";
 import type {
   BackupSnapshotCatalogEntry,
@@ -129,11 +134,33 @@ export interface CategoryUpdateResult {
 
 export interface LedgerApi {
   list: (query: TransactionQuery) => Promise<TransactionPage & { accounts: Account[] }>;
+  updateCategoryAllocations: (
+    input: { transactionId: string; allocations: TransactionCategoryAllocation[] }
+  ) => Promise<Transaction>;
   savedViews: {
     list: () => Promise<SavedLedgerView[]>;
     save: (input: { name: string; filters: TransactionFilters }) => Promise<SavedLedgerView>;
     delete: (viewId: string) => Promise<boolean>;
   };
+}
+
+export interface AccountCoverageApi {
+  listPeriods: (accountId: string) => Promise<AccountStatementCoveragePeriod[]>;
+  savePeriod: (period: AccountStatementCoveragePeriod) => Promise<AccountStatementCoveragePeriod>;
+  listCheckpoints: (accountId: string) => Promise<AccountBalanceCheckpoint[]>;
+  appendCheckpoint: (checkpoint: AccountBalanceCheckpoint) => Promise<AccountBalanceCheckpoint>;
+  getAssessment: (periodId: string, evaluatedAtIso: string) => Promise<AccountCoverageAssessment>;
+}
+
+export interface ExchangeRatesApi {
+  list: (currencyCode?: string) => Promise<ExchangeRate[]>;
+  record: (rate: ExchangeRate) => Promise<ExchangeRate>;
+  importFromFile: () => Promise<ExchangeRate[] | null>;
+  getMonthlyReport: (input: {
+    yearMonth: string;
+    monthlyReferenceRateIds?: Record<string, string>;
+    useLatestRateScenario?: boolean;
+  }) => Promise<NokMonthlyReport>;
 }
 
 export interface PendingApi {
@@ -158,6 +185,8 @@ export interface BudgetApi {
   pending: PendingApi;
   review: ReviewApi;
   ledger: LedgerApi;
+  accountCoverage: AccountCoverageApi;
+  exchangeRates: ExchangeRatesApi;
   backup: BackupApi;
   dialogs: FileDialogApi;
 }
@@ -252,6 +281,9 @@ const budgetApi: BudgetApi = {
   ledger: {
     list: (query: TransactionQuery): Promise<TransactionPage & { accounts: Account[] }> =>
       ipcRenderer.invoke("transaction:list", query),
+    updateCategoryAllocations: (
+      input: { transactionId: string; allocations: TransactionCategoryAllocation[] }
+    ): Promise<Transaction> => ipcRenderer.invoke("transaction:updateCategoryAllocations", input),
     savedViews: {
       list: (): Promise<SavedLedgerView[]> => ipcRenderer.invoke("ledgerView:list"),
       save: (input: { name: string; filters: TransactionFilters }): Promise<SavedLedgerView> =>
@@ -262,6 +294,28 @@ const budgetApi: BudgetApi = {
   pending: {
     list: (): Promise<PendingTransactionObservation[]> =>
       ipcRenderer.invoke("pending:list"),
+  },
+  accountCoverage: {
+    listPeriods: (accountId: string): Promise<AccountStatementCoveragePeriod[]> =>
+      ipcRenderer.invoke("accountCoverage:periods:list", accountId),
+    savePeriod: (period: AccountStatementCoveragePeriod): Promise<AccountStatementCoveragePeriod> =>
+      ipcRenderer.invoke("accountCoverage:period:save", period),
+    listCheckpoints: (accountId: string): Promise<AccountBalanceCheckpoint[]> =>
+      ipcRenderer.invoke("accountCoverage:checkpoints:list", accountId),
+    appendCheckpoint: (checkpoint: AccountBalanceCheckpoint): Promise<AccountBalanceCheckpoint> =>
+      ipcRenderer.invoke("accountCoverage:checkpoint:append", checkpoint),
+    getAssessment: (periodId: string, evaluatedAtIso: string): Promise<AccountCoverageAssessment> =>
+      ipcRenderer.invoke("accountCoverage:assessment:get", { periodId, evaluatedAtIso }),
+  },
+  exchangeRates: {
+    list: (currencyCode?: string): Promise<ExchangeRate[]> =>
+      ipcRenderer.invoke("exchangeRate:list", currencyCode),
+    record: (rate: ExchangeRate): Promise<ExchangeRate> =>
+      ipcRenderer.invoke("exchangeRate:record", rate),
+    importFromFile: (): Promise<ExchangeRate[] | null> =>
+      ipcRenderer.invoke("exchangeRate:importFromFile"),
+    getMonthlyReport: (input): Promise<NokMonthlyReport> =>
+      ipcRenderer.invoke("exchangeRate:monthlyReport", input),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

@@ -9,6 +9,25 @@ export type CsvExportDialog = (options: SaveDialogOptions) => Promise<SaveDialog
 export type BackupOutputDialog = (options: SaveDialogOptions) => Promise<SaveDialogResult>;
 export type RestoreSnapshotDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
 export type ImportStatementDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
+export type ExchangeRateImportDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
+
+export function createExchangeRateImportDialog(): ExchangeRateImportDialog {
+  return async (options) => {
+    if (process.env["NODE_ENV"] === "test") {
+      if (process.env["BUDGET_TEST_EXCHANGE_RATE_IMPORT_DIALOG"] === "cancel") {
+        return { canceled: true, filePaths: [] };
+      }
+      const selectedPath = process.env["BUDGET_TEST_EXCHANGE_RATE_IMPORT_PATH"];
+      if (selectedPath !== undefined) {
+        if (selectedPath.trim().length === 0) {
+          throw new Error("A test exchange-rate import path must be non-empty.");
+        }
+        return { canceled: false, filePaths: [selectedPath] };
+      }
+    }
+    return dialog.showOpenDialog(options);
+  };
+}
 
 export function createImportStatementDialog(): ImportStatementDialog {
   return async (options) => {

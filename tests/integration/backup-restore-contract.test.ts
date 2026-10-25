@@ -294,6 +294,25 @@ describe("backup/restore contract", () => {
     }
   });
 
+  it("migrates version-2 snapshots with empty new local rate and coverage collections", () => {
+    const legacySnapshot = buildRestoreSnapshot();
+    legacySnapshot.metadata.version = "2";
+    delete (legacySnapshot as unknown as { accountStatementCoveragePeriods?: unknown })
+      .accountStatementCoveragePeriods;
+    delete (legacySnapshot as unknown as { accountBalanceCheckpoints?: unknown })
+      .accountBalanceCheckpoints;
+    delete (legacySnapshot as unknown as { exchangeRates?: unknown }).exchangeRates;
+
+    withSnapshotFile(legacySnapshot, (snapshotPath) => {
+      const restored = restoreBackupSnapshot({ snapshotPath });
+
+      expect(restored.accountStatementCoveragePeriods).toEqual([]);
+      expect(restored.accountBalanceCheckpoints).toEqual([]);
+      expect(restored.exchangeRates).toEqual([]);
+      expect(restored.merchantCategoryRules).toEqual([]);
+    });
+  });
+
   describe("AC-2: restore reproduces equivalent ledger state", () => {
     it("round-trip: restore after create returns equivalent ledger state", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "budget-restore-"));

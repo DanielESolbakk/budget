@@ -9,7 +9,11 @@ import {
   type TransactionSortField,
   type TransactionTypeFilter,
 } from "../../domain/ledger/filterTransactions.js";
-import type { Account, Transaction } from "../../domain/types.js";
+import type {
+  Account,
+  Transaction,
+  TransactionCategoryAllocation,
+} from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../import/categoryOptions.js";
 
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
@@ -30,8 +34,28 @@ interface ActiveFilter {
   value: string;
 }
 
+interface AllocationDraft {
+  categoryId: string;
+  amountText: string;
+}
+
 function amountToInput(minorUnits: number | undefined): string {
   return minorUnits === undefined ? "" : (minorUnits / 100).toFixed(2);
+}
+
+function amountMinorToText(amountMinor: number): string {
+  return (amountMinor / 100).toFixed(2);
+}
+
+function allocationAmountToMinor(value: string): number | null {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^-?\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
+  const amountMinor = Math.round(Number(normalized) * 100);
+  return Number.isSafeInteger(amountMinor) ? amountMinor : null;
+}
+
+function categoryLabel(categoryId: string): string {
+  return CATEGORY_OPTIONS.find((category) => category.id === categoryId)?.label ?? categoryId;
 }
 
 function getActiveFilters(filters: TransactionFilters, accounts: Account[]): ActiveFilter[] {
@@ -95,8 +119,12 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   const [isLoading, setIsLoading] = React.useState(true);
   const [isFilterPending, setIsFilterPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [editingAllocationTransactionId, setEditingAllocationTransactionId] = React.useState<string | null>(null);
+  const [allocationDraft, setAllocationDraft] = React.useState<AllocationDraft[]>([]);
+  const [allocationError, setAllocationError] = React.useState<string | null>(null);
   const [retryKey, setRetryKey] = React.useState(0);
   const hasMountedFilterEffect = React.useRef(false);
+  const firstAllocationCategoryRef = React.useRef<HTMLSelectElement>(null);
 
   function updateFilters(action: React.SetStateAction<TransactionFilters>): void {
     latestFilterRevision.current += 1;
@@ -296,6 +324,84 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
     setQuery((current) => ({ ...current, page }));
   }
 
+  function editAllocations(transaction: Transaction): void {
+    const allocations = transaction.categoryAllocations?.length
+      ? transaction.categoryAllocations
+      : [
+          {
+            categoryId: transaction.categoryId ?? "groceries",
+            amountMinor: Math.trunc(transaction.amountMinor / 2),
+          },
+          {
+            categoryId: transaction.categoryId === "housing" ? "groceries" : "housing",
+            amountMinor: transaction.amountMinor - Math.trunc(transaction.amountMinor / 2),
+          },
+        ];
+    setAllocationDraft(allocations.map((allocation) => ({
+      categoryId: allocation.categoryId,
+      amountText: amountMinorToText(allocation.amountMinor),
+    })));
+    setAllocationError(null);
+    setEditingAllocationTransactionId(transaction.id);
+  }
+
+  React.useEffect(() => {
+    if (editingAllocationTransactionId !== null) {
+      firstAllocationCategoryRef.current?.focus();
+    }
+  }, [editingAllocationTransactionId]);
+
+  async function saveAllocations(transaction: Transaction): Promise<void> {
+    const allocations: TransactionCategoryAllocation[] = [];
+    for (const [index, allocation] of allocationDraft.entries()) {
+      const amountMinor = allocationAmountToMinor(allocation.amountText);
+      if (amountMinor === null) {
+        setAllocationError(`Allocation ${index + 1} must be a valid amount with at most two decimal places.`);
+        return;
+      }
+      allocations.push({ categoryId: allocation.categoryId, amountMinor });
+    }
+
+    setAllocationError(null);
+    try {
+      const updated = await window.budgetApi.ledger.updateCategoryAllocations({
+        transactionId: transaction.id,
+        allocations,
+      });
+      setTransactions((current) =>
+        current.map((item) => item.id === updated.id ? updated : item)
+      );
+      setEditingAllocationTransactionId(null);
+    } catch (saveError: unknown) {
+      setAllocationError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save transaction category allocations."
+      );
+    }
+  }
+
+  function updateAllocationDraft(index: number, update: Partial<AllocationDraft>): void {
+    setAllocationDraft((current) =>
+      current.map((allocation, currentIndex) =>
+        currentIndex === index ? { ...allocation, ...update } : allocation
+      )
+    );
+  }
+
+  function addAllocationDraft(): void {
+    const availableCategory = CATEGORY_OPTIONS.find((category) =>
+      !allocationDraft.some((allocation) => allocation.categoryId === category.id)
+    );
+    setAllocationDraft((current) => [
+      ...current,
+      {
+        categoryId: availableCategory?.id ?? CATEGORY_OPTIONS[0]!.id,
+        amountText: "0.00",
+      },
+    ]);
+  }
+
   const currentPage = query.page ?? 1;
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -311,6 +417,26 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
     ...(filters.amountFromMinor === undefined && filters.amountToMinor === undefined ? [] : ["Amount range"]),
   ];
   const hasFiltersToClear = activeFilters.length > 0 || amountFrom !== "" || amountTo !== "";
+  const allocationSourceTransaction = transactions.find(
+    (transaction) => transaction.id === editingAllocationTransactionId
+  );
+  const allocationAmounts = allocationDraft.map((allocation) =>
+    allocationAmountToMinor(allocation.amountText)
+  );
+  const allocationTotalMinor = allocationAmounts.every(
+    (amount): amount is number => amount !== null
+  )
+    ? allocationAmounts.reduce((total, amount) => total + amount, 0)
+    : null;
+  const allocationCurrencyCode = allocationSourceTransaction === undefined
+    ? "NOK"
+    : allocationSourceTransaction.currencyCode ??
+      accounts.find((account) => account.id === allocationSourceTransaction.accountId)?.currencyCode ??
+      "NOK";
+  const allocationCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
+    style: "currency",
+    currency: allocationCurrencyCode,
+  });
 
   return (
     <section aria-label="Ledger" aria-busy={isLoading || isFilterPending}>
@@ -511,24 +637,107 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
                     Account{query.sortBy === "accountId" && <span className="ledger-sort-direction" aria-hidden="true">{query.sortDirection === "asc" ? "ASC" : "DESC"}</span>}
                   </button>
                 </th>
+                <th scope="col" aria-label="Allocation actions">Allocations</th>
               </tr>
             </thead>
             <tbody>
               {transactions.map((transaction) => {
                 const accountName = accounts.find((account) => account.id === transaction.accountId)?.name ?? transaction.accountId;
-                const categoryName = transaction.categoryId === undefined
-                  ? "Uncategorized"
-                  : CATEGORY_OPTIONS.find((category) => category.id === transaction.categoryId)?.label ?? transaction.categoryId;
+                const categoryName = transaction.categoryAllocations?.length
+                  ? transaction.categoryAllocations.map((allocation) => categoryLabel(allocation.categoryId)).join(", ")
+                  : transaction.categoryId === undefined ? "Uncategorized" : categoryLabel(transaction.categoryId);
                 const bookedDate = new Date(`${transaction.bookedAtIso.slice(0, 10)}T00:00:00Z`);
 
                 return (
-                  <tr key={transaction.id} aria-label={`Ledger transaction ${transaction.merchantRaw}`}>
-                    <td>{bookedDateFormatter.format(bookedDate)}</td>
-                    <td>{transaction.merchantRaw}</td>
-                    <td className="ledger-amount">{nokCurrencyFormatter.format(transaction.amountMinor / 100)}</td>
-                    <td>{categoryName}</td>
-                    <td>{accountName}</td>
-                  </tr>
+                  <React.Fragment key={transaction.id}>
+                    <tr aria-label={`Ledger transaction ${transaction.merchantRaw}`}>
+                      <td>{bookedDateFormatter.format(bookedDate)}</td>
+                      <td>{transaction.merchantRaw}</td>
+                      <td className="ledger-amount">{nokCurrencyFormatter.format(transaction.amountMinor / 100)}</td>
+                      <td>{categoryName}</td>
+                      <td>{accountName}</td>
+                      <td>
+                        <button
+                          type="button"
+                          aria-label={`Edit category allocations for ${transaction.merchantRaw}`}
+                          aria-expanded={editingAllocationTransactionId === transaction.id}
+                          onClick={() => editAllocations(transaction)}
+                        >
+                          {transaction.categoryAllocations?.length ? "Edit allocations" : "Allocate categories"}
+                        </button>
+                      </td>
+                    </tr>
+                    {editingAllocationTransactionId === transaction.id && (
+                      <tr>
+                        <td colSpan={6}>
+                          <section
+                            className="transaction-allocation-editor"
+                            aria-label={`Transaction category allocations for ${transaction.merchantRaw}`}
+                          >
+                            <h3>Split {transaction.merchantRaw} across categories</h3>
+                            <p>
+                              Source transaction: {allocationCurrencyFormatter.format(transaction.amountMinor / 100)}
+                            </p>
+                            <p>
+                              Allocation total: {allocationTotalMinor === null
+                                ? "Incomplete"
+                                : allocationCurrencyFormatter.format(allocationTotalMinor / 100)}
+                              {allocationTotalMinor === null ? "" : `; remaining ${allocationCurrencyFormatter.format((transaction.amountMinor - allocationTotalMinor) / 100)}`}
+                            </p>
+                            <div className="transaction-allocation-rows">
+                              {allocationDraft.map((allocation, index) => (
+                                <div className="transaction-allocation-row" key={`${transaction.id}-${index}`}>
+                                  <label>
+                                    Allocation category {index + 1}
+                                    <select
+                                      ref={index === 0 ? firstAllocationCategoryRef : undefined}
+                                      aria-label={`Allocation category ${index + 1}`}
+                                      value={allocation.categoryId}
+                                      onChange={(event) => updateAllocationDraft(index, { categoryId: event.target.value })}
+                                    >
+                                      {CATEGORY_OPTIONS.map((category) => (
+                                        <option key={category.id} value={category.id}>{category.label}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Allocation amount {index + 1}
+                                    <input
+                                      aria-label={`Allocation amount ${index + 1}`}
+                                      inputMode="decimal"
+                                      value={allocation.amountText}
+                                      onChange={(event) => updateAllocationDraft(index, { amountText: event.target.value })}
+                                    />
+                                  </label>
+                                  {allocationDraft.length > 2 && (
+                                    <button
+                                      type="button"
+                                      aria-label={`Remove allocation ${index + 1}`}
+                                      onClick={() => setAllocationDraft((current) =>
+                                        current.filter((_, currentIndex) => currentIndex !== index)
+                                      )}
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            <button type="button" onClick={addAllocationDraft}>
+                              Add allocation
+                            </button>
+                            {allocationError !== null && <p role="alert">{allocationError}</p>}
+                            <button type="button" onClick={() => void saveAllocations(transaction)}>
+                              Save allocations for {transaction.merchantRaw}
+                            </button>
+                            <button type="button" onClick={() => setEditingAllocationTransactionId(null)}>
+                              Cancel allocation editing
+                            </button>
+                          </section>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>

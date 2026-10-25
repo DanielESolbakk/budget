@@ -5,6 +5,7 @@ import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySect
 import { ForecastSection } from "../dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "../dashboard/MonthlyTotalsSection.js";
 import { TargetVsActualSection } from "../dashboard/TargetVsActualSection.js";
+import { AccountCoverageSection } from "../dashboard/AccountCoverageSection.js";
 import type { ReviewState } from "./types.js";
 
 const monthFormatter = new Intl.DateTimeFormat("nb-NO", {
@@ -160,6 +161,7 @@ export function ReviewWorkspace({
               <ForecastSection dashboardData={state.dashboardData} />
             </aside>
           </div>
+          {isActive && <AccountCoverageSection />}
         </>
       )}
     </section>
