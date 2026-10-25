@@ -1,7 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
-import { _electron as electron, type Locator, type Page } from "@playwright/test";
+import { _electron as electron, type Locator, type Page, type Request } from "@playwright/test";
 import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
+import { installMainProcessFetchProbe, mainProcessFetchRequests } from "./helpers/networkProbe.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 const COVERAGE_IMPORT_JOB_ID = "coverage-provenance-job";
@@ -487,11 +488,18 @@ test.describe("account statement coverage and checkpoints", () => {
     }
   });
 
-  test("retains confirmed coverage and checkpoint history after an application relaunch", async ({
+  test("retains coverage after relaunch without renderer or main-process network requests", async ({
     databasePath,
     electronApp,
     window,
   }) => {
+    const rendererRequests: string[] = [];
+    const onRequest = (request: Request): void => {
+      if (/^https?:/i.test(request.url())) rendererRequests.push(request.url());
+    };
+    window.on("request", onRequest);
+    await installMainProcessFetchProbe(electronApp);
+
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await coverage.getByLabel("Coverage account").selectOption("sample-acc");
     await coverage.getByLabel("Statement start date").fill("2026-03-01");
@@ -511,6 +519,7 @@ test.describe("account statement coverage and checkpoints", () => {
     await coverage.getByRole("button", { name: "Save balance checkpoint" }).click();
     await expect(period).toContainText(/Difference.*5,00/);
 
+    const originalMainProcessRequests = await mainProcessFetchRequests(electronApp);
     await electronApp.close();
     const restartedApp = await electron.launch({
       args: [MAIN_ENTRY],
@@ -520,9 +529,12 @@ test.describe("account statement coverage and checkpoints", () => {
         BUDGET_DB_PATH: databasePath,
       },
     });
+    let restartedWindow: Page | undefined;
 
     try {
-      const restartedWindow = await restartedApp.firstWindow();
+      await installMainProcessFetchProbe(restartedApp);
+      restartedWindow = await restartedApp.firstWindow();
+      restartedWindow.on("request", onRequest);
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCoverage = restartedWindow.getByRole("region", {
         name: "Account statement coverage",
@@ -543,7 +555,14 @@ test.describe("account statement coverage and checkpoints", () => {
       await expect(restartedHistory).toContainText("Synthetic opening balance");
       await expect(restartedHistory).toContainText("2026-03-31");
       await expect(restartedHistory).toContainText("Synthetic closing balance");
+      expect(rendererRequests).toEqual([]);
+      expect([
+        ...originalMainProcessRequests,
+        ...(await mainProcessFetchRequests(restartedApp)),
+      ]).toEqual([]);
     } finally {
+      window.off("request", onRequest);
+      restartedWindow?.off("request", onRequest);
       await restartedApp.close();
     }
   });
