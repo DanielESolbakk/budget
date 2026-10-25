@@ -175,12 +175,13 @@ test("reaches the Pending empty state and its ledger action by keyboard", async 
   appShell,
   window,
 }) => {
-  await window.keyboard.press("Tab");
-  await expect(appShell.destination("Review")).toBeFocused();
-  await window.keyboard.press("Tab");
-  await expect(appShell.destination("Transactions")).toBeFocused();
-  await window.keyboard.press("Tab");
-  const pendingDestination = appShell.destination("Pending");
+  const activityDestination = appShell.destination("Activity");
+  await activityDestination.focus();
+  await window.keyboard.press("Enter");
+  const pendingDestination = window
+    .getByRole("navigation", { name: "Activity views" })
+    .getByRole("button", { name: "Pending", exact: true });
+  await pendingDestination.focus();
   await expect(pendingDestination).toBeFocused();
   await window.keyboard.press("Enter");
 
@@ -194,11 +195,10 @@ test("reaches the Pending empty state and its ledger action by keyboard", async 
   ).toBeVisible();
 
   await window.keyboard.press("Tab");
-  await expect(appShell.destination("Import")).toBeFocused();
-  await window.keyboard.press("Tab");
-  await expect(appShell.destination("Data safety")).toBeFocused();
-  await window.keyboard.press("Tab");
-  await expect(appShell.destination("Settings")).toBeFocused();
+  await expect(
+    window.getByRole("navigation", { name: "Activity views" })
+      .getByRole("button", { name: "Import", exact: true })
+  ).toBeFocused();
   await window.keyboard.press("Tab");
   const openTransactions = window.getByRole("button", {
     name: "Open transactions",
@@ -206,7 +206,7 @@ test("reaches the Pending empty state and its ledger action by keyboard", async 
   });
   await expect(openTransactions).toBeFocused();
   await window.keyboard.press("Enter");
-  await expect(appShell.destination("Transactions")).toHaveAttribute("aria-current", "page");
+  await expect(appShell.destination("Activity")).toHaveAttribute("aria-current", "page");
   await expect(appShell.workspace("Transactions")).toBeVisible();
 });
 

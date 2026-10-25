@@ -22,9 +22,9 @@ export function ForecastSection({ dashboardData }: ForecastSectionProps): React.
     <section aria-label="Forecast">
       <h2>Forecast</h2>
       {dashboardData.forecast.usedFallback ? (
-        <p>Insufficient history: showing fallback forecast.</p>
+        <p>Not enough recorded months yet; showing a zero-value fallback estimate.</p>
       ) : (
-        <p>Projected months from the local dashboard forecast.</p>
+        <p>Estimated from the average of up to three recent monthly totals.</p>
       )}
       <ul>
         {dashboardData.forecast.entries.map((entry) => (

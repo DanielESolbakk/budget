@@ -225,24 +225,32 @@ export function AccountCoverageSection(): React.JSX.Element {
       {statusMessage !== null && <p className="account-coverage-message is-success" role="status">{statusMessage}</p>}
       {isLoading && <p className="account-coverage-message" role="status">Loading account coverage...</p>}
 
+      <div className="account-coverage-account-picker">
+        <label>
+          Coverage account
+          <select
+            aria-label="Coverage account"
+            value={selectedAccountId}
+            onChange={(event) => setSelectedAccountId(event.target.value)}
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>{account.name} ({account.currencyCode})</option>
+            ))}
+          </select>
+        </label>
+        <p>
+          Statement periods and checkpoints below belong to{" "}
+          <strong>{selectedAccount?.name ?? "the selected account"}</strong>
+          {selectedAccount === undefined ? "." : ` (${selectedAccount.currencyCode}).`}
+        </p>
+      </div>
+
       <div className="account-coverage-forms">
         <form className="account-coverage-form" aria-label="Record statement coverage" onSubmit={(event) => void saveCoveragePeriod(event)}>
           <div className="account-coverage-form-heading">
             <h3>Statement period</h3>
-            <p>Record the exact dates and source shown on the statement.</p>
+            <p>Start with the exact dates and source shown on the statement.</p>
           </div>
-          <label>
-            Coverage account
-            <select
-              aria-label="Coverage account"
-              value={selectedAccountId}
-              onChange={(event) => setSelectedAccountId(event.target.value)}
-            >
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name} ({account.currencyCode})</option>
-              ))}
-            </select>
-          </label>
           <label>
             Statement start date
             <input type="date" value={startDateIso} onChange={(event) => setStartDateIso(event.target.value)} />
@@ -301,8 +309,8 @@ export function AccountCoverageSection(): React.JSX.Element {
 
         <form className="account-coverage-form" aria-label="Add balance checkpoint" onSubmit={(event) => void saveCheckpoint(event)}>
           <div className="account-coverage-form-heading">
-            <h3>Balance checkpoint</h3>
-            <p>Keep opening and closing observations as dated history.</p>
+            <h3>Balance checkpoints</h3>
+            <p>Then add dated opening and closing observations for this account.</p>
           </div>
           <label>
             Checkpoint date
@@ -322,10 +330,6 @@ export function AccountCoverageSection(): React.JSX.Element {
             <input value={checkpointSource} onChange={(event) => setCheckpointSource(event.target.value)} />
           </label>
           <p id="checkpoint-balance-hint">Enter the account balance in {selectedAccount?.currencyCode ?? "account currency"}.</p>
-          <p className="account-coverage-account-context">
-            Recording for <strong>{selectedAccount?.name ?? "the selected account"}</strong>
-            {selectedAccount === undefined ? "" : ` (${selectedAccount.currencyCode})`}
-          </p>
           <button type="submit" disabled={selectedAccountId === "" || isLoading}>
             Save balance checkpoint
           </button>

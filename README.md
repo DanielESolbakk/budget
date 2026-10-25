@@ -43,11 +43,13 @@ When a preview finds possible duplicates, choose **Skip all duplicate candidates
 
 ### Review categories, statement coverage, and currency
 
-In **Transactions**, use **Allocate categories** to split one booked transaction across categories. Allocation amounts keep the source transaction's sign and currency and must sum exactly to its amount. Category totals use the allocations; household cashflow and CSV export retain the source transaction once.
+The main navigation groups daily work into **Review**, **Activity** (Transactions, Pending, and Import), **Accounts** (statement coverage), and **Household** (exchange rates and data safety).
 
-In **Review**, record statement coverage periods and dated opening/closing balances for an account. A period remains **Unknown** until you confirm it. Empty periods, overlapping periods, late imports, stale or missing checkpoints, and reconciliation differences are shown as distinct states. Checkpoints and coverage history are stored locally and included in backups.
+In **Activity** > **Transactions**, use **Allocate categories** to split one booked transaction across categories. Allocation amounts keep the source transaction's sign and currency and must sum exactly to its amount. Category totals use the allocations; household cashflow and CSV export retain the source transaction once.
 
-In **Settings**, record a foreign-currency rate as NOK per one unit of currency or import a local CSV with `currencyCode,rateNokPerUnit,effectiveDate,kind` columns. Reports keep native-currency subtotals and show the dated NOK conversion and rate provenance. Missing rates leave the NOK subtotal incomplete; they are never treated as zero or a 1:1 rate. Monthly reference rates are used only after explicit selection. Latest-rate restatement is an isolated scenario and does not change historical actual reports. The app does not fetch rates or send transaction data to a service.
+In **Review**, check the account-coverage summary before relying on monthly totals. Open **Accounts** to record statement periods and dated opening/closing balances. A period remains **Unknown** until you confirm it. Empty periods, overlapping periods, late imports, stale or missing checkpoints, and reconciliation differences are shown as distinct states. Checkpoints and coverage history are stored locally and included in backups.
+
+In **Household** > **Exchange rates**, record a foreign-currency rate as NOK per one unit of currency or import a local CSV with `currencyCode,rateNokPerUnit,effectiveDate,kind` columns. Reports keep native-currency subtotals and show the dated NOK conversion and rate provenance. Missing rates leave the NOK subtotal incomplete; they are never treated as zero or a 1:1 rate. Monthly reference rates are used only after explicit selection. Latest-rate restatement is an isolated scenario and does not change historical actual reports. The app does not fetch rates or send transaction data to a service.
 
 ### Build for production
 

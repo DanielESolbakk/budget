@@ -103,11 +103,18 @@ test.describe("local dated exchange-rate workflow", () => {
       });
       await window.waitForLoadState("domcontentloaded");
       await window.setViewportSize({ width: 1280, height: 800 });
-      const settingsButton = window.getByRole("button", { name: "Settings" });
-      await settingsButton.focus();
+      const householdButton = window.getByRole("button", { name: "Household", exact: true });
+      await householdButton.focus();
+      await window.keyboard.press("Enter");
+      const exchangeRatesTab = window
+        .getByRole("navigation", { name: "Household tools" })
+        .getByRole("button", { name: "Exchange rates", exact: true });
+      await exchangeRatesTab.focus();
       await window.keyboard.press("Enter");
 
-      const rates = window.getByRole("region", { name: "Exchange rates" });
+      const rates = window.getByRole("region", { name: "Exchange rates", exact: true });
+      const rateBookTab = rates.getByRole("button", { name: "Rate book", exact: true });
+      const monthlyReportTab = rates.getByRole("button", { name: "Monthly report", exact: true });
       const rateCurrency = rates.getByLabel("Rate currency");
       await rateCurrency.focus();
       await window.keyboard.press("ArrowDown");
@@ -139,6 +146,7 @@ test.describe("local dated exchange-rate workflow", () => {
       await window.keyboard.press("Enter");
       await expect(rates.getByText("exchange-rates.csv")).toBeVisible();
 
+      await monthlyReportTab.click();
       await rates.getByLabel("Report month").fill("2026-05");
       const loadReportButton = rates.getByRole("button", { name: "Load converted report" });
       await loadReportButton.focus();
@@ -152,6 +160,7 @@ test.describe("local dated exchange-rate workflow", () => {
       await expect(report).toContainText("NOK subtotal incomplete");
       await expect(report).toContainText(/SEK\s*[−-]50,00/);
 
+      await rateBookTab.click();
       await rateCurrency.focus();
       await window.keyboard.press("ArrowDown");
       await expect(rateCurrency).toHaveValue("SEK");
@@ -168,6 +177,7 @@ test.describe("local dated exchange-rate workflow", () => {
       await monthlyEstimate.focus();
       await window.keyboard.press("Space");
       await expect(monthlyEstimate).toBeChecked();
+      await monthlyReportTab.click();
       await loadReportButton.focus();
       await window.keyboard.press("Enter");
 
@@ -198,6 +208,7 @@ test.describe("local dated exchange-rate workflow", () => {
       await latestRateScenario.focus();
       await window.keyboard.press("Space");
       await expect(latestRateScenario).not.toBeChecked();
+      await rateBookTab.click();
       await rateCurrency.focus();
       await window.keyboard.press("ArrowUp");
       await expect(rateCurrency).toHaveValue("EUR");
@@ -217,6 +228,7 @@ test.describe("local dated exchange-rate workflow", () => {
       await tabTo(window, saveRateButton);
       await window.keyboard.press("Enter");
       await expect(rates.getByText("Synthetic compact rate")).toBeVisible();
+      await monthlyReportTab.click();
       await loadReportButton.focus();
       await window.keyboard.press("Enter");
       await expect(kronaTransaction).toContainText(/NOK\s*[−-]53,00/);

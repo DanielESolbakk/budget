@@ -170,7 +170,9 @@ test.describe("Fresh local setup", () => {
 
     await appShell.openWorkspace("Import");
     await appShell.selectImportFormat("Manual transaction");
-    const accountInput = window.getByLabel("Account");
+    const accountInput = window
+      .getByRole("form", { name: "Manual transaction entry form", exact: true })
+      .getByLabel("Account");
     const accountOption = window.getByRole("option", { name: /Everyday account/ });
     await expect(accountOption).toHaveCount(1);
     const accountId = await accountOption.getAttribute("value");

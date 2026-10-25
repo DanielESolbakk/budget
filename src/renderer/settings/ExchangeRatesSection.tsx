@@ -18,6 +18,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export function ExchangeRatesSection(): React.JSX.Element {
   const [rates, setRates] = React.useState<ExchangeRate[]>([]);
+  const [activeView, setActiveView] = React.useState<"rate-book" | "monthly-report">("rate-book");
   const [currencyCode, setCurrencyCode] = React.useState("EUR");
   const [rateNokPerUnit, setRateNokPerUnit] = React.useState("");
   const [effectiveDate, setEffectiveDate] = React.useState("");
@@ -34,6 +35,12 @@ export function ExchangeRatesSection(): React.JSX.Element {
   const [isBuildingReport, setIsBuildingReport] = React.useState(false);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  function selectView(view: "rate-book" | "monthly-report"): void {
+    if (view === activeView) return;
+    setActiveView(view);
+    setStatusMessage(null);
+  }
 
   React.useEffect(() => {
     let active = true;
@@ -168,6 +175,24 @@ export function ExchangeRatesSection(): React.JSX.Element {
       {statusMessage !== null && <p className="exchange-rate-message is-success" role="status">{statusMessage}</p>}
       {isLoading && <p className="exchange-rate-message" role="status">Loading local exchange rates...</p>}
 
+      <div className="exchange-rate-view-switcher" role="group" aria-label="Exchange rate views">
+        <button
+          type="button"
+          aria-pressed={activeView === "rate-book"}
+          onClick={() => selectView("rate-book")}
+        >
+          Rate book
+        </button>
+        <button
+          type="button"
+          aria-pressed={activeView === "monthly-report"}
+          onClick={() => selectView("monthly-report")}
+        >
+          Monthly report
+        </button>
+      </div>
+
+      {activeView === "rate-book" && (
       <div className="exchange-rate-entry">
         <div className="exchange-rate-subheading">
           <h3>Maintain the local rate list</h3>
@@ -213,7 +238,9 @@ export function ExchangeRatesSection(): React.JSX.Element {
         </button>
       </form>
       </div>
+      )}
 
+      {activeView === "rate-book" && (
       <section className="saved-exchange-rates" aria-label="Saved local exchange rates">
         <div className="exchange-rate-subheading">
           <h3>Saved rates</h3>
@@ -256,8 +283,9 @@ export function ExchangeRatesSection(): React.JSX.Element {
           </div>
         )}
       </section>
+      )}
 
-      {monthlyReferenceRates.length > 0 && (
+      {activeView === "rate-book" && monthlyReferenceRates.length > 0 && (
         <section className="monthly-reference-selection" aria-label="Monthly reference rate selection">
           <div className="exchange-rate-subheading">
             <h3>Monthly reference estimates</h3>
@@ -283,114 +311,118 @@ export function ExchangeRatesSection(): React.JSX.Element {
         </section>
       )}
 
-      <div className="exchange-rate-subheading">
-        <h3>Convert a month</h3>
-        <p>Historical totals use transaction-date rates; the latest-rate scenario is shown separately.</p>
-      </div>
-      <form className="converted-report-form" aria-label="Converted monthly report request" onSubmit={(event) => void loadReport(event)}>
-        <label>
-          Report month
-          <input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
-        </label>
-        <label className="latest-rate-scenario-toggle">
-          <input
-            type="checkbox"
-            checked={useLatestRateScenario}
-            onChange={(event) => {
-              const enabled = event.target.checked;
-              setUseLatestRateScenario(enabled);
-              if (!enabled) {
-                setScenarioReport(null);
-                return;
-              }
-              if (report === null) return;
-              window.budgetApi.exchangeRates.getMonthlyReport({
-                yearMonth: reportMonth,
-                ...(Object.keys(selectedMonthlyReferenceRateIds).length === 0
-                  ? {}
-                  : { monthlyReferenceRateIds: selectedMonthlyReferenceRateIds }),
-                useLatestRateScenario: true,
-              })
-                .then(setScenarioReport)
-                .catch((scenarioError: unknown) => {
-                  setError(errorMessage(scenarioError, "Unable to build the latest-rate scenario."));
-                });
-            }}
-          />
-          <span>
-            <strong>Use latest rate scenario</strong>
-            <small>Scenario only. Historical actuals do not change.</small>
-          </span>
-        </label>
-        <button type="submit" disabled={isBuildingReport}>
-          {isBuildingReport ? "Building report..." : "Load converted report"}
-        </button>
-      </form>
-      {isBuildingReport && <p className="exchange-rate-message" role="status">Building the converted monthly report...</p>}
+      {activeView === "monthly-report" && (
+        <div className="converted-report-content">
+          <div className="exchange-rate-subheading">
+            <h3>Convert a month</h3>
+            <p>Historical totals use transaction-date rates; the latest-rate scenario is shown separately.</p>
+          </div>
+          <form className="converted-report-form" aria-label="Converted monthly report request" onSubmit={(event) => void loadReport(event)}>
+            <label>
+              Report month
+              <input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
+            </label>
+            <label className="latest-rate-scenario-toggle">
+              <input
+                type="checkbox"
+                checked={useLatestRateScenario}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  setUseLatestRateScenario(enabled);
+                  if (!enabled) {
+                    setScenarioReport(null);
+                    return;
+                  }
+                  if (report === null) return;
+                  window.budgetApi.exchangeRates.getMonthlyReport({
+                    yearMonth: reportMonth,
+                    ...(Object.keys(selectedMonthlyReferenceRateIds).length === 0
+                      ? {}
+                      : { monthlyReferenceRateIds: selectedMonthlyReferenceRateIds }),
+                    useLatestRateScenario: true,
+                  })
+                    .then(setScenarioReport)
+                    .catch((scenarioError: unknown) => {
+                      setError(errorMessage(scenarioError, "Unable to build the latest-rate scenario."));
+                    });
+                }}
+              />
+              <span>
+                <strong>Use latest rate scenario</strong>
+                <small>Scenario only. Historical actuals do not change.</small>
+              </span>
+            </label>
+            <button type="submit" disabled={isBuildingReport}>
+              {isBuildingReport ? "Building report..." : "Load converted report"}
+            </button>
+          </form>
+          {isBuildingReport && <p className="exchange-rate-message" role="status">Building the converted monthly report...</p>}
 
-      {report !== null && (
-        <section className="converted-monthly-report" aria-label="Converted monthly report">
-          <div className="converted-report-heading">
-            <h3>Converted report for {report.yearMonth}</h3>
-            <p>Native amounts remain visible beside the transaction-date NOK conversion.</p>
-          </div>
-          <div className="native-currency-subtotals" role="group" aria-label="Native currency subtotals">
-            <h4>Native-currency subtotals</h4>
-            <dl>
-              {report.nativeSubtotals.map((subtotal) => (
-                <div key={subtotal.currencyCode}>
-                  <dt>{subtotal.currencyCode}</dt>
-                  <dd>{formatMinor(subtotal.totalMinor, subtotal.currencyCode)}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-          {report.nokSubtotalMinor === null ? (
-            <p className="converted-report-status is-incomplete" role="status">
-              NOK subtotal incomplete. Missing rates: {report.incompleteCurrencies.join(", ")}.
-              Partial converted subtotal: {formatMinor(report.partialNokSubtotalMinor, "NOK")}.
-            </p>
-          ) : (
-            <p className="converted-report-status is-complete" role="status">
-              NOK subtotal: {formatMinor(report.nokSubtotalMinor, "NOK")}
-            </p>
+          {report !== null && (
+            <section className="converted-monthly-report" aria-label="Converted monthly report">
+              <div className="converted-report-heading">
+                <h3>Converted report for {report.yearMonth}</h3>
+                <p>Native amounts remain visible beside the transaction-date NOK conversion.</p>
+              </div>
+              <div className="native-currency-subtotals" role="group" aria-label="Native currency subtotals">
+                <h4>Native-currency subtotals</h4>
+                <dl>
+                  {report.nativeSubtotals.map((subtotal) => (
+                    <div key={subtotal.currencyCode}>
+                      <dt>{subtotal.currencyCode}</dt>
+                      <dd>{formatMinor(subtotal.totalMinor, subtotal.currencyCode)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              {report.nokSubtotalMinor === null ? (
+                <p className="converted-report-status is-incomplete" role="status">
+                  NOK subtotal incomplete. Missing rates: {report.incompleteCurrencies.join(", ")}.
+                  Partial converted subtotal: {formatMinor(report.partialNokSubtotalMinor, "NOK")}.
+                </p>
+              ) : (
+                <p className="converted-report-status is-complete" role="status">
+                  NOK subtotal: {formatMinor(report.nokSubtotalMinor, "NOK")}
+                </p>
+              )}
+              <ul aria-label="Converted transaction amounts">
+                {report.transactions.map((item) => {
+                  const scenarioItem = scenarioReport?.transactions.find(
+                    (candidate) => candidate.transactionId === item.transactionId
+                  );
+                  return (
+                    <li key={item.transactionId}>
+                      <section role="group" aria-label={item.merchantRaw}>
+                        <h4>{item.merchantRaw}</h4>
+                        <p>
+                          {formatMinor(item.nativeAmountMinor, item.nativeCurrencyCode)}
+                          {" — "}
+                          {item.nokAmountMinor === null
+                            ? "NOK conversion incomplete"
+                            : formatMinor(item.nokAmountMinor, "NOK")}
+                        </p>
+                        {item.exchangeRate !== null && (
+                          <p>
+                            Rate {item.exchangeRate.rateNokPerUnit} NOK per {item.nativeCurrencyCode}
+                            {" — "}{item.exchangeRate.effectiveDate}, {item.exchangeRate.source}
+                            {item.isEstimate ? " — estimate" : ""}
+                          </p>
+                        )}
+                        {scenarioItem?.nokAmountMinor !== null && scenarioItem !== undefined && (
+                          <p className="scenario-amount">Scenario NOK {formatMinor(scenarioItem.nokAmountMinor, "NOK").replace(/^NOK\s*/, "")}</p>
+                        )}
+                      </section>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
           )}
-          <ul aria-label="Converted transaction amounts">
-            {report.transactions.map((item) => {
-              const scenarioItem = scenarioReport?.transactions.find(
-                (candidate) => candidate.transactionId === item.transactionId
-              );
-              return (
-                <li key={item.transactionId}>
-                  <section role="group" aria-label={item.merchantRaw}>
-                    <h4>{item.merchantRaw}</h4>
-                    <p>
-                      {formatMinor(item.nativeAmountMinor, item.nativeCurrencyCode)}
-                      {" — "}
-                      {item.nokAmountMinor === null
-                        ? "NOK conversion incomplete"
-                        : formatMinor(item.nokAmountMinor, "NOK")}
-                    </p>
-                    {item.exchangeRate !== null && (
-                      <p>
-                        Rate {item.exchangeRate.rateNokPerUnit} NOK per {item.nativeCurrencyCode}
-                        {" — "}{item.exchangeRate.effectiveDate}, {item.exchangeRate.source}
-                        {item.isEstimate ? " — estimate" : ""}
-                      </p>
-                    )}
-                    {scenarioItem?.nokAmountMinor !== null && scenarioItem !== undefined && (
-                      <p className="scenario-amount">Scenario NOK {formatMinor(scenarioItem.nokAmountMinor, "NOK").replace(/^NOK\s*/, "")}</p>
-                    )}
-                  </section>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
 
-      {report !== null && useLatestRateScenario && scenarioReport === null && reportCurrencies.length > 0 && (
-        <p role="status">Latest-rate scenario has no complete rate set for this report.</p>
+          {report !== null && useLatestRateScenario && scenarioReport === null && reportCurrencies.length > 0 && (
+            <p role="status">Latest-rate scenario has no complete rate set for this report.</p>
+          )}
+        </div>
       )}
     </section>
   );

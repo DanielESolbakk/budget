@@ -19,16 +19,23 @@ const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
 type AppState = ReviewState;
 
 type WorkspaceId = "review" | "transactions" | "coverage" | "pending" | "import" | "data-safety" | "settings";
+type PrimaryWorkspaceId = "review" | "activity" | "accounts" | "household";
 
-const WORKSPACES: Array<{ id: WorkspaceId; label: string; description: string }> = [
+const PRIMARY_WORKSPACES: Array<{ id: PrimaryWorkspaceId; label: string; description: string }> = [
   { id: "review", label: "Review", description: "Monthly position" },
-  { id: "transactions", label: "Transactions", description: "Ledger and corrections" },
-  { id: "coverage", label: "Coverage", description: "Statements and balances" },
-  { id: "pending", label: "Pending", description: "Waiting to book" },
-  { id: "import", label: "Import", description: "Bring in activity" },
-  { id: "data-safety", label: "Data safety", description: "Backup and export" },
-  { id: "settings", label: "Settings", description: "Local exchange rates" },
+  { id: "activity", label: "Activity", description: "Ledger, pending and imports" },
+  { id: "accounts", label: "Accounts", description: "Statements and balances" },
+  { id: "household", label: "Household", description: "Rates and data safety" },
 ];
+
+function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
+  if (workspace === "transactions" || workspace === "pending" || workspace === "import") {
+    return "activity";
+  }
+  if (workspace === "data-safety" || workspace === "settings") return "household";
+  if (workspace === "coverage") return "accounts";
+  return "review";
+}
 
 export function App(): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
@@ -144,6 +151,16 @@ export function App(): React.JSX.Element {
     });
   }
 
+  function openPrimaryWorkspace(workspaceId: PrimaryWorkspaceId): void {
+    const defaultWorkspace: Record<PrimaryWorkspaceId, WorkspaceId> = {
+      review: "review",
+      activity: "transactions",
+      accounts: "coverage",
+      household: "settings",
+    };
+    openWorkspace(defaultWorkspace[workspaceId]);
+  }
+
   function openReviewQueue(): void {
     openWorkspace("transactions");
     setReviewQueueFocusRequest((request) => request + 1);
@@ -197,14 +214,14 @@ export function App(): React.JSX.Element {
 
       <div className="app-frame">
         <nav className="primary-navigation" aria-label="Primary">
-          {WORKSPACES.map((workspace) => (
+          {PRIMARY_WORKSPACES.map((workspace) => (
             <button
               key={workspace.id}
               type="button"
               aria-label={workspace.label}
-              aria-current={activeWorkspace === workspace.id ? "page" : undefined}
-              className={activeWorkspace === workspace.id ? "workspace-link is-current" : "workspace-link"}
-              onClick={() => openWorkspace(workspace.id)}
+              aria-current={primaryWorkspaceFor(activeWorkspace) === workspace.id ? "page" : undefined}
+              className={primaryWorkspaceFor(activeWorkspace) === workspace.id ? "workspace-link is-current" : "workspace-link"}
+              onClick={() => openPrimaryWorkspace(workspace.id)}
             >
               <span>{workspace.label}</span>
               <small aria-hidden="true">{workspace.description}</small>
@@ -213,6 +230,43 @@ export function App(): React.JSX.Element {
         </nav>
 
         <main className="workspace">
+          {(activeWorkspace === "transactions" ||
+            activeWorkspace === "pending" ||
+            activeWorkspace === "import") && (
+            <nav className="workspace-subnavigation" aria-label="Activity views">
+              {([
+                ["transactions", "Transactions"],
+                ["pending", "Pending"],
+                ["import", "Import"],
+              ] as const).map(([workspaceId, label]) => (
+                <button
+                  key={workspaceId}
+                  type="button"
+                  aria-current={activeWorkspace === workspaceId ? "page" : undefined}
+                  onClick={() => openWorkspace(workspaceId)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
+          {(activeWorkspace === "data-safety" || activeWorkspace === "settings") && (
+            <nav className="workspace-subnavigation" aria-label="Household tools">
+              {([
+                ["settings", "Exchange rates"],
+                ["data-safety", "Data safety"],
+              ] as const).map(([workspaceId, label]) => (
+                <button
+                  key={workspaceId}
+                  type="button"
+                  aria-current={activeWorkspace === workspaceId ? "page" : undefined}
+                  onClick={() => openWorkspace(workspaceId)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
           {activeWorkspace !== "review" && appState.status === "error" && (
             <section className="status-panel status-error" role="alert">
               <div className="status-heading">
@@ -242,6 +296,7 @@ export function App(): React.JSX.Element {
             isActive={activeWorkspace === "review"}
             isChangingMonth={isChangingMonth}
             isRefreshing={isRefreshing}
+            refreshKey={refreshCounter}
             monthChangeError={monthChangeError}
             refreshError={refreshError}
             onMonthChange={handleMonthChange}
@@ -295,8 +350,8 @@ export function App(): React.JSX.Element {
               hidden={activeWorkspace !== "settings"}
             >
               <div className="destination-heading">
-                <h2>Settings</h2>
-                <p>Manage local household rate data.</p>
+                <h2>Exchange rates</h2>
+                <p>Record rates locally and use them to compare household spending.</p>
               </div>
               <ExchangeRatesSection />
             </section>

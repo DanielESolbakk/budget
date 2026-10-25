@@ -10,6 +10,7 @@ export interface AllocationDraft {
 interface TransactionAllocationEditorProps {
   transaction: Transaction;
   allocations: readonly AllocationDraft[];
+  canReorder: boolean;
   totalMinor: number | null;
   currencyFormatter: Intl.NumberFormat;
   error: string | null;
@@ -25,6 +26,7 @@ interface TransactionAllocationEditorProps {
 export function TransactionAllocationEditor({
   transaction,
   allocations,
+  canReorder,
   totalMinor,
   currencyFormatter,
   error,
@@ -36,13 +38,29 @@ export function TransactionAllocationEditor({
   onSave,
   onCancel,
 }: TransactionAllocationEditorProps): React.JSX.Element {
+  const remainingMinor = totalMinor === null
+    ? null
+    : transaction.amountMinor - totalMinor;
+  const overAllocatedMinor = remainingMinor !== null &&
+      remainingMinor !== 0 &&
+      transaction.amountMinor !== 0 &&
+      Math.sign(remainingMinor) !== Math.sign(transaction.amountMinor)
+    ? Math.abs(remainingMinor)
+    : null;
+
   return (
     <section
       className="transaction-allocation-editor"
+      id="transaction-allocation-editor"
       aria-label={`Transaction category allocations for ${transaction.merchantRaw}`}
       aria-describedby={error === null ? undefined : "transaction-allocation-error"}
     >
       <h3>Split {transaction.merchantRaw} across categories</h3>
+      <p className="transaction-allocation-guidance">
+        {transaction.categoryAllocations?.length
+          ? "Your saved split stays unchanged until you save a complete replacement."
+          : "Your saved transaction stays unchanged. Choose a second category and amount to complete the split."}
+      </p>
       <div className="transaction-allocation-summary">
         <p>
           Source transaction:
@@ -57,11 +75,11 @@ export function TransactionAllocationEditor({
           </strong>
         </p>
         <p>
-          Remaining to allocate:
+          {overAllocatedMinor === null ? "Remaining to allocate:" : "Over-allocated by:"}
           <strong>
-            {totalMinor === null
+            {remainingMinor === null
               ? "Incomplete"
-              : currencyFormatter.format((transaction.amountMinor - totalMinor) / 100)}
+              : currencyFormatter.format((overAllocatedMinor ?? remainingMinor) / 100)}
           </strong>
         </p>
       </div>
@@ -81,6 +99,7 @@ export function TransactionAllocationEditor({
                 value={allocation.categoryId}
                 onChange={(event) => onUpdate(index, { categoryId: event.target.value })}
               >
+                <option value="">Choose a category</option>
                 {CATEGORY_OPTIONS.map((category) => (
                   <option key={category.id} value={category.id}>{category.label}</option>
                 ))}
@@ -100,7 +119,7 @@ export function TransactionAllocationEditor({
                 type="button"
                 className="action-secondary"
                 aria-label={`Move allocation ${index + 1} up`}
-                disabled={index === 0}
+                disabled={!canReorder || index === 0}
                 onClick={() => onMove(index, -1)}
               >
                 Move up
@@ -109,7 +128,7 @@ export function TransactionAllocationEditor({
                 type="button"
                 className="action-secondary"
                 aria-label={`Move allocation ${index + 1} down`}
-                disabled={index === allocations.length - 1}
+                disabled={!canReorder || index === allocations.length - 1}
                 onClick={() => onMove(index, 1)}
               >
                 Move down

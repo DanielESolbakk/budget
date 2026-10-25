@@ -237,21 +237,59 @@ async function tabTo(window: Page, target: Locator): Promise<void> {
 }
 
 test.describe("account statement coverage and checkpoints", () => {
-  test("keeps monthly review focused and opens coverage from its dedicated entry point", async ({
-    window,
-  }) => {
-    await window.setViewportSize({ width: 390, height: 844 });
+  test("surfaces account coverage status from monthly review", async ({ window }) => {
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
+    const coverageSummary = window.getByRole("region", { name: "Account coverage status" });
     await expect(coverage).not.toBeVisible();
+    await expect(coverageSummary).toBeVisible();
+    await expect(coverageSummary).toContainText("Brukskonto");
+    await expect(coverageSummary).toContainText("No statement periods recorded");
 
-    await window.getByRole("button", { name: "Review account coverage", exact: true }).click();
+    await coverageSummary.getByRole("button", { name: "Review account coverage", exact: true }).click();
     await expect(coverage).toBeVisible();
+  });
 
-    const navigation = window.getByRole("navigation", { name: "Primary" });
+  test("groups workspace navigation into four task areas", async ({ appShell, window }) => {
+    await window.setViewportSize({ width: 390, height: 844 });
+    const navigation = appShell.primaryNavigation;
+    await expect(navigation.getByRole("button")).toHaveCount(4);
+    await expect(navigation.getByRole("button", { name: "Review", exact: true })).toBeVisible();
+    await expect(navigation.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
+    await expect(navigation.getByRole("button", { name: "Accounts", exact: true })).toBeVisible();
+    await expect(navigation.getByRole("button", { name: "Household", exact: true })).toBeVisible();
+
     const navigationRows = await navigation.locator("button").evaluateAll((buttons) =>
       [...new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top)))]
     );
-    expect(navigationRows).toHaveLength(2);
+    expect(navigationRows).toHaveLength(1);
+
+    await appShell.openWorkspace("Pending");
+    await expect(window.getByRole("region", { name: "Pending transactions workspace" })).toBeVisible();
+    await expect(navigation.getByRole("button", { name: "Activity", exact: true }))
+      .toHaveAttribute("aria-current", "page");
+
+    await appShell.openWorkspace("Settings");
+    await expect(window.getByRole("region", { name: "Exchange rates", exact: true })).toBeVisible();
+    await expect(navigation.getByRole("button", { name: "Household", exact: true }))
+      .toHaveAttribute("aria-current", "page");
+  });
+
+  test("presents statement capture before balance checkpoints on desktop", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Coverage");
+    await window.setViewportSize({ width: 1280, height: 800 });
+    const coverage = window.getByRole("region", { name: "Account statement coverage" });
+    const statementForm = coverage.locator('form[aria-label="Record statement coverage"]');
+    const checkpointForm = coverage.locator('form[aria-label="Add balance checkpoint"]');
+    const statementBounds = await statementForm.boundingBox();
+    const checkpointBounds = await checkpointForm.boundingBox();
+
+    if (statementBounds === null || checkpointBounds === null) {
+      throw new Error("Coverage entry forms must remain visible in the desktop workflow.");
+    }
+    expect(checkpointBounds.y).toBeGreaterThan(statementBounds.y + statementBounds.height);
   });
 
   test("@visual Visual: coverage workspace is composed for desktop and compact windows", async ({
@@ -293,7 +331,7 @@ test.describe("account statement coverage and checkpoints", () => {
     try {
       const window = await coverageApp.firstWindow();
       await window.waitForLoadState("domcontentloaded");
-      await window.getByRole("button", { name: "Coverage", exact: true }).click();
+      await window.getByRole("button", { name: "Accounts", exact: true }).click();
       const coverage = window.getByRole("region", { name: "Account statement coverage" });
       const accountSelect = coverage.getByLabel("Coverage account");
       await expect(accountSelect).toHaveValue("sample-acc");
@@ -337,7 +375,7 @@ test.describe("account statement coverage and checkpoints", () => {
   });
 
   test("keeps an empty unconfirmed period unknown until the user confirms it", async ({ window }) => {
-    await window.getByRole("button", { name: "Coverage", exact: true }).click();
+    await window.getByRole("button", { name: "Accounts", exact: true }).click();
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await expect(coverage).toBeVisible();
     await coverage.getByLabel("Coverage account").selectOption("sample-acc");
@@ -359,7 +397,7 @@ test.describe("account statement coverage and checkpoints", () => {
     window,
   }) => {
     await window.setViewportSize({ width: 1280, height: 800 });
-    await window.getByRole("button", { name: "Coverage", exact: true }).click();
+    await window.getByRole("button", { name: "Accounts", exact: true }).click();
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await coverage.getByLabel("Coverage account").selectOption("sample-acc");
     await expect(coverage.getByLabel("Coverage account")).toContainText("Brukskonto (NOK)");
@@ -412,7 +450,10 @@ test.describe("account statement coverage and checkpoints", () => {
     try {
       const window = await coverageApp.firstWindow();
       await window.waitForLoadState("domcontentloaded");
-      await window.getByRole("button", { name: "Coverage", exact: true }).click();
+      const coverageSummary = window.getByRole("region", { name: "Account coverage status" });
+      await expect(coverageSummary).toContainText("2 periods await confirmation.");
+      await expect(coverageSummary).toContainText("7 statement periods need review.");
+      await window.getByRole("button", { name: "Accounts", exact: true }).click();
       const coverage = window.getByRole("region", { name: "Account statement coverage" });
 
       const overlappingPeriod = coverage.getByRole("group", {
@@ -466,7 +507,7 @@ test.describe("account statement coverage and checkpoints", () => {
     try {
       const window = await coverageApp.firstWindow();
       await window.waitForLoadState("domcontentloaded");
-      await window.getByRole("button", { name: "Coverage", exact: true }).click();
+      await window.getByRole("button", { name: "Accounts", exact: true }).click();
       const coverage = window.getByRole("region", { name: "Account statement coverage" });
       const focusTargets = [
         coverage.getByLabel("Statement start date"),
@@ -543,7 +584,7 @@ test.describe("account statement coverage and checkpoints", () => {
     window.on("request", onRequest);
     await installMainProcessFetchProbe(electronApp);
 
-    await window.getByRole("button", { name: "Coverage", exact: true }).click();
+    await window.getByRole("button", { name: "Accounts", exact: true }).click();
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await coverage.getByLabel("Coverage account").selectOption("sample-acc");
     await coverage.getByLabel("Statement start date").fill("2026-03-01");
@@ -580,7 +621,7 @@ test.describe("account statement coverage and checkpoints", () => {
       restartedWindow = await restartedApp.firstWindow();
       restartedWindow.on("request", onRequest);
       await restartedWindow.waitForLoadState("domcontentloaded");
-      await restartedWindow.getByRole("button", { name: "Coverage", exact: true }).click();
+      await restartedWindow.getByRole("button", { name: "Accounts", exact: true }).click();
       const restartedCoverage = restartedWindow.getByRole("region", {
         name: "Account statement coverage",
       });

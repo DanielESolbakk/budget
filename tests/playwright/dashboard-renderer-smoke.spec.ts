@@ -222,6 +222,8 @@ test.describe("Dashboard renderer smoke", () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
     });
+    await expect(window.getByRole("region", { name: "Account coverage status" }))
+      .toContainText("No statement periods recorded");
 
     await expect(window).toHaveScreenshot("dashboard-desktop.png", {
       animations: "disabled",
@@ -246,10 +248,40 @@ test.describe("Dashboard renderer smoke", () => {
     expect(undersizedButtons).toEqual([]);
   });
 
+  test("compact target-versus-actual rows keep the delta visible", async ({ window }) => {
+    await window.setViewportSize({ width: 390, height: 844 });
+    const targetVsActual = window.getByRole("region", { name: "Target vs Actual" });
+    const delta = targetVsActual.locator('td[data-label="Delta"]').first();
+    await expect(delta).toBeVisible();
+
+    const deltaBounds = await delta.boundingBox();
+    if (deltaBounds === null) {
+      throw new Error("A compact target-versus-actual delta must remain measurable.");
+    }
+    expect(deltaBounds.x + deltaBounds.width).toBeLessThanOrEqual(390);
+  });
+
+  test("monthly review signals follow a single attention reading path", async ({ window }) => {
+    await window.setViewportSize({ width: 1440, height: 1100 });
+    const attentionItems = window.locator(".monthly-attention-content > .monthly-attention-item");
+    await expect(attentionItems).toHaveCount(3);
+    const rowPositions = await attentionItems.evaluateAll((items) =>
+      [...new Set(items.map((item) => Math.round(item.getBoundingClientRect().top)))]
+    );
+    expect(rowPositions).toHaveLength(3);
+  });
+
+  test("explains the forecast basis in plain language", async ({ window }) => {
+    await expect(window.getByRole("region", { name: "Forecast" }))
+      .toContainText("Estimated from the average of up to three recent monthly totals.");
+  });
+
   test("@visual Visual: compact dashboard preserves primary workspace navigation", async ({ window, electronApp }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
+    await expect(window.getByRole("region", { name: "Account coverage status" }))
+      .toContainText("No statement periods recorded");
 
     const documentWidth = await window.evaluate(() => document.documentElement.scrollWidth);
     const viewportWidth = await window.evaluate(() => document.documentElement.clientWidth);

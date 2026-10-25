@@ -1,6 +1,16 @@
 import type { Page } from "@playwright/test";
 
-export type WorkspaceName = "Review" | "Transactions" | "Coverage" | "Pending" | "Import" | "Data safety" | "Settings";
+export type WorkspaceName =
+  | "Review"
+  | "Activity"
+  | "Accounts"
+  | "Household"
+  | "Transactions"
+  | "Coverage"
+  | "Pending"
+  | "Import"
+  | "Data safety"
+  | "Settings";
 
 /**
  * Page Object Model for the Budget Planner application shell.
@@ -40,7 +50,15 @@ export class AppShellPage {
   }
 
   destination(name: WorkspaceName) {
-    return this.primaryNavigation.getByRole("button", { name, exact: true });
+    const parentName =
+      name === "Transactions" || name === "Pending" || name === "Import"
+        ? "Activity"
+        : name === "Coverage"
+          ? "Accounts"
+          : name === "Data safety" || name === "Settings"
+            ? "Household"
+            : name;
+    return this.primaryNavigation.getByRole("button", { name: parentName, exact: true });
   }
 
   workspace(name: WorkspaceName) {
@@ -49,6 +67,22 @@ export class AppShellPage {
 
   async openWorkspace(name: WorkspaceName): Promise<void> {
     await this.destination(name).click();
+    if (name === "Transactions" || name === "Pending" || name === "Import") {
+      await this.page
+        .getByRole("navigation", { name: "Activity views" })
+        .getByRole("button", { name, exact: true })
+        .click();
+    } else if (name === "Data safety") {
+      await this.page
+        .getByRole("navigation", { name: "Household tools" })
+        .getByRole("button", { name, exact: true })
+        .click();
+    } else if (name === "Settings") {
+      await this.page
+        .getByRole("navigation", { name: "Household tools" })
+        .getByRole("button", { name: "Exchange rates", exact: true })
+        .click();
+    }
   }
 
   async selectImportFormat(format: "CSV statement" | "Digital PDF" | "Manual transaction"): Promise<void> {

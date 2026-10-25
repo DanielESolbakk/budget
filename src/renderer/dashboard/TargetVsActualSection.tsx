@@ -56,7 +56,7 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
   return (
     <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>
       <h2>Target vs Actual</h2>
-      <table>
+      <table className="target-vs-actual-table">
         <thead>
           <tr>
             <th scope="col">Category</th>
@@ -68,10 +68,10 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
         <tbody>
           {rows.map((row) => (
             <tr key={row.categoryId ?? "uncategorized"}>
-              <td>{renderCategoryLabel(row.categoryId)}</td>
-              <td>{renderTargetOrDelta(row.targetMinor)}</td>
-              <td>{formatMinor(row.actualMinor)}</td>
-              <td>{renderTargetOrDelta(row.deltaMinor)}</td>
+              <td data-label="Category">{renderCategoryLabel(row.categoryId)}</td>
+              <td data-label="Target">{renderTargetOrDelta(row.targetMinor)}</td>
+              <td data-label="Actual">{formatMinor(row.actualMinor)}</td>
+              <td data-label="Delta">{renderTargetOrDelta(row.deltaMinor)}</td>
             </tr>
           ))}
         </tbody>
