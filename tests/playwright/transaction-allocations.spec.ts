@@ -14,6 +14,10 @@ test.describe("transaction category allocations", () => {
       name: "Transaction category allocations for Kiwi",
     });
     await expect(allocationEditor).toBeVisible();
+    await expect(allocationEditor.getByText(/Source transaction:/))
+      .toContainText(/72,00\s*kr/);
+    await expect(allocationEditor.getByText(/Allocation total:/))
+      .toContainText(/72,00\s*kr/);
     await allocationEditor.getByLabel("Allocation category 1").selectOption("groceries");
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
