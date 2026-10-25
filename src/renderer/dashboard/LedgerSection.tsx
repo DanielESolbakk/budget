@@ -15,6 +15,10 @@ import type {
   TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../import/categoryOptions.js";
+import {
+  TransactionAllocationEditor,
+  type AllocationDraft,
+} from "./TransactionAllocationEditor.js";
 
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
   style: "currency",
@@ -32,11 +36,6 @@ interface ActiveFilter {
   field: LedgerFilterField;
   label: string;
   value: string;
-}
-
-interface AllocationDraft {
-  categoryId: string;
-  amountText: string;
 }
 
 function amountToInput(minorUnits: number | undefined): string {
@@ -402,6 +401,24 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
     ]);
   }
 
+  function moveAllocationDraft(index: number, direction: -1 | 1): void {
+    setAllocationDraft((current) => {
+      const targetIndex = index + direction;
+      const currentAllocation = current[index];
+      const targetAllocation = current[targetIndex];
+      if (currentAllocation === undefined || targetAllocation === undefined) return current;
+
+      const next = [...current];
+      next[index] = targetAllocation;
+      next[targetIndex] = currentAllocation;
+      return next;
+    });
+  }
+
+  function removeAllocationDraft(index: number): void {
+    setAllocationDraft((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  }
+
   const currentPage = query.page ?? 1;
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -670,70 +687,20 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
                     {editingAllocationTransactionId === transaction.id && (
                       <tr>
                         <td colSpan={6}>
-                          <section
-                            className="transaction-allocation-editor"
-                            aria-label={`Transaction category allocations for ${transaction.merchantRaw}`}
-                          >
-                            <h3>Split {transaction.merchantRaw} across categories</h3>
-                            <p>
-                              Source transaction: {allocationCurrencyFormatter.format(transaction.amountMinor / 100)}
-                            </p>
-                            <p>
-                              Allocation total: {allocationTotalMinor === null
-                                ? "Incomplete"
-                                : allocationCurrencyFormatter.format(allocationTotalMinor / 100)}
-                              {allocationTotalMinor === null ? "" : `; remaining ${allocationCurrencyFormatter.format((transaction.amountMinor - allocationTotalMinor) / 100)}`}
-                            </p>
-                            <div className="transaction-allocation-rows">
-                              {allocationDraft.map((allocation, index) => (
-                                <div className="transaction-allocation-row" key={`${transaction.id}-${index}`}>
-                                  <label>
-                                    Allocation category {index + 1}
-                                    <select
-                                      ref={index === 0 ? firstAllocationCategoryRef : undefined}
-                                      aria-label={`Allocation category ${index + 1}`}
-                                      value={allocation.categoryId}
-                                      onChange={(event) => updateAllocationDraft(index, { categoryId: event.target.value })}
-                                    >
-                                      {CATEGORY_OPTIONS.map((category) => (
-                                        <option key={category.id} value={category.id}>{category.label}</option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                  <label>
-                                    Allocation amount {index + 1}
-                                    <input
-                                      aria-label={`Allocation amount ${index + 1}`}
-                                      inputMode="decimal"
-                                      value={allocation.amountText}
-                                      onChange={(event) => updateAllocationDraft(index, { amountText: event.target.value })}
-                                    />
-                                  </label>
-                                  {allocationDraft.length > 2 && (
-                                    <button
-                                      type="button"
-                                      aria-label={`Remove allocation ${index + 1}`}
-                                      onClick={() => setAllocationDraft((current) =>
-                                        current.filter((_, currentIndex) => currentIndex !== index)
-                                      )}
-                                    >
-                                      Remove
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                            <button type="button" onClick={addAllocationDraft}>
-                              Add allocation
-                            </button>
-                            {allocationError !== null && <p role="alert">{allocationError}</p>}
-                            <button type="button" onClick={() => void saveAllocations(transaction)}>
-                              Save allocations for {transaction.merchantRaw}
-                            </button>
-                            <button type="button" onClick={() => setEditingAllocationTransactionId(null)}>
-                              Cancel allocation editing
-                            </button>
-                          </section>
+                          <TransactionAllocationEditor
+                            transaction={transaction}
+                            allocations={allocationDraft}
+                            totalMinor={allocationTotalMinor}
+                            currencyFormatter={allocationCurrencyFormatter}
+                            error={allocationError}
+                            firstCategoryRef={firstAllocationCategoryRef}
+                            onUpdate={updateAllocationDraft}
+                            onMove={moveAllocationDraft}
+                            onRemove={removeAllocationDraft}
+                            onAdd={addAllocationDraft}
+                            onSave={() => void saveAllocations(transaction)}
+                            onCancel={() => setEditingAllocationTransactionId(null)}
+                          />
                         </td>
                       </tr>
                     )}

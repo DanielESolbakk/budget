@@ -1,4 +1,5 @@
-import type { Transaction } from "../types.js";
+import type { Account, ExchangeRate, Transaction } from "../types.js";
+import { convertCurrencyAmount } from "../money/convertCurrencyAmount.js";
 
 /** Stable ordered header columns for the exported CSV format. */
 export const EXPORT_CSV_HEADERS = [
@@ -13,6 +14,14 @@ export const EXPORT_CSV_HEADERS = [
   "categoryId",
   "importJobId",
   "categoryAllocations",
+  "currencyCode",
+  "convertedNokAmountMinor",
+  "conversionStatus",
+  "exchangeRateNokPerUnit",
+  "exchangeRateEffectiveDate",
+  "exchangeRateKind",
+  "exchangeRateSource",
+  "exchangeRateProvenance",
 ] as const;
 
 export type ExportCsvHeader = (typeof EXPORT_CSV_HEADERS)[number];
@@ -20,11 +29,30 @@ export type ExportCsvHeader = (typeof EXPORT_CSV_HEADERS)[number];
 /** A single row in the exported CSV, expressed as a string-valued record. */
 export type ExportCsvRow = Record<ExportCsvHeader, string>;
 
+export interface CsvExportContext {
+  accounts?: readonly Account[];
+  exchangeRates?: readonly ExchangeRate[];
+}
+
 /**
  * Maps a Transaction to a string-valued CSV row using the stable header order.
  * Optional fields are serialized as empty strings when absent.
  */
-export function buildCsvRow(transaction: Transaction): ExportCsvRow {
+export function buildCsvRow(
+  transaction: Transaction,
+  context: CsvExportContext = {}
+): ExportCsvRow {
+  const currencyCode = transaction.currencyCode ??
+    context.accounts?.find((account) => account.id === transaction.accountId)?.currencyCode;
+  const conversion = currencyCode === undefined
+    ? undefined
+    : convertCurrencyAmount({
+        amountMinor: transaction.amountMinor,
+        currencyCode,
+        asOfDateIso: transaction.bookedAtIso.slice(0, 10),
+        rates: context.exchangeRates ?? [],
+      });
+
   return {
     id: transaction.id,
     householdId: transaction.householdId,
@@ -44,6 +72,16 @@ export function buildCsvRow(transaction: Transaction): ExportCsvRow {
             left.amountMinor - right.amountMinor
           )
         ),
+    currencyCode: currencyCode ?? "",
+    convertedNokAmountMinor: conversion?.state === "converted"
+      ? String(conversion.nokAmountMinor)
+      : "",
+    conversionStatus: conversion?.state ?? "unavailable",
+    exchangeRateNokPerUnit: conversion?.exchangeRate?.rateNokPerUnit ?? "",
+    exchangeRateEffectiveDate: conversion?.exchangeRate?.effectiveDate ?? "",
+    exchangeRateKind: conversion?.exchangeRate?.kind ?? "",
+    exchangeRateSource: conversion?.exchangeRate?.source ?? "",
+    exchangeRateProvenance: conversion?.exchangeRate?.provenance ?? "",
   };
 }
 
@@ -66,8 +104,11 @@ export function serializeCsvRow(row: ExportCsvRow): string {
  * Rows are written in the order supplied; sorting is the caller's responsibility.
  * Returns the CSV text including the header line and a trailing newline.
  */
-export function buildCsvOutput(transactions: Transaction[]): string {
+export function buildCsvOutput(
+  transactions: Transaction[],
+  context: CsvExportContext = {}
+): string {
   const header = EXPORT_CSV_HEADERS.join(",");
-  const rows = transactions.map((tx) => serializeCsvRow(buildCsvRow(tx)));
+  const rows = transactions.map((tx) => serializeCsvRow(buildCsvRow(tx, context)));
   return [header, ...rows].join("\n") + "\n";
 }

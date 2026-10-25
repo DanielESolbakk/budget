@@ -19,6 +19,7 @@ export function listCategorizationReviewQueue(
 ): Transaction[] {
   const reviewTransactions = database.loadLedgerSnapshotData().transactions.filter((transaction) =>
     transaction.householdId === householdId &&
+    !(transaction.categoryAllocations?.length) &&
     (transaction.categoryId === undefined ||
       (transaction.categorization !== undefined &&
         transaction.categorization.confidence < CATEGORIZATION_REVIEW_THRESHOLD))

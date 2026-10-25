@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { queryAccountCoverageAssessment } from "../../src/app/dashboardApi.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import type {
   AccountBalanceCheckpoint,
-  AccountCoverageAssessment,
   AccountStatementCoveragePeriod,
   Household,
   ImportJob,
@@ -85,10 +85,6 @@ interface AccountCoverageLedger {
   appendAccountBalanceCheckpoint: (value: AccountBalanceCheckpoint) => void;
   listAccountStatementCoveragePeriods: (accountId: string) => AccountStatementCoveragePeriod[];
   listAccountBalanceCheckpoints: (accountId: string) => AccountBalanceCheckpoint[];
-  getAccountCoverageAssessment: (
-    periodId: string,
-    evaluatedAtIso: string
-  ) => AccountCoverageAssessment;
 }
 
 function accountCoverageLedger(
@@ -97,7 +93,6 @@ function accountCoverageLedger(
   const result = ledger as ReturnType<typeof createLocalLedgerDatabase> & AccountCoverageLedger;
   expect(typeof result.saveAccountStatementCoveragePeriod).toBe("function");
   expect(typeof result.appendAccountBalanceCheckpoint).toBe("function");
-  expect(typeof result.getAccountCoverageAssessment).toBe("function");
   return result;
 }
 
@@ -132,6 +127,32 @@ function createLedger(dbPath: string, initialPending: PendingTransactionObservat
 }
 
 describe("account coverage local persistence", () => {
+  it("queries account coverage assessment through the dashboard API", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-account-coverage-dashboard-api-"));
+    const ledger = createLedger(join(directory, "ledger.sqlite"));
+
+    try {
+      const database = accountCoverageLedger(ledger);
+      database.saveAccountStatementCoveragePeriod(period);
+      database.appendAccountBalanceCheckpoint(openingCheckpoint);
+      database.appendAccountBalanceCheckpoint(closingCheckpoint);
+
+      expect(queryAccountCoverageAssessment(
+        ledger,
+        period.id,
+        "2026-06-04T00:00:00Z"
+      )).toMatchObject({
+        coverageStatus: "confirmed",
+        checkpointStatus: "available",
+        differenceMinor: -12_500,
+        reconciliationStatus: "mismatch",
+      });
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("persists confirmed periods and appends checkpoints across reopen and backup restore", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-account-coverage-"));
     const databasePath = join(directory, "ledger.sqlite");
@@ -160,7 +181,8 @@ describe("account coverage local persistence", () => {
         const reopenedCoverage = accountCoverageLedger(reopened);
         expect(reopenedCoverage.listAccountStatementCoveragePeriods("acc-coverage")).toEqual([period]);
         expect(reopenedCoverage.listAccountBalanceCheckpoints("acc-coverage")).toHaveLength(3);
-        expect(reopenedCoverage.getAccountCoverageAssessment(
+        expect(queryAccountCoverageAssessment(
+          reopened,
           period.id,
           "2026-06-04T00:00:00Z"
         )).toMatchObject({
@@ -177,6 +199,23 @@ describe("account coverage local persistence", () => {
         const restored = restoreBackupSnapshot({ snapshotPath: backupPath });
         expect(restored.accountStatementCoveragePeriods).toEqual([period]);
         expect(restored.accountBalanceCheckpoints).toHaveLength(3);
+
+        const restoredLedger = createLedger(join(directory, "restored.sqlite"));
+        try {
+          restoredLedger.replaceLedgerSnapshotData(restored);
+          expect(queryAccountCoverageAssessment(
+            restoredLedger,
+            period.id,
+            "2026-06-04T00:00:00Z"
+          )).toMatchObject({
+            coverageStatus: "confirmed",
+            checkpointStatus: "available",
+            differenceMinor: 500,
+            reconciliationStatus: "mismatch",
+          });
+        } finally {
+          restoredLedger.close();
+        }
       } finally {
         reopened.close();
       }
@@ -196,7 +235,8 @@ describe("account coverage local persistence", () => {
       database.appendAccountBalanceCheckpoint(openingCheckpoint);
       database.appendAccountBalanceCheckpoint(closingCheckpoint);
 
-      expect(database.getAccountCoverageAssessment(
+      expect(queryAccountCoverageAssessment(
+        ledger,
         period.id,
         "2026-06-03T00:00:00Z"
       ).differenceMinor).toBe(-12_500);
@@ -222,13 +262,38 @@ describe("account coverage local persistence", () => {
       };
 
       ledger.appendImportJobAndTransactions(importJob, [bookedTransaction]);
-      expect(database.getAccountCoverageAssessment(
+      expect(queryAccountCoverageAssessment(
+        ledger,
         period.id,
         "2026-06-04T00:00:00Z"
       ).differenceMinor).toBe(0);
+
+      const backupPath = join(directory, "matched-coverage-backup.json");
+      createBackupSnapshot({
+        ...ledger.loadLedgerSnapshotData(),
+        createdAtIso: "2026-06-04T00:00:00Z",
+        outputPath: backupPath,
+      });
+      const restored = restoreBackupSnapshot({ snapshotPath: backupPath });
+      const restoredLedger = createLedger(join(directory, "matched-restored.sqlite"));
+      try {
+        restoredLedger.replaceLedgerSnapshotData(restored);
+        expect(queryAccountCoverageAssessment(
+          restoredLedger,
+          period.id,
+          "2026-06-05T00:00:00Z"
+        )).toMatchObject({
+          differenceMinor: 0,
+          reconciliationStatus: "matched",
+        });
+        expect(restoredLedger.getTransactionsForAccount("acc-coverage")).toHaveLength(1);
+      } finally {
+        restoredLedger.close();
+      }
       expect(ledger.loadLedgerSnapshotData().pendingObservations?.[0]?.reconciledTransactionId)
         .toBe("booked-bill");
-      expect(database.getAccountCoverageAssessment(
+      expect(queryAccountCoverageAssessment(
+        ledger,
         period.id,
         "2026-06-04T00:00:00Z"
       ).differenceMinor).toBe(0);
@@ -302,11 +367,13 @@ describe("account coverage local persistence", () => {
         currencyCode: "EUR",
       }]);
 
-      expect(database.getAccountCoverageAssessment(
+      expect(queryAccountCoverageAssessment(
+        ledger,
         nokPeriod.id,
         "2026-06-04T00:00:00Z"
       ).differenceMinor).toBe(0);
-      expect(database.getAccountCoverageAssessment(
+      expect(queryAccountCoverageAssessment(
+        ledger,
         eurPeriod.id,
         "2026-06-04T00:00:00Z"
       ).differenceMinor).toBe(5_000);

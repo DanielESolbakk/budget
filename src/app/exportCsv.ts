@@ -6,6 +6,8 @@ import { buildCsvOutput } from "../domain/export/buildCsvRows.js";
 export interface ExportCsvInput {
   /** Transactions to export. The array is sorted by bookedAtIso ascending before serialization. */
   transactions: Transaction[];
+  accounts?: LedgerSnapshotData["accounts"];
+  exchangeRates?: LedgerSnapshotData["exchangeRates"];
 }
 
 export interface ExportCsvOutput {
@@ -35,7 +37,8 @@ export interface ExportCsvSummary {
 }
 
 export interface LedgerExportSource {
-  loadLedgerSnapshotData: () => Pick<LedgerSnapshotData, "transactions">;
+  loadLedgerSnapshotData: () => Pick<LedgerSnapshotData, "transactions"> &
+    Partial<Pick<LedgerSnapshotData, "accounts" | "exchangeRates">>;
 }
 
 export type ExportLedgerCsvToFileInput = Omit<ExportCsvToFileInput, "transactions"> & {
@@ -51,30 +54,39 @@ export function exportCsv(input: ExportCsvInput): ExportCsvOutput {
   const sorted = [...input.transactions].sort((a, b) =>
     a.bookedAtIso < b.bookedAtIso ? -1 : a.bookedAtIso > b.bookedAtIso ? 1 : 0
   );
-  const csvText = buildCsvOutput(sorted);
+  const csvText = buildCsvOutput(sorted, {
+    ...(input.accounts === undefined ? {} : { accounts: input.accounts }),
+    ...(input.exchangeRates === undefined ? {} : { exchangeRates: input.exchangeRates }),
+  });
   return { csvText, rowCount: sorted.length };
 }
 
 export function exportCsvToFile(input: ExportCsvToFileInput): ExportCsvFileOutput {
-  const { csvText, rowCount } = exportCsv({ transactions: input.transactions });
+  const { csvText, rowCount } = exportCsv({
+    transactions: input.transactions,
+    ...(input.accounts === undefined ? {} : { accounts: input.accounts }),
+    ...(input.exchangeRates === undefined ? {} : { exchangeRates: input.exchangeRates }),
+  });
   const write = input.writeFile ?? ((path: string, data: string) => writeFileSync(path, data, "utf8"));
   write(input.outputPath, csvText);
   return { csvText, rowCount, outputPath: input.outputPath };
 }
 
 export function exportLedgerCsvToFile(input: ExportLedgerCsvToFileInput): ExportCsvFileOutput {
-  const transactions = input.ledger.loadLedgerSnapshotData().transactions;
+  const snapshot = input.ledger.loadLedgerSnapshotData();
+  const exportInput = {
+    transactions: snapshot.transactions,
+    ...(snapshot.accounts === undefined ? {} : { accounts: snapshot.accounts }),
+    ...(snapshot.exchangeRates === undefined ? {} : { exchangeRates: snapshot.exchangeRates }),
+    outputPath: input.outputPath,
+  };
 
   if (input.writeFile === undefined) {
-    return exportCsvToFile({
-      transactions,
-      outputPath: input.outputPath,
-    });
+    return exportCsvToFile(exportInput);
   }
 
   return exportCsvToFile({
-    transactions,
-    outputPath: input.outputPath,
+    ...exportInput,
     writeFile: input.writeFile,
   });
 }

@@ -172,8 +172,15 @@ export function filterTransactions(
     .filter((transaction) => query.amountMinor === undefined || transaction.amountMinor === query.amountMinor)
     .filter((transaction) => query.amountFromMinor === undefined || transaction.amountMinor >= query.amountFromMinor)
     .filter((transaction) => query.amountToMinor === undefined || transaction.amountMinor <= query.amountToMinor)
-    .filter((transaction) => query.categoryId === undefined || transaction.categoryId === query.categoryId)
-    .filter((transaction) => !query.uncategorizedOnly || transaction.categoryId === undefined)
+    .filter((transaction) =>
+      query.categoryId === undefined ||
+      transaction.categoryId === query.categoryId ||
+      transaction.categoryAllocations?.some((allocation) => allocation.categoryId === query.categoryId) === true
+    )
+    .filter((transaction) =>
+      !query.uncategorizedOnly ||
+      (transaction.categoryId === undefined && !(transaction.categoryAllocations?.length))
+    )
     .filter((transaction) => query.transactionType === undefined ||
       (query.transactionType === "income" ? transaction.amountMinor > 0 : transaction.amountMinor < 0))
     .filter((transaction) => !query.largeTransactionsOnly ||

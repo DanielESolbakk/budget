@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { listCategorizationReviewQueue } from "../../src/app/reviewQueue.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { computeCategoryBreakdown } from "../../src/domain/aggregation/computeCategoryBreakdown.js";
+import { computeMonthlyTotals } from "../../src/domain/aggregation/computeMonthlyTotals.js";
 import { buildCsvOutput } from "../../src/domain/export/buildCsvRows.js";
 import type { Transaction, TransactionCategoryAllocation } from "../../src/domain/types.js";
 
@@ -60,8 +62,8 @@ describe("transaction allocation persistence", () => {
     const snapshotPath = join(directory, "backup.json");
     const ledger = createLedger(databasePath);
     const allocations = [
-      { categoryId: "groceries", amountMinor: -700 },
       { categoryId: "housing", amountMinor: -300 },
+      { categoryId: "groceries", amountMinor: -700 },
     ];
     let ledgerIsClosed = false;
 
@@ -86,6 +88,32 @@ describe("transaction allocation persistence", () => {
         const restored = restoreBackupSnapshot({ snapshotPath });
         expect(restored.transactions).toHaveLength(1);
         expect(restored.transactions[0]?.categoryAllocations).toEqual(allocations);
+
+        const restoredLedger = createLedger(join(directory, "restored.sqlite"));
+        try {
+          restoredLedger.replaceLedgerSnapshotData(restored);
+          const restoredTransactions = restoredLedger.loadLedgerSnapshotData().transactions;
+          expect(
+            computeCategoryBreakdown(restoredTransactions, "2026-05").entries
+              .map(({ categoryId, totalMinor }) => ({ categoryId, totalMinor }))
+          ).toEqual([
+            { categoryId: "groceries", totalMinor: 700 },
+            { categoryId: "housing", totalMinor: 300 },
+          ]);
+          expect(computeMonthlyTotals(restoredTransactions, "2026-05")).toMatchObject({
+            expenseMinor: 1_000,
+            netMinor: -1_000,
+          });
+          const restoredAccountTransactions =
+            restoredLedger.getTransactionsForAccount(transaction.accountId);
+          expect(restoredAccountTransactions).toHaveLength(1);
+          expect(computeMonthlyTotals(restoredAccountTransactions, "2026-05")).toMatchObject({
+            expenseMinor: 1_000,
+            netMinor: -1_000,
+          });
+        } finally {
+          restoredLedger.close();
+        }
 
         const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8")) as {
           transactions: Array<{ categoryAllocations?: TransactionCategoryAllocation[] }>;
@@ -129,8 +157,8 @@ describe("transaction allocation persistence", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-allocation-export-"));
     const ledger = createLedger(join(directory, "ledger.sqlite"));
     const allocations = [
-      { categoryId: "groceries", amountMinor: -700 },
       { categoryId: "housing", amountMinor: -300 },
+      { categoryId: "groceries", amountMinor: -700 },
     ];
 
     try {
@@ -142,6 +170,64 @@ describe("transaction allocation persistence", () => {
       expect(rows[0]).toContain("categoryAllocations");
       expect(rows[1]).toContain("groceries");
       expect(rows[1]).toContain("housing");
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("finds a split transaction under each allocated category filter", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-allocation-category-filter-"));
+    const ledger = createLedger(join(directory, "ledger.sqlite"));
+
+    try {
+      allocationLedger(ledger).updateTransactionCategoryAllocations(transaction.id, [
+        { categoryId: "groceries", amountMinor: -700 },
+        { categoryId: "housing", amountMinor: -300 },
+      ]);
+
+      expect(ledger.queryTransactions(transaction.householdId, {
+        categoryId: "groceries",
+      }).transactions.map((item) => item.id)).toEqual([transaction.id]);
+      expect(ledger.queryTransactions(transaction.householdId, {
+        categoryId: "housing",
+      }).transactions.map((item) => item.id)).toEqual([transaction.id]);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("excludes split transactions from the uncategorized ledger filter", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-allocation-uncategorized-filter-"));
+    const ledger = createLedger(join(directory, "ledger.sqlite"));
+
+    try {
+      allocationLedger(ledger).updateTransactionCategoryAllocations(transaction.id, [
+        { categoryId: "groceries", amountMinor: -700 },
+        { categoryId: "housing", amountMinor: -300 },
+      ]);
+
+      expect(ledger.queryTransactions(transaction.householdId, {
+        uncategorizedOnly: true,
+      }).transactions).toEqual([]);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("excludes split transactions from the categorization review queue", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-allocation-review-queue-"));
+    const ledger = createLedger(join(directory, "ledger.sqlite"));
+
+    try {
+      allocationLedger(ledger).updateTransactionCategoryAllocations(transaction.id, [
+        { categoryId: "groceries", amountMinor: -700 },
+        { categoryId: "housing", amountMinor: -300 },
+      ]);
+
+      expect(listCategorizationReviewQueue(ledger, transaction.householdId)).toEqual([]);
     } finally {
       ledger.close();
       rmSync(directory, { recursive: true, force: true });

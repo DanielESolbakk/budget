@@ -241,7 +241,7 @@ function validateTargets(value: unknown[], snapshotPath: string): asserts value 
 
 function validateAccountStatementCoveragePeriods(
   value: unknown[],
-  accountIds: Set<string>,
+  accountCurrencies: ReadonlyMap<string, string>,
   importJobIds: Set<string>,
   snapshotPath: string
 ): asserts value is AccountStatementCoveragePeriod[] {
@@ -251,7 +251,7 @@ function validateAccountStatementCoveragePeriods(
       !isRecord(period) ||
       !isNonEmptyString(period.id) ||
       !isNonEmptyString(period.accountId) ||
-      !accountIds.has(period.accountId) ||
+      accountCurrencies.get(period.accountId) !== period.currencyCode ||
       !isIsoCalendarDate(period.startDateIso) ||
       !isIsoCalendarDate(period.endDateIso) ||
       period.startDateIso > period.endDateIso ||
@@ -276,7 +276,7 @@ function validateAccountStatementCoveragePeriods(
 
 function validateAccountBalanceCheckpoints(
   value: unknown[],
-  accountIds: Set<string>,
+  accountCurrencies: ReadonlyMap<string, string>,
   snapshotPath: string
 ): asserts value is AccountBalanceCheckpoint[] {
   const checkpointIds = new Set<string>();
@@ -285,7 +285,7 @@ function validateAccountBalanceCheckpoints(
       !isRecord(checkpoint) ||
       !isNonEmptyString(checkpoint.id) ||
       !isNonEmptyString(checkpoint.accountId) ||
-      !accountIds.has(checkpoint.accountId) ||
+      accountCurrencies.get(checkpoint.accountId) !== checkpoint.currencyCode ||
       !isIsoCalendarDate(checkpoint.dateIso) ||
       !isCurrencyCode(checkpoint.currencyCode) ||
       !Number.isSafeInteger(checkpoint.balanceMinor) ||
@@ -411,6 +411,10 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   validateHousehold(value.household, snapshotPath);
   validateImportJobs(importJobs, value.household.id, snapshotPath);
   validateAccounts(accounts, value.household.id, snapshotPath);
+  const accountIds = new Set(accounts.map((account) => account.id));
+  const accountCurrencies = new Map(
+    accounts.map((account) => [account.id, account.currencyCode] as const)
+  );
   validateTargets(monthlyCategoryTargets, snapshotPath);
   if (metadata.version !== "1") {
     validateMerchantCategoryRules(value.merchantCategoryRules, snapshotPath);
@@ -418,27 +422,27 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   validateTransactions(
     transactions,
     value.household.id,
-    new Set(accounts.map((account) => account.id)),
+    accountIds,
     new Set(importJobs.map((importJob) => importJob.id)),
     snapshotPath
   );
   validatePendingObservations(
     pendingObservations,
     value.household.id,
-    new Set(accounts.map((account) => account.id)),
+    accountIds,
     new Set(importJobs.map((importJob) => importJob.id)),
     new Set(transactions.map((transaction) => transaction.id)),
     snapshotPath
   );
   validateAccountStatementCoveragePeriods(
     accountStatementCoveragePeriods,
-    new Set(accounts.map((account) => account.id)),
+    accountCurrencies,
     new Set(importJobs.map((importJob) => importJob.id)),
     snapshotPath
   );
   validateAccountBalanceCheckpoints(
     accountBalanceCheckpoints,
-    new Set(accounts.map((account) => account.id)),
+    accountCurrencies,
     snapshotPath
   );
   validateExchangeRates(exchangeRates, snapshotPath);

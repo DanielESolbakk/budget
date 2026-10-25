@@ -63,8 +63,13 @@ export function validateTransactionCategoryAllocations(
     );
   }
 
-  return allocations.map((allocation) => ({
-    categoryId: allocation.categoryId,
-    amountMinor: allocation.amountMinor,
-  }));
+  return allocations
+    .map((allocation) => ({
+      categoryId: allocation.categoryId,
+      amountMinor: allocation.amountMinor,
+    }))
+    .sort((left, right) =>
+      left.categoryId.localeCompare(right.categoryId) ||
+      left.amountMinor - right.amountMinor
+    );
 }

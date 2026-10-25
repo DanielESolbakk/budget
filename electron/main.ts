@@ -18,6 +18,7 @@ import {
   buildDashboardViewContract,
   buildNokMonthlyReport,
   createMonthlyCategoryTargetStore,
+  queryAccountCoverageAssessment,
   reloadMonthlyCategoryTargets,
   type DashboardData,
   type DashboardViewContract,
@@ -1077,7 +1078,8 @@ app.whenReady().then(async () => {
       throw new Error("Account coverage assessment request must be an object.");
     }
     const record = input as Record<string, unknown>;
-    return localLedgerDatabase.getAccountCoverageAssessment(
+    return queryAccountCoverageAssessment(
+      localLedgerDatabase,
       parseNonEmptyString(record.periodId, "periodId"),
       parseNonEmptyString(record.evaluatedAtIso, "evaluatedAtIso")
     );

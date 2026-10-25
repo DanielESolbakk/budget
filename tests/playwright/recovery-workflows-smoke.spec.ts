@@ -92,7 +92,7 @@ test.describe("Recovery and portability renderer workflows", () => {
       const exportedCsv = readFileSync(outputPath, "utf8");
       const exportedRows = exportedCsv.trimEnd().split(/\r?\n/);
       expect(exportedRows[0]).toBe(
-        "id,householdId,accountId,bookedAtIso,amountMinor,merchantRaw,merchantAlias,sourceReference,categoryId,importJobId,categoryAllocations"
+        "id,householdId,accountId,bookedAtIso,amountMinor,merchantRaw,merchantAlias,sourceReference,categoryId,importJobId,categoryAllocations,currencyCode,convertedNokAmountMinor,conversionStatus,exchangeRateNokPerUnit,exchangeRateEffectiveDate,exchangeRateKind,exchangeRateSource,exchangeRateProvenance"
       );
       expect(exportedRows).toHaveLength(5);
       for (const transactionId of ["sample-tx-1", "sample-tx-2", "sample-tx-3", "sample-tx-4"]) {
@@ -508,7 +508,7 @@ test.describe("Recovery and portability renderer workflows", () => {
       const exportedCsv = readFileSync(outputPath, "utf8");
       const exportedRows = exportedCsv.trimEnd().split(/\r?\n/);
       expect(exportedRows[0]).toBe(
-        "id,householdId,accountId,bookedAtIso,amountMinor,merchantRaw,merchantAlias,sourceReference,categoryId,importJobId,categoryAllocations"
+        "id,householdId,accountId,bookedAtIso,amountMinor,merchantRaw,merchantAlias,sourceReference,categoryId,importJobId,categoryAllocations,currencyCode,convertedNokAmountMinor,conversionStatus,exchangeRateNokPerUnit,exchangeRateEffectiveDate,exchangeRateKind,exchangeRateSource,exchangeRateProvenance"
       );
       expect(exportedRows).toHaveLength(5);
       for (const transactionId of ["sample-tx-1", "sample-tx-2", "sample-tx-3", "sample-tx-4"]) {

@@ -30,6 +30,22 @@ describe("transaction category allocations", () => {
     ]);
   });
 
+  it("returns the same canonical allocation result regardless of input order", () => {
+    expect(
+      validateTransactionCategoryAllocations(
+        expense,
+        [
+          { categoryId: "household", amountMinor: -300 },
+          { categoryId: "groceries", amountMinor: -700 },
+        ],
+        allowedCategories
+      )
+    ).toEqual([
+      { categoryId: "groceries", amountMinor: -700 },
+      { categoryId: "household", amountMinor: -300 },
+    ]);
+  });
+
   it("rejects allocation sums that differ from the source amount", () => {
     expect(() =>
       validateTransactionCategoryAllocations(

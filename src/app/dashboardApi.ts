@@ -1,9 +1,13 @@
 import { computeCategoryBreakdown } from "../domain/aggregation/computeCategoryBreakdown.js";
 import { computeMonthlyTotals } from "../domain/aggregation/computeMonthlyTotals.js";
+import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
 import { convertCurrencyAmount } from "../domain/money/convertCurrencyAmount.js";
 import { simpleForecast } from "../domain/forecast/simpleForecast.js";
+import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import type {
   Account,
+  AccountCoverageAssessment,
+  AccountCoverageAssessmentInput,
   CategoryBreakdown,
   CurrencyCode,
   ExchangeRate,
@@ -97,6 +101,43 @@ export interface NokMonthlyReport {
   partialNokSubtotalMinor: number;
   incompleteCurrencies: CurrencyCode[];
   transactions: NokMonthlyReportTransaction[];
+}
+
+type AccountCoverageQuerySource = Pick<
+  LocalLedgerDatabase,
+  | "loadLedgerSnapshotData"
+  | "listAccountStatementCoveragePeriods"
+  | "listAccountBalanceCheckpoints"
+  | "getTransactionsForAccount"
+  | "listPendingTransactionObservations"
+>;
+
+export function queryAccountCoverageAssessment(
+  database: AccountCoverageQuerySource,
+  periodId: string,
+  evaluatedAtIso: string
+): AccountCoverageAssessment {
+  const snapshot = database.loadLedgerSnapshotData();
+  const period = (snapshot.accountStatementCoveragePeriods ?? [])
+    .find((candidate) => candidate.id === periodId);
+  if (period === undefined) {
+    throw new Error(`Account statement coverage period not found: ${periodId}`);
+  }
+  const account = snapshot.accounts.find((candidate) => candidate.id === period.accountId);
+  if (account === undefined) {
+    throw new Error(`Account not found: ${period.accountId}`);
+  }
+
+  const input: AccountCoverageAssessmentInput = {
+    period,
+    relatedPeriods: database.listAccountStatementCoveragePeriods(period.accountId),
+    checkpoints: database.listAccountBalanceCheckpoints(period.accountId),
+    transactions: database.getTransactionsForAccount(period.accountId),
+    pendingObservations: database.listPendingTransactionObservations(account.householdId),
+    importJobs: snapshot.importJobs,
+    evaluatedAtIso,
+  };
+  return assessAccountCoverage(input);
 }
 
 export interface DashboardViewContractInput {

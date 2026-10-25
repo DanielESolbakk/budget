@@ -27,12 +27,10 @@ import {
   type TransactionSortDirection,
   type TransactionSortField,
 } from "../../domain/ledger/filterTransactions.js";
-import { assessAccountCoverage } from "../../domain/ledger/accountCoverage.js";
 import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
 import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
 import type {
   AccountBalanceCheckpoint,
-  AccountCoverageAssessment,
   AccountStatementCoveragePeriod,
   Account,
   CategorizationDecision,
@@ -99,10 +97,6 @@ export interface LocalLedgerDatabase {
   appendAccountBalanceCheckpoint: (checkpoint: AccountBalanceCheckpoint) => void;
   listAccountStatementCoveragePeriods: (accountId: string) => AccountStatementCoveragePeriod[];
   listAccountBalanceCheckpoints: (accountId: string) => AccountBalanceCheckpoint[];
-  getAccountCoverageAssessment: (
-    periodId: string,
-    evaluatedAtIso: string
-  ) => AccountCoverageAssessment;
   upsertExchangeRate: (rate: ExchangeRate) => void;
   upsertExchangeRates: (rates: ExchangeRate[]) => void;
   listExchangeRates: (currencyCode?: string) => ExchangeRate[];
@@ -257,11 +251,12 @@ function mapTransactionRow(transaction: TransactionRow): Transaction {
       }
       return { categoryId: value.categoryId, amountMinor: value.amountMinor };
     });
-    mapped.categoryAllocations = validateTransactionCategoryAllocations(
+    validateTransactionCategoryAllocations(
       mapped,
       allocations,
       CATEGORY_OPTIONS.map((category) => category.id)
     );
+    mapped.categoryAllocations = allocations;
   }
   return mapped;
 }
@@ -270,13 +265,14 @@ function serializeTransactionCategoryAllocations(transaction: Transaction): stri
   if (transaction.categoryAllocations === undefined || transaction.categoryAllocations.length === 0) {
     return null;
   }
-  const allocations = validateTransactionCategoryAllocations(
+  const allocations = transaction.categoryAllocations.map((allocation) => ({
+    categoryId: allocation.categoryId,
+    amountMinor: allocation.amountMinor,
+  }));
+  validateTransactionCategoryAllocations(
     transaction,
-    transaction.categoryAllocations,
+    allocations,
     CATEGORY_OPTIONS.map((category) => category.id)
-  ).sort((left, right) =>
-    left.categoryId.localeCompare(right.categoryId) ||
-    left.amountMinor - right.amountMinor
   );
   return JSON.stringify(allocations);
 }
@@ -1177,22 +1173,21 @@ export function createLocalLedgerDatabase(
       if (transaction === undefined) {
         throw new Error(`Transaction not found: ${transactionId}`);
       }
-      const validated = allocations.length === 0
-        ? []
-        : validateTransactionCategoryAllocations(
-            transaction,
-            allocations,
-            CATEGORY_OPTIONS.map((category) => category.id)
-          );
+      if (allocations.length > 0) {
+        validateTransactionCategoryAllocations(
+          transaction,
+          allocations,
+          CATEGORY_OPTIONS.map((category) => category.id)
+        );
+      }
+      const orderedAllocations = allocations.map((allocation) => ({
+        categoryId: allocation.categoryId,
+        amountMinor: allocation.amountMinor,
+      }));
       const result = db.prepare(
         "UPDATE transactions SET category_allocations_json = ? WHERE id = ?"
       ).run(
-        validated.length === 0 ? null : JSON.stringify(
-          [...validated].sort((left, right) =>
-            left.categoryId.localeCompare(right.categoryId) ||
-            left.amountMinor - right.amountMinor
-          )
-        ),
+        orderedAllocations.length === 0 ? null : JSON.stringify(orderedAllocations),
         transactionId
       ) as { changes: number | bigint };
       if (Number(result.changes) !== 1) {
@@ -1200,10 +1195,10 @@ export function createLocalLedgerDatabase(
       }
       db.exec("COMMIT");
       const updated: Transaction = { ...transaction };
-      if (validated.length === 0) {
+      if (orderedAllocations.length === 0) {
         delete updated.categoryAllocations;
       } else {
-        updated.categoryAllocations = validated;
+        updated.categoryAllocations = orderedAllocations;
       }
       return updated;
     } catch (error) {
@@ -1387,62 +1382,6 @@ export function createLocalLedgerDatabase(
         ...(checkpoint.source_reference === null ? {} : { sourceReference: checkpoint.source_reference }),
         recordedAtIso: checkpoint.recorded_at_iso,
       };
-    });
-  }
-
-  function getAccountCoverageAssessment(
-    periodId: string,
-    evaluatedAtIso: string
-  ): AccountCoverageAssessment {
-    const period = db.prepare(`
-      SELECT id, account_id, start_date_iso, end_date_iso, currency_code, source_name,
-        source_type, import_job_id, imported_at_iso, confirmed, confirmed_at_iso
-      FROM account_statement_coverage_periods
-      WHERE id = ?
-    `).get(periodId) as {
-      id: string;
-      account_id: string;
-      start_date_iso: string;
-      end_date_iso: string;
-      currency_code: string;
-      source_name: string;
-      source_type: AccountStatementCoveragePeriod["sourceType"];
-      import_job_id: string | null;
-      imported_at_iso: string | null;
-      confirmed: number;
-      confirmed_at_iso: string | null;
-    } | undefined;
-    if (period === undefined) {
-      throw new Error(`Account statement coverage period not found: ${periodId}`);
-    }
-    const mappedPeriod: AccountStatementCoveragePeriod = {
-      id: period.id,
-      accountId: period.account_id,
-      startDateIso: period.start_date_iso,
-      endDateIso: period.end_date_iso,
-      currencyCode: period.currency_code,
-      sourceName: period.source_name,
-      sourceType: period.source_type,
-      ...(period.import_job_id === null ? {} : { importJobId: period.import_job_id }),
-      ...(period.imported_at_iso === null ? {} : { importedAtIso: period.imported_at_iso }),
-      confirmed: period.confirmed === 1,
-      ...(period.confirmed_at_iso === null ? {} : { confirmedAtIso: period.confirmed_at_iso }),
-    };
-    const account = db.prepare(
-      "SELECT household_id FROM accounts WHERE id = ?"
-    ).get(mappedPeriod.accountId) as { household_id: string } | undefined;
-    if (account === undefined) {
-      throw new Error(`Account not found: ${mappedPeriod.accountId}`);
-    }
-    const snapshot = loadLedgerSnapshotData();
-    return assessAccountCoverage({
-      period: mappedPeriod,
-      relatedPeriods: listAccountStatementCoveragePeriods(mappedPeriod.accountId),
-      checkpoints: listAccountBalanceCheckpoints(mappedPeriod.accountId),
-      transactions: getTransactionsForAccount(mappedPeriod.accountId),
-      pendingObservations: listPendingTransactionObservations(account.household_id),
-      importJobs: snapshot.importJobs,
-      evaluatedAtIso,
     });
   }
 
@@ -2040,10 +1979,20 @@ export function createLocalLedgerDatabase(
       parameters.push(query.amountToMinor);
     }
     if (query.categoryId !== undefined) {
-      predicates.push("t.category_id = ?");
-      parameters.push(query.categoryId);
+      predicates.push(`(
+        t.category_id = ? OR EXISTS (
+          SELECT 1
+          FROM json_each(t.category_allocations_json) AS allocation
+          WHERE json_extract(allocation.value, '$.categoryId') = ?
+        )
+      )`);
+      parameters.push(query.categoryId, query.categoryId);
     }
-    if (query.uncategorizedOnly) predicates.push("t.category_id IS NULL");
+    if (query.uncategorizedOnly) {
+      predicates.push(
+        "t.category_id IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(t.category_allocations_json))"
+      );
+    }
     if (query.transactionType === "income") predicates.push("t.amount_minor > 0");
     if (query.transactionType === "expenses") predicates.push("t.amount_minor < 0");
     if (query.largeTransactionsOnly) {
@@ -2089,6 +2038,7 @@ export function createLocalLedgerDatabase(
         category_allocations_json
       FROM transactions
       WHERE household_id = ? AND category_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM json_each(category_allocations_json))
       ORDER BY substr(booked_at_iso, 1, 10) ASC, id ASC
     `).all(householdId) as unknown as TransactionRow[];
     return transactions.map(mapTransactionRow);
@@ -3241,7 +3191,6 @@ export function createLocalLedgerDatabase(
     appendAccountBalanceCheckpoint,
     listAccountStatementCoveragePeriods,
     listAccountBalanceCheckpoints,
-    getAccountCoverageAssessment,
     upsertExchangeRate,
     upsertExchangeRates,
     listExchangeRates,

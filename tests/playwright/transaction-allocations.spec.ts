@@ -54,7 +54,7 @@ test.describe("transaction category allocations", () => {
     await expect(transactionRow).toContainText("Housing");
   });
 
-  test("keeps allocation controls keyboard reachable at desktop and compact widths", async ({
+  test("creates, edits, and reorders allocations with the keyboard at desktop and compact widths", async ({
     appShell,
     window,
   }) => {
@@ -68,12 +68,74 @@ test.describe("transaction category allocations", () => {
       name: "Transaction category allocations for Kiwi",
     });
     await expect(allocationEditor.getByLabel("Allocation category 1")).toBeFocused();
-    await window.setViewportSize({ width: 390, height: 844 });
-    await expect(allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }))
+    await expect(allocationEditor.getByRole("button", { name: "Move allocation 1 down" }))
       .toBeVisible();
+
+    await window.keyboard.press("Tab");
+    await window.keyboard.press("Control+A");
+    await window.keyboard.insertText("-40.00");
+    await window.keyboard.press("Tab");
+    await expect(allocationEditor.getByRole("button", { name: "Move allocation 1 down" }))
+      .toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
+    await window.keyboard.press("Shift+Tab");
+    await window.keyboard.press("Control+A");
+    await window.keyboard.insertText("-32.00");
+    for (let index = 0; index < 6; index++) {
+      await window.keyboard.press("Tab");
+    }
+    await window.keyboard.press("Enter");
+    await expect(transactionRow).toContainText("Housing");
+    await expect(transactionRow).toContainText("Groceries & food");
+    await expect(transactionRow).toContainText(/72,00\s*kr/);
+
+    await window.setViewportSize({ width: 390, height: 844 });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).focus();
+    await window.keyboard.press("Enter");
+    await expect(allocationEditor.getByLabel("Allocation category 1")).toBeFocused();
+    await window.keyboard.press("Tab");
+    await window.keyboard.press("Control+A");
+    await window.keyboard.insertText("-33.00");
+    for (let index = 0; index < 3; index++) {
+      await window.keyboard.press("Tab");
+    }
+    await window.keyboard.press("Control+A");
+    await window.keyboard.insertText("-39.00");
+    for (let index = 0; index < 3; index++) {
+      await window.keyboard.press("Tab");
+    }
+    await window.keyboard.press("Enter");
+    await expect(transactionRow).toContainText(/72,00\s*kr/);
+    await expect(allocationEditor).toBeHidden();
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).focus();
+    await window.keyboard.press("Enter");
+    await expect(allocationEditor.getByLabel("Allocation amount 1")).toHaveValue("-33.00");
+    await expect(allocationEditor.getByLabel("Allocation amount 2")).toHaveValue("-39.00");
     const horizontalOverflow = await window.evaluate(() =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth
     );
     expect(horizontalOverflow).toBe(false);
+  });
+
+  test("retains the reordered category sequence after saving allocations", async ({ appShell, window }) => {
+    await appShell.openWorkspace("Transactions");
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+
+    const allocationEditor = window.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("groceries");
+    await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("housing");
+    await allocationEditor.getByRole("button", { name: "Move allocation 1 down" }).click();
+    await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
+    await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("groceries");
+
+    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await expect(allocationEditor).toBeHidden();
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
+    await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("groceries");
   });
 });

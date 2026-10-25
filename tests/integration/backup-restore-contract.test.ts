@@ -477,6 +477,47 @@ describe("backup/restore contract", () => {
       });
     });
 
+    it("rejects coverage periods whose currency differs from the account currency", () => {
+      const snapshot = buildRestoreSnapshot({
+        accountStatementCoveragePeriods: [{
+          id: "coverage-eur-on-nok-account",
+          accountId: "acc-a",
+          startDateIso: "2026-05-01",
+          endDateIso: "2026-05-31",
+          currencyCode: "EUR",
+          sourceName: "Synthetic statement",
+          sourceType: "manual",
+          confirmed: false,
+        }],
+      });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+          "Invalid snapshot account statement coverage periods"
+        );
+      });
+    });
+
+    it("rejects balance checkpoints whose currency differs from the account currency", () => {
+      const snapshot = buildRestoreSnapshot({
+        accountBalanceCheckpoints: [{
+          id: "checkpoint-eur-on-nok-account",
+          accountId: "acc-a",
+          dateIso: "2026-05-31",
+          currencyCode: "EUR",
+          balanceMinor: 92_500,
+          source: "Synthetic statement",
+          recordedAtIso: "2026-06-01T12:00:00Z",
+        }],
+      });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+          "Invalid snapshot account balance checkpoints"
+        );
+      });
+    });
+
     it("restoreBackupSnapshot throws on malformed JSON", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "budget-bad-json-"));
       const outputPath = join(tempDir, "corrupt.json");
