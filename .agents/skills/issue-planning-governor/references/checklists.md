@@ -20,7 +20,7 @@ Run before editing any issue.
 - Confirm linked enablers/tests are same-slice unless explicitly justified by policy.
 - For an issue batch, inspect the full requested set and search the same-feature Story inventory before concluding that an Enabler has no real Story to enable.
 - Confirm issue references are bullet format in structured sections.
-- Confirm once per batch that an authorized human can trigger fresh validation and verify its result through GitHub UI after the issue edits; MCP issue access does not imply Actions access.
+- Confirm once per batch an authenticated validation-trigger and result-verification route using available MCP Actions tools or an authorized human through GitHub UI. Browser sign-in alone does not determine MCP access; an issue-write permission alone does not prove Actions permissions.
 - Run Test Necessity Decision and capture one outcome: no test issue needed now, or test issue required.
 - For a planned Test before product code exists, verify the approved immediate owner, parent ACs, one layer, expected scenarios, fixtures, file-creation tasks, existing test directories, commands, and explicit product blockers. Preserve `needs-grooming`; do not require delivered behavior merely to create the planning record.
 - If the issue is an Epic, stop before mutation; Epic lifecycle work is out of scope.
@@ -52,9 +52,9 @@ Issue is assignable when all are true.
 ## Validation Loop Checklist
 
 - Update issue body and labels.
-- Never use GitHub CLI (`gh`) in this repository. Use GitHub MCP for issue operations; its issue-write access does not dispatch or report GitHub Actions runs.
+- Never use GitHub CLI (`gh`) in this repository. Use GitHub MCP for issue operations and inspect the available Actions tools separately; do not infer their availability from issue-write access.
 - Complete the authorized issue batch in dependency order, then record labels, recent comments, and time for each affected issue before the validation trigger.
-- Require a fresh human-originated trigger. Prefer an authorized human applying `validate-planning` through GitHub UI; if that label is already present, have the human dispatch `planning-validation` through GitHub Actions UI with the target issue number. Bot-triggered label events may be skipped.
+- Require a fresh human-originated trigger. An owner-submitted MCP label form or an authorized human through GitHub UI can apply `validate-planning`; verify the actual actor and fresh result. If that label is already present, use an available authorized dispatch route or the Actions UI with the target issue number. Bot-triggered label events may be skipped.
 - The `planning-validation` `workflow_dispatch.issue_numbers` input accepts the affected issue numbers as one comma-separated value. Return the complete value once per batch instead of stopping after each issue for a separate validation run.
 - Include only issue records actually edited or explicitly repaired in the validation input; do not include untouched deferred issues merely because they are related.
 - Do not treat an MCP issue write or label update as proof that validation ran. Verify the fresh result from issue labels/comments and, when needed, the Actions run in GitHub UI.

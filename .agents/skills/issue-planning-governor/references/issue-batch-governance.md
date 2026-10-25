@@ -13,15 +13,16 @@
 - Use the catalog for seeded keys and hierarchy. For an explicitly approved new Story not yet in the catalog, assign the next unambiguous key under its owning Feature using `storyKeyPattern`; do not require a catalog-file edit or PR before creating/updating the GitHub issue record. Ask one focused question only when the owning Feature or next key is ambiguous. Report catalog-file follow-up separately if repository-file changes are outside the user's scope.
 - After requested issue updates are complete, provide the validation set as bare comma-separated issue numbers in the order expected by the planning workflow. Include every issue record actually edited whose structure needs validation; exclude untouched or deferred issues. The workflow accepts the batch through `workflow_dispatch.issue_numbers`; do not ask repeatedly for confirmation.
 - A fresh validation result proves structure only. It never proves G1-G9 readiness or authorizes assignment by itself.
-- If an issue write returns `awaiting_user_submission`, read the issue before taking another action. If the requested change is present, continue from the saved state. If it is absent, report that the pending form was not submitted and request that submission; do not blindly retry.
+- If an issue write returns `awaiting_user_submission`, verify the saved issue after submission is reported. Report absent changes as unverified/pending, not as proof that the user never clicked. For unusable forms and owner-authorized replacement updates, follow the repository-wide interactive-write contract below; do not repeatedly require impossible submission or cancellation.
 
 ## GitHub MCP Write Safety
 
+- Follow the [GitHub MCP Interactive Writes contract](../../../../.github/copilot-instructions.md#github-mcp-interactive-writes): populate complete title/body/labels, distinguish pending/visible/saved states, and reconcile interruptions before retrying.
 - Treat issue creation as non-idempotent. Never run multiple `issue_write` create calls in parallel, including through `multi_tool_use.parallel`.
 - Before each create, search the exact title/key in the target feature and inspect the issue's parent; do not create a second issue for an existing scope.
 - Create one issue, then read it and its parent to confirm the saved title, body, labels, and relationship before creating another.
 - A returned issue number means that create succeeded. Do not submit a second approval form or replay that create.
-- `awaiting_user_submission` means the write is still pending. Read the target issue first. If the requested content is absent, report that the form was not submitted and wait for the owner to submit or edit it manually; do not issue another create or update. If Submit is disabled, stop and report the blocked edit.
+- `awaiting_user_submission` is not a saved edit or proof of a visible form. Do not replay creates. A replacement update is allowed only when the owner explicitly authorizes it for an unusable form, a fresh read shows the original change absent, and the full current title/body/labels are preserved. Submit only the intended replacement; if it remains unusable, block that write and continue independent work.
 - Serialize issue-body and state updates too. After each write, verify the saved issue before moving to the next issue in the batch.
 
 ## Common Rationalizations

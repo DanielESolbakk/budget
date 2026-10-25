@@ -5,7 +5,7 @@ compatibility: Requires GitHub MCP issue tools and repository planning rules in 
 metadata:
   owner: budget-repo
   workflow: issue-planning
-  version: "1.5"
+  version: "1.6"
 ---
 
 # Issue Planning Governor
@@ -27,6 +27,8 @@ Govern Feature, Story, Enabler, and Test planning, not implementation. Epics are
 ## Workflow
 
 Before any issue mutation, read and follow [Issue Batch Governance](references/issue-batch-governance.md). Use [templates](references/templates.md), [checklists](references/checklists.md), and the [readiness deep dive](references/assignment-readiness-deep-dive.md) for issue content and readiness.
+
+For interactive forms, follow the repository-wide [GitHub MCP Interactive Writes contract](../../../.github/copilot-instructions.md#github-mcp-interactive-writes); pending requests are neither verified UI delivery nor saved writes.
 
 Run G1-G9 from the deep-dive. Quote each pass with evidence only after fresh structural validation; keep `needs-grooming` until applicable checks pass. After 180 seconds without one, stop without repair.
 
