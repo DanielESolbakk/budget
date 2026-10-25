@@ -1,10 +1,18 @@
 import { DatabaseSync } from "node:sqlite";
 import { writeFileSync } from "node:fs";
-import { _electron as electron } from "@playwright/test";
+import { _electron as electron, type Locator, type Page } from "@playwright/test";
 import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
+
+async function tabTo(window: Page, target: Locator): Promise<void> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await window.keyboard.press("Tab");
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+  }
+  throw new Error("Keyboard tab navigation did not reach the expected exchange-rate control.");
+}
 
 function addSyntheticForeignCurrencyActivity(databasePath: string): void {
   const database = new DatabaseSync(databasePath);
@@ -87,48 +95,98 @@ test.describe("local dated exchange-rate workflow", () => {
     try {
       const window = await ratesApp.firstWindow();
       await window.waitForLoadState("domcontentloaded");
-      await window.getByRole("button", { name: "Settings" }).click();
+      await window.setViewportSize({ width: 1280, height: 800 });
+      const settingsButton = window.getByRole("button", { name: "Settings" });
+      await settingsButton.focus();
+      await window.keyboard.press("Enter");
 
       const rates = window.getByRole("region", { name: "Exchange rates" });
-      await rates.getByLabel("Rate currency").selectOption("EUR");
-      await rates.getByLabel("Rate NOK per 1 unit").fill("11.50");
-      await rates.getByLabel("Rate effective date").fill("2026-05-01");
-      await rates.getByLabel("Rate source").fill("Synthetic manual rate");
-      await rates.getByRole("button", { name: "Save local exchange rate" }).click();
+      const rateCurrency = rates.getByLabel("Rate currency");
+      await rateCurrency.focus();
+      await window.keyboard.press("ArrowDown");
+      await expect(rateCurrency).toHaveValue("SEK");
+      await window.keyboard.press("ArrowUp");
+      await expect(rateCurrency).toHaveValue("EUR");
+      const rateAmount = rates.getByLabel("Rate NOK per 1 unit");
+      await tabTo(window, rateAmount);
+      await expect(rateAmount).toBeFocused();
+      await window.keyboard.insertText("11.50");
+      const rateDate = rates.getByLabel("Rate effective date");
+      await tabTo(window, rateDate);
+      await expect(rateDate).toBeFocused();
+      await rateDate.fill("2026-05-01");
+      const rateType = rates.getByLabel("Rate type");
+      await tabTo(window, rateType);
+      await expect(rateType).toBeFocused();
+      const rateSource = rates.getByLabel("Rate source");
+      await tabTo(window, rateSource);
+      await expect(rateSource).toBeFocused();
+      await window.keyboard.insertText("Synthetic manual rate");
+      const saveRateButton = rates.getByRole("button", { name: "Save local exchange rate" });
+      await tabTo(window, saveRateButton);
+      await window.keyboard.press("Enter");
       await expect(rates.getByText("Synthetic manual rate")).toBeVisible();
 
-      await rates.getByRole("button", { name: "Import local rate CSV" }).click();
+      const importRateButton = rates.getByRole("button", { name: "Import local rate CSV" });
+      await importRateButton.focus();
+      await window.keyboard.press("Enter");
       await expect(rates.getByText("exchange-rates.csv")).toBeVisible();
 
       await rates.getByLabel("Report month").fill("2026-05");
-      await rates.getByRole("button", { name: "Load converted report" }).click();
+      const loadReportButton = rates.getByRole("button", { name: "Load converted report" });
+      await loadReportButton.focus();
+      await window.keyboard.press("Enter");
       const report = rates.getByRole("region", { name: "Converted monthly report" });
       const euroTransaction = report.getByRole("group", { name: "Synthetic EUR income" });
       await expect(euroTransaction).toContainText("EUR 100,00");
       await expect(euroTransaction).toContainText("NOK 1 150,00");
+      await expect(euroTransaction)
+        .toContainText("Rate 11.50 NOK per EUR — 2026-05-01, Synthetic manual rate");
       await expect(report).toContainText("NOK subtotal incomplete");
       await expect(report).toContainText(/SEK\s*[−-]50,00/);
 
-      await rates.getByLabel("Rate currency").selectOption("SEK");
-      await rates.getByLabel("Rate NOK per 1 unit").fill("1.05");
-      await rates.getByLabel("Rate effective date").fill("2026-05-01");
-      await rates.getByLabel("Rate type").selectOption("monthly-reference");
-      await rates.getByLabel("Rate source").fill("Synthetic monthly reference");
-      await rates.getByRole("button", { name: "Save local exchange rate" }).click();
-      await rates.getByLabel("Use monthly estimate for SEK (2026-05-01)").check();
-      await rates.getByRole("button", { name: "Load converted report" }).click();
+      await rateCurrency.focus();
+      await window.keyboard.press("ArrowDown");
+      await expect(rateCurrency).toHaveValue("SEK");
+      await rateAmount.focus();
+      await window.keyboard.insertText("1.05");
+      await rateDate.fill("2026-05-01");
+      await rateType.focus();
+      await window.keyboard.press("ArrowDown");
+      await expect(rateType).toHaveValue("monthly-reference");
+      await rateSource.fill("Synthetic monthly reference");
+      await saveRateButton.focus();
+      await window.keyboard.press("Enter");
+      const monthlyEstimate = rates.getByLabel("Use monthly estimate for SEK (2026-05-01)");
+      await monthlyEstimate.focus();
+      await window.keyboard.press("Space");
+      await expect(monthlyEstimate).toBeChecked();
+      await loadReportButton.focus();
+      await window.keyboard.press("Enter");
 
       const kronaTransaction = report.getByRole("group", { name: "Synthetic SEK expense" });
       await expect(kronaTransaction).toContainText(/SEK\s*[−-]50,00/);
       await expect(kronaTransaction).toContainText(/NOK\s*[−-]52,50/);
+      await expect(kronaTransaction)
+        .toContainText("Rate 1.05 NOK per SEK — 2026-05-01, Synthetic monthly reference");
       await expect(kronaTransaction).toContainText("estimate");
 
-      await rates.getByLabel("Use latest rate scenario").check();
+      const latestRateScenario = rates.getByLabel("Use latest rate scenario");
+      await latestRateScenario.focus();
+      await window.keyboard.press("Space");
+      await expect(latestRateScenario).toBeChecked();
       await expect(euroTransaction).toContainText("Scenario NOK 1 200,00");
       await expect(euroTransaction).toContainText("NOK 1 150,00");
 
       await window.setViewportSize({ width: 390, height: 844 });
       await expect(report).toBeVisible();
+      const reportMonth = rates.getByLabel("Report month");
+      await reportMonth.focus();
+      await tabTo(window, loadReportButton);
+      await expect(loadReportButton).toBeFocused();
+      await window.keyboard.press("Enter");
+      await expect(euroTransaction)
+        .toContainText("Rate 11.50 NOK per EUR — 2026-05-01, Synthetic manual rate");
       const horizontalOverflow = await window.evaluate(() =>
         document.documentElement.scrollWidth > document.documentElement.clientWidth
       );

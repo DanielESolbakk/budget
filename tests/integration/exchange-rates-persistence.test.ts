@@ -52,6 +52,7 @@ interface NokMonthlyReport {
     nativeAmountMinor: number;
     nativeCurrencyCode: string;
     nokAmountMinor: number | null;
+    exchangeRate: ExchangeRate | null;
     isEstimate: boolean;
     isScenarioRestatement: boolean;
   }>;
@@ -119,13 +120,23 @@ describe("exchange-rate local persistence and reports", () => {
       );
       exchangeRateLedger(ledger).upsertExchangeRates(importedRates);
       expect(importedRates[0]?.provenance).toBe("local-file");
+      const manualRate: ExchangeRate = {
+        id: "manual-sek-may",
+        currencyCode: "SEK",
+        rateNokPerUnit: "1.05",
+        effectiveDate: "2026-05-01",
+        kind: "dated",
+        source: "Synthetic manual SEK rate",
+        provenance: "manual",
+      };
+      exchangeRateLedger(ledger).upsertExchangeRate(manualRate);
 
       ledger.close();
       isClosed = true;
       const reopened = createLedger(databasePath);
       try {
         const reopenedRates = exchangeRateLedger(reopened).listExchangeRates();
-        expect(reopenedRates).toEqual(importedRates);
+        expect(reopenedRates).toEqual([...importedRates, manualRate]);
 
         createBackupSnapshot({
           ...reopened.loadLedgerSnapshotData(),
@@ -133,8 +144,57 @@ describe("exchange-rate local persistence and reports", () => {
           outputPath: backupPath,
         });
         const restored = restoreBackupSnapshot({ snapshotPath: backupPath });
-        expect(restored.exchangeRates).toEqual(importedRates);
+        expect(restored.exchangeRates).toEqual(reopenedRates);
         expect(restored.transactions).toEqual(transactions);
+
+        const restoredLedger = createLedger(join(directory, "restored.sqlite"));
+        try {
+          restoredLedger.replaceLedgerSnapshotData(restored);
+          const restoredRates = exchangeRateLedger(restoredLedger).listExchangeRates();
+          expect(restoredRates).toEqual(reopenedRates);
+
+          const restoredSnapshot = restoredLedger.loadLedgerSnapshotData();
+          const restoredReport = getNokMonthlyReportBuilder().buildNokMonthlyReport({
+            transactions: restoredSnapshot.transactions,
+            accounts: restoredSnapshot.accounts,
+            rates: restoredRates,
+            yearMonth: "2026-05",
+          });
+          expect(restoredReport.nativeSubtotals).toEqual([
+            { currencyCode: "EUR", totalMinor: 10_000 },
+            { currencyCode: "SEK", totalMinor: -5_000 },
+          ]);
+          expect(restoredReport.nokSubtotalMinor).toBe(109_750);
+          expect(restoredReport.transactions).toMatchObject([
+            {
+              transactionId: "tx-eur-income",
+              nativeAmountMinor: 10_000,
+              nativeCurrencyCode: "EUR",
+              nokAmountMinor: 115_000,
+              exchangeRate: {
+                currencyCode: "EUR",
+                rateNokPerUnit: "11.50",
+                effectiveDate: "2026-05-01",
+                kind: "dated",
+                source: "synthetic-rates.csv",
+                provenance: "local-file",
+              },
+              isEstimate: false,
+              isScenarioRestatement: false,
+            },
+            {
+              transactionId: "tx-sek-expense",
+              nativeAmountMinor: -5_000,
+              nativeCurrencyCode: "SEK",
+              nokAmountMinor: -5_250,
+              exchangeRate: manualRate,
+              isEstimate: false,
+              isScenarioRestatement: false,
+            },
+          ]);
+        } finally {
+          restoredLedger.close();
+        }
       } finally {
         reopened.close();
       }
