@@ -159,6 +159,8 @@ Avoid inventing near-duplicates for the same concept.
 - For PR AC mapping, default to the primary planning issue as the AC source unless the PR explicitly requests aggregate scope across additional planning issues. Describe in the "Acceptance Criteria to Test Mapping" section how this PR helps satisfy each AC from the linked issue. Format is free-form prose (not structured rows). Focus on clarity and completeness; manual reviewer verification will determine if coverage is adequate. You do not need to follow strict syntax rules, but ensure each AC is mentioned clearly. Mark at least one test command checkbox in "Test Evidence" to confirm validation was performed.
 - Permission mismatch can happen: an agent may be able to comment while being unable to edit issue/PR body fields. When this occurs, post one concise owner action checklist and stop repeating retries.
 - Avoid looped remediation comments. Repeat only when validation output changed, permissions changed, or new evidence was collected.
+- For MCP issue-update forms, fetch the current issue and populate its full title, body, and complete intended label set, even for a label-only change. A rendered form is not a saved edit; verify GitHub after submission. If an empty form is unusable, do not ask repeatedly for an impossible submission or cancellation. An owner-authorized replacement request must preserve the current content and be verified before continuing.
+- Determine available GitHub capabilities from the authenticated MCP tools, not browser sign-in or assumptions about tool names. Inspect actual validation results: a successful Actions run may still report issue-level planning failures.
 
 ## Planning Issue Body Format (Linter Enforced)
 
@@ -182,6 +184,20 @@ NOT: `#22` or `#73, #74` (inline or comma-separated).
 - Use templates (Epic, Feature, Story, Test, Enabler) to ensure correct format
 - If planning validation marks issue `planning-invalid`, correct formatting, then add the `validate-planning` label to re-validate
 
+### Stories Without Separate Enablers
+
+- A Story may own all of its implementation. A separate Enabler is required only for genuine enabling work, not for hierarchy completeness.
+- Keep `### Linked Enabler Issues`. Link real same-feature Enablers as `- #NUMBER`, or use one explicit declaration with a concrete rationale:
+
+```markdown
+### Linked Enabler Issues
+- None - This Story owns its allocation implementation; no shared enabling work is required.
+```
+
+- Do not mix `None` with issue references, use an empty/bare `None`, borrow unrelated Enablers, or create placeholder work to satisfy validation. Test links, parent alignment, blockers, and readiness requirements remain unchanged.
+- When a validator rejects legitimate scope under documented policy, identify the conflicting rule and propose a focused, regression-tested validator/template/governance PR. Keep the affected issue `needs-grooming` and `planning-invalid` until the merged validator and a fresh run establish structural validity; continue unrelated authorized planning work.
+- Structural validation removes `planning-invalid` only. It must not remove `needs-grooming` or imply assignment readiness; complete the issue-planning governor's semantic readiness checks separately.
+
 ## Planning Signal Discipline
 
 - Before implementing, review issue body, labels, and linter comments for validation results
@@ -199,10 +215,11 @@ Use this checklist when generating or auto-updating planning issues so `planning
 1. Section formatting
 - Use `###` headings exactly as expected by templates.
 - Inside reference sections, use bullet issue refs only: `- #NUMBER`.
+- Exception: Linked Enabler Issues on a self-contained Story uses the justified `- None - <rationale>` declaration above instead of issue references.
 - Do not use inline refs (`#22`) or comma-separated refs (`#22, #23`) inside section bodies.
 
 2. Required sections by issue type
-- Story must include: Parent Epic Issue, Parent Feature Issue, Linked Test Issues, Testing Requirements, Implementation Entry Points, Validation Commands, Fixture Or Example Inputs, Out Of Scope.
+- Story must include: Parent Epic Issue, Parent Feature Issue, Linked Enabler Issues, Linked Test Issues, Testing Requirements, Implementation Entry Points, Validation Commands, Fixture Or Example Inputs, Out Of Scope.
 - Feature must include: Parent Epic Issue, Test Issues In This Feature, Test Automation Triangle Coverage, Implementation Entry Points, Validation Commands, Fixture Or Example Inputs, Out Of Scope.
 - Test must include: Test Scope Type, Parent Epic Issue, Parent Feature Issue (when scope is Story/Enabler or Feature), Test Level, Implementation Entry Points.
 - Enabler must include: Parent Epic Issue, Parent Feature Issue, Stories Enabled.

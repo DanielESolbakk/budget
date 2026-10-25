@@ -37,6 +37,25 @@ module.exports.parseIssueReferences = function(value) {
     .filter((number) => Number.isInteger(number) && number > 0);
 };
 
+module.exports.checkStoryEnablerLinks = function(body) {
+  const section = module.exports.getSectionValue(body, "Linked Enabler Issues");
+  const references = module.exports.parseIssueReferences(section);
+  const declaresNone = /^-[ \t]+None\b/im.test(section);
+
+  if (references.length > 0) {
+    return declaresNone
+      ? ["Linked Enabler Issues cannot combine a None declaration with issue references."]
+      : [];
+  }
+
+  const declaration = section.match(/^-[ \t]+None[ \t]+(?:-|\u2014)[ \t]+([^\r\n]+)$/i);
+  if (declaration && module.exports.hasMeaningfulText(declaration[1])) {
+    return [];
+  }
+
+  return ["Linked Enabler Issues must include issue references or '- None - <why this Story needs no separate Enabler>'."];
+};
+
 module.exports.checkBasicStructure = function(body, issueType) {
   const missing = [];
 

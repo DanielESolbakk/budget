@@ -12,9 +12,11 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Before writing code, enforce blocker discipline from `.github/copilot-instructions.md` (open `Blocked by` issues and missing `Implementation Entry Points` are stop conditions).
 - Follow PR guardrails from `.github/copilot-instructions.md`: AC mapping, test evidence checkbox, and planning-validity checks.
 - Follow planning formatting and hierarchy rules from `.github/copilot-instructions.md` and issue templates.
+- Self-contained Stories may declare `- None - <concrete rationale>` under Linked Enabler Issues; never invent Enablers. Structural validation does not remove `needs-grooming` or establish readiness.
 - Follow privacy and architecture constraints from `.github/copilot-instructions.md`; do not add cloud processing or telemetry for transaction content.
 - For Playwright issues, treat `.agents/skills/playwright-skill/SKILL.md` as the only detailed implementation authority; `.github/instructions/playwright.instructions.md` is a pointer, not a competing rule set.
 - If permissions prevent issue/PR body edits, post one concise owner action checklist and stop retry loops.
+- Populate MCP issue-update forms with the current full title/body and intended labels; verify the saved issue after submission. Browser sign-in does not determine authenticated MCP access.
 
 ## Build And Test Commands
 

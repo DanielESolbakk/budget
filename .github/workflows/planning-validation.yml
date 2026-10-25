@@ -46,6 +46,7 @@ jobs:
               parseIssueReferences,
               getSectionValue,
               normalizeValue,
+              checkStoryEnablerLinks,
             } = require('./.github/scripts/planningChecks.cjs');
             const getIssueType = require('./.github/scripts/getIssueType.cjs').getIssueType;
 
@@ -301,7 +302,8 @@ jobs:
                 await validateSingleReference('Parent Epic Issue', ['epic']);
                 await validateSingleReference('Parent Feature Issue', ['feature']);
                 await validateMultiReference('Linked Test Issues', ['test']);
-                await validateMultiReference('Linked Enabler Issues', ['enabler']);
+                problems.push(...checkStoryEnablerLinks(body));
+                await validateMultiReference('Linked Enabler Issues', ['enabler'], false);
               }
 
               if (issueType === 'enabler') {
@@ -323,7 +325,6 @@ jobs:
                 await ensureLabel(issueNumber, needsGroomingLabel, labels);
               } else {
                 await removeLabel(issueNumber, invalidLabel, labels);
-                await removeLabel(issueNumber, needsGroomingLabel, labels);
               }
 
               await updateMarkerComment(issueNumber, problems);
