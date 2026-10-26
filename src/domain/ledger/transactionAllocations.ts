@@ -17,6 +17,10 @@ export class TransactionAllocationValidationError extends Error {
   }
 }
 
+export type TransactionCategoryAllocationUpdateResult =
+  | { ok: true; transaction: Transaction }
+  | { ok: false; code: TransactionAllocationValidationCode; message: string };
+
 export function validateTransactionCategoryAllocations(
   transaction: Pick<Transaction, "amountMinor">,
   allocations: readonly TransactionCategoryAllocation[],

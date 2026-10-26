@@ -1,9 +1,17 @@
-import { _electron as electron } from "@playwright/test";
+import { _electron as electron, type Locator, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
+
+async function tabTo(window: Page, target: Locator): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await window.keyboard.press("Tab");
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+  }
+  throw new Error("Keyboard tab navigation did not reach the expected allocation control.");
+}
 
 test.describe("transaction category allocations", () => {
   test("starts an unallocated transaction with a neutral, incomplete draft", async ({
@@ -122,10 +130,85 @@ test.describe("transaction category allocations", () => {
       maxDiffPixelRatio: 0.01,
     });
 
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await allocationEditor.getByLabel("Allocation category 1").selectOption("groceries");
+    await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
+    await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
+    await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
+    await expect(allocationEditor.getByText(/Allocation total:/)).toContainText(/72,00\s*kr/);
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-valid-desktop.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-valid-mobile.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await allocationEditor.getByLabel("Allocation amount 2").fill("-40.00");
+    await expect(allocationEditor.getByText(/Over-allocated by:/)).toContainText(/8,00\s*kr/);
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-overallocated-desktop.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-overallocated-mobile.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await expect(allocationEditor.getByRole("alert"))
+      .toHaveText("Category allocations must sum exactly to the source transaction amount.");
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-rejected-desktop.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-rejected-mobile.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+
     const editorWidth = await allocationEditor.evaluate((element) =>
       element.getBoundingClientRect().width
     );
     expect(editorWidth).toBeLessThanOrEqual(390);
+  });
+
+  test("adds and removes allocation rows with keyboard navigation", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    const editButton = transactionRow.getByRole("button", {
+      name: "Edit category allocations for Kiwi",
+    });
+    await editButton.focus();
+    await window.keyboard.press("Enter");
+
+    const allocationEditor = window.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    const addButton = allocationEditor.getByRole("button", { name: "Add allocation" });
+    await tabTo(window, addButton);
+    await expect(addButton).toBeFocused();
+    await window.keyboard.press("Enter");
+
+    const thirdCategory = allocationEditor.getByLabel("Allocation category 3");
+    const removeButton = allocationEditor.getByRole("button", { name: "Remove allocation 3" });
+    await expect(thirdCategory).toBeVisible();
+    await expect(addButton).toBeFocused();
+    await window.keyboard.press("Shift+Tab");
+    await expect(removeButton).toBeFocused();
+    await window.keyboard.press("Enter");
+
+    await expect(thirdCategory).toHaveCount(0);
+    await expect(allocationEditor.getByRole("button", { name: /Remove allocation/ })).toHaveCount(0);
   });
 
   test("announces an invalid sum and preserves the previous allocations", async ({
@@ -150,7 +233,8 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation amount 1").fill("-30.00");
     await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
 
-    await expect(allocationEditor.getByRole("alert")).toContainText(/sum.*source transaction/i);
+    await expect(allocationEditor.getByRole("alert"))
+      .toHaveText("Category allocations must sum exactly to the source transaction amount.");
     await expect(transactionRow).toContainText("Groceries & food");
     await expect(transactionRow).toContainText("Housing");
   });

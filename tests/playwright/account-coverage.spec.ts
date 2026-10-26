@@ -1,8 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
-import { _electron as electron, type Locator, type Page, type Request } from "@playwright/test";
+import { _electron as electron, type Locator, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
-import { installMainProcessFetchProbe, mainProcessFetchRequests } from "./helpers/networkProbe.js";
+import {
+  installMainProcessNetworkProbe,
+  mainProcessNetworkRequests,
+} from "./helpers/networkProbe.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 const COVERAGE_IMPORT_JOB_ID = "coverage-provenance-job";
@@ -169,6 +172,15 @@ function seedCoverageReviewStates(databasePath: string): void {
         confirmedAtIso: "2026-03-01T09:00:00Z",
       },
       {
+        id: "coverage-confirmed-matched",
+        startDateIso: "2026-07-01",
+        endDateIso: "2026-07-10",
+        sourceName: "Synthetic matched statement",
+        sourceType: "manual",
+        confirmed: true,
+        confirmedAtIso: "2026-07-11T09:00:00Z",
+      },
+      {
         id: "coverage-keyboard-desktop",
         startDateIso: "2026-11-01",
         endDateIso: "2026-11-10",
@@ -201,6 +213,29 @@ function seedCoverageReviewStates(databasePath: string): void {
       );
     }
 
+    database.prepare(`
+      INSERT INTO transactions (
+        id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        merchant_search, currency_code, source_type, source_reference, category_id,
+        import_job_id, categorization_json, category_allocations_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      "tx-coverage-confirmed-movement",
+      account.household_id,
+      account.id,
+      "2026-07-05T00:00:00Z",
+      -1_000,
+      "Synthetic confirmed-period movement",
+      "SYNTHETIC CONFIRMED-PERIOD MOVEMENT",
+      account.currency_code,
+      "manual",
+      null,
+      "groceries",
+      null,
+      null,
+      null
+    );
+
     const insertCheckpoint = database.prepare(`
       INSERT INTO account_balance_checkpoints (
         id, account_id, date_iso, currency_code, balance_minor, source, recorded_at_iso
@@ -208,6 +243,8 @@ function seedCoverageReviewStates(databasePath: string): void {
     `);
     for (const [id, dateIso, balanceMinor, source] of [
       ["coverage-stale-checkpoint", "2026-08-31", 99_500, "Synthetic old checkpoint"],
+      ["coverage-matched-opening", "2026-07-01", 100_000, "Synthetic opening checkpoint"],
+      ["coverage-matched-closing", "2026-07-10", 99_000, "Synthetic closing checkpoint"],
       ["coverage-desktop-opening", "2026-11-01", 100_000, "Synthetic opening checkpoint"],
       ["coverage-desktop-closing", "2026-11-10", 100_500, "Synthetic closing checkpoint"],
       ["coverage-compact-opening", "2026-12-01", 100_000, "Synthetic opening checkpoint"],
@@ -318,6 +355,52 @@ test.describe("account statement coverage and checkpoints", () => {
     });
   });
 
+  test("@visual Visual: coverage review states remain distinct at desktop and compact widths", async ({
+    databasePath,
+    electronApp,
+  }) => {
+    await electronApp.close();
+    seedCoverageReviewStates(databasePath);
+    const coverageApp = await electron.launch({
+      args: [MAIN_ENTRY],
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        BUDGET_DB_PATH: databasePath,
+      },
+    });
+
+    try {
+      const window = await coverageApp.firstWindow();
+      await window.waitForLoadState("domcontentloaded");
+      await window.getByRole("button", { name: "Accounts", exact: true }).click();
+      const coverage = window.getByRole("region", { name: "Account statement coverage" });
+      await expect(coverage.getByRole("group", {
+        name: "Coverage period 2026-07-01 to 2026-07-10",
+      })).toContainText("Coverage confirmed");
+      await expect(coverage).toContainText("Overlapping statement period requires review.");
+      await expect(coverage).toContainText("Late-arriving import requires review.");
+      await expect(coverage).toContainText("Checkpoint status: stale");
+      await expect(coverage).toContainText("Checkpoint status: missing");
+      await expect(coverage).toContainText("No booked transactions in this period.");
+      await expect(coverage).toContainText("Unknown");
+      await expect(coverage).toContainText(/Difference.*5,00/);
+
+      await window.setViewportSize({ width: 1280, height: 800 });
+      await expect(coverage).toHaveScreenshot("account-coverage-states-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
+      await window.setViewportSize({ width: 390, height: 844 });
+      await expect(coverage).toHaveScreenshot("account-coverage-states-mobile.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
+    } finally {
+      await coverageApp.close();
+    }
+  });
+
   test("records imported statement provenance and displays an exact account reconciliation", async ({
     databasePath,
     electronApp,
@@ -357,7 +440,12 @@ test.describe("account statement coverage and checkpoints", () => {
       await expect(period).toContainText("Unknown");
       await expect(period).toContainText("Source: synthetic-coverage-import.csv (csv)");
       await expect(period).toContainText(`Import job: ${COVERAGE_IMPORT_JOB_ID}`);
+      await expect(period.getByRole("button", { name: "Confirm coverage" })).toBeVisible();
       await period.getByRole("button", { name: "Confirm coverage" }).click();
+      await expect(period.getByRole("button", { name: "Confirm coverage" })).toHaveCount(0);
+      const checkpointForm = coverage.getByRole("form", { name: "Add balance checkpoint" });
+      await expect(checkpointForm)
+        .toContainText("Then add dated opening and closing observations for this account.");
 
       await coverage.getByLabel("Checkpoint date").fill("2026-03-01");
       await coverage.getByLabel("Checkpoint balance").fill("1000.00");
@@ -395,6 +483,7 @@ test.describe("account statement coverage and checkpoints", () => {
     await expect(period).not.toContainText("Missing statement");
 
     await period.getByRole("button", { name: "Confirm coverage" }).click();
+    await expect(period.getByRole("button", { name: "Confirm coverage" })).toHaveCount(0);
     await expect(period).toContainText("Coverage confirmed");
   });
 
@@ -577,41 +666,12 @@ test.describe("account statement coverage and checkpoints", () => {
     }
   });
 
-  test("retains coverage after relaunch without renderer or main-process network requests", async ({
+  test("retains coverage after relaunch without renderer HTTP(S) or main-process network calls after startup", async ({
     databasePath,
     electronApp,
-    window,
   }) => {
-    const rendererRequests: string[] = [];
-    const onRequest = (request: Request): void => {
-      if (/^https?:/i.test(request.url())) rendererRequests.push(request.url());
-    };
-    window.on("request", onRequest);
-    await installMainProcessFetchProbe(electronApp);
-
-    await window.getByRole("button", { name: "Accounts", exact: true }).click();
-    const coverage = window.getByRole("region", { name: "Account statement coverage" });
-    await coverage.getByLabel("Coverage account").selectOption("sample-acc");
-    await coverage.getByLabel("Statement start date").fill("2026-03-01");
-    await coverage.getByLabel("Statement end date").fill("2026-03-31");
-    await coverage.getByLabel("Statement source").fill("Synthetic relaunch statement");
-    await coverage.getByRole("button", { name: "Save statement period" }).click();
-    const period = coverage.getByRole("group", { name: "Coverage period 2026-03-01 to 2026-03-31" });
-    await period.getByRole("button", { name: "Confirm coverage" }).click();
-
-    await coverage.getByLabel("Checkpoint date").fill("2026-03-01");
-    await coverage.getByLabel("Checkpoint balance").fill("1000.00");
-    await coverage.getByLabel("Checkpoint source").fill("Synthetic opening balance");
-    await coverage.getByRole("button", { name: "Save balance checkpoint" }).click();
-    await coverage.getByLabel("Checkpoint date").fill("2026-03-31");
-    await coverage.getByLabel("Checkpoint balance").fill("1005.00");
-    await coverage.getByLabel("Checkpoint source").fill("Synthetic closing balance");
-    await coverage.getByRole("button", { name: "Save balance checkpoint" }).click();
-    await expect(period).toContainText(/Difference.*5,00/);
-
-    const originalMainProcessRequests = await mainProcessFetchRequests(electronApp);
     await electronApp.close();
-    const restartedApp = await electron.launch({
+    const coverageApp = await electron.launch({
       args: [MAIN_ENTRY],
       env: {
         ...process.env,
@@ -619,42 +679,87 @@ test.describe("account statement coverage and checkpoints", () => {
         BUDGET_DB_PATH: databasePath,
       },
     });
-    let restartedWindow: Page | undefined;
+    const rendererRequests: string[] = [];
+    let coverageAppClosed = false;
 
     try {
-      await installMainProcessFetchProbe(restartedApp);
-      restartedWindow = await restartedApp.firstWindow();
-      restartedWindow.on("request", onRequest);
-      await restartedWindow.waitForLoadState("domcontentloaded");
-      await restartedWindow.getByRole("button", { name: "Accounts", exact: true }).click();
-      const restartedCoverage = restartedWindow.getByRole("region", {
-        name: "Account statement coverage",
+      await installMainProcessNetworkProbe(coverageApp);
+      const window = await coverageApp.firstWindow();
+      await window.route(/^https?:\/\//, async (route) => {
+        rendererRequests.push(route.request().url());
+        await route.abort();
       });
-      await expect(restartedCoverage.getByLabel("Coverage account"))
-        .toContainText("Brukskonto (NOK)");
-      const restartedPeriod = restartedCoverage.getByRole("group", {
-        name: "Coverage period 2026-03-01 to 2026-03-31",
+      await window.waitForLoadState("domcontentloaded");
+      await window.getByRole("button", { name: "Accounts", exact: true }).click();
+      const coverage = window.getByRole("region", { name: "Account statement coverage" });
+      await coverage.getByLabel("Coverage account").selectOption("sample-acc");
+      await coverage.getByLabel("Statement start date").fill("2026-03-01");
+      await coverage.getByLabel("Statement end date").fill("2026-03-31");
+      await coverage.getByLabel("Statement source").fill("Synthetic relaunch statement");
+      await coverage.getByRole("button", { name: "Save statement period" }).click();
+      const period = coverage.getByRole("group", { name: "Coverage period 2026-03-01 to 2026-03-31" });
+      await period.getByRole("button", { name: "Confirm coverage" }).click();
+
+      await coverage.getByLabel("Checkpoint date").fill("2026-03-01");
+      await coverage.getByLabel("Checkpoint balance").fill("1000.00");
+      await coverage.getByLabel("Checkpoint source").fill("Synthetic opening balance");
+      await coverage.getByRole("button", { name: "Save balance checkpoint" }).click();
+      await coverage.getByLabel("Checkpoint date").fill("2026-03-31");
+      await coverage.getByLabel("Checkpoint balance").fill("1005.00");
+      await coverage.getByLabel("Checkpoint source").fill("Synthetic closing balance");
+      await coverage.getByRole("button", { name: "Save balance checkpoint" }).click();
+      await expect(period).toContainText(/Difference.*5,00/);
+
+      const originalMainProcessRequests = await mainProcessNetworkRequests(coverageApp);
+      await coverageApp.close();
+      coverageAppClosed = true;
+      const restartedApp = await electron.launch({
+        args: [MAIN_ENTRY],
+        env: {
+          ...process.env,
+          NODE_ENV: "test",
+          BUDGET_DB_PATH: databasePath,
+        },
       });
 
-      await expect(restartedPeriod).toContainText("Coverage confirmed");
-      await expect(restartedPeriod).toContainText("Synthetic relaunch statement");
-      await expect(restartedPeriod).toContainText(/Difference.*5,00/);
-      const restartedHistory = restartedPeriod.getByRole("list", {
-        name: "Balance checkpoint history",
-      });
-      await expect(restartedHistory.locator('time[datetime="2026-03-01"]')).toBeVisible();
-      await expect(restartedHistory).toContainText("Synthetic opening balance");
-      await expect(restartedHistory.locator('time[datetime="2026-03-31"]')).toBeVisible();
-      await expect(restartedHistory).toContainText("Synthetic closing balance");
-      expect(rendererRequests).toEqual([]);
-      expect([
-        ...originalMainProcessRequests,
-        ...(await mainProcessFetchRequests(restartedApp)),
-      ]).toEqual([]);
+      try {
+        await installMainProcessNetworkProbe(restartedApp);
+        const restartedWindow = await restartedApp.firstWindow();
+        await restartedWindow.route(/^https?:\/\//, async (route) => {
+          rendererRequests.push(route.request().url());
+          await route.abort();
+        });
+        await restartedWindow.waitForLoadState("domcontentloaded");
+        await restartedWindow.getByRole("button", { name: "Accounts", exact: true }).click();
+        const restartedCoverage = restartedWindow.getByRole("region", {
+          name: "Account statement coverage",
+        });
+        await expect(restartedCoverage.getByLabel("Coverage account"))
+          .toContainText("Brukskonto (NOK)");
+        const restartedPeriod = restartedCoverage.getByRole("group", {
+          name: "Coverage period 2026-03-01 to 2026-03-31",
+        });
+
+        await expect(restartedPeriod).toContainText("Coverage confirmed");
+        await expect(restartedPeriod).toContainText("Synthetic relaunch statement");
+        await expect(restartedPeriod).toContainText(/Difference.*5,00/);
+        const restartedHistory = restartedPeriod.getByRole("list", {
+          name: "Balance checkpoint history",
+        });
+        await expect(restartedHistory.locator('time[datetime="2026-03-01"]')).toBeVisible();
+        await expect(restartedHistory).toContainText("Synthetic opening balance");
+        await expect(restartedHistory.locator('time[datetime="2026-03-31"]')).toBeVisible();
+        await expect(restartedHistory).toContainText("Synthetic closing balance");
+        expect(rendererRequests).toEqual([]);
+        expect([
+          ...originalMainProcessRequests,
+          ...(await mainProcessNetworkRequests(restartedApp)),
+        ]).toEqual([]);
+      } finally {
+        await restartedApp.close();
+      }
     } finally {
-      window.off("request", onRequest);
-      restartedWindow?.off("request", onRequest);
-      await restartedApp.close();
+      if (!coverageAppClosed) await coverageApp.close();
     }
   });
 });

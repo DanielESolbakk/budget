@@ -3,7 +3,10 @@ import { writeFileSync } from "node:fs";
 import { _electron as electron, type Locator, type Page } from "@playwright/test";
 import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
-import { installMainProcessFetchProbe, mainProcessFetchRequests } from "./helpers/networkProbe.js";
+import {
+  installMainProcessNetworkProbe,
+  mainProcessNetworkRequests,
+} from "./helpers/networkProbe.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -95,7 +98,7 @@ test.describe("local dated exchange-rate workflow", () => {
 
     const rendererRequests: string[] = [];
     try {
-      await installMainProcessFetchProbe(ratesApp);
+      await installMainProcessNetworkProbe(ratesApp);
       const window = await ratesApp.firstWindow();
       await window.route(/^https?:\/\//, async (route) => {
         rendererRequests.push(route.request().url());
@@ -145,6 +148,12 @@ test.describe("local dated exchange-rate workflow", () => {
       await importRateButton.focus();
       await window.keyboard.press("Enter");
       await expect(rates.getByText("exchange-rates.csv")).toBeVisible();
+      const importedRates = rates.getByRole("table", { name: "Saved local exchange rates" });
+      const importedEuroRate = importedRates.getByRole("row", {
+        name: /EUR.*2026-06-01.*exchange-rates\.csv/,
+      });
+      await expect(importedEuroRate).toContainText("12.00");
+      await expect(importedEuroRate).toContainText("Local file");
 
       await monthlyReportTab.click();
       await rates.getByLabel("Report month").fill("2026-05");
@@ -159,6 +168,19 @@ test.describe("local dated exchange-rate workflow", () => {
         .toContainText("Rate 11.50 NOK per EUR — 2026-05-01, Synthetic manual rate");
       await expect(report).toContainText("NOK subtotal incomplete");
       await expect(report).toContainText(/SEK\s*[−-]50,00/);
+      const sekWithoutRate = report.getByRole("group", { name: "Synthetic SEK expense" });
+      await expect(sekWithoutRate).toContainText("NOK conversion incomplete");
+      await expect(sekWithoutRate).not.toContainText(/NOK\s*[−-]\s*50,00/);
+      await expect(report).toHaveScreenshot("exchange-report-missing-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
+      await window.setViewportSize({ width: 390, height: 844 });
+      await expect(report).toHaveScreenshot("exchange-report-missing-mobile.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
+      await window.setViewportSize({ width: 1280, height: 800 });
 
       await rateBookTab.click();
       await rateCurrency.focus();
@@ -187,6 +209,16 @@ test.describe("local dated exchange-rate workflow", () => {
       await expect(kronaTransaction)
         .toContainText("Rate 1.05 NOK per SEK — 2026-05-01, Synthetic monthly reference");
       await expect(kronaTransaction).toContainText("estimate");
+      await expect(report).toHaveScreenshot("exchange-report-estimate-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
+      await window.setViewportSize({ width: 390, height: 844 });
+      await expect(report).toHaveScreenshot("exchange-report-estimate-mobile.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
+      await window.setViewportSize({ width: 1280, height: 800 });
 
       const latestRateScenario = rates.getByLabel("Use latest rate scenario");
       await latestRateScenario.focus();
@@ -194,6 +226,10 @@ test.describe("local dated exchange-rate workflow", () => {
       await expect(latestRateScenario).toBeChecked();
       await expect(euroTransaction).toContainText("Scenario NOK 1 200,00");
       await expect(euroTransaction).toContainText("NOK 1 150,00");
+      await expect(report).toHaveScreenshot("exchange-report-scenario-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
 
       await window.setViewportSize({ width: 390, height: 844 });
       await expect(report).toBeVisible();
@@ -204,6 +240,10 @@ test.describe("local dated exchange-rate workflow", () => {
       await window.keyboard.press("Enter");
       await expect(euroTransaction)
         .toContainText("Rate 11.50 NOK per EUR — 2026-05-01, Synthetic manual rate");
+      await expect(report).toHaveScreenshot("exchange-report-scenario-mobile.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
 
       await latestRateScenario.focus();
       await window.keyboard.press("Space");
@@ -241,7 +281,7 @@ test.describe("local dated exchange-rate workflow", () => {
       );
       expect(horizontalOverflow).toBe(false);
       expect(rendererRequests).toEqual([]);
-      expect(await mainProcessFetchRequests(ratesApp)).toEqual([]);
+      expect(await mainProcessNetworkRequests(ratesApp)).toEqual([]);
     } finally {
       await ratesApp.close();
     }

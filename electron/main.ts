@@ -42,6 +42,10 @@ import {
   listCategorizationReviewQueue,
 } from "../src/app/reviewService.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
+import {
+  TransactionAllocationValidationError,
+  type TransactionCategoryAllocationUpdateResult,
+} from "../src/domain/ledger/transactionAllocations.js";
 import { normalizeMerchantName } from "../src/domain/merchant/normalizeMerchantName.js";
 import {
   inspectBackupSnapshot,
@@ -1673,18 +1677,29 @@ app.whenReady().then(async () => {
     }
   );
 
-  ipcMain.handle("transaction:updateCategoryAllocations", (event, input: unknown) => {
-    assertTrustedRenderer(event);
-    if (typeof input !== "object" || input === null) {
-      throw new Error("Transaction allocation update input must be an object.");
+  ipcMain.handle(
+    "transaction:updateCategoryAllocations",
+    async (event, input: unknown): Promise<TransactionCategoryAllocationUpdateResult> => {
+      assertTrustedRenderer(event);
+      if (typeof input !== "object" || input === null) {
+        throw new Error("Transaction allocation update input must be an object.");
+      }
+      const record = input as Record<string, unknown>;
+      const transactionId = parseNonEmptyString(record.transactionId, "transactionId");
+      const allocations = parseTransactionCategoryAllocations(record.allocations);
+      try {
+        const transaction = await ledgerOperationCoordinator.runExclusive(() =>
+          localLedgerDatabase.updateTransactionCategoryAllocations(transactionId, allocations)
+        );
+        return { ok: true, transaction };
+      } catch (error: unknown) {
+        if (error instanceof TransactionAllocationValidationError) {
+          return { ok: false, code: error.code, message: error.message };
+        }
+        throw error;
+      }
     }
-    const record = input as Record<string, unknown>;
-    const transactionId = parseNonEmptyString(record.transactionId, "transactionId");
-    const allocations = parseTransactionCategoryAllocations(record.allocations);
-    return ledgerOperationCoordinator.runExclusive(() =>
-      localLedgerDatabase.updateTransactionCategoryAllocations(transactionId, allocations)
-    );
-  });
+  );
 
   ipcMain.handle(
     "import:pdfPreview",

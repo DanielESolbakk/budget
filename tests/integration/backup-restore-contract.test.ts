@@ -286,9 +286,18 @@ describe("backup/restore contract", () => {
       });
       legacySnapshot.metadata.version = "1";
       delete (legacySnapshot as unknown as { merchantCategoryRules?: unknown }).merchantCategoryRules;
+      delete (legacySnapshot as unknown as { accountStatementCoveragePeriods?: unknown })
+        .accountStatementCoveragePeriods;
+      delete (legacySnapshot as unknown as { accountBalanceCheckpoints?: unknown })
+        .accountBalanceCheckpoints;
+      delete (legacySnapshot as unknown as { exchangeRates?: unknown }).exchangeRates;
       fsWriteFileSync(snapshotPath, JSON.stringify(legacySnapshot), "utf8");
 
-      expect(restoreBackupSnapshot({ snapshotPath }).merchantCategoryRules).toEqual([]);
+      const restored = restoreBackupSnapshot({ snapshotPath });
+      expect(restored.merchantCategoryRules).toEqual([]);
+      expect(restored.accountStatementCoveragePeriods).toEqual([]);
+      expect(restored.accountBalanceCheckpoints).toEqual([]);
+      expect(restored.exchangeRates).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

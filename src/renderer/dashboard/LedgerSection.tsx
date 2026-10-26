@@ -371,12 +371,16 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
 
     setAllocationError(null);
     try {
-      const updated = await window.budgetApi.ledger.updateCategoryAllocations({
+      const result = await window.budgetApi.ledger.updateCategoryAllocations({
         transactionId: transaction.id,
         allocations,
       });
+      if (!result.ok) {
+        setAllocationError(result.message);
+        return;
+      }
       setTransactions((current) =>
-        current.map((item) => item.id === updated.id ? updated : item)
+        current.map((item) => item.id === result.transaction.id ? result.transaction : item)
       );
       closeAllocationEditor();
     } catch (saveError: unknown) {

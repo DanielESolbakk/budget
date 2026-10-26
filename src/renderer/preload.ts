@@ -48,6 +48,7 @@ import type {
   TransactionFilters,
   TransactionQuery,
 } from "../domain/ledger/filterTransactions.js";
+import type { TransactionCategoryAllocationUpdateResult } from "../domain/ledger/transactionAllocations.js";
 import type { CsvColumnMapping } from "../domain/import/csvRowMapper.js";
 import type { CsvImportProfile } from "../domain/import/csvImportProfile.js";
 import type { DuplicateImportDecision } from "../domain/import/filterPreviouslyImportedTransactions.js";
@@ -136,7 +137,7 @@ export interface LedgerApi {
   list: (query: TransactionQuery) => Promise<TransactionPage & { accounts: Account[] }>;
   updateCategoryAllocations: (
     input: { transactionId: string; allocations: TransactionCategoryAllocation[] }
-  ) => Promise<Transaction>;
+  ) => Promise<TransactionCategoryAllocationUpdateResult>;
   savedViews: {
     list: () => Promise<SavedLedgerView[]>;
     save: (input: { name: string; filters: TransactionFilters }) => Promise<SavedLedgerView>;
@@ -283,7 +284,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("transaction:list", query),
     updateCategoryAllocations: (
       input: { transactionId: string; allocations: TransactionCategoryAllocation[] }
-    ): Promise<Transaction> => ipcRenderer.invoke("transaction:updateCategoryAllocations", input),
+    ): Promise<TransactionCategoryAllocationUpdateResult> =>
+      ipcRenderer.invoke("transaction:updateCategoryAllocations", input),
     savedViews: {
       list: (): Promise<SavedLedgerView[]> => ipcRenderer.invoke("ledgerView:list"),
       save: (input: { name: string; filters: TransactionFilters }): Promise<SavedLedgerView> =>

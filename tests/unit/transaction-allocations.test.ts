@@ -82,6 +82,30 @@ describe("transaction category allocations", () => {
     ).toThrow();
   });
 
+  it("rejects fractional and unsafe allocation minor-unit amounts", () => {
+    expect(() =>
+      validateTransactionCategoryAllocations(
+        expense,
+        [
+          { categoryId: "groceries", amountMinor: -999.5 },
+          { categoryId: "household", amountMinor: -0.5 },
+        ],
+        allowedCategories
+      )
+    ).toThrow(/safe integer/);
+
+    expect(() =>
+      validateTransactionCategoryAllocations(
+        expense,
+        [
+          { categoryId: "groceries", amountMinor: -(Number.MAX_SAFE_INTEGER + 1) },
+          { categoryId: "household", amountMinor: -1 },
+        ],
+        allowedCategories
+      )
+    ).toThrow(/safe integer/);
+  });
+
   it("rejects allocation rows that reference an unknown category", () => {
     expect(() =>
       validateTransactionCategoryAllocations(

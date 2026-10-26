@@ -66,6 +66,27 @@ describe("account statement coverage", () => {
     expect(result.reconciliationStatus).toBe("matched");
   });
 
+  it("includes both period boundary dates and excludes movements outside the period", () => {
+    const result = assessAccountCoverage({
+      period,
+      relatedPeriods: [period],
+      checkpoints,
+      transactions: [
+        { ...expense, id: "before-period", bookedAtIso: "2026-04-30T23:59:59Z", amountMinor: -30_000 },
+        { ...expense, id: "start-date", bookedAtIso: "2026-05-01T00:00:00Z", amountMinor: -1_000 },
+        { ...expense, id: "mid-period", amountMinor: -10_000 },
+        { ...expense, id: "end-date", bookedAtIso: "2026-05-31T23:59:59Z", amountMinor: 3_500 },
+        { ...expense, id: "after-period", bookedAtIso: "2026-06-01T00:00:00Z", amountMinor: 40_000 },
+      ],
+      pendingObservations: [],
+      importJobs: [],
+      evaluatedAtIso: "2026-06-03T00:00:00Z",
+    });
+
+    expect(result.differenceMinor).toBe(0);
+    expect(result.reconciliationStatus).toBe("matched");
+  });
+
   it("reports a 500-minor-unit mismatch without changing the booked movements", () => {
     const result = assessAccountCoverage({
       period,

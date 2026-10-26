@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse } from "csv-parse/sync";
 import { describe, expect, it } from "vitest";
 import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
@@ -164,12 +165,17 @@ describe("transaction allocation persistence", () => {
     try {
       allocationLedger(ledger).updateTransactionCategoryAllocations(transaction.id, allocations);
       const csv = buildCsvOutput(ledger.loadLedgerSnapshotData().transactions);
-      const rows = csv.trimEnd().split("\n");
+      const rows = parse(csv, {
+        columns: true,
+        skip_empty_lines: true,
+      }) as Array<Record<string, string>>;
 
-      expect(rows).toHaveLength(2);
-      expect(rows[0]).toContain("categoryAllocations");
-      expect(rows[1]).toContain("groceries");
-      expect(rows[1]).toContain("housing");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ id: transaction.id, amountMinor: "-1000" });
+      expect(JSON.parse(rows[0]!.categoryAllocations!)).toEqual([
+        { categoryId: "groceries", amountMinor: -700 },
+        { categoryId: "housing", amountMinor: -300 },
+      ]);
     } finally {
       ledger.close();
       rmSync(directory, { recursive: true, force: true });

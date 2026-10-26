@@ -2,12 +2,91 @@ import { test, expect } from "./fixtures/electron.js";
 import type { ElectronApplication } from "@playwright/test";
 import { basename, resolve } from "node:path";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
+import {
+  installMainProcessNetworkProbe,
+  mainProcessNetworkRequests,
+} from "./helpers/networkProbe.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
 const REVIEW_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/import-review/import-review-two-unresolved.csv");
 
 test.describe("Main-process transaction privacy", () => {
+  test("network probe fails closed and blocks main-process network transports", async ({ electronApp }) => {
+    const missingProbeMessage = await mainProcessNetworkRequests(electronApp).then(
+      () => "probe unexpectedly returned",
+      (error: unknown) => error instanceof Error ? error.message : String(error)
+    );
+    expect(missingProbeMessage).toContain("probe was not installed");
+
+    await installMainProcessNetworkProbe(electronApp);
+    const blockedMessages = await electronApp.evaluate(async () => {
+      const capture = async (operation: () => unknown): Promise<string> => {
+        try {
+          await operation();
+          return "request unexpectedly succeeded";
+        } catch (error: unknown) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      };
+      const fetchMessage = await capture(() => fetch("https://network-probe.invalid"));
+      const http = process.getBuiltinModule("node:http");
+      const https = process.getBuiltinModule("node:https");
+      const net = process.getBuiltinModule("node:net");
+      const moduleApi = process.getBuiltinModule("node:module");
+      const entryPoint = process.argv[1];
+      if (
+        http === undefined ||
+        https === undefined ||
+        net === undefined ||
+        moduleApi === undefined ||
+        entryPoint === undefined
+      ) {
+        throw new Error("A Node network module is unavailable in the Electron main process.");
+      }
+      const httpMessage = await capture(() => http.request("http://network-probe.invalid"));
+      const httpGetMessage = await capture(() => http.get("http://network-probe.invalid"));
+      const httpsMessage = await capture(() => https.request("https://network-probe.invalid"));
+      const httpsGetMessage = await capture(() => https.get("https://network-probe.invalid"));
+      const socketMessage = await capture(() => net.connect({ host: "127.0.0.1", port: 9 }));
+      const requireMain = moduleApi.createRequire(entryPoint);
+      const electronNet = (requireMain("electron") as typeof import("electron")).net;
+      const electronNetMessage = await capture(() =>
+        electronNet.request({ url: "https://network-probe.invalid" })
+      );
+      return [
+        fetchMessage,
+        httpMessage,
+        httpGetMessage,
+        httpsMessage,
+        httpsGetMessage,
+        socketMessage,
+        electronNetMessage,
+      ];
+    });
+
+    expect(blockedMessages).toEqual([
+      "Main-process fetch is blocked in local-only tests.",
+      "Main-process node:http.request is blocked in local-only tests.",
+      "Main-process node:http.get is blocked in local-only tests.",
+      "Main-process node:https.request is blocked in local-only tests.",
+      "Main-process node:https.get is blocked in local-only tests.",
+      "Main-process node:net.Socket.connect is blocked in local-only tests.",
+      "Main-process electron.net.request is blocked in local-only tests.",
+    ]);
+    const requests = await mainProcessNetworkRequests(electronApp);
+    expect(requests.slice(0, 5)).toEqual([
+      "fetch: https://network-probe.invalid",
+      "node:http.request: http://network-probe.invalid",
+      "node:http.get: http://network-probe.invalid",
+      "node:https.request: https://network-probe.invalid",
+      "node:https.get: https://network-probe.invalid",
+    ]);
+    expect(requests).toHaveLength(7);
+    expect(requests[5]).toMatch(/^node:net\.Socket\.connect: /);
+    expect(requests[6]).toMatch(/^electron\.net\.request: /);
+  });
+
   async function installFetchProbe(electronApp: ElectronApplication): Promise<void> {
     await electronApp.evaluate(() => {
       const state = globalThis as typeof globalThis & {

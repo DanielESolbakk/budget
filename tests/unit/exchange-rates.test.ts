@@ -110,6 +110,24 @@ describe("dated local exchange rates", () => {
     });
   });
 
+  it("passes NOK amounts through unchanged without requiring a stored rate", () => {
+    for (const amountMinor of [10_000, -5_000]) {
+      expect(convertCurrencyAmount({
+        amountMinor,
+        currencyCode: "NOK",
+        asOfDateIso: "2026-05-20",
+        rates: [],
+      })).toMatchObject({
+        state: "converted",
+        nativeAmountMinor: amountMinor,
+        nativeCurrencyCode: "NOK",
+        nokAmountMinor: amountMinor,
+        exchangeRate: null,
+        isEstimate: false,
+      });
+    }
+  });
+
   it("returns an incomplete result instead of a zero or one-to-one fallback when no rate exists", () => {
     const result = convertCurrencyAmount({
       amountMinor: 10_000,
@@ -124,6 +142,37 @@ describe("dated local exchange rates", () => {
       nativeCurrencyCode: "SEK",
       nokAmountMinor: null,
     });
+  });
+
+  it("includes only transactions from the requested report month", () => {
+    const mayTransaction = {
+      id: "tx-may",
+      householdId: "hh-rates",
+      accountId: "acc-eur",
+      bookedAtIso: "2026-05-10T00:00:00Z",
+      amountMinor: 10_000,
+      merchantRaw: "Synthetic May income",
+      currencyCode: "EUR",
+    };
+    const report = buildNokMonthlyReport({
+      transactions: [
+        { ...mayTransaction, id: "tx-april", bookedAtIso: "2026-04-30T23:59:59Z", amountMinor: 50_000 },
+        mayTransaction,
+        { ...mayTransaction, id: "tx-june", bookedAtIso: "2026-06-01T00:00:00Z", amountMinor: -30_000 },
+      ],
+      accounts: [{
+        id: "acc-eur",
+        householdId: "hh-rates",
+        name: "Synthetic euro account",
+        currencyCode: "EUR",
+      }],
+      rates: [datedRate],
+      yearMonth: "2026-05",
+    });
+
+    expect(report.transactions.map(({ transactionId }) => transactionId)).toEqual(["tx-may"]);
+    expect(report.nativeSubtotals).toEqual([{ currencyCode: "EUR", totalMinor: 10_000 }]);
+    expect(report.nokSubtotalMinor).toBe(115_000);
   });
 
   it("rounds positive and negative NOK minor units symmetrically at half-unit boundaries", () => {
