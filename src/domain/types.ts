@@ -47,6 +47,65 @@ export function isCurrencyCode(value: unknown): value is CurrencyCode {
   return typeof value === "string" && /^[A-Z]{3}$/.test(value);
 }
 
+export interface ExchangeRate {
+  id: string;
+  currencyCode: CurrencyCode;
+  /** Decimal NOK quoted for one whole unit of the foreign currency. */
+  rateNokPerUnit: string;
+  effectiveDate: string;
+  kind: "dated" | "monthly-reference";
+  source: string;
+  provenance: "manual" | "local-file";
+}
+
+export interface AccountStatementCoveragePeriod {
+  id: string;
+  accountId: string;
+  startDateIso: string;
+  endDateIso: string;
+  currencyCode: CurrencyCode;
+  sourceName: string;
+  sourceType: "manual" | "csv" | "pdf";
+  importJobId?: string;
+  importedAtIso?: string;
+  confirmed: boolean;
+  confirmedAtIso?: string;
+}
+
+export interface AccountBalanceCheckpoint {
+  id: string;
+  accountId: string;
+  dateIso: string;
+  currencyCode: CurrencyCode;
+  balanceMinor: number;
+  source: string;
+  sourceReference?: string;
+  recordedAtIso: string;
+}
+
+export interface AccountCoverageAssessmentInput {
+  period: AccountStatementCoveragePeriod;
+  relatedPeriods: readonly AccountStatementCoveragePeriod[];
+  checkpoints: readonly AccountBalanceCheckpoint[];
+  transactions: readonly Transaction[];
+  pendingObservations: readonly PendingTransactionObservation[];
+  importJobs: readonly ImportJob[];
+  evaluatedAtIso: string;
+}
+
+export interface AccountCoverageAssessment {
+  coverageStatus: "unknown" | "confirmed";
+  periodStatus: "empty" | "has-activity" | "overlapping" | "late-arriving";
+  checkpointStatus: "available" | "missing" | "stale";
+  reconciliationStatus: "unavailable" | "matched" | "mismatch";
+  differenceMinor: number | null;
+}
+
+export interface TransactionCategoryAllocation {
+  categoryId: string;
+  amountMinor: number;
+}
+
 export interface Transaction {
   id: string;
   householdId: string;
@@ -59,6 +118,7 @@ export interface Transaction {
   merchantAlias?: string;
   sourceReference?: string;
   categoryId?: string;
+  categoryAllocations?: TransactionCategoryAllocation[];
   categorization?: CategorizationDecision;
   importJobId?: string;
 }

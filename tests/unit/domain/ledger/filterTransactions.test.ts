@@ -39,6 +39,35 @@ describe("filterTransactions", () => {
     })).toEqual([transactions[1]]);
   });
 
+  it("matches a split transaction when any allocation uses the selected category", () => {
+    const splitTransaction: Transaction = {
+      ...transactions[0]!,
+      id: "split-transaction",
+      categoryId: "salary",
+      categoryAllocations: [
+        { categoryId: "groceries", amountMinor: 30_000 },
+        { categoryId: "housing", amountMinor: 24_000 },
+      ],
+    };
+
+    expect(filterTransactions([splitTransaction], { categoryId: "housing" }))
+      .toEqual([splitTransaction]);
+  });
+
+  it("does not treat a fully allocated uncategorized source as uncategorized", () => {
+    const splitTransaction: Transaction = {
+      ...transactions[0]!,
+      id: "split-uncategorized-transaction",
+      categoryAllocations: [
+        { categoryId: "groceries", amountMinor: 30_000 },
+        { categoryId: "housing", amountMinor: 24_000 },
+      ],
+    };
+    delete splitTransaction.categoryId;
+
+    expect(filterTransactions([splitTransaction], { uncategorizedOnly: true })).toEqual([]);
+  });
+
   it("sorts results newest first with stable id tie-breaking", () => {
     expect(filterTransactions(transactions, {}).map((transaction) => transaction.id)).toEqual([
       "groceries",

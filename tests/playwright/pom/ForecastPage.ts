@@ -25,11 +25,11 @@ export class ForecastPage {
 
   /** Fallback label shown when there is insufficient history. */
   get fallbackLabel() {
-    return this.page.getByText("Insufficient history: showing fallback forecast.");
+    return this.page.getByText("Not enough recorded months yet; showing a zero-value fallback estimate.");
   }
 
   /** Projected-months description shown when history is sufficient. */
   get projectedDescription() {
-    return this.page.getByText("Projected months from the local dashboard forecast.");
+    return this.page.getByText("Estimated from the average of up to three recent monthly totals.");
   }
 }

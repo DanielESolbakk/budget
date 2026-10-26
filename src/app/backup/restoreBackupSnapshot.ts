@@ -11,14 +11,21 @@ import {
   isCurrencyCode,
   isYearMonth,
   validateMonthlyCategoryTargetInput,
+  type AccountBalanceCheckpoint,
+  type AccountStatementCoveragePeriod,
   type Account,
+  type ExchangeRate,
   type Household,
   type ImportJob,
   type MerchantCategoryRule,
   type MonthlyCategoryTarget,
   type PendingTransactionObservation,
   type Transaction,
+  type TransactionCategoryAllocation,
 } from "../../domain/types.js";
+import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
+import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -30,6 +37,12 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function isIsoCalendarDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function invalidSnapshot(snapshotPath: string, reason: string): never {
@@ -93,12 +106,25 @@ function validateTransactions(
       !isOptionalString(transaction.sourceReference) ||
       !isOptionalString(transaction.categoryId) ||
       !isOptionalString(transaction.importJobId) ||
+      (transaction.categoryAllocations !== undefined &&
+        !Array.isArray(transaction.categoryAllocations)) ||
       transaction.householdId !== householdId ||
       !accountIds.has(transaction.accountId) ||
       (transaction.importJobId !== undefined && !importJobIds.has(transaction.importJobId)) ||
       transactionIds.has(transaction.id)
     ) {
       invalidSnapshot(snapshotPath, "transactions");
+    }
+    if (transaction.categoryAllocations !== undefined) {
+      try {
+        validateTransactionCategoryAllocations(
+          transaction as Pick<Transaction, "amountMinor">,
+          transaction.categoryAllocations as TransactionCategoryAllocation[],
+          CATEGORY_OPTIONS.map((category) => category.id)
+        );
+      } catch {
+        invalidSnapshot(snapshotPath, "transaction category allocations");
+      }
     }
     transactionIds.add(transaction.id);
   }
@@ -193,7 +219,6 @@ function validateTargets(value: unknown[], snapshotPath: string): asserts value 
     if (!isRecord(target)) {
       invalidSnapshot(snapshotPath, "monthly category targets");
     }
-
     const yearMonth = target.yearMonth;
     const categoryId = target.categoryId;
     const targetMinor = target.targetMinor;
@@ -211,6 +236,87 @@ function validateTargets(value: unknown[], snapshotPath: string): asserts value 
     } catch {
       invalidSnapshot(snapshotPath, "monthly category targets");
     }
+  }
+}
+
+function validateAccountStatementCoveragePeriods(
+  value: unknown[],
+  accountCurrencies: ReadonlyMap<string, string>,
+  importJobIds: Set<string>,
+  snapshotPath: string
+): asserts value is AccountStatementCoveragePeriod[] {
+  const periodIds = new Set<string>();
+  for (const period of value) {
+    if (
+      !isRecord(period) ||
+      !isNonEmptyString(period.id) ||
+      !isNonEmptyString(period.accountId) ||
+      accountCurrencies.get(period.accountId) !== period.currencyCode ||
+      !isIsoCalendarDate(period.startDateIso) ||
+      !isIsoCalendarDate(period.endDateIso) ||
+      period.startDateIso > period.endDateIso ||
+      !isCurrencyCode(period.currencyCode) ||
+      !isNonEmptyString(period.sourceName) ||
+      (period.sourceType !== "manual" && period.sourceType !== "csv" && period.sourceType !== "pdf") ||
+      !isOptionalString(period.importJobId) ||
+      (period.importJobId !== undefined && !importJobIds.has(period.importJobId)) ||
+      !isOptionalString(period.importedAtIso) ||
+      (period.importedAtIso !== undefined && Number.isNaN(Date.parse(period.importedAtIso))) ||
+      typeof period.confirmed !== "boolean" ||
+      !isOptionalString(period.confirmedAtIso) ||
+      (period.confirmedAtIso !== undefined && Number.isNaN(Date.parse(period.confirmedAtIso))) ||
+      (period.confirmed && period.confirmedAtIso === undefined) ||
+      periodIds.has(period.id)
+    ) {
+      invalidSnapshot(snapshotPath, "account statement coverage periods");
+    }
+    periodIds.add(period.id);
+  }
+}
+
+function validateAccountBalanceCheckpoints(
+  value: unknown[],
+  accountCurrencies: ReadonlyMap<string, string>,
+  snapshotPath: string
+): asserts value is AccountBalanceCheckpoint[] {
+  const checkpointIds = new Set<string>();
+  for (const checkpoint of value) {
+    if (
+      !isRecord(checkpoint) ||
+      !isNonEmptyString(checkpoint.id) ||
+      !isNonEmptyString(checkpoint.accountId) ||
+      accountCurrencies.get(checkpoint.accountId) !== checkpoint.currencyCode ||
+      !isIsoCalendarDate(checkpoint.dateIso) ||
+      !isCurrencyCode(checkpoint.currencyCode) ||
+      !Number.isSafeInteger(checkpoint.balanceMinor) ||
+      !isNonEmptyString(checkpoint.source) ||
+      !isOptionalString(checkpoint.sourceReference) ||
+      !isNonEmptyString(checkpoint.recordedAtIso) ||
+      Number.isNaN(Date.parse(checkpoint.recordedAtIso)) ||
+      checkpointIds.has(checkpoint.id)
+    ) {
+      invalidSnapshot(snapshotPath, "account balance checkpoints");
+    }
+    checkpointIds.add(checkpoint.id);
+  }
+}
+
+function validateExchangeRates(value: unknown[], snapshotPath: string): asserts value is ExchangeRate[] {
+  const rateIds = new Set<string>();
+  const rateKeys = new Set<string>();
+  for (const rate of value) {
+    let validatedRate: ExchangeRate;
+    try {
+      validatedRate = validateExchangeRate(rate);
+    } catch {
+      invalidSnapshot(snapshotPath, "exchange rates");
+    }
+    const key = `${validatedRate.currencyCode}/${validatedRate.effectiveDate}/${validatedRate.kind}`;
+    if (rateIds.has(validatedRate.id) || rateKeys.has(key)) {
+      invalidSnapshot(snapshotPath, "exchange rates");
+    }
+    rateIds.add(validatedRate.id);
+    rateKeys.add(key);
   }
 }
 
@@ -242,7 +348,7 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   }
 
   const metadata = value.metadata;
-  if (metadata.version !== "1" && metadata.version !== SNAPSHOT_VERSION) {
+  if (metadata.version !== "1" && metadata.version !== "2" && metadata.version !== SNAPSHOT_VERSION) {
     throw new Error(
       `Unsupported snapshot version: ${String(metadata.version ?? "unknown")}. Expected: ${SNAPSHOT_VERSION}`
     );
@@ -272,6 +378,24 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   if (!Array.isArray(pendingObservations)) {
     throw new Error(`Invalid snapshot pendingObservations collection: ${snapshotPath}`);
   }
+  const accountStatementCoveragePeriods = value.accountStatementCoveragePeriods === undefined
+    ? []
+    : value.accountStatementCoveragePeriods;
+  const accountBalanceCheckpoints = value.accountBalanceCheckpoints === undefined
+    ? []
+    : value.accountBalanceCheckpoints;
+  const exchangeRates = value.exchangeRates === undefined ? [] : value.exchangeRates;
+  if (
+    !Array.isArray(accountStatementCoveragePeriods) ||
+    !Array.isArray(accountBalanceCheckpoints) ||
+    !Array.isArray(exchangeRates) ||
+    (metadata.version === SNAPSHOT_VERSION &&
+      (value.accountStatementCoveragePeriods === undefined ||
+        value.accountBalanceCheckpoints === undefined ||
+        value.exchangeRates === undefined))
+  ) {
+    throw new Error(`Invalid snapshot account coverage or exchange-rate collections: ${snapshotPath}`);
+  }
 
   if (
     !Number.isInteger(metadata.transactionCount) ||
@@ -287,27 +411,48 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   validateHousehold(value.household, snapshotPath);
   validateImportJobs(importJobs, value.household.id, snapshotPath);
   validateAccounts(accounts, value.household.id, snapshotPath);
+  const accountIds = new Set(accounts.map((account) => account.id));
+  const accountCurrencies = new Map(
+    accounts.map((account) => [account.id, account.currencyCode] as const)
+  );
   validateTargets(monthlyCategoryTargets, snapshotPath);
-  if (metadata.version === SNAPSHOT_VERSION) {
+  if (metadata.version !== "1") {
     validateMerchantCategoryRules(value.merchantCategoryRules, snapshotPath);
   }
   validateTransactions(
     transactions,
     value.household.id,
-    new Set(accounts.map((account) => account.id)),
+    accountIds,
     new Set(importJobs.map((importJob) => importJob.id)),
     snapshotPath
   );
   validatePendingObservations(
     pendingObservations,
     value.household.id,
-    new Set(accounts.map((account) => account.id)),
+    accountIds,
     new Set(importJobs.map((importJob) => importJob.id)),
     new Set(transactions.map((transaction) => transaction.id)),
     snapshotPath
   );
+  validateAccountStatementCoveragePeriods(
+    accountStatementCoveragePeriods,
+    accountCurrencies,
+    new Set(importJobs.map((importJob) => importJob.id)),
+    snapshotPath
+  );
+  validateAccountBalanceCheckpoints(
+    accountBalanceCheckpoints,
+    accountCurrencies,
+    snapshotPath
+  );
+  validateExchangeRates(exchangeRates, snapshotPath);
 
-  return value as unknown as BackupSnapshot;
+  return {
+    ...(value as unknown as BackupSnapshot),
+    accountStatementCoveragePeriods,
+    accountBalanceCheckpoints,
+    exchangeRates,
+  };
 }
 
 function readValidatedBackupSnapshot(
@@ -372,6 +517,9 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     monthlyCategoryTargets: snapshot.monthlyCategoryTargets,
     merchantCategoryRules:
       snapshot.metadata.version === "1" ? [] : snapshot.merchantCategoryRules,
+    accountStatementCoveragePeriods: snapshot.accountStatementCoveragePeriods,
+    accountBalanceCheckpoints: snapshot.accountBalanceCheckpoints,
+    exchangeRates: snapshot.exchangeRates,
     transactionCount: snapshot.transactions.length,
   };
 }

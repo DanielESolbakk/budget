@@ -317,7 +317,7 @@ test.describe("Ledger search and filter workflow", () => {
 
   test("shows ledger rows in a readable sortable table", async ({ ledger }) => {
     await expect(ledger.table).toBeVisible();
-    await expect(ledger.table.getByRole("columnheader")).toHaveCount(5);
+    await expect(ledger.table.getByRole("columnheader")).toHaveCount(6);
     await expect(ledger.transaction("Rema 1000")).toContainText("Brukskonto");
     await expect(ledger.transaction("Rema 1000")).toContainText("kr");
 

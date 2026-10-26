@@ -286,12 +286,40 @@ describe("backup/restore contract", () => {
       });
       legacySnapshot.metadata.version = "1";
       delete (legacySnapshot as unknown as { merchantCategoryRules?: unknown }).merchantCategoryRules;
+      delete (legacySnapshot as unknown as { accountStatementCoveragePeriods?: unknown })
+        .accountStatementCoveragePeriods;
+      delete (legacySnapshot as unknown as { accountBalanceCheckpoints?: unknown })
+        .accountBalanceCheckpoints;
+      delete (legacySnapshot as unknown as { exchangeRates?: unknown }).exchangeRates;
       fsWriteFileSync(snapshotPath, JSON.stringify(legacySnapshot), "utf8");
 
-      expect(restoreBackupSnapshot({ snapshotPath }).merchantCategoryRules).toEqual([]);
+      const restored = restoreBackupSnapshot({ snapshotPath });
+      expect(restored.merchantCategoryRules).toEqual([]);
+      expect(restored.accountStatementCoveragePeriods).toEqual([]);
+      expect(restored.accountBalanceCheckpoints).toEqual([]);
+      expect(restored.exchangeRates).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("migrates version-2 snapshots with empty new local rate and coverage collections", () => {
+    const legacySnapshot = buildRestoreSnapshot();
+    legacySnapshot.metadata.version = "2";
+    delete (legacySnapshot as unknown as { accountStatementCoveragePeriods?: unknown })
+      .accountStatementCoveragePeriods;
+    delete (legacySnapshot as unknown as { accountBalanceCheckpoints?: unknown })
+      .accountBalanceCheckpoints;
+    delete (legacySnapshot as unknown as { exchangeRates?: unknown }).exchangeRates;
+
+    withSnapshotFile(legacySnapshot, (snapshotPath) => {
+      const restored = restoreBackupSnapshot({ snapshotPath });
+
+      expect(restored.accountStatementCoveragePeriods).toEqual([]);
+      expect(restored.accountBalanceCheckpoints).toEqual([]);
+      expect(restored.exchangeRates).toEqual([]);
+      expect(restored.merchantCategoryRules).toEqual([]);
+    });
   });
 
   describe("AC-2: restore reproduces equivalent ledger state", () => {
@@ -454,6 +482,47 @@ describe("backup/restore contract", () => {
       withSnapshotFile(snapshot, (snapshotPath) => {
         expect(() => inspectBackupSnapshot({ snapshotPath })).toThrow(
           `Invalid snapshot creation timestamp: ${snapshotPath}`
+        );
+      });
+    });
+
+    it("rejects coverage periods whose currency differs from the account currency", () => {
+      const snapshot = buildRestoreSnapshot({
+        accountStatementCoveragePeriods: [{
+          id: "coverage-eur-on-nok-account",
+          accountId: "acc-a",
+          startDateIso: "2026-05-01",
+          endDateIso: "2026-05-31",
+          currencyCode: "EUR",
+          sourceName: "Synthetic statement",
+          sourceType: "manual",
+          confirmed: false,
+        }],
+      });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+          "Invalid snapshot account statement coverage periods"
+        );
+      });
+    });
+
+    it("rejects balance checkpoints whose currency differs from the account currency", () => {
+      const snapshot = buildRestoreSnapshot({
+        accountBalanceCheckpoints: [{
+          id: "checkpoint-eur-on-nok-account",
+          accountId: "acc-a",
+          dateIso: "2026-05-31",
+          currencyCode: "EUR",
+          balanceMinor: 92_500,
+          source: "Synthetic statement",
+          recordedAtIso: "2026-06-01T12:00:00Z",
+        }],
+      });
+
+      withSnapshotFile(snapshot, (snapshotPath) => {
+        expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(
+          "Invalid snapshot account balance checkpoints"
         );
       });
     });

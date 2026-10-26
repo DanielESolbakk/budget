@@ -106,18 +106,19 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(appShell.destination("Review")).toBeFocused();
 
     await window.keyboard.press("Tab");
-    await expect(appShell.destination("Transactions")).toBeFocused();
+    await expect(appShell.destination("Activity")).toBeFocused();
     await window.keyboard.press("Tab");
-    await expect(appShell.destination("Pending")).toBeFocused();
+    await expect(appShell.destination("Accounts")).toBeFocused();
     await window.keyboard.press("Tab");
-    await expect(appShell.destination("Import")).toBeFocused();
-    await window.keyboard.press("Tab");
-    await expect(appShell.destination("Data safety")).toBeFocused();
+    await expect(appShell.destination("Household")).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(dashboard.monthSelector).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(dashboard.reviewQueueAction).toBeFocused();
     await expect(dashboard.targetVsActualSection).toHaveAttribute("tabindex", "0");
+    await window.keyboard.press("Tab");
+    await expect(window.getByRole("button", { name: "Review account coverage", exact: true }))
+      .toBeFocused();
     await window.keyboard.press("Tab");
     await expect(dashboard.targetVsActualSection).toBeFocused();
     const focusOutlineWidth = await dashboard.targetVsActualSection.evaluate((element) =>
@@ -162,7 +163,14 @@ test.describe("Keyboard accessibility smoke", () => {
     });
     writeFileSync(snapshotPath, JSON.stringify(snapshot), "utf8");
 
-    await appShell.destination("Data safety").focus();
+    await appShell.destination("Household").focus();
+    await window.keyboard.press("Enter");
+    await window.keyboard.press("Tab");
+    const householdTools = window.getByRole("navigation", { name: "Household tools" });
+    await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
+    await window.keyboard.press("Tab");
+    const dataSafetyTab = householdTools.getByRole("button", { name: "Data safety" });
+    await expect(dataSafetyTab).toBeFocused();
     await window.keyboard.press("Enter");
     await window.keyboard.press("Tab");
     await expect(recovery.backupPathInput).toBeFocused();

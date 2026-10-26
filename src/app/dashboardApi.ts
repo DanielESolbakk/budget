@@ -1,8 +1,16 @@
 import { computeCategoryBreakdown } from "../domain/aggregation/computeCategoryBreakdown.js";
 import { computeMonthlyTotals } from "../domain/aggregation/computeMonthlyTotals.js";
+import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
+import { convertCurrencyAmount } from "../domain/money/convertCurrencyAmount.js";
 import { simpleForecast } from "../domain/forecast/simpleForecast.js";
+import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import type {
+  Account,
+  AccountCoverageAssessment,
+  AccountCoverageAssessmentInput,
   CategoryBreakdown,
+  CurrencyCode,
+  ExchangeRate,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
   MonthlyCategoryTargetQuery,
@@ -63,6 +71,73 @@ export type DashboardViewContract =
 export interface MonthlyAttentionSummary {
   hasUncategorizedTransactions: boolean;
   overTargetCategoryCount: number;
+}
+
+export interface NokMonthlyReportInput {
+  transactions: readonly Transaction[];
+  accounts: readonly Account[];
+  rates: readonly ExchangeRate[];
+  yearMonth: string;
+  monthlyReferenceRateIds?: Readonly<Record<string, string>>;
+  useLatestRateScenario?: boolean;
+}
+
+export interface NokMonthlyReportTransaction {
+  transactionId: string;
+  bookedAtIso: string;
+  merchantRaw: string;
+  nativeAmountMinor: number;
+  nativeCurrencyCode: CurrencyCode;
+  nokAmountMinor: number | null;
+  exchangeRate: ExchangeRate | null;
+  isEstimate: boolean;
+  isScenarioRestatement: boolean;
+}
+
+export interface NokMonthlyReport {
+  yearMonth: string;
+  nativeSubtotals: Array<{ currencyCode: CurrencyCode; totalMinor: number }>;
+  nokSubtotalMinor: number | null;
+  partialNokSubtotalMinor: number;
+  incompleteCurrencies: CurrencyCode[];
+  transactions: NokMonthlyReportTransaction[];
+}
+
+type AccountCoverageQuerySource = Pick<
+  LocalLedgerDatabase,
+  | "loadLedgerSnapshotData"
+  | "listAccountStatementCoveragePeriods"
+  | "listAccountBalanceCheckpoints"
+  | "getTransactionsForAccount"
+  | "listPendingTransactionObservations"
+>;
+
+export function queryAccountCoverageAssessment(
+  database: AccountCoverageQuerySource,
+  periodId: string,
+  evaluatedAtIso: string
+): AccountCoverageAssessment {
+  const snapshot = database.loadLedgerSnapshotData();
+  const period = (snapshot.accountStatementCoveragePeriods ?? [])
+    .find((candidate) => candidate.id === periodId);
+  if (period === undefined) {
+    throw new Error(`Account statement coverage period not found: ${periodId}`);
+  }
+  const account = snapshot.accounts.find((candidate) => candidate.id === period.accountId);
+  if (account === undefined) {
+    throw new Error(`Account not found: ${period.accountId}`);
+  }
+
+  const input: AccountCoverageAssessmentInput = {
+    period,
+    relatedPeriods: database.listAccountStatementCoveragePeriods(period.accountId),
+    checkpoints: database.listAccountBalanceCheckpoints(period.accountId),
+    transactions: database.getTransactionsForAccount(period.accountId),
+    pendingObservations: database.listPendingTransactionObservations(account.householdId),
+    importJobs: snapshot.importJobs,
+    evaluatedAtIso,
+  };
+  return assessAccountCoverage(input);
 }
 
 export interface DashboardViewContractInput {
@@ -264,6 +339,89 @@ export function queryMonthlyTotals(
  * Returns a deterministic category breakdown for a selected calendar month.
  * Entries are ordered by totalMinor descending; the uncategorized entry (if any) appears last.
  */
+export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyReport {
+  if (!isYearMonth(input.yearMonth)) {
+    throw new Error(`Invalid NOK report yearMonth: ${input.yearMonth}`);
+  }
+
+  const accountsById = new Map(input.accounts.map((account) => [account.id, account]));
+  const monthlyTransactions = input.transactions
+    .filter((transaction) => transaction.bookedAtIso.startsWith(input.yearMonth))
+    .sort((left, right) =>
+      left.bookedAtIso.localeCompare(right.bookedAtIso) ||
+      left.id.localeCompare(right.id)
+    );
+  const nativeTotals = new Map<CurrencyCode, number>();
+  const incompleteCurrencies = new Set<CurrencyCode>();
+  const transactions: NokMonthlyReportTransaction[] = [];
+  let partialNokSubtotalMinor = 0;
+
+  for (const transaction of monthlyTransactions) {
+    const account = accountsById.get(transaction.accountId);
+    if (account === undefined) {
+      throw new Error(`Account not found for transaction ${transaction.id}.`);
+    }
+    const currencyCode = transaction.currencyCode ?? account.currencyCode;
+    const nativeTotal = (nativeTotals.get(currencyCode) ?? 0) + transaction.amountMinor;
+    if (!Number.isSafeInteger(nativeTotal)) {
+      throw new RangeError(`Native ${currencyCode} subtotal exceeds the safe integer range.`);
+    }
+    nativeTotals.set(
+      currencyCode,
+      nativeTotal
+    );
+    const conversion = convertCurrencyAmount({
+      amountMinor: transaction.amountMinor,
+      currencyCode,
+      asOfDateIso: transaction.bookedAtIso.slice(0, 10),
+      rates: input.rates,
+      ...(input.monthlyReferenceRateIds?.[currencyCode] === undefined
+        ? {}
+        : { monthlyReferenceRateId: input.monthlyReferenceRateIds[currencyCode] }),
+      ...(input.useLatestRateScenario === undefined
+        ? {}
+        : { useLatestRateScenario: input.useLatestRateScenario }),
+    });
+
+    if (conversion.state === "incomplete") {
+      incompleteCurrencies.add(currencyCode);
+    } else {
+      partialNokSubtotalMinor += conversion.nokAmountMinor;
+      if (!Number.isSafeInteger(partialNokSubtotalMinor)) {
+        throw new RangeError("NOK report subtotal exceeds the safe integer range.");
+      }
+    }
+
+    transactions.push({
+      transactionId: transaction.id,
+      bookedAtIso: transaction.bookedAtIso,
+      merchantRaw: transaction.merchantRaw,
+      nativeAmountMinor: transaction.amountMinor,
+      nativeCurrencyCode: currencyCode,
+      nokAmountMinor: conversion.nokAmountMinor,
+      exchangeRate: conversion.exchangeRate,
+      isEstimate: conversion.isEstimate,
+      isScenarioRestatement: conversion.isScenarioRestatement,
+    });
+  }
+
+  const nativeSubtotals = [...nativeTotals.entries()]
+    .map(([currencyCode, totalMinor]) => ({ currencyCode, totalMinor }))
+    .sort((left, right) => left.currencyCode.localeCompare(right.currencyCode));
+  const sortedIncompleteCurrencies = [...incompleteCurrencies].sort((left, right) =>
+    left.localeCompare(right)
+  );
+
+  return {
+    yearMonth: input.yearMonth,
+    nativeSubtotals,
+    nokSubtotalMinor: sortedIncompleteCurrencies.length === 0 ? partialNokSubtotalMinor : null,
+    partialNokSubtotalMinor,
+    incompleteCurrencies: sortedIncompleteCurrencies,
+    transactions,
+  };
+}
+
 export function queryCategoryBreakdown(
   transactions: Transaction[],
   yearMonth: string

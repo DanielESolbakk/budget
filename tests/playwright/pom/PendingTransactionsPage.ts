@@ -14,14 +14,20 @@ export class PendingTransactionsPage {
   }
 
   async open(): Promise<void> {
-    await this.page.getByRole("button", { name: "Pending", exact: true }).click();
+    await this.page.getByRole("button", { name: "Activity", exact: true }).click();
+    await this.page
+      .getByRole("navigation", { name: "Activity views" })
+      .getByRole("button", { name: "Pending", exact: true })
+      .click();
   }
 
   async openWithKeyboard(): Promise<void> {
-    const pendingWorkspaceButton = this.page.getByRole("button", {
-      name: "Pending",
-      exact: true,
-    });
+    const activityButton = this.page.getByRole("button", { name: "Activity", exact: true });
+    await activityButton.focus();
+    await activityButton.press("Enter");
+    const pendingWorkspaceButton = this.page
+      .getByRole("navigation", { name: "Activity views" })
+      .getByRole("button", { name: "Pending", exact: true });
     await pendingWorkspaceButton.focus();
     await pendingWorkspaceButton.press("Enter");
   }

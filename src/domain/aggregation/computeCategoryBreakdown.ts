@@ -17,29 +17,37 @@ export function computeCategoryBreakdown(
 ): CategoryBreakdown {
   const monthTxs = transactions.filter(tx => tx.bookedAtIso.startsWith(yearMonth));
 
-  const byCategory = new Map<string | null, { totalMinor: number; transactionCount: number }>();
+  const byCategory = new Map<string | null, { totalMinor: number; transactionIds: Set<string> }>();
 
   for (const tx of monthTxs) {
-    const key = tx.categoryId ?? null;
-    const acc = byCategory.get(key) ?? { totalMinor: 0, transactionCount: 0 };
-    acc.totalMinor += Math.abs(tx.amountMinor);
-    acc.transactionCount += 1;
-    byCategory.set(key, acc);
+    const categoryAmounts = tx.categoryAllocations?.length
+      ? tx.categoryAllocations
+      : [{ categoryId: tx.categoryId ?? null, amountMinor: tx.amountMinor }];
+
+    for (const allocation of categoryAmounts) {
+      const acc = byCategory.get(allocation.categoryId) ?? {
+        totalMinor: 0,
+        transactionIds: new Set<string>(),
+      };
+      acc.totalMinor += Math.abs(allocation.amountMinor);
+      acc.transactionIds.add(tx.id);
+      byCategory.set(allocation.categoryId, acc);
+    }
   }
 
   const categorized: CategoryBreakdownEntry[] = [];
   let uncategorizedEntry: CategoryBreakdownEntry | undefined;
 
-  for (const [categoryId, { totalMinor, transactionCount }] of byCategory) {
+  for (const [categoryId, { totalMinor, transactionIds }] of byCategory) {
     if (categoryId === null) {
       uncategorizedEntry = {
         categoryId: null,
         label: UNCATEGORIZED_LABEL,
         totalMinor,
-        transactionCount,
+        transactionCount: transactionIds.size,
       };
     } else {
-      categorized.push({ categoryId, label: categoryId, totalMinor, transactionCount });
+      categorized.push({ categoryId, label: categoryId, totalMinor, transactionCount: transactionIds.size });
     }
   }
 

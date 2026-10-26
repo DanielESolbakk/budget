@@ -1,12 +1,13 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse } from "csv-parse/sync";
 import { describe, expect, it } from "vitest";
 import { buildTransactionsFromFixturePath } from "../../src/tooling/fixtures/fixtureTransactions.js";
 import { EXPORT_CSV_HEADERS, buildCsvOutput, buildCsvRow, serializeCsvRow } from "../../src/domain/export/buildCsvRows.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { exportCsv, exportCsvToFile, exportLedgerCsvToFile } from "../../src/app/exportCsv.js";
-import type { Transaction } from "../../src/domain/types.js";
+import type { ExchangeRate, Transaction } from "../../src/domain/types.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
 
@@ -56,6 +57,15 @@ describe("csv export contract", () => {
         "sourceReference",
         "categoryId",
         "importJobId",
+        "categoryAllocations",
+        "currencyCode",
+        "convertedNokAmountMinor",
+        "conversionStatus",
+        "exchangeRateNokPerUnit",
+        "exchangeRateEffectiveDate",
+        "exchangeRateKind",
+        "exchangeRateSource",
+        "exchangeRateProvenance",
       ]);
     });
 
@@ -163,6 +173,74 @@ describe("csv export contract", () => {
     });
   });
 
+  describe("FX export provenance", () => {
+    it("exports native amounts alongside the dated conversion rate and provenance", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "budget-export-fx-provenance-"));
+      const outputPath = join(tempDir, "transactions.csv");
+      const transaction: Transaction = {
+        id: "tx-eur-income",
+        householdId: "hh-fx-export",
+        accountId: "acc-eur",
+        bookedAtIso: "2026-05-10T00:00:00Z",
+        amountMinor: 10_000,
+        merchantRaw: "Synthetic EUR income",
+        currencyCode: "EUR",
+      };
+      const rate: ExchangeRate = {
+        id: "eur-may-rate",
+        currencyCode: "EUR",
+        rateNokPerUnit: "11.50",
+        effectiveDate: "2026-05-01",
+        kind: "dated",
+        source: "Synthetic manual rate",
+        provenance: "manual",
+      };
+      const ledger = createLocalLedgerDatabase({
+        dbPath: join(tempDir, "budget.sqlite"),
+        seedData: {
+          household: {
+            id: "hh-fx-export",
+            name: "Synthetic household",
+            createdAtIso: "2026-01-01T00:00:00Z",
+          },
+          accounts: [{
+            id: "acc-eur",
+            householdId: "hh-fx-export",
+            name: "Euro account",
+            currencyCode: "EUR",
+          }],
+          transactions: [transaction],
+          importJobs: [],
+          monthlyCategoryTargets: [],
+        },
+      });
+
+      try {
+        ledger.upsertExchangeRate(rate);
+        const result = exportLedgerCsvToFile({ ledger, outputPath });
+        const [row] = parse(result.csvText, {
+          columns: true,
+          skip_empty_lines: true,
+        }) as Array<Record<string, string>>;
+
+        expect(row).toMatchObject({
+          amountMinor: "10000",
+          currencyCode: "EUR",
+          convertedNokAmountMinor: "115000",
+          conversionStatus: "converted",
+          exchangeRateNokPerUnit: "11.50",
+          exchangeRateEffectiveDate: "2026-05-01",
+          exchangeRateKind: "dated",
+          exchangeRateSource: "Synthetic manual rate",
+          exchangeRateProvenance: "manual",
+        });
+      } finally {
+        ledger.close();
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("AC-2: normalized date and amount formats", () => {
     it("buildCsvRow serializes bookedAtIso as an ISO 8601 datetime string", () => {
       const row = buildCsvRow(SAMPLE_TRANSACTIONS[0]!);
@@ -225,6 +303,7 @@ describe("csv export contract", () => {
       expect(row.sourceReference).toBe("");
       expect(row.categoryId).toBe("");
       expect(row.importJobId).toBe("");
+      expect(row).toHaveProperty("categoryAllocations", "");
     });
 
     it("buildCsvRow propagates present optional fields", () => {
@@ -239,12 +318,42 @@ describe("csv export contract", () => {
         sourceReference: "BANK-REFERENCE-42",
         categoryId: "groceries",
         importJobId: "job-99",
+        categoryAllocations: [
+          { categoryId: "groceries", amountMinor: -700 },
+          { categoryId: "housing", amountMinor: -300 },
+        ],
       };
       const row = buildCsvRow(tx);
       expect(row.merchantAlias).toBe("REMA");
       expect(row.sourceReference).toBe("BANK-REFERENCE-42");
       expect(row.categoryId).toBe("groceries");
       expect(row.importJobId).toBe("job-99");
+      expect(row).toHaveProperty(
+        "categoryAllocations",
+        JSON.stringify(tx.categoryAllocations)
+      );
+    });
+
+    it("serializes allocation details in deterministic category order", () => {
+      const transaction: Transaction = {
+        id: "tx-allocation-order",
+        householdId: "hh-x",
+        accountId: "acc-x",
+        bookedAtIso: "2026-03-15T00:00:00Z",
+        amountMinor: -1_000,
+        merchantRaw: "Rema 1000",
+        categoryAllocations: [
+          { categoryId: "housing", amountMinor: -300 },
+          { categoryId: "groceries", amountMinor: -700 },
+        ],
+      };
+
+      expect(buildCsvRow(transaction).categoryAllocations).toBe(
+        JSON.stringify([
+          { categoryId: "groceries", amountMinor: -700 },
+          { categoryId: "housing", amountMinor: -300 },
+        ])
+      );
     });
   });
 

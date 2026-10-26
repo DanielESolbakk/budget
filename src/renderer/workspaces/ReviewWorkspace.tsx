@@ -5,6 +5,7 @@ import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySect
 import { ForecastSection } from "../dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "../dashboard/MonthlyTotalsSection.js";
 import { TargetVsActualSection } from "../dashboard/TargetVsActualSection.js";
+import { AccountCoverageSummary } from "../dashboard/AccountCoverageSummary.js";
 import type { ReviewState } from "./types.js";
 
 const monthFormatter = new Intl.DateTimeFormat("nb-NO", {
@@ -30,10 +31,12 @@ interface ReviewWorkspaceProps {
   isActive: boolean;
   isChangingMonth: boolean;
   isRefreshing: boolean;
+  refreshKey: number;
   monthChangeError: string | null;
   refreshError: string | null;
   onMonthChange: (yearMonth: string) => void;
   onOpenTransactions: () => void;
+  onOpenCoverage: () => void;
   onRetry: () => void;
 }
 
@@ -42,10 +45,12 @@ export function ReviewWorkspace({
   isActive,
   isChangingMonth,
   isRefreshing,
+  refreshKey,
   monthChangeError,
   refreshError,
   onMonthChange,
   onOpenTransactions,
+  onOpenCoverage,
   onRetry,
 }: ReviewWorkspaceProps): React.JSX.Element {
   const viewContract: DashboardViewContract | null = state.status === "ready" ? state.viewContract : null;
@@ -123,7 +128,7 @@ export function ReviewWorkspace({
             <div className="review-primary">
               <MonthlyTotalsSection viewContract={state.viewContract} />
               <aside className="monthly-attention" aria-label="Monthly attention">
-                <h3>Needs attention</h3>
+                <h3>Monthly checks</h3>
                 {monthlyAttention === null ? (
                   <p role="status">Calculating monthly exceptions...</p>
                 ) : (
@@ -149,6 +154,11 @@ export function ReviewWorkspace({
                         <p>No categories over target.</p>
                       )}
                     </div>
+                    <AccountCoverageSummary
+                      isActive={isActive}
+                      refreshKey={refreshKey}
+                      onOpenCoverage={onOpenCoverage}
+                    />
                   </div>
                 )}
               </aside>
