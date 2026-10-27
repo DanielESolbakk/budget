@@ -32,7 +32,9 @@ Before any issue mutation, read and follow [Issue Batch Governance](references/i
 
 For interactive forms, follow the repository-wide [GitHub MCP Interactive Writes contract](../../../.github/copilot-instructions.md#github-mcp-interactive-writes); pending requests are neither verified UI delivery nor saved writes.
 
-Run G1-G9 as planning checks from the deep-dive. Quote each pass with evidence only after fresh structural validation; keep `needs-grooming` until those checks pass. Separately check assignment prerequisites; do not assign an issue with an open blocker or missing runtime. After 180 seconds without fresh validation, stop without repair.
+When reporting batch progress, give the known remaining approval and validation-trigger counts separately; identify unknown counts and why. Include any separate post-validation label updates in the estimate.
+
+Run G1-G9 from the deep-dive. Treat them as planning checks. Quote each pass with evidence only after fresh structural validation; keep `needs-grooming` until those checks pass. Separately check assignment prerequisites; do not assign an issue with an open blocker or missing runtime. A fresh structural validation result is required. After 180 seconds without one, stop without repair.
 
 ## References
 

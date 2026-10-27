@@ -14,6 +14,8 @@
 - After requested issue updates are complete, provide the validation set as bare comma-separated issue numbers in the order expected by the planning workflow. Include every issue record actually edited whose structure needs validation; exclude untouched or deferred issues. The workflow accepts the batch through `workflow_dispatch.issue_numbers`; do not ask repeatedly for confirmation.
 - A fresh validation result proves structure only. It never proves G1-G9 readiness or authorizes assignment by itself.
 - If an issue write returns `awaiting_user_submission`, verify the saved issue after submission is reported. Report absent changes as unverified/pending, not as proof that the user never clicked. For unusable forms and owner-authorized replacement updates, follow the repository-wide interactive-write contract below; do not repeatedly require impossible submission or cancellation.
+- Before writes, report the known number of issue approvals and human validation triggers separately; if the full count is unknown, say which work remains unassessed. Update the estimate when it changes. Count a pending approval once, and do not count a create that returned its issue number as an outstanding approval.
+- Include post-validation label removals in the estimate when they require separate forms. Do not remove `needs-grooming` before the saved issue passes fresh structural validation and semantic checks merely to save an approval. Repairs or concurrent changes can increase the estimate.
 
 ## GitHub MCP Write Safety
 

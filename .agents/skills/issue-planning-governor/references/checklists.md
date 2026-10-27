@@ -19,6 +19,7 @@ Run before editing any issue.
 - Confirm parent epic and parent feature alignment.
 - Confirm linked enablers/tests are same-slice unless explicitly justified by policy.
 - For an issue batch, inspect the full requested set and search the same-feature Story inventory before concluding that an Enabler has no real Story to enable.
+- Before writing, report the known remaining issue approvals and human validation triggers separately. Identify unassessed work and possible post-validation label approvals instead of guessing a final count.
 - Confirm issue references are bullet format in structured sections.
 - Confirm once per batch an authenticated validation-trigger and result-verification route using available MCP Actions tools or an authorized human through GitHub UI. Browser sign-in alone does not determine MCP access; an issue-write permission alone does not prove Actions permissions.
 - Run Test Necessity Decision and capture one outcome: no test issue needed now, or test issue required.
