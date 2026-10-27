@@ -8,7 +8,9 @@ import {
   mainProcessNetworkRequests,
 } from "./helpers/networkProbe.js";
 import {
+  installRendererNetworkAttemptBlocker,
   installRendererNetworkAttemptObserver,
+  rendererNetworkBlockedAttempts,
   rendererNetworkAttempts,
 } from "./helpers/rendererNetworkProbe.js";
 
@@ -21,12 +23,13 @@ test("property history survives a restart without converting currency or using t
   window,
 }) => {
   await window.setViewportSize({ width: 1280, height: 800 });
+  await installRendererNetworkAttemptBlocker(window);
+  await installMainProcessNetworkProbe(electronApp);
+  const rendererNetworkObservation = await installRendererNetworkAttemptObserver(window);
   await appShell.openWorkspace("Data safety");
   const registry = new PropertyRegistryPage(window);
   await expect(registry.section.getByRole("heading", { name: "Property registry" })).toBeVisible();
   await expect(registry.propertyLabelInput).toBeInViewport();
-  await installMainProcessNetworkProbe(electronApp);
-  await installRendererNetworkAttemptObserver(window);
   await expect(window.evaluate(() => (
     globalThis as typeof globalThis & {
       budgetApi: { exchangeRates: { list: (currencyCode: string) => Promise<unknown[]> } };
@@ -54,8 +57,24 @@ test("property history survives a restart without converting currency or using t
   await expect(registry.valuationRow("Home", "2026-11-01")).toContainText(
     /450[\s\u00a0\u202f]000,00/
   );
+  const nokValuationBeforeRestart = await registry
+    .valuationRow("Home", "2026-10-01")
+    .getByRole("cell")
+    .allTextContents();
+  const eurValuationBeforeRestart = await registry
+    .valuationRow("Home", "2026-11-01")
+    .getByRole("cell")
+    .allTextContents();
   expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   expect(await rendererNetworkAttempts(window)).toEqual([]);
+  expect(await rendererNetworkBlockedAttempts(window)).toEqual([]);
+  expect(rendererNetworkObservation.httpRequests).toEqual([]);
+  expect(rendererNetworkObservation.webSocketRequests).toEqual([]);
+  const propertyRecordsBeforeRestart = await window.evaluate(() => (
+    globalThis as typeof globalThis & {
+      budgetApi: { propertyRegistry: { list: () => Promise<unknown[]> } };
+    }
+  ).budgetApi.propertyRegistry.list());
 
   await electronApp.close();
   const restartedApp = await electron.launch({
@@ -70,13 +89,22 @@ test("property history survives a restart without converting currency or using t
   try {
     const restartedWindow = await restartedApp.firstWindow();
     await restartedWindow.waitForLoadState("domcontentloaded");
+    await installRendererNetworkAttemptBlocker(restartedWindow);
     await installMainProcessNetworkProbe(restartedApp);
-    await installRendererNetworkAttemptObserver(restartedWindow);
+    const restartedNetworkObservation = await installRendererNetworkAttemptObserver(restartedWindow);
     await new AppShellPage(restartedWindow).openWorkspace("Data safety");
     const restartedRegistry = new PropertyRegistryPage(restartedWindow);
+    const propertyRecordsAfterRestart = await restartedWindow.evaluate(() => (
+      globalThis as typeof globalThis & {
+        budgetApi: { propertyRegistry: { list: () => Promise<unknown[]> } };
+      }
+    ).budgetApi.propertyRegistry.list());
 
-    await expect(restartedRegistry.valuationRow("Home", "2026-10-01")).toContainText("NOK");
-    await expect(restartedRegistry.valuationRow("Home", "2026-11-01")).toContainText("EUR");
+    expect(propertyRecordsAfterRestart).toEqual(propertyRecordsBeforeRestart);
+    await expect(restartedRegistry.valuationRow("Home", "2026-10-01").getByRole("cell"))
+      .toHaveText(nokValuationBeforeRestart);
+    await expect(restartedRegistry.valuationRow("Home", "2026-11-01").getByRole("cell"))
+      .toHaveText(eurValuationBeforeRestart);
     await expect(restartedWindow.evaluate(() => (
       globalThis as typeof globalThis & {
         budgetApi: { exchangeRates: { list: (currencyCode: string) => Promise<unknown[]> } };
@@ -84,6 +112,9 @@ test("property history survives a restart without converting currency or using t
     ).budgetApi.exchangeRates.list("EUR"))).resolves.toEqual([]);
     expect(await mainProcessNetworkRequests(restartedApp)).toEqual([]);
     expect(await rendererNetworkAttempts(restartedWindow)).toEqual([]);
+    expect(await rendererNetworkBlockedAttempts(restartedWindow)).toEqual([]);
+    expect(restartedNetworkObservation.httpRequests).toEqual([]);
+    expect(restartedNetworkObservation.webSocketRequests).toEqual([]);
   } finally {
     await restartedApp.close();
   }
@@ -141,6 +172,10 @@ test("refreshes property history after restoring a local backup", async ({
     amount: "5000000",
     currencyCode: "NOK",
   });
+  const valuationBeforeRestore = await registry
+    .valuationRow("Home", "2026-10-01")
+    .getByRole("cell")
+    .allTextContents();
 
   const snapshotPath = join(dirname(databasePath), "property-registry-backup.json");
   await recoveryPage.backupPathInput.fill(snapshotPath);
@@ -159,15 +194,18 @@ test("refreshes property history after restoring a local backup", async ({
   await expect(recoveryPage.restoreSuccess).toBeVisible();
   await expect(registry.property("Home")).toBeVisible();
   await expect(registry.property("Cabin")).toHaveCount(0);
+  await expect(registry.valuationRow("Home", "2026-10-01").getByRole("cell"))
+    .toHaveText(valuationBeforeRestore);
 });
 
-test("renderer network observer fails closed and blocks HTTP, HTTPS, WS, and WSS attempts", async ({
+test("renderer network observer fails closed while the interceptor blocks HTTP, HTTPS, WS, and WSS", async ({
   window,
 }) => {
   await expect(rendererNetworkAttempts(window)).rejects.toThrow(
     "Renderer network attempt observer was not installed."
   );
-  await installRendererNetworkAttemptObserver(window);
+  await installRendererNetworkAttemptBlocker(window);
+  const rendererNetworkObservation = await installRendererNetworkAttemptObserver(window);
 
   const blocked = await window.evaluate(async () => {
     const outcomes: boolean[] = [];
@@ -183,6 +221,23 @@ test("renderer network observer fails closed and blocks HTTP, HTTPS, WS, and WSS
       }
     }
     for (const target of [
+      "http://example.invalid",
+      "https://example.invalid",
+    ]) {
+      const requestBlocked = await new Promise<boolean>((resolve) => {
+        const request = new XMLHttpRequest();
+        request.addEventListener("error", () => resolve(true), { once: true });
+        request.addEventListener("load", () => resolve(false), { once: true });
+        try {
+          request.open("GET", target);
+          request.send();
+        } catch {
+          resolve(true);
+        }
+      });
+      outcomes.push(requestBlocked);
+    }
+    for (const target of [
       "ws://example.invalid",
       "wss://example.invalid",
     ]) {
@@ -196,11 +251,23 @@ test("renderer network observer fails closed and blocks HTTP, HTTPS, WS, and WSS
     return outcomes;
   });
 
-  expect(blocked).toEqual([true, true, true, true]);
+  expect(blocked).toEqual([true, true, true, true, true, true]);
   expect(await rendererNetworkAttempts(window)).toEqual([
+    "http://example.invalid/",
+    "https://example.invalid/",
     "http://example.invalid/",
     "https://example.invalid/",
     "ws://example.invalid/",
     "wss://example.invalid/",
   ]);
+  expect(await rendererNetworkBlockedAttempts(window)).toEqual([
+    "http://example.invalid/",
+    "https://example.invalid/",
+    "http://example.invalid/",
+    "https://example.invalid/",
+    "ws://example.invalid/",
+    "wss://example.invalid/",
+  ]);
+  expect(rendererNetworkObservation.httpRequests).toEqual([]);
+  expect(rendererNetworkObservation.webSocketRequests).toEqual([]);
 });
