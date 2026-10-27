@@ -62,6 +62,13 @@ Use the following locked stack unless superseded by a later ADR:
 - No cloud sync, bank APIs, telemetry, or analytics in baseline scope
 - Only sanitized or synthetic fixtures are allowed in committed repository artifacts
 
+### Offline-Only Valuations
+
+- Property and other registry valuations are entered by the user and remain local.
+- Each valuation snapshot preserves the entered amount and currency, with a separate effective date and recorded-at ISO timestamp.
+- The registry must not automatically fetch external valuations, quotes, or exchange rates, and must not introduce any outbound request for valuation workflows.
+- Existing user-initiated import/export boundaries and no-network verification remain unchanged; a missing exchange rate never changes a recorded property amount or currency.
+
 ## Testing Implications
 
 - Unit tests for parser adapters, merchant normalization, rule evaluation, and forecasting logic

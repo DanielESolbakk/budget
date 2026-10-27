@@ -40,6 +40,37 @@ export interface Account {
   currencyCode: CurrencyCode;
 }
 
+export interface PropertyRecordInput {
+  label: string;
+}
+
+export interface PropertyValuationInput {
+  propertyId: string;
+  effectiveDateIso: string;
+  amountMinor: number;
+  currencyCode: string;
+}
+
+export interface PropertyRecord {
+  id: string;
+  householdId: string;
+  label: string;
+  createdAtIso: string;
+}
+
+export interface PropertyValuationSnapshot {
+  id: string;
+  propertyId: string;
+  effectiveDateIso: string;
+  amountMinor: number;
+  currencyCode: CurrencyCode;
+  recordedAtIso: string;
+}
+
+export interface PropertyWithValuations extends PropertyRecord {
+  valuations: PropertyValuationSnapshot[];
+}
+
 /** ISO 4217-style uppercase three-letter currency code used by an account. */
 export type CurrencyCode = string;
 

@@ -8,13 +8,15 @@ import type {
   MerchantCategoryRule,
   MonthlyCategoryTarget,
   PendingTransactionObservation,
+  PropertyRecord,
+  PropertyValuationSnapshot,
   Transaction,
 } from "../types.js";
 
 /** Snapshot format version – increment when the schema changes in a breaking way. */
-export const SNAPSHOT_VERSION = "3" as const;
+export const SNAPSHOT_VERSION = "4" as const;
 
-export type SnapshotVersion = "1" | "2" | typeof SNAPSHOT_VERSION;
+export type SnapshotVersion = "1" | "2" | "3" | typeof SNAPSHOT_VERSION;
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {
@@ -47,6 +49,8 @@ export interface BackupSnapshot {
   accountStatementCoveragePeriods: AccountStatementCoveragePeriod[];
   accountBalanceCheckpoints: AccountBalanceCheckpoint[];
   exchangeRates: ExchangeRate[];
+  properties: PropertyRecord[];
+  propertyValuations: PropertyValuationSnapshot[];
 }
 
 /**
@@ -66,6 +70,8 @@ export interface LedgerSnapshotData {
   accountStatementCoveragePeriods?: AccountStatementCoveragePeriod[];
   accountBalanceCheckpoints?: AccountBalanceCheckpoint[];
   exchangeRates?: ExchangeRate[];
+  properties?: PropertyRecord[];
+  propertyValuations?: PropertyValuationSnapshot[];
   /** Override the creation timestamp (ISO 8601). Defaults to current UTC time. */
   createdAtIso?: string;
 }
@@ -138,6 +144,8 @@ export interface RestoreSnapshotOutput {
   accountStatementCoveragePeriods: AccountStatementCoveragePeriod[];
   accountBalanceCheckpoints: AccountBalanceCheckpoint[];
   exchangeRates: ExchangeRate[];
+  properties: PropertyRecord[];
+  propertyValuations: PropertyValuationSnapshot[];
   /** Number of transactions that were restored. */
   transactionCount: number;
 }

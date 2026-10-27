@@ -63,6 +63,8 @@ function createSnapshotData(): LedgerSnapshotData {
     accountStatementCoveragePeriods: [],
     accountBalanceCheckpoints: [],
     exchangeRates: [],
+    properties: [],
+    propertyValuations: [],
   };
 }
 
