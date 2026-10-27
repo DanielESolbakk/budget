@@ -2,6 +2,8 @@
 
 Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify that issues are truly safe for Copilot assignment. This goes beyond template compliance to ensure implementation clarity.
 
+Evaluate planning completeness separately from assignment readiness. A planning-complete issue with an accurately documented open blocker may lose `needs-grooming`, but remains unassignable until the blocker and required product/runtime seams are resolved. A fresh structural pass alone does not complete either gate.
+
 ## Universal Checks (All Issue Types)
 
 ### Operationalization: ACs Are Testable, Not Vague
@@ -23,14 +25,14 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 
 - [ ] If the issue produces output, document where it goes (e.g., "output feeds into #100 adapter").
 - [ ] If the issue depends on another issue's output, state what format is expected (e.g., "requires MonthSeries type from #98").
-- [ ] Cross-issue dependencies in "Blocked by" include current status (e.g., "Blocked by #98 (READY as of 2026-06-21)").
+- [ ] Cross-issue dependencies in "Blocked by" have their current status checked against GitHub.
 
 ### Blockers Are Current and Non-Circular
 
 - [ ] All blockers in "Blocked by" section are explicitly listed with `- #NUMBER` format.
-- [ ] Each blocker is open and relevant (not closed or superseded).
-- [ ] No circular blocker chains (A blocks B, B blocks A).
-- [ ] Blocker status is current; if blocker was resolved, update the issue immediately.
+- [ ] Every open blocker is relevant and not superseded.
+- [ ] No circular open blocker chains (A blocks B, B blocks A).
+- [ ] Blocker status is checked live. A closed prerequisite does not block work or require an issue edit before starting; refresh stale references as part of another needed edit.
 
 ### Validation Commands Are Sufficient
 
@@ -44,7 +46,7 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 - [ ] The decision is based on changed functionality, contract, or runtime behavior (not preference).
 - [ ] If test issue is required, linked test issue verifies created functionality at the correct pyramid layer.
 - [ ] If test issue is not required, issue body contains no placeholder/conditional test language.
-- [ ] If the issue is itself a Test issue, all required product/runtime behavior is either available for assignment or explicitly tracked as implementation-issue blockers. A blocked planning record is allowed, but fails assignment readiness until those prerequisites exist.
+- [ ] If the issue is itself a Test issue, all required product/runtime behavior is either available for assignment or explicitly tracked as implementation-issue blockers. A blocked planning record can pass the planning checks, but fails assignment readiness until those prerequisites exist.
 - [ ] Decision avoids "tests for tests sake" by tying verification to concrete risk.
 
 ---
@@ -58,8 +60,8 @@ Use this checklist during Step 1 Preflight and Step 4 Readiness Gate to verify t
 - **G5:** Test Necessity is explicit and consistent with the issue body.
 - **G6:** Required test issues cover every parent AC and declare Unit (Vitest), Integration (Vitest), and runtime end-to-end (Playwright), or link follow-up issues for deferred layers.
 - **G6a:** Test mappings name the immediate parent issue as the AC source; feature mappings distinguish feature ACs from child-story evidence.
-- **G7:** Blockers are open, relevant, and non-circular; completion claims agree with linked issue status.
-- **G8:** Assignable entry points exist; new files are listed as Technical Tasks.
+- **G7:** Blockers are current, relevant, and non-circular; completion claims agree with linked issue status. An explicit open blocker does not itself fail the planning check, but prevents assignment.
+- **G8:** Existing planning entry points are identified and new files are listed as Technical Tasks. Missing product/runtime prerequisites are explicitly blocked; assignment also requires the actual entry points and runtime seams to exist.
 - **G9:** Renderer-visible work states design direction, design-system preservation, responsive behavior, accessibility, and visual-validation intent. Mark G9 not applicable only when there is no renderer-visible work.
 
 ## Enabler-Specific Checks
@@ -114,7 +116,7 @@ Load this checklist for the identified issue type. Review first 3 sections (Univ
 
 ### Step 4 Readiness Gate
 
-After template validation passes, run G1-G9 and the full deep-dive checklist. Mark G9 not applicable only when the issue has no renderer-visible work.
+After template validation passes, run G1-G9 as planning checks and the full deep-dive checklist. Mark G9 not applicable only when the issue has no renderer-visible work. Evaluate open blockers and required runtime seams separately as assignment prerequisites.
 
 **Evidence capture protocol (mandatory):**
 
@@ -128,10 +130,11 @@ After template validation passes, run G1-G9 and the full deep-dive checklist. Ma
 
 **Gate decision logic:**
 
-- All items checked ✓ → Proceed to Step 5 (FINALIZE)
-- Any item unchecked or failed ✗ → Return to Step 2 (REWRITE) or Step 3a (REPAIR)
+- All planning items checked ✓ → Remove `needs-grooming` and proceed to Step 5 (FINALIZE); report an open blocker or missing runtime as blocked and unassignable.
+- Any planning item unchecked or failed ✗ → Keep `needs-grooming` and return to Step 2 (REWRITE) or Step 3a (REPAIR).
+- Assignment requires all planning items checked, no `planning-invalid` or `needs-grooming` label, no open blockers, and all required product/runtime seams available.
 
-Do not proceed to finalization if any deep-dive item is unresolved.
+Do not claim assignment readiness while any deep-dive item is unresolved. A documented open blocker or missing runtime prevents assignment but does not, by itself, require another planning rewrite.
 
 ## Example: Applying Deep Dive to Issue #99
 

@@ -255,7 +255,7 @@ Link only real Stories under this Enabler's Parent Feature Issue. Search all exi
 ### Preconditions
 
 - This concrete Test planning record is permitted before product code exists; the approved parent Story/Enabler owns that implementation.
-- Missing product/runtime prerequisites are listed under Blocked by. Keep needs-grooming and do not assign until those prerequisites and the semantic readiness gates pass.
+- Missing product/runtime prerequisites are listed under Blocked by. Keep the Test unassignable until those prerequisites exist; remove needs-grooming once fresh structural validation and the semantic planning checks pass, even if a blocker remains open.
 - Before standalone assignment, verify the required `src/`, `electron/`, preload, IPC, renderer, and test-harness seams exist. Do not implement missing product behavior from this Test issue.
 
 ### Technical Tasks

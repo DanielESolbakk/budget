@@ -129,7 +129,7 @@ Avoid inventing near-duplicates for the same concept.
 
 - Create concrete Test planning issues alongside an owner-approved Story or Enabler, before product implementation starts. Planning the tests does not require delivered or active product code.
 - Each Test issue must name its immediate implementation owner and parent AC IDs, own one test layer, specify at least two reproducible scenarios with expected results, identify sanitized/synthetic fixtures, list existing entry-point directories and explicit test-file creation tasks, and provide scoped validation commands.
-- Record missing product capabilities as explicit implementation-issue blockers and retain `needs-grooming`. Product implementation stays in the Story/Enabler, never hidden in a Test issue. Test issues may specify required future behavior without claiming it exists.
+- Record missing product capabilities as explicit implementation-issue blockers. Use `needs-grooming` for unresolved planning defects, not an otherwise complete Test plan's open product blockers. Product implementation stays in the Story/Enabler, never hidden in a Test issue. Test issues may specify required future behavior without claiming it exists.
 - Creation, structural validation, assignment readiness, test execution, and passing evidence are separate states. A planned Test can exist while blocked; do not assign it with unresolved blockers or missing product prerequisites. New test files belong in creation tasks, not nonexistent implementation entry points.
 - TDD tests may be authored before or alongside the parent implementation, but expected red tests are not passing evidence or completion. Standalone Test assignment still requires its runtime/scaffolding prerequisites and all readiness gates.
 - Do not create coverage anchors, reserved scenarios, placeholder commands, empty triangle-completeness issues, or Tests for unapproved roadmap ideas. Reuse or repurpose existing matching issues before creating new ones.
@@ -150,6 +150,7 @@ Avoid inventing near-duplicates for the same concept.
 ## Agent Blocked-Work Policy
 
 - If an assigned issue has open `Blocked by` issues, the agent must post a comment on the issue listing the unresolved blockers and stop. Do not implement any subset of the work.
+- Resolve each `Blocked by` reference against its current GitHub state. A closed prerequisite does not block assignment or require a body edit before work can start; verify required implementation entry points and product/runtime seams separately.
 - If an assigned issue lists `Implementation Entry Points` paths that do not exist in the workspace, the agent must post a comment identifying the missing infrastructure and stop. Do not silently implement only the feasible subset.
 - Deferred technical tasks must be tracked as explicit open issues — not silently omitted from the PR. If a task cannot be done in the current PR, create or reference a follow-up issue in the PR body before closing.
 
@@ -216,7 +217,7 @@ NOT: `#22` or `#73, #74` (inline or comma-separated).
 
 - Do not mix `None` with issue references, use an empty/bare `None`, borrow unrelated Enablers, or create placeholder work to satisfy validation. Test links, parent alignment, blockers, and readiness requirements remain unchanged.
 - When a validator rejects legitimate scope under documented policy, identify the conflicting rule and propose a focused, regression-tested validator/template/governance PR. Keep the affected issue `needs-grooming` and `planning-invalid` until the merged validator and a fresh run establish structural validity; continue unrelated authorized planning work.
-- Structural validation removes `planning-invalid` only. It must not remove `needs-grooming` or imply assignment readiness; complete the issue-planning governor's semantic readiness checks separately.
+- Structural validation removes `planning-invalid` only. It must not remove `needs-grooming` or imply planning completeness or assignment readiness; complete the issue-planning governor's semantic planning checks separately. A planning-complete issue with an open blocker remains unassignable even when `needs-grooming` is absent.
 
 ## Planning Signal Discipline
 

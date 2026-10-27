@@ -19,10 +19,11 @@ Run before editing any issue.
 - Confirm parent epic and parent feature alignment.
 - Confirm linked enablers/tests are same-slice unless explicitly justified by policy.
 - For an issue batch, inspect the full requested set and search the same-feature Story inventory before concluding that an Enabler has no real Story to enable.
+- Before writing, report the known remaining issue approvals and human validation triggers separately. Identify unassessed work and possible post-validation label approvals instead of guessing a final count.
 - Confirm issue references are bullet format in structured sections.
 - Confirm once per batch an authenticated validation-trigger and result-verification route using available MCP Actions tools or an authorized human through GitHub UI. Browser sign-in alone does not determine MCP access; an issue-write permission alone does not prove Actions permissions.
 - Run Test Necessity Decision and capture one outcome: no test issue needed now, or test issue required.
-- For a planned Test before product code exists, verify the approved immediate owner, parent ACs, one layer, expected scenarios, fixtures, file-creation tasks, existing test directories, commands, and explicit product blockers. Preserve `needs-grooming`; do not require delivered behavior merely to create the planning record.
+- For a planned Test before product code exists, verify the approved immediate owner, parent ACs, one layer, expected scenarios, fixtures, file-creation tasks, existing test directories, commands, and explicit product blockers. Keep `needs-grooming` until the semantic planning checks pass; do not require delivered behavior merely to complete the planning record.
 - If the issue is an Epic, stop before mutation; Epic lifecycle work is out of scope.
 - Treat a scope or hierarchy conflict as local to that issue and its dependents. Continue unrelated issues the user authorized in the same batch unless a global blocker applies.
 
@@ -39,14 +40,16 @@ Issue is assignable when all are true.
 - Ownership: dominant test layer per issue (unit, integration, or e2e).
 - Ownership: avoid overlapping ownership across sibling issues.
 - Blockers: no circular blockers.
-- Blockers: blocker issues are open and relevant.
+- Blockers: each referenced prerequisite has been checked against its live state; any open blocker is relevant.
+- Assignment: no unresolved blockers or missing product/runtime prerequisites.
+- A closed prerequisite does not require an issue edit before work starts; refresh stale references as part of another needed edit.
 - Implementation Entry Points: if issue is immediately assignable, entry points point to existing paths.
 - Implementation Entry Points: if new files are needed, list file creation under Technical Tasks.
 - Technical Tasks wording: no uncertainty terms (for example "if needed", "as needed", "where applicable", "or equivalent").
 - Test Necessity decision: recorded with rationale and consistent with issue body.
 - If test issue required: linked open test issue exists and matches the correct pyramid layer for changed functionality.
 - If test issue not required: no placeholder test tasks or stray test references remain.
-- Validation: no planning-invalid label.
+- Validation: no `planning-invalid` or `needs-grooming` label.
 - Validation: validate-planning has been applied after edits and output checked.
 
 ## Validation Loop Checklist
