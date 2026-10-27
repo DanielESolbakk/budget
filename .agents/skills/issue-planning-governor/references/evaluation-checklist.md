@@ -38,7 +38,7 @@ Use this checklist to evaluate whether a skill run met repository planning gover
 - Unscheduled or deferred ideas remained roadmap-only.
 - Each Enabler enables a real same-Feature Story; no Story exists only to satisfy validation.
 - Each Test has an approved immediate Story/Enabler, parent AC IDs, one dominant layer, at least two scenarios with expected results, synthetic fixtures, file-creation tasks, existing entry-point directories, and scoped commands. Product code need not exist at planning time.
-- Missing implementation is recorded as explicit blockers; the Test remains needs-grooming and unassignable until prerequisites exist. Planning and structural validity are not passing-test evidence.
+- Missing implementation is recorded as explicit blockers; the Test remains unassignable until prerequisites exist. A planning-complete Test does not retain needs-grooming solely because a blocker is open. Planning and structural validity are not passing-test evidence.
 - No coverage anchors, reserved scenarios, placeholder commands, or validator-only Tests were created.
 
 ## Validation Loop Checks
@@ -55,9 +55,9 @@ Use this checklist to evaluate whether a skill run met repository planning gover
 - Scope size is small enough for one Copilot assignment.
 - Dominant ownership layer is clear.
 - Validation commands are present and relevant.
-- Structural workflow success was not treated as readiness; `needs-grooming` remains until G1-G9 pass.
-- G1-G9 passed, with quoted evidence; G9 is not applicable only when there is no renderer-visible work.
-- Remaining blockers are explicit and actionable.
+- Structural workflow success was not treated as planning completeness or assignment readiness; `needs-grooming` remains until the G1-G9 planning checks pass.
+- G1-G9 planning checks passed, with quoted evidence; G9 is not applicable only when there is no renderer-visible work.
+- Remaining blockers are explicit and actionable. An open blocker or missing runtime prevents assignment independently of the grooming label.
 
 ## Output Quality Checks
 
