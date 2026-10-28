@@ -17,6 +17,57 @@ import {
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
+function seedExistingAccountAndTransaction(databasePath: string): void {
+  const database = new DatabaseSync(databasePath);
+  try {
+    database.prepare(`
+      INSERT INTO accounts (id, household_id, name, currency_code)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "property-regression-account",
+      "sample-hh",
+      "Synthetic existing account",
+      "NOK"
+    );
+    database.prepare(`
+      INSERT INTO transactions (
+        id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        merchant_search, currency_code, source_type, source_reference, category_id,
+        import_job_id, categorization_json, category_allocations_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      "property-regression-transaction",
+      "sample-hh",
+      "property-regression-account",
+      "2026-09-15T00:00:00.000Z",
+      -12_500,
+      "SYNTHETIC EXISTING TRANSACTION",
+      "SYNTHETIC EXISTING TRANSACTION",
+      "NOK",
+      "manual",
+      null,
+      null,
+      null,
+      null,
+      null
+    );
+  } finally {
+    database.close();
+  }
+}
+
+function readExistingLedgerRecords(databasePath: string) {
+  const database = new DatabaseSync(databasePath);
+  try {
+    return {
+      accounts: database.prepare("SELECT * FROM accounts ORDER BY id").all(),
+      transactions: database.prepare("SELECT * FROM transactions ORDER BY id").all(),
+    };
+  } finally {
+    database.close();
+  }
+}
+
 test("property history survives a restart without converting currency or using the network", async ({
   appShell,
   databasePath,
@@ -267,6 +318,48 @@ test("refreshes property history after restoring a local backup", async ({
   await expect(registry.property("Cabin")).toHaveCount(0);
   await expect(registry.valuationRow("Home", "2026-10-01").getByRole("cell"))
     .toHaveText(valuationBeforeRestore);
+});
+
+test("property entry leaves existing account and transaction records unchanged", async ({
+  databasePath,
+  electronApp,
+}) => {
+  await electronApp.close();
+  seedExistingAccountAndTransaction(databasePath);
+  const ledgerRecordsBefore = readExistingLedgerRecords(databasePath);
+  expect(ledgerRecordsBefore.accounts).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: "property-regression-account" }),
+  ]));
+  expect(ledgerRecordsBefore.transactions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: "property-regression-transaction" }),
+  ]));
+
+  const propertyApp = await electron.launch({
+    args: [MAIN_ENTRY],
+    env: {
+      ...process.env,
+      NODE_ENV: "test",
+      BUDGET_DB_PATH: databasePath,
+    },
+  });
+
+  try {
+    const propertyWindow = await propertyApp.firstWindow();
+    await propertyWindow.waitForLoadState("domcontentloaded");
+    const appShell = new AppShellPage(propertyWindow);
+    await appShell.openWorkspace("Data safety");
+    const registry = new PropertyRegistryPage(propertyWindow);
+    await registry.addProperty("Home");
+    await registry.addValuation("Home", {
+      effectiveDate: "2026-10-01",
+      amount: "5000000",
+      currencyCode: "NOK",
+    });
+
+    expect(readExistingLedgerRecords(databasePath)).toEqual(ledgerRecordsBefore);
+  } finally {
+    await propertyApp.close();
+  }
 });
 
 test("renderer network observer fails closed while the interceptor blocks HTTP, HTTPS, WS, and WSS", async ({
