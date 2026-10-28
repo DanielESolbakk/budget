@@ -2,6 +2,8 @@ import React from "react";
 import { BackupSection } from "../backup/BackupSection.js";
 import { ExportSection } from "../backup/ExportSection.js";
 import { RestoreSnapshotSection } from "../dashboard/RestoreSnapshotSection.js";
+import { LoanRegistrySection } from "./LoanRegistrySection.js";
+import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
 import {
   validatePropertyValuationCorrectionInput,
   validatePropertyValuationInput,
@@ -20,18 +22,31 @@ interface DataSafetyWorkspaceProps {
 
 export function DataSafetyWorkspace({ isActive, onRestoreSuccess }: DataSafetyWorkspaceProps): React.JSX.Element {
   const [catalogRevision, setCatalogRevision] = React.useState(0);
+  const [propertyRevision, setPropertyRevision] = React.useState(0);
 
   function refreshSnapshotCatalog(): void {
     setCatalogRevision((revision) => revision + 1);
+  }
+
+  function refreshPropertyRegistry(): void {
+    setPropertyRevision((revision) => revision + 1);
   }
 
   return (
     <section className="destination-workspace" aria-label="Data safety workspace" hidden={!isActive}>
       <div className="destination-heading">
         <h2>Data safety</h2>
-        <p>Record property values, or back up, export, and restore your local ledger.</p>
+        <p>Record property values and loan balances, or back up, export, and restore your local ledger.</p>
       </div>
-      <PropertyRegistrySection isActive={isActive} refreshRevision={catalogRevision} />
+      <PropertyRegistrySection
+        isActive={isActive}
+        refreshRevision={catalogRevision}
+        onPropertyRegistryChange={refreshPropertyRegistry}
+      />
+      <LoanRegistrySection
+        isActive={isActive}
+        refreshRevision={catalogRevision + propertyRevision}
+      />
       <div className="workflow-recovery-grid">
         <BackupSection onBackupSuccess={refreshSnapshotCatalog} />
         <ExportSection />
@@ -40,6 +55,7 @@ export function DataSafetyWorkspace({ isActive, onRestoreSuccess }: DataSafetyWo
           onRestoreSuccess={() => {
             onRestoreSuccess();
             refreshSnapshotCatalog();
+            refreshPropertyRegistry();
           }}
         />
       </div>
@@ -50,6 +66,7 @@ export function DataSafetyWorkspace({ isActive, onRestoreSuccess }: DataSafetyWo
 interface PropertyRegistrySectionProps {
   isActive: boolean;
   refreshRevision: number;
+  onPropertyRegistryChange: () => void;
 }
 
 interface PropertyValuationDraft {
@@ -80,13 +97,6 @@ const propertyRecordedAtFormatter = new Intl.DateTimeFormat("nb-NO", {
   dateStyle: "short",
   timeStyle: "short",
 });
-
-function parseAmountMinor(value: string): number | null {
-  const normalized = value.trim().replace(",", ".");
-  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
-  const amountMinor = Math.round(Number(normalized) * 100);
-  return Number.isSafeInteger(amountMinor) ? amountMinor : null;
-}
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -132,6 +142,7 @@ function correctionErrorMessage(error: unknown): string {
 function PropertyRegistrySection({
   isActive,
   refreshRevision,
+  onPropertyRegistryChange,
 }: PropertyRegistrySectionProps): React.JSX.Element {
   const [properties, setProperties] = React.useState<PropertyWithValuations[]>([]);
   const [propertyLabel, setPropertyLabel] = React.useState("");
@@ -206,6 +217,7 @@ function PropertyRegistrySection({
       await window.budgetApi.propertyRegistry.create({ label: propertyLabel.trim() });
       setPropertyLabel("");
       setStatusMessage("Property added.");
+      onPropertyRegistryChange();
       setRevision((current) => current + 1);
     } catch (saveError: unknown) {
       setPropertyCreateError(errorMessage(saveError, "Unable to add the property."));
@@ -274,7 +286,7 @@ function PropertyRegistrySection({
     setFormError(feedbackKey, null);
     setFormStatus(feedbackKey, null);
     const draft = valuationDrafts[property.id] ?? EMPTY_VALUATION_DRAFT;
-    const amountMinor = parseAmountMinor(draft.amount);
+    const amountMinor = parseCurrencyAmountMinor(draft.amount);
     if (amountMinor === null) {
       setFormError(feedbackKey, {
         message: "Enter a non-negative amount with up to two decimal places.",
@@ -336,6 +348,7 @@ function PropertyRegistrySection({
       await window.budgetApi.propertyRegistry.renameProperty({ propertyId: property.id, label });
       setPropertyLabelDrafts((current) => ({ ...current, [property.id]: label }));
       setFormStatus(feedbackKey, "Property label updated.");
+      onPropertyRegistryChange();
       setRevision((current) => current + 1);
     } catch (saveError: unknown) {
       setFormError(feedbackKey, {
@@ -358,7 +371,7 @@ function PropertyRegistrySection({
     setFormError(feedbackKey, null);
     setFormStatus(feedbackKey, null);
     const draft = correctionDraft(target);
-    const amountMinor = parseAmountMinor(draft.amount);
+    const amountMinor = parseCurrencyAmountMinor(draft.amount);
     if (amountMinor === null) {
       setFormError(feedbackKey, {
         message: "Enter a non-negative amount with up to two decimal places.",

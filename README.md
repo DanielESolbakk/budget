@@ -51,6 +51,8 @@ In **Review**, check the account-coverage summary before relying on monthly tota
 
 In **Household** > **Exchange rates**, record a foreign-currency rate as NOK per one unit of currency or import a local CSV with `currencyCode,rateNokPerUnit,effectiveDate,kind` columns. Reports keep native-currency subtotals and show the dated NOK conversion and rate provenance. Missing rates leave the NOK subtotal incomplete; they are never treated as zero or a 1:1 rate. Monthly reference rates are used only after explicit selection. Latest-rate restatement is an isolated scenario and does not change historical actual reports. The app does not fetch rates or send transaction data to a service.
 
+In **Household** > **Data safety**, add a locally labeled loan or mortgage, enter its terms, and optionally link it to a property. Append dated actual balance snapshots as statements arrive; their recorded timestamps and original currency are preserved in local storage and backups. These recorded balances remain separate from forecast projections, and the registry does not fetch or substitute exchange rates.
+
 ### Build for production
 
 ```bash

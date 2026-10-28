@@ -23,6 +23,11 @@ import type {
   ForecastEntry,
   ImportReviewCorrectionInput,
   ImportReviewItem,
+  LoanBalanceInput,
+  LoanBalanceSnapshot,
+  LoanRecord,
+  LoanRecordInput,
+  LoanWithBalances,
   ManualEntryInput,
   MerchantCorrectionProvenance,
   MonthlyCategoryTarget,
@@ -190,6 +195,12 @@ export interface PropertyRegistryApi {
   appendCorrection: (input: PropertyValuationCorrectionInput) => Promise<PropertyValuationSnapshot>;
 }
 
+export interface LoanRegistryApi {
+  list: () => Promise<LoanWithBalances[]>;
+  create: (input: LoanRecordInput) => Promise<LoanRecord>;
+  appendBalance: (input: LoanBalanceInput) => Promise<LoanBalanceSnapshot>;
+}
+
 export interface BudgetApi {
   dashboard: DashboardApi;
   accounts: AccountsApi;
@@ -204,6 +215,7 @@ export interface BudgetApi {
   accountCoverage: AccountCoverageApi;
   exchangeRates: ExchangeRatesApi;
   propertyRegistry: PropertyRegistryApi;
+  loanRegistry: LoanRegistryApi;
   backup: BackupApi;
   dialogs: FileDialogApi;
 }
@@ -346,6 +358,14 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("propertyRegistry:appendValuation", input),
     appendCorrection: (input: PropertyValuationCorrectionInput): Promise<PropertyValuationSnapshot> =>
       ipcRenderer.invoke("propertyRegistry:appendCorrection", input),
+  },
+  loanRegistry: {
+    list: (): Promise<LoanWithBalances[]> =>
+      ipcRenderer.invoke("loanRegistry:list"),
+    create: (input: LoanRecordInput): Promise<LoanRecord> =>
+      ipcRenderer.invoke("loanRegistry:create", input),
+    appendBalance: (input: LoanBalanceInput): Promise<LoanBalanceSnapshot> =>
+      ipcRenderer.invoke("loanRegistry:appendBalance", input),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

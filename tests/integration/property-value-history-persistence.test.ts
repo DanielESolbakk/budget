@@ -70,7 +70,7 @@ describe("property value history persistence", () => {
       importJobs: [],
       monthlyCategoryTargets: [],
       createdAtIso: "2026-10-03T09:00:00.000Z",
-    }).metadata.version).toBe("5");
+    }).metadata.version).toBe("6");
   });
 
   it("restores property records and valuation snapshots unchanged", () => {

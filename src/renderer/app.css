@@ -4738,3 +4738,161 @@ section[aria-label="Category Target Entry"] [role="status"] {
     justify-self: start;
   }
 }
+
+.loan-registry-section :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.loan-create-form,
+.loan-balance-form {
+  display: grid;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.loan-create-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 1rem;
+}
+
+.loan-balance-form {
+  grid-template-columns: minmax(10rem, 1fr) minmax(8rem, 1fr) auto;
+  margin-top: 0.9rem;
+}
+
+.loan-create-form label,
+.loan-balance-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.loan-create-form input,
+.loan-create-form select,
+.loan-balance-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.loan-create-form button,
+.loan-balance-form button {
+  min-height: 2.8rem;
+}
+
+.loan-record-list {
+  margin-top: 1.1rem;
+}
+
+.loan-record {
+  min-width: 0;
+  border-top: 1px solid var(--line-strong);
+  padding: 1rem 0;
+}
+
+.loan-record-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.loan-record-heading h4 {
+  min-width: 0;
+  margin: 0;
+  color: var(--paper);
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.loan-record-heading span {
+  color: var(--paper-muted);
+  font-size: 0.75rem;
+}
+
+.loan-terms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0.85rem 0 0;
+}
+
+.loan-terms div {
+  min-width: 0;
+}
+
+.loan-terms dt {
+  color: var(--paper-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.loan-terms dd {
+  margin: 0.25rem 0 0;
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.loan-balance-table-wrap {
+  max-width: 100%;
+  margin-top: 0.9rem;
+  overflow-x: auto;
+}
+
+.loan-balance-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.loan-balance-table-wrap th,
+.loan-balance-table-wrap td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.65rem 0.75rem;
+  white-space: nowrap;
+}
+
+.loan-balance-table-wrap th {
+  color: var(--paper-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.loan-balance-table-wrap td {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+
+.loan-balance-value {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+@media (max-width: 680px) {
+  .loan-create-form,
+  .loan-balance-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .loan-record-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .loan-create-form button,
+  .loan-balance-form button {
+    justify-self: start;
+  }
+
+  .loan-balance-table-wrap th,
+  .loan-balance-table-wrap td {
+    padding: 0.45rem 0.35rem;
+    font-size: 0.78rem;
+  }
+}
