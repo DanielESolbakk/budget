@@ -21,6 +21,7 @@ import {
   type MonthlyCategoryTarget,
   type PendingTransactionObservation,
   type PropertyRecord,
+  type PropertyValuationCorrection,
   type PropertyValuationSnapshot,
   type Transaction,
   type TransactionCategoryAllocation,
@@ -28,6 +29,7 @@ import {
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
 import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
 import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
+import { isPropertyValuationCorrectionMetadata } from "../../domain/propertyRecordValidation.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -352,7 +354,9 @@ function validatePropertyValuations(
   snapshotPath: string
 ): asserts value is PropertyValuationSnapshot[] {
   const valuationIds = new Set<string>();
+  const valuationsById = new Map<string, PropertyValuationSnapshot>();
   for (const valuation of value) {
+    const correctionValue = isRecord(valuation) ? valuation.correction : undefined;
     if (
       !isRecord(valuation) ||
       !isNonEmptyString(valuation.id) ||
@@ -366,11 +370,53 @@ function validatePropertyValuations(
       !isNonEmptyString(valuation.recordedAtIso) ||
       !valuation.recordedAtIso.includes("T") ||
       Number.isNaN(Date.parse(valuation.recordedAtIso)) ||
-      valuationIds.has(valuation.id)
+      valuationIds.has(valuation.id) ||
+      (correctionValue !== undefined && !isPropertyValuationCorrectionMetadata(correctionValue))
     ) {
       invalidSnapshot(snapshotPath, "property valuations");
     }
     valuationIds.add(valuation.id);
+    const correction: PropertyValuationCorrection | undefined = correctionValue === undefined
+      ? undefined
+      : {
+          action: correctionValue.action,
+          targetValuationId: correctionValue.targetValuationId,
+        };
+    valuationsById.set(valuation.id, {
+      id: valuation.id,
+      propertyId: valuation.propertyId,
+      effectiveDateIso: valuation.effectiveDateIso,
+      amountMinor: valuation.amountMinor,
+      currencyCode: valuation.currencyCode,
+      recordedAtIso: valuation.recordedAtIso,
+      ...(correction === undefined ? {} : { correction }),
+    });
+  }
+
+  const correctedValuationIds = new Set<string>();
+  for (const valuation of valuationsById.values()) {
+    const correction = valuation.correction;
+    if (correction === undefined) continue;
+
+    const target = valuationsById.get(correction.targetValuationId);
+    if (
+      target === undefined ||
+      target.propertyId !== valuation.propertyId ||
+      target.id === valuation.id ||
+      target.correction?.action === "void" ||
+      correctedValuationIds.has(target.id)
+    ) {
+      invalidSnapshot(snapshotPath, "property valuation corrections");
+    }
+    if (
+      correction.action === "void" &&
+      (valuation.effectiveDateIso !== target.effectiveDateIso ||
+        valuation.amountMinor !== target.amountMinor ||
+        valuation.currencyCode !== target.currencyCode)
+    ) {
+      invalidSnapshot(snapshotPath, "voided property valuation value");
+    }
+    correctedValuationIds.add(target.id);
   }
 }
 
@@ -406,6 +452,7 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version !== "1" &&
     metadata.version !== "2" &&
     metadata.version !== "3" &&
+    metadata.version !== "4" &&
     metadata.version !== SNAPSHOT_VERSION
   ) {
     throw new Error(
@@ -448,7 +495,9 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   const propertyValuations = value.propertyValuations === undefined
     ? []
     : value.propertyValuations;
-  const hasCoverageCollections = metadata.version === "3" || metadata.version === SNAPSHOT_VERSION;
+  const hasCoverageCollections =
+    metadata.version === "3" || metadata.version === "4" || metadata.version === SNAPSHOT_VERSION;
+  const hasPropertyCollections = metadata.version === "4" || metadata.version === SNAPSHOT_VERSION;
   if (
     !Array.isArray(accountStatementCoveragePeriods) ||
     !Array.isArray(accountBalanceCheckpoints) ||
@@ -459,7 +508,7 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
       (value.accountStatementCoveragePeriods === undefined ||
         value.accountBalanceCheckpoints === undefined ||
         value.exchangeRates === undefined)) ||
-    (metadata.version === SNAPSHOT_VERSION &&
+    (hasPropertyCollections &&
       (value.properties === undefined || value.propertyValuations === undefined))
   ) {
     throw new Error(`Invalid snapshot registry, account coverage, or exchange-rate collections: ${snapshotPath}`);

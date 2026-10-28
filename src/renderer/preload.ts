@@ -28,8 +28,10 @@ import type {
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
   PendingTransactionObservation,
+  PropertyLabelUpdateInput,
   PropertyRecord,
   PropertyRecordInput,
+  PropertyValuationCorrectionInput,
   PropertyValuationInput,
   PropertyValuationSnapshot,
   PropertyWithValuations,
@@ -183,7 +185,9 @@ export interface BackupApi {
 export interface PropertyRegistryApi {
   list: () => Promise<PropertyWithValuations[]>;
   create: (input: PropertyRecordInput) => Promise<PropertyRecord>;
+  renameProperty: (input: PropertyLabelUpdateInput) => Promise<PropertyRecord>;
   appendValuation: (input: PropertyValuationInput) => Promise<PropertyValuationSnapshot>;
+  appendCorrection: (input: PropertyValuationCorrectionInput) => Promise<PropertyValuationSnapshot>;
 }
 
 export interface BudgetApi {
@@ -336,8 +340,12 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("propertyRegistry:list"),
     create: (input: PropertyRecordInput): Promise<PropertyRecord> =>
       ipcRenderer.invoke("propertyRegistry:create", input),
+    renameProperty: (input: PropertyLabelUpdateInput): Promise<PropertyRecord> =>
+      ipcRenderer.invoke("propertyRegistry:rename", input),
     appendValuation: (input: PropertyValuationInput): Promise<PropertyValuationSnapshot> =>
       ipcRenderer.invoke("propertyRegistry:appendValuation", input),
+    appendCorrection: (input: PropertyValuationCorrectionInput): Promise<PropertyValuationSnapshot> =>
+      ipcRenderer.invoke("propertyRegistry:appendCorrection", input),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

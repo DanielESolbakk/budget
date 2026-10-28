@@ -51,6 +51,31 @@ export interface PropertyValuationInput {
   currencyCode: string;
 }
 
+export interface PropertyLabelUpdateInput {
+  propertyId: string;
+  label: string;
+}
+
+export type PropertyValuationCorrectionInput =
+  | {
+      action: "supersede";
+      propertyId: string;
+      targetValuationId: string;
+      effectiveDateIso: string;
+      amountMinor: number;
+      currencyCode: CurrencyCode;
+    }
+  | {
+      action: "void";
+      propertyId: string;
+      targetValuationId: string;
+    };
+
+export interface PropertyValuationCorrection {
+  action: "supersede" | "void";
+  targetValuationId: string;
+}
+
 export interface PropertyRecord {
   id: string;
   householdId: string;
@@ -65,6 +90,7 @@ export interface PropertyValuationSnapshot {
   amountMinor: number;
   currencyCode: CurrencyCode;
   recordedAtIso: string;
+  correction?: PropertyValuationCorrection;
 }
 
 export interface PropertyWithValuations extends PropertyRecord {

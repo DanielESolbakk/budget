@@ -129,7 +129,9 @@ import {
   type TransactionCategoryAllocation,
 } from "../src/domain/types.js";
 import {
+  validatePropertyLabelUpdateInput,
   validatePropertyRecordInput,
+  validatePropertyValuationCorrectionInput,
   validatePropertyValuationInput,
 } from "../src/domain/propertyRecordValidation.js";
 
@@ -1138,11 +1140,29 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle(
+    "propertyRegistry:rename",
+    (event, input: unknown): Promise<PropertyRecord> => {
+      assertTrustedRenderer(event);
+      const validated = validatePropertyLabelUpdateInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.renameProperty(validated));
+    }
+  );
+
+  ipcMain.handle(
     "propertyRegistry:appendValuation",
     (event, input: unknown): Promise<PropertyValuationSnapshot> => {
       assertTrustedRenderer(event);
       const validated = validatePropertyValuationInput(input);
       return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.appendValuation(validated));
+    }
+  );
+
+  ipcMain.handle(
+    "propertyRegistry:appendCorrection",
+    (event, input: unknown): Promise<PropertyValuationSnapshot> => {
+      assertTrustedRenderer(event);
+      const validated = validatePropertyValuationCorrectionInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.appendCorrection(validated));
     }
   );
 

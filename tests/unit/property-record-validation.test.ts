@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   validatePropertyRecordInput,
+  validatePropertyValuationCorrectionInput,
   validatePropertyValuationInput,
 } from "../../src/domain/propertyRecordValidation.js";
 
@@ -70,5 +71,38 @@ describe("property valuation validation", () => {
         currencyCode: "NOKK",
       })
     ).toThrow();
+  });
+});
+
+describe("property valuation correction validation", () => {
+  it("accepts a superseding entry that retains its target and replacement value", () => {
+    const input = {
+      action: "supersede",
+      propertyId: "property-home",
+      targetValuationId: "valuation-home-original",
+      effectiveDateIso: "2026-10-01",
+      amountMinor: 480_000_000,
+      currencyCode: "NOK",
+    };
+
+    expect(validatePropertyValuationCorrectionInput(input)).toEqual(input);
+  });
+
+  it("accepts a void entry without replacement amount fields", () => {
+    const input = {
+      action: "void",
+      propertyId: "property-home",
+      targetValuationId: "valuation-home-original",
+    };
+
+    expect(validatePropertyValuationCorrectionInput(input)).toEqual(input);
+  });
+
+  it("rejects a correction without a target valuation", () => {
+    expect(() => validatePropertyValuationCorrectionInput({
+      action: "void",
+      propertyId: "property-home",
+      targetValuationId: " ",
+    })).toThrow();
   });
 });

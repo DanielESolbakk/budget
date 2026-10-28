@@ -69,6 +69,13 @@ Use the following locked stack unless superseded by a later ADR:
 - The registry must not automatically fetch external valuations, quotes, or exchange rates, and must not introduce any outbound request for valuation workflows.
 - Existing user-initiated import/export boundaries and no-network verification remain unchanged; a missing exchange rate never changes a recorded property amount or currency.
 
+### Append-Only Valuation Corrections
+
+- Correcting a property valuation appends a superseding or void record that references one active valuation; it never edits or deletes the target snapshot.
+- A superseding record carries the replacement effective date, amount, and currency. A void record retains the target's original date, amount, and currency for audit history.
+- Local persistence and backup snapshots preserve correction links. Existing snapshots without correction metadata remain readable.
+- Correction workflows remain local-only and do not fetch valuation data, quotes, or exchange rates.
+
 ## Testing Implications
 
 - Unit tests for parser adapters, merchant normalization, rule evaluation, and forecasting logic

@@ -25,7 +25,7 @@ const PRIMARY_WORKSPACES: Array<{ id: PrimaryWorkspaceId; label: string; descrip
   { id: "review", label: "Review", description: "Monthly position" },
   { id: "activity", label: "Activity", description: "Ledger, pending and imports" },
   { id: "accounts", label: "Accounts", description: "Statements and balances" },
-  { id: "household", label: "Household", description: "Rates and data safety" },
+  { id: "household", label: "Household", description: "Rates, property values, and data safety" },
 ];
 
 function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {

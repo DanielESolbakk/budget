@@ -13,10 +13,10 @@ import type {
   Transaction,
 } from "../types.js";
 
-/** Snapshot format version – increment when the schema changes in a breaking way. */
-export const SNAPSHOT_VERSION = "4" as const;
+/** Snapshot format version – increment when the serialized recovery contract changes. */
+export const SNAPSHOT_VERSION = "5" as const;
 
-export type SnapshotVersion = "1" | "2" | "3" | typeof SNAPSHOT_VERSION;
+export type SnapshotVersion = "1" | "2" | "3" | "4" | typeof SNAPSHOT_VERSION;
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {

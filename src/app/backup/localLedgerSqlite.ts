@@ -29,6 +29,7 @@ import {
 } from "../../domain/ledger/filterTransactions.js";
 import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
 import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
+import { validatePropertyValuationCorrectionMetadata } from "../../domain/propertyRecordValidation.js";
 import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
@@ -105,6 +106,7 @@ export interface LocalLedgerDatabase {
   upsertExchangeRates: (rates: ExchangeRate[]) => void;
   listExchangeRates: (currencyCode?: string) => ExchangeRate[];
   createPropertyRecord: (property: PropertyRecord) => void;
+  updatePropertyRecordLabel: (propertyId: string, label: string) => void;
   listPropertyRecords: (householdId: string) => PropertyRecord[];
   appendPropertyValuationSnapshot: (valuation: PropertyValuationSnapshot) => void;
   listPropertyValuationSnapshots: (propertyId: string) => PropertyValuationSnapshot[];
@@ -637,7 +639,8 @@ function ensureSchema(db: DatabaseSync): void {
       effective_date_iso TEXT NOT NULL,
       amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),
       currency_code TEXT NOT NULL,
-      recorded_at_iso TEXT NOT NULL
+      recorded_at_iso TEXT NOT NULL,
+      correction_json TEXT
     );
 
     CREATE INDEX IF NOT EXISTS property_valuations_by_property_date
@@ -737,6 +740,13 @@ function ensureSchema(db: DatabaseSync): void {
       PRIMARY KEY (import_job_id, transaction_id)
     );
   `);
+
+  const propertyValuationColumns = db
+    .prepare("PRAGMA table_info(property_valuation_snapshots)")
+    .all() as Array<{ name: string }>;
+  if (!propertyValuationColumns.some((column) => column.name === "correction_json")) {
+    db.exec("ALTER TABLE property_valuation_snapshots ADD COLUMN correction_json TEXT");
+  }
 
   const pendingObservationColumns = db
     .prepare("PRAGMA table_info(pending_transaction_observations)")
@@ -883,8 +893,8 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
 
   const insertPropertyValuation = db.prepare(`
     INSERT INTO property_valuation_snapshots (
-      id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
-    ) VALUES (?, ?, ?, ?, ?, ?)
+      id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso, correction_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   for (const valuation of snapshot.propertyValuations ?? []) {
     insertPropertyValuation.run(
@@ -893,7 +903,8 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       valuation.effectiveDateIso,
       valuation.amountMinor,
       valuation.currencyCode,
-      valuation.recordedAtIso
+      valuation.recordedAtIso,
+      valuation.correction === undefined ? null : JSON.stringify(valuation.correction)
     );
   }
 
@@ -1540,6 +1551,17 @@ export function createLocalLedgerDatabase(
     ).run(property.id, property.householdId, property.label, property.createdAtIso);
   }
 
+  function updatePropertyRecordLabel(propertyId: string, label: string): void {
+    if (propertyId.trim().length === 0 || label.trim().length === 0) {
+      throw new Error("Property label update is invalid.");
+    }
+    const result = db.prepare("UPDATE properties SET label = ? WHERE id = ?")
+      .run(label.trim(), propertyId);
+    if (Number(result.changes) !== 1) {
+      throw new Error(`Property not found: ${propertyId}`);
+    }
+  }
+
   function listPropertyRecords(householdId: string): PropertyRecord[] {
     return db.prepare(`
       SELECT id, household_id, label, created_at_iso
@@ -1567,6 +1589,9 @@ export function createLocalLedgerDatabase(
       /^\d{4}-\d{2}-\d{2}$/.test(value) &&
       !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) &&
       new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+    const correction = valuation.correction === undefined
+      ? undefined
+      : validatePropertyValuationCorrectionMetadata(valuation.correction);
     if (
       valuation.id.trim().length === 0 ||
       valuation.propertyId.trim().length === 0 ||
@@ -1584,23 +1609,70 @@ export function createLocalLedgerDatabase(
     ) {
       throw new Error(`Property not found for valuation: ${valuation.propertyId}`);
     }
+
+    if (correction !== undefined) {
+      const target = db.prepare(`
+        SELECT id, effective_date_iso, amount_minor, currency_code, correction_json
+        FROM property_valuation_snapshots
+        WHERE id = ? AND property_id = ?
+      `).get(correction.targetValuationId, valuation.propertyId) as {
+        id: string;
+        effective_date_iso: string;
+        amount_minor: number;
+        currency_code: string;
+        correction_json: string | null;
+      } | undefined;
+      if (target === undefined) {
+        throw new Error(`Property valuation not found: ${correction.targetValuationId}`);
+      }
+
+      const targetCorrection = target.correction_json === null
+        ? undefined
+        : validatePropertyValuationCorrectionMetadata(JSON.parse(target.correction_json) as unknown);
+      if (targetCorrection?.action === "void") {
+        throw new Error(`A void record cannot be corrected: ${correction.targetValuationId}`);
+      }
+
+      const existingCorrections = db.prepare(`
+        SELECT correction_json
+        FROM property_valuation_snapshots
+        WHERE property_id = ? AND correction_json IS NOT NULL
+      `).all(valuation.propertyId) as Array<{ correction_json: string }>;
+      if (existingCorrections.some((row) =>
+        validatePropertyValuationCorrectionMetadata(JSON.parse(row.correction_json) as unknown)
+          .targetValuationId === correction.targetValuationId
+      )) {
+        throw new Error(`Property valuation has already been corrected: ${correction.targetValuationId}`);
+      }
+      if (
+        correction.action === "void" &&
+        (valuation.effectiveDateIso !== target.effective_date_iso ||
+          valuation.amountMinor !== target.amount_minor ||
+          valuation.currencyCode !== target.currency_code)
+      ) {
+        throw new Error("A void record must preserve the target valuation's original value.");
+      }
+    }
+
     db.prepare(`
       INSERT INTO property_valuation_snapshots (
-        id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso, correction_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
       valuation.id,
       valuation.propertyId,
       valuation.effectiveDateIso,
       valuation.amountMinor,
       valuation.currencyCode,
-      valuation.recordedAtIso
+      valuation.recordedAtIso,
+      correction === undefined ? null : JSON.stringify(correction)
     );
   }
 
   function listPropertyValuationSnapshots(propertyId: string): PropertyValuationSnapshot[] {
     return db.prepare(`
-      SELECT id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      SELECT id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso,
+        correction_json
       FROM property_valuation_snapshots
       WHERE property_id = ?
       ORDER BY effective_date_iso, recorded_at_iso, id
@@ -1612,7 +1684,11 @@ export function createLocalLedgerDatabase(
         amount_minor: number;
         currency_code: string;
         recorded_at_iso: string;
+        correction_json: string | null;
       };
+      const correction = valuation.correction_json === null
+        ? undefined
+        : validatePropertyValuationCorrectionMetadata(JSON.parse(valuation.correction_json) as unknown);
       return {
         id: valuation.id,
         propertyId: valuation.property_id,
@@ -1620,6 +1696,7 @@ export function createLocalLedgerDatabase(
         amountMinor: valuation.amount_minor,
         currencyCode: valuation.currency_code,
         recordedAtIso: valuation.recorded_at_iso,
+        ...(correction === undefined ? {} : { correction }),
       };
     });
   }
@@ -1843,7 +1920,8 @@ export function createLocalLedgerDatabase(
       };
     });
     const propertyValuations = db.prepare(`
-      SELECT id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      SELECT id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso,
+        correction_json
       FROM property_valuation_snapshots
       ORDER BY property_id, effective_date_iso, recorded_at_iso, id
     `).all().map((row) => {
@@ -1854,7 +1932,11 @@ export function createLocalLedgerDatabase(
         amount_minor: number;
         currency_code: string;
         recorded_at_iso: string;
+        correction_json: string | null;
       };
+      const correction = valuation.correction_json === null
+        ? undefined
+        : validatePropertyValuationCorrectionMetadata(JSON.parse(valuation.correction_json) as unknown);
       return {
         id: valuation.id,
         propertyId: valuation.property_id,
@@ -1862,6 +1944,7 @@ export function createLocalLedgerDatabase(
         amountMinor: valuation.amount_minor,
         currencyCode: valuation.currency_code,
         recordedAtIso: valuation.recorded_at_iso,
+        ...(correction === undefined ? {} : { correction }),
       };
     });
 
@@ -3396,6 +3479,7 @@ export function createLocalLedgerDatabase(
     upsertExchangeRates,
     listExchangeRates,
     createPropertyRecord,
+    updatePropertyRecordLabel,
     listPropertyRecords,
     appendPropertyValuationSnapshot,
     listPropertyValuationSnapshots,

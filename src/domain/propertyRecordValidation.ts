@@ -1,5 +1,11 @@
 import { isCurrencyCode } from "./types.js";
-import type { PropertyRecordInput, PropertyValuationInput } from "./types.js";
+import type {
+  PropertyLabelUpdateInput,
+  PropertyRecordInput,
+  PropertyValuationCorrection,
+  PropertyValuationCorrectionInput,
+  PropertyValuationInput,
+} from "./types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -39,6 +45,14 @@ export function validatePropertyRecordInput(input: unknown): PropertyRecordInput
   return input;
 }
 
+export function validatePropertyLabelUpdateInput(input: unknown): PropertyLabelUpdateInput {
+  if (!isRecord(input) || typeof input.propertyId !== "string" || input.propertyId.trim().length === 0) {
+    throw new Error("Property label update must identify a property.");
+  }
+  const property = validatePropertyRecordInput({ label: input.label });
+  return { propertyId: input.propertyId, label: property.label.trim() };
+}
+
 export function validatePropertyValuationInput(input: unknown): PropertyValuationInput {
   if (!isRecord(input) || !isPropertyValuationInput(input)) {
     throw new Error("Property valuation input must be an object.");
@@ -56,4 +70,59 @@ export function validatePropertyValuationInput(input: unknown): PropertyValuatio
     throw new Error("Property valuation currencyCode must be a three-letter uppercase currency code.");
   }
   return input;
+}
+
+export function validatePropertyValuationCorrectionMetadata(
+  input: unknown
+): PropertyValuationCorrection {
+  if (!isPropertyValuationCorrectionMetadata(input)) {
+    throw new Error("Property valuation correction metadata is invalid.");
+  }
+  return {
+    action: input.action,
+    targetValuationId: input.targetValuationId,
+  };
+}
+
+export function isPropertyValuationCorrectionMetadata(
+  input: unknown
+): input is PropertyValuationCorrection {
+  return (
+    isRecord(input) &&
+    (input.action === "supersede" || input.action === "void") &&
+    typeof input.targetValuationId === "string" &&
+    input.targetValuationId.trim().length > 0
+  );
+}
+
+export function validatePropertyValuationCorrectionInput(
+  input: unknown
+): PropertyValuationCorrectionInput {
+  if (!isRecord(input) || typeof input.propertyId !== "string" || input.propertyId.trim().length === 0) {
+    throw new Error("Property valuation correction must identify a property.");
+  }
+
+  const correction = validatePropertyValuationCorrectionMetadata({
+    action: input.action,
+    targetValuationId: input.targetValuationId,
+  });
+  if (correction.action === "void") {
+    return {
+      action: "void",
+      propertyId: input.propertyId,
+      targetValuationId: correction.targetValuationId,
+    };
+  }
+
+  const valuation = validatePropertyValuationInput({
+    propertyId: input.propertyId,
+    effectiveDateIso: input.effectiveDateIso,
+    amountMinor: input.amountMinor,
+    currencyCode: input.currencyCode,
+  });
+  return {
+    action: "supersede",
+    ...valuation,
+    targetValuationId: correction.targetValuationId,
+  };
 }
