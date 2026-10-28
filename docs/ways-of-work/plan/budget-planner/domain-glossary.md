@@ -17,6 +17,18 @@ Use these terms consistently in planning docs, code, tests, and issue templates.
 | forecast assumption | An explicit input used by forecasting logic, such as recurring amounts or growth assumptions. | Must remain auditable. |
 | backup snapshot | A user-initiated exportable backup of local budgeting data for recovery. | Must avoid vendor lock-in. |
 
+## Asset Registry Terms
+
+| Term | Definition | Notes |
+| --- | --- | --- |
+| asset | Something recorded as value-bearing for the household, such as property or an investment holding. | Recording an asset does not establish legal ownership. |
+| liability | An amount the household records as owed, such as a loan or mortgage. | Household responsibility is distinct from property ownership. |
+| property | A locally labeled household asset whose value may be recorded over time. | A street address is not required; valuations are entered manually. |
+| loan/mortgage | A liability record for a loan, including a mortgage secured against property. | Recording a loan does not imply legal attribution. |
+| investment holding | An asset position, such as a fund, whose value may be recorded over time. | Holdings and their ownership shares are separate records. |
+| valuation snapshot | An append-only manually entered amount and original currency for an asset at an effective date. | Also records when the snapshot was entered as an ISO timestamp. |
+| valuation correction | An append-only record that supersedes or voids a prior valuation snapshot without deleting it. | References one active target valuation; a void record preserves its original date, amount, and currency. |
+
 ## Supporting Terms
 
 | Term | Definition | Notes |

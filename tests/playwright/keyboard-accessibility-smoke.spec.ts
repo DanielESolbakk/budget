@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures/electron.js";
 import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { PropertyRegistryPage } from "./pom/PropertyRegistryPage.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
@@ -172,6 +173,11 @@ test.describe("Keyboard accessibility smoke", () => {
     const dataSafetyTab = householdTools.getByRole("button", { name: "Data safety" });
     await expect(dataSafetyTab).toBeFocused();
     await window.keyboard.press("Enter");
+    const propertyRegistry = new PropertyRegistryPage(window);
+    await window.keyboard.press("Tab");
+    await expect(propertyRegistry.propertyLabelInput).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(propertyRegistry.addPropertyButton).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(recovery.backupPathInput).toBeFocused();
     await recovery.backupPathInput.fill(backupPath);

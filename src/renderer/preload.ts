@@ -28,6 +28,13 @@ import type {
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
   PendingTransactionObservation,
+  PropertyLabelUpdateInput,
+  PropertyRecord,
+  PropertyRecordInput,
+  PropertyValuationCorrectionInput,
+  PropertyValuationInput,
+  PropertyValuationSnapshot,
+  PropertyWithValuations,
   SameMerchantPropagationApplyRequest,
   SameMerchantPropagationPreview,
   SameMerchantPropagationPreviewRequest,
@@ -175,6 +182,14 @@ export interface BackupApi {
   restore: (input: RestoreSnapshotInput) => Promise<RestoreSnapshotResult>;
 }
 
+export interface PropertyRegistryApi {
+  list: () => Promise<PropertyWithValuations[]>;
+  create: (input: PropertyRecordInput) => Promise<PropertyRecord>;
+  renameProperty: (input: PropertyLabelUpdateInput) => Promise<PropertyRecord>;
+  appendValuation: (input: PropertyValuationInput) => Promise<PropertyValuationSnapshot>;
+  appendCorrection: (input: PropertyValuationCorrectionInput) => Promise<PropertyValuationSnapshot>;
+}
+
 export interface BudgetApi {
   dashboard: DashboardApi;
   accounts: AccountsApi;
@@ -188,6 +203,7 @@ export interface BudgetApi {
   ledger: LedgerApi;
   accountCoverage: AccountCoverageApi;
   exchangeRates: ExchangeRatesApi;
+  propertyRegistry: PropertyRegistryApi;
   backup: BackupApi;
   dialogs: FileDialogApi;
 }
@@ -318,6 +334,18 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("exchangeRate:importFromFile"),
     getMonthlyReport: (input): Promise<NokMonthlyReport> =>
       ipcRenderer.invoke("exchangeRate:monthlyReport", input),
+  },
+  propertyRegistry: {
+    list: (): Promise<PropertyWithValuations[]> =>
+      ipcRenderer.invoke("propertyRegistry:list"),
+    create: (input: PropertyRecordInput): Promise<PropertyRecord> =>
+      ipcRenderer.invoke("propertyRegistry:create", input),
+    renameProperty: (input: PropertyLabelUpdateInput): Promise<PropertyRecord> =>
+      ipcRenderer.invoke("propertyRegistry:rename", input),
+    appendValuation: (input: PropertyValuationInput): Promise<PropertyValuationSnapshot> =>
+      ipcRenderer.invoke("propertyRegistry:appendValuation", input),
+    appendCorrection: (input: PropertyValuationCorrectionInput): Promise<PropertyValuationSnapshot> =>
+      ipcRenderer.invoke("propertyRegistry:appendCorrection", input),
   },
   backup: {
     create: (outputPath: string): Promise<BackupSnapshotFileOutput> =>

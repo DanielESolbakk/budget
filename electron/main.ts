@@ -26,6 +26,7 @@ import {
 import { exportLedgerCsvToFile, type ExportCsvSummary } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
+import { createPropertyRegistry } from "../src/app/propertyRegistry.js";
 import {
   catalogBackupSnapshot,
   createPreRestoreBackupSnapshot,
@@ -112,6 +113,9 @@ import type { NokMonthlyReport } from "../src/app/dashboardApi.js";
 import {
   isCurrencyCode,
   validateMonthlyCategoryTargetInput,
+  type PropertyRecord,
+  type PropertyValuationSnapshot,
+  type PropertyWithValuations,
   type AccountBalanceCheckpoint,
   type AccountStatementCoveragePeriod,
   type Household,
@@ -124,6 +128,12 @@ import {
   type Transaction,
   type TransactionCategoryAllocation,
 } from "../src/domain/types.js";
+import {
+  validatePropertyLabelUpdateInput,
+  validatePropertyRecordInput,
+  validatePropertyValuationCorrectionInput,
+  validatePropertyValuationInput,
+} from "../src/domain/propertyRecordValidation.js";
 
 const sampleHousehold: Household = {
   id: "sample-hh",
@@ -204,6 +214,7 @@ const localLedgerDatabase = createLocalLedgerDatabase({
       }
     : {}),
 });
+const propertyRegistry = createPropertyRegistry(localLedgerDatabase);
 const learnedCategoryRules = new Map(
   localLedgerDatabase.listMerchantCategoryRules().map((rule) => [rule.merchantAlias, rule.categoryId])
 );
@@ -1116,6 +1127,44 @@ app.whenReady().then(async () => {
     if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
     ledgerGeneration += 1;
   });
+
+  ipcMain.handle("propertyRegistry:list", (event): PropertyWithValuations[] => {
+    assertTrustedRenderer(event);
+    return propertyRegistry.list();
+  });
+
+  ipcMain.handle("propertyRegistry:create", (event, input: unknown): Promise<PropertyRecord> => {
+    assertTrustedRenderer(event);
+    const validated = validatePropertyRecordInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.create(validated));
+  });
+
+  ipcMain.handle(
+    "propertyRegistry:rename",
+    (event, input: unknown): Promise<PropertyRecord> => {
+      assertTrustedRenderer(event);
+      const validated = validatePropertyLabelUpdateInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.renameProperty(validated));
+    }
+  );
+
+  ipcMain.handle(
+    "propertyRegistry:appendValuation",
+    (event, input: unknown): Promise<PropertyValuationSnapshot> => {
+      assertTrustedRenderer(event);
+      const validated = validatePropertyValuationInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.appendValuation(validated));
+    }
+  );
+
+  ipcMain.handle(
+    "propertyRegistry:appendCorrection",
+    (event, input: unknown): Promise<PropertyValuationSnapshot> => {
+      assertTrustedRenderer(event);
+      const validated = validatePropertyValuationCorrectionInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.appendCorrection(validated));
+    }
+  );
 
   ipcMain.handle("import:preflight:cancel", (event, requestId: unknown): boolean => {
     assertTrustedRenderer(event);

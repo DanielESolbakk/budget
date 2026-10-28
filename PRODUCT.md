@@ -27,6 +27,8 @@ The user opens the desktop application to review a selected month, inspect spend
 - The application uses Electron, React, TypeScript, and SQLite.
 - Supported inputs include digital PDF statements, CSV imports, and manual transaction entry.
 - The primary dashboard job is helping the user understand the selected month quickly.
+- The household can maintain locally labeled property records with manually entered, dated valuations that preserve their original amount and currency.
+- Property valuation workflows do not automatically fetch external valuations, quotes, or exchange rates.
 - Financial data remains local by default; the product does not add bank APIs, cloud sync, telemetry, analytics, or background network calls.
 - Domain terminology is household, account, transaction, category, merchant alias, categorization rule, import job, budget target, forecast assumption, and backup snapshot.
 

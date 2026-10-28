@@ -20,12 +20,16 @@ import {
   type MerchantCategoryRule,
   type MonthlyCategoryTarget,
   type PendingTransactionObservation,
+  type PropertyRecord,
+  type PropertyValuationCorrection,
+  type PropertyValuationSnapshot,
   type Transaction,
   type TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
 import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
 import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
+import { isPropertyValuationCorrectionMetadata } from "../../domain/propertyRecordValidation.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -320,6 +324,102 @@ function validateExchangeRates(value: unknown[], snapshotPath: string): asserts 
   }
 }
 
+function validateProperties(
+  value: unknown[],
+  householdId: string,
+  snapshotPath: string
+): asserts value is PropertyRecord[] {
+  const propertyIds = new Set<string>();
+  for (const property of value) {
+    if (
+      !isRecord(property) ||
+      !isNonEmptyString(property.id) ||
+      !isNonEmptyString(property.householdId) ||
+      property.householdId !== householdId ||
+      !isNonEmptyString(property.label) ||
+      !isNonEmptyString(property.createdAtIso) ||
+      !property.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(property.createdAtIso)) ||
+      propertyIds.has(property.id)
+    ) {
+      invalidSnapshot(snapshotPath, "properties");
+    }
+    propertyIds.add(property.id);
+  }
+}
+
+function validatePropertyValuations(
+  value: unknown[],
+  propertyIds: Set<string>,
+  snapshotPath: string
+): asserts value is PropertyValuationSnapshot[] {
+  const valuationIds = new Set<string>();
+  const valuationsById = new Map<string, PropertyValuationSnapshot>();
+  for (const valuation of value) {
+    const correctionValue = isRecord(valuation) ? valuation.correction : undefined;
+    if (
+      !isRecord(valuation) ||
+      !isNonEmptyString(valuation.id) ||
+      !isNonEmptyString(valuation.propertyId) ||
+      !propertyIds.has(valuation.propertyId) ||
+      !isIsoCalendarDate(valuation.effectiveDateIso) ||
+      typeof valuation.amountMinor !== "number" ||
+      !Number.isSafeInteger(valuation.amountMinor) ||
+      valuation.amountMinor < 0 ||
+      !isCurrencyCode(valuation.currencyCode) ||
+      !isNonEmptyString(valuation.recordedAtIso) ||
+      !valuation.recordedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(valuation.recordedAtIso)) ||
+      valuationIds.has(valuation.id) ||
+      (correctionValue !== undefined && !isPropertyValuationCorrectionMetadata(correctionValue))
+    ) {
+      invalidSnapshot(snapshotPath, "property valuations");
+    }
+    valuationIds.add(valuation.id);
+    const correction: PropertyValuationCorrection | undefined = correctionValue === undefined
+      ? undefined
+      : {
+          action: correctionValue.action,
+          targetValuationId: correctionValue.targetValuationId,
+        };
+    valuationsById.set(valuation.id, {
+      id: valuation.id,
+      propertyId: valuation.propertyId,
+      effectiveDateIso: valuation.effectiveDateIso,
+      amountMinor: valuation.amountMinor,
+      currencyCode: valuation.currencyCode,
+      recordedAtIso: valuation.recordedAtIso,
+      ...(correction === undefined ? {} : { correction }),
+    });
+  }
+
+  const correctedValuationIds = new Set<string>();
+  for (const valuation of valuationsById.values()) {
+    const correction = valuation.correction;
+    if (correction === undefined) continue;
+
+    const target = valuationsById.get(correction.targetValuationId);
+    if (
+      target === undefined ||
+      target.propertyId !== valuation.propertyId ||
+      target.id === valuation.id ||
+      target.correction?.action === "void" ||
+      correctedValuationIds.has(target.id)
+    ) {
+      invalidSnapshot(snapshotPath, "property valuation corrections");
+    }
+    if (
+      correction.action === "void" &&
+      (valuation.effectiveDateIso !== target.effectiveDateIso ||
+        valuation.amountMinor !== target.amountMinor ||
+        valuation.currencyCode !== target.currencyCode)
+    ) {
+      invalidSnapshot(snapshotPath, "voided property valuation value");
+    }
+    correctedValuationIds.add(target.id);
+  }
+}
+
 function validateMerchantCategoryRules(
   value: unknown,
   snapshotPath: string
@@ -348,7 +448,13 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   }
 
   const metadata = value.metadata;
-  if (metadata.version !== "1" && metadata.version !== "2" && metadata.version !== SNAPSHOT_VERSION) {
+  if (
+    metadata.version !== "1" &&
+    metadata.version !== "2" &&
+    metadata.version !== "3" &&
+    metadata.version !== "4" &&
+    metadata.version !== SNAPSHOT_VERSION
+  ) {
     throw new Error(
       `Unsupported snapshot version: ${String(metadata.version ?? "unknown")}. Expected: ${SNAPSHOT_VERSION}`
     );
@@ -385,16 +491,27 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     ? []
     : value.accountBalanceCheckpoints;
   const exchangeRates = value.exchangeRates === undefined ? [] : value.exchangeRates;
+  const properties = value.properties === undefined ? [] : value.properties;
+  const propertyValuations = value.propertyValuations === undefined
+    ? []
+    : value.propertyValuations;
+  const hasCoverageCollections =
+    metadata.version === "3" || metadata.version === "4" || metadata.version === SNAPSHOT_VERSION;
+  const hasPropertyCollections = metadata.version === "4" || metadata.version === SNAPSHOT_VERSION;
   if (
     !Array.isArray(accountStatementCoveragePeriods) ||
     !Array.isArray(accountBalanceCheckpoints) ||
     !Array.isArray(exchangeRates) ||
-    (metadata.version === SNAPSHOT_VERSION &&
+    !Array.isArray(properties) ||
+    !Array.isArray(propertyValuations) ||
+    (hasCoverageCollections &&
       (value.accountStatementCoveragePeriods === undefined ||
         value.accountBalanceCheckpoints === undefined ||
-        value.exchangeRates === undefined))
+        value.exchangeRates === undefined)) ||
+    (hasPropertyCollections &&
+      (value.properties === undefined || value.propertyValuations === undefined))
   ) {
-    throw new Error(`Invalid snapshot account coverage or exchange-rate collections: ${snapshotPath}`);
+    throw new Error(`Invalid snapshot registry, account coverage, or exchange-rate collections: ${snapshotPath}`);
   }
 
   if (
@@ -414,6 +531,12 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   const accountIds = new Set(accounts.map((account) => account.id));
   const accountCurrencies = new Map(
     accounts.map((account) => [account.id, account.currencyCode] as const)
+  );
+  validateProperties(properties, value.household.id, snapshotPath);
+  validatePropertyValuations(
+    propertyValuations,
+    new Set(properties.map((property) => property.id)),
+    snapshotPath
   );
   validateTargets(monthlyCategoryTargets, snapshotPath);
   if (metadata.version !== "1") {
@@ -452,6 +575,8 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     accountStatementCoveragePeriods,
     accountBalanceCheckpoints,
     exchangeRates,
+    properties,
+    propertyValuations,
   };
 }
 
@@ -520,6 +645,8 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     accountStatementCoveragePeriods: snapshot.accountStatementCoveragePeriods,
     accountBalanceCheckpoints: snapshot.accountBalanceCheckpoints,
     exchangeRates: snapshot.exchangeRates,
+    properties: snapshot.properties,
+    propertyValuations: snapshot.propertyValuations,
     transactionCount: snapshot.transactions.length,
   };
 }
