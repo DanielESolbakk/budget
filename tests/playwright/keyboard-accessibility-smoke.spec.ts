@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures/electron.js";
 import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { LoanRegistryPage } from "./pom/LoanRegistryPage.js";
 import { PropertyRegistryPage } from "./pom/PropertyRegistryPage.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
@@ -179,6 +180,21 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(propertyRegistry.addPropertyButton).toBeFocused();
     await window.keyboard.press("Tab");
+    const loans = new LoanRegistryPage(window);
+    for (const control of [
+      loans.labelInput,
+      loans.principalInput,
+      loans.annualInterestRateInput,
+      loans.termYearsInput,
+      loans.paymentAmountInput,
+      loans.paymentFrequencySelect,
+      loans.currencyCodeInput,
+      loans.propertySelect,
+      loans.createButton,
+    ]) {
+      await expect(control).toBeFocused();
+      await window.keyboard.press("Tab");
+    }
     await expect(recovery.backupPathInput).toBeFocused();
     await recovery.backupPathInput.fill(backupPath);
     await window.keyboard.press("Tab");

@@ -15,6 +15,7 @@ import type {
   LoanWithBalances,
   PropertyRecord,
 } from "../../domain/types.js";
+import { isCurrencyCode } from "../../domain/types.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
 
 interface LoanRegistrySectionProps {
@@ -43,6 +44,11 @@ interface FormError {
   field?: LoanRecordValidationField | LoanBalanceValidationField;
 }
 
+type LoanFieldErrors = Partial<Record<LoanRecordValidationField, string>>;
+type BalanceFieldErrors = Partial<Record<LoanBalanceValidationField, string>>;
+type FocusableField = HTMLInputElement | HTMLSelectElement;
+type FocusableFieldRefs<Field extends string> = Partial<Record<Field, FocusableField | null>>;
+
 const EMPTY_LOAN_DRAFT: LoanDraft = {
   label: "",
   principal: "",
@@ -65,6 +71,33 @@ const PAYMENT_FREQUENCY_LABELS: Record<LoanPaymentFrequency, string> = {
   monthly: "Monthly",
   quarterly: "Quarterly",
   yearly: "Yearly",
+};
+
+const LOAN_FIELD_ORDER: readonly LoanRecordValidationField[] = [
+  "label",
+  "principalMinor",
+  "annualInterestRateBasisPoints",
+  "termMonths",
+  "paymentAmountMinor",
+  "paymentFrequency",
+  "currencyCode",
+  "propertyId",
+];
+
+const BALANCE_FIELD_ORDER: readonly LoanBalanceValidationField[] = [
+  "effectiveDateIso",
+  "amountMinor",
+];
+
+const LOAN_DRAFT_VALIDATION_FIELDS: Record<keyof LoanDraft, LoanRecordValidationField> = {
+  label: "label",
+  principal: "principalMinor",
+  annualInterestRate: "annualInterestRateBasisPoints",
+  termYears: "termMonths",
+  paymentAmount: "paymentAmountMinor",
+  paymentFrequency: "paymentFrequency",
+  currencyCode: "currencyCode",
+  propertyId: "propertyId",
 };
 
 const amountFormatter = new Intl.NumberFormat("nb-NO", {
@@ -112,6 +145,10 @@ function validationError(error: unknown, fallback: string): FormError {
   return { message: errorMessage(error, fallback) };
 }
 
+function describedBy(...ids: Array<string | undefined>): string {
+  return ids.filter((id): id is string => id !== undefined).join(" ");
+}
+
 export function LoanRegistrySection({
   isActive,
   refreshRevision,
@@ -120,14 +157,20 @@ export function LoanRegistrySection({
   const [properties, setProperties] = React.useState<PropertyRecord[]>([]);
   const [loanDraft, setLoanDraft] = React.useState<LoanDraft>(EMPTY_LOAN_DRAFT);
   const [balanceDrafts, setBalanceDrafts] = React.useState<Record<string, BalanceDraft>>({});
-  const [balanceErrors, setBalanceErrors] = React.useState<Record<string, FormError>>({});
+  const [balanceErrors, setBalanceErrors] = React.useState<Record<string, BalanceFieldErrors>>({});
+  const [balanceFormErrors, setBalanceFormErrors] = React.useState<Record<string, string>>({});
   const [balanceStatuses, setBalanceStatuses] = React.useState<Record<string, string>>({});
-  const [loanError, setLoanError] = React.useState<FormError | null>(null);
+  const [loanFieldErrors, setLoanFieldErrors] = React.useState<LoanFieldErrors>({});
+  const [loanFormError, setLoanFormError] = React.useState<string | null>(null);
   const [loanStatus, setLoanStatus] = React.useState<string | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [loadError, setLoadError] = React.useState<string | null>(null);
+  const loanFieldRefs = React.useRef<FocusableFieldRefs<LoanRecordValidationField>>({});
+  const balanceFieldRefs = React.useRef<
+    Record<string, FocusableFieldRefs<LoanBalanceValidationField>>
+  >({});
 
   React.useEffect(() => {
     if (!isActive) return;
@@ -157,7 +200,13 @@ export function LoanRegistrySection({
   }, [isActive, refreshRevision, revision]);
 
   function updateLoanDraft(field: keyof LoanDraft, value: string): void {
-    setLoanError(null);
+    const validationField = LOAN_DRAFT_VALIDATION_FIELDS[field];
+    setLoanFieldErrors((current) => {
+      const next = { ...current };
+      delete next[validationField];
+      return next;
+    });
+    setLoanFormError(null);
     setLoanStatus(null);
     setLoanDraft((current) => ({ ...current, [field]: value }));
   }
@@ -165,6 +214,17 @@ export function LoanRegistrySection({
   function updateBalanceDraft(loanId: string, field: keyof BalanceDraft, value: string): void {
     setLoanStatus(null);
     setBalanceErrors((current) => {
+      const next = { ...current };
+      const nextLoanErrors = { ...(next[loanId] ?? {}) };
+      delete nextLoanErrors[field === "effectiveDateIso" ? "effectiveDateIso" : "amountMinor"];
+      if (Object.keys(nextLoanErrors).length === 0) {
+        delete next[loanId];
+      } else {
+        next[loanId] = nextLoanErrors;
+      }
+      return next;
+    });
+    setBalanceFormErrors((current) => {
       const next = { ...current };
       delete next[loanId];
       return next;
@@ -186,43 +246,59 @@ export function LoanRegistrySection({
   async function addLoan(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (isSaving || isLoading || loadError !== null) return;
-    setLoanError(null);
+    setLoanFieldErrors({});
+    setLoanFormError(null);
     setLoanStatus(null);
-    if (loanDraft.label.trim().length === 0) {
-      setLoanError({ field: "label", message: "Enter a loan label." });
-      return;
+    const fieldErrors: LoanFieldErrors = {};
+    if (loanDraft.label.trim().length === 0 || loanDraft.label.trim().length > 100) {
+      fieldErrors.label = "Enter a loan label up to 100 characters.";
     }
-
     const principalMinor = parseCurrencyAmountMinor(loanDraft.principal);
     if (principalMinor === null || principalMinor <= 0) {
-      setLoanError({
-        field: "principalMinor",
-        message: "Enter a positive principal amount with up to two decimal places.",
-      });
-      return;
+      fieldErrors.principalMinor =
+        "Enter a positive principal amount with up to two decimal places.";
     }
     const annualInterestRateBasisPoints = parseCurrencyAmountMinor(loanDraft.annualInterestRate);
-    if (annualInterestRateBasisPoints === null) {
-      setLoanError({
-        field: "annualInterestRateBasisPoints",
-        message: "Enter an annual interest rate from 0 to 100 percent.",
-      });
-      return;
+    if (
+      annualInterestRateBasisPoints === null ||
+      annualInterestRateBasisPoints < 0 ||
+      annualInterestRateBasisPoints > 10_000
+    ) {
+      fieldErrors.annualInterestRateBasisPoints =
+        "Enter an annual interest rate from 0 to 100 percent.";
     }
     const termMonths = parseTermMonths(loanDraft.termYears);
     if (termMonths === null) {
-      setLoanError({
-        field: "termMonths",
-        message: "Enter the loan term in whole years.",
-      });
-      return;
+      fieldErrors.termMonths = "Enter the loan term in whole years.";
     }
     const paymentAmountMinor = parseCurrencyAmountMinor(loanDraft.paymentAmount);
     if (paymentAmountMinor === null || paymentAmountMinor <= 0) {
-      setLoanError({
-        field: "paymentAmountMinor",
-        message: "Enter a positive payment amount with up to two decimal places.",
-      });
+      fieldErrors.paymentAmountMinor =
+        "Enter a positive payment amount with up to two decimal places.";
+    }
+    if (!isCurrencyCode(loanDraft.currencyCode)) {
+      fieldErrors.currencyCode =
+        "Enter a three-letter uppercase currency code, such as NOK or EUR.";
+    }
+    if (
+      loanDraft.propertyId.length > 0 &&
+      !properties.some((property) => property.id === loanDraft.propertyId)
+    ) {
+      fieldErrors.propertyId = "Choose an existing property or leave the loan unlinked.";
+    }
+
+    if (
+      Object.keys(fieldErrors).length > 0 ||
+      principalMinor === null ||
+      annualInterestRateBasisPoints === null ||
+      termMonths === null ||
+      paymentAmountMinor === null
+    ) {
+      setLoanFieldErrors(fieldErrors);
+      const firstInvalidField = LOAN_FIELD_ORDER.find((field) => fieldErrors[field] !== undefined);
+      if (firstInvalidField !== undefined) {
+        loanFieldRefs.current[firstInvalidField]?.focus();
+      }
       return;
     }
 
@@ -239,7 +315,7 @@ export function LoanRegistrySection({
         ...(loanDraft.propertyId.length === 0 ? {} : { propertyId: loanDraft.propertyId }),
       }, properties.map((property) => property.id));
     } catch (validationFailure: unknown) {
-      setLoanError(validationError(validationFailure, "Unable to validate the loan."));
+      setLoanFormError(validationError(validationFailure, "Unable to validate the loan.").message);
       return;
     }
 
@@ -250,7 +326,7 @@ export function LoanRegistrySection({
       setLoanStatus("Loan added. Add an actual balance to begin its history.");
       setRevision((current) => current + 1);
     } catch (saveFailure: unknown) {
-      setLoanError(validationError(saveFailure, "Unable to add the loan."));
+      setLoanFormError(validationError(saveFailure, "Unable to add the loan.").message);
     } finally {
       setIsSaving(false);
     }
@@ -263,16 +339,39 @@ export function LoanRegistrySection({
     event.preventDefault();
     if (isSaving || isLoading || loadError !== null) return;
     setLoanStatus(null);
+    setBalanceErrors((current) => {
+      const next = { ...current };
+      delete next[loan.id];
+      return next;
+    });
+    setBalanceFormErrors((current) => {
+      const next = { ...current };
+      delete next[loan.id];
+      return next;
+    });
+    setBalanceStatuses((current) => {
+      const next = { ...current };
+      delete next[loan.id];
+      return next;
+    });
     const draft = balanceDrafts[loan.id] ?? EMPTY_BALANCE_DRAFT;
+    const fieldErrors: BalanceFieldErrors = {};
+    if (draft.effectiveDateIso.trim().length === 0) {
+      fieldErrors.effectiveDateIso = "Choose the date this balance applies to.";
+    }
     const amountMinor = parseCurrencyAmountMinor(draft.amount);
-    if (amountMinor === null) {
-      setBalanceErrors((current) => ({
-        ...current,
-        [loan.id]: {
-          field: "amountMinor",
-          message: "Enter a non-negative balance with up to two decimal places.",
-        },
-      }));
+    if (amountMinor === null || amountMinor < 0) {
+      fieldErrors.amountMinor = "Enter a non-negative balance with up to two decimal places.";
+    }
+    if (
+      Object.keys(fieldErrors).length > 0 ||
+      amountMinor === null
+    ) {
+      setBalanceErrors((current) => ({ ...current, [loan.id]: fieldErrors }));
+      const firstInvalidField = BALANCE_FIELD_ORDER.find((field) => fieldErrors[field] !== undefined);
+      if (firstInvalidField !== undefined) {
+        balanceFieldRefs.current[loan.id]?.[firstInvalidField]?.focus();
+      }
       return;
     }
 
@@ -284,14 +383,31 @@ export function LoanRegistrySection({
         amountMinor,
       });
     } catch (validationFailure: unknown) {
-      setBalanceErrors((current) => ({
-        ...current,
-        [loan.id]: validationError(validationFailure, "Unable to validate the balance."),
-      }));
+      const failure = validationError(validationFailure, "Unable to validate the balance.");
+      if (failure.field === "effectiveDateIso") {
+        setBalanceErrors((current) => ({
+          ...current,
+          [loan.id]: { effectiveDateIso: failure.message },
+        }));
+        balanceFieldRefs.current[loan.id]?.effectiveDateIso?.focus();
+      } else if (failure.field === "amountMinor") {
+        setBalanceErrors((current) => ({
+          ...current,
+          [loan.id]: { amountMinor: failure.message },
+        }));
+        balanceFieldRefs.current[loan.id]?.amountMinor?.focus();
+      } else {
+        setBalanceFormErrors((current) => ({ ...current, [loan.id]: failure.message }));
+      }
       return;
     }
 
     setBalanceErrors((current) => {
+      const next = { ...current };
+      delete next[loan.id];
+      return next;
+    });
+    setBalanceFormErrors((current) => {
       const next = { ...current };
       delete next[loan.id];
       return next;
@@ -314,16 +430,31 @@ export function LoanRegistrySection({
       }));
       setRevision((current) => current + 1);
     } catch (saveFailure: unknown) {
-      setBalanceErrors((current) => ({
-        ...current,
-        [loan.id]: validationError(saveFailure, "Unable to add the loan balance."),
-      }));
+      const failure = validationError(saveFailure, "Unable to add the loan balance.");
+      if (failure.field === "effectiveDateIso") {
+        setBalanceErrors((current) => ({
+          ...current,
+          [loan.id]: { effectiveDateIso: failure.message },
+        }));
+        balanceFieldRefs.current[loan.id]?.effectiveDateIso?.focus();
+      } else if (failure.field === "amountMinor") {
+        setBalanceErrors((current) => ({
+          ...current,
+          [loan.id]: { amountMinor: failure.message },
+        }));
+        balanceFieldRefs.current[loan.id]?.amountMinor?.focus();
+      } else {
+        setBalanceFormErrors((current) => ({ ...current, [loan.id]: failure.message }));
+      }
     } finally {
       setIsSaving(false);
     }
   }
 
-  const loanErrorId = "loan-create-error";
+  const loanErrorCount = LOAN_FIELD_ORDER.filter((field) => loanFieldErrors[field] !== undefined).length;
+  const loanErrorSummary = `Fix ${loanErrorCount} highlighted ${
+    loanErrorCount === 1 ? "field" : "fields"
+  } before adding the loan.`;
 
   return (
     <section className="property-registry-section loan-registry-section" aria-label="Loan registry">
@@ -332,106 +463,260 @@ export function LoanRegistrySection({
         <p>Keep loan terms and dated actual balances separate from forecast projections.</p>
       </header>
       <form className="loan-create-form" aria-label="Add loan" onSubmit={(event) => void addLoan(event)}>
-        <label>
-          Loan label
-          <input
-            autoComplete="off"
-            aria-invalid={loanError?.field === "label" ? true : undefined}
-            aria-describedby={loanError?.field === "label" ? loanErrorId : undefined}
-            maxLength={100}
-            onChange={(event) => updateLoanDraft("label", event.currentTarget.value)}
-            value={loanDraft.label}
-          />
-        </label>
-        <label>
-          Principal amount
-          <input
-            inputMode="decimal"
-            aria-invalid={loanError?.field === "principalMinor" ? true : undefined}
-            aria-describedby={loanError?.field === "principalMinor" ? loanErrorId : undefined}
-            onChange={(event) => updateLoanDraft("principal", event.currentTarget.value)}
-            value={loanDraft.principal}
-          />
-        </label>
-        <label>
-          Annual interest rate (%)
-          <input
-            inputMode="decimal"
-            aria-invalid={loanError?.field === "annualInterestRateBasisPoints" ? true : undefined}
-            aria-describedby={loanError?.field === "annualInterestRateBasisPoints" ? loanErrorId : undefined}
-            onChange={(event) => updateLoanDraft("annualInterestRate", event.currentTarget.value)}
-            value={loanDraft.annualInterestRate}
-          />
-        </label>
-        <label>
-          Term (years)
-          <input
-            inputMode="numeric"
-            aria-invalid={loanError?.field === "termMonths" ? true : undefined}
-            aria-describedby={loanError?.field === "termMonths" ? loanErrorId : undefined}
-            onChange={(event) => updateLoanDraft("termYears", event.currentTarget.value)}
-            value={loanDraft.termYears}
-          />
-        </label>
-        <label>
-          Regular payment amount
-          <input
-            inputMode="decimal"
-            aria-invalid={loanError?.field === "paymentAmountMinor" ? true : undefined}
-            aria-describedby={loanError?.field === "paymentAmountMinor" ? loanErrorId : undefined}
-            onChange={(event) => updateLoanDraft("paymentAmount", event.currentTarget.value)}
-            value={loanDraft.paymentAmount}
-          />
-        </label>
-        <label>
-          Payment frequency
-          <select
-            aria-invalid={loanError?.field === "paymentFrequency" ? true : undefined}
-            aria-describedby={loanError?.field === "paymentFrequency" ? loanErrorId : undefined}
-            onChange={(event) => updateLoanDraft(
-              "paymentFrequency",
-              event.currentTarget.value as LoanPaymentFrequency
-            )}
-            value={loanDraft.paymentFrequency}
-          >
-            {Object.entries(PAYMENT_FREQUENCY_LABELS).map(([frequency, label]) => (
-              <option key={frequency} value={frequency}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Currency code
-          <input
-            autoCapitalize="characters"
-            aria-invalid={loanError?.field === "currencyCode" ? true : undefined}
-            aria-describedby={loanError?.field === "currencyCode" ? loanErrorId : undefined}
-            maxLength={3}
-            onChange={(event) => updateLoanDraft("currencyCode", event.currentTarget.value)}
-            value={loanDraft.currencyCode}
-          />
-        </label>
-        <label>
-          Property (optional)
-          <select
-            aria-invalid={loanError?.field === "propertyId" ? true : undefined}
-            aria-describedby={loanError?.field === "propertyId" ? loanErrorId : undefined}
-            onChange={(event) => updateLoanDraft("propertyId", event.currentTarget.value)}
-            value={loanDraft.propertyId}
-          >
-            <option value="">Unsecured</option>
-            {properties.map((property) => (
-              <option key={property.id} value={property.id}>{property.label}</option>
-            ))}
-          </select>
-        </label>
+        <p className="loan-required-note">
+          All loan details are required except the property link.
+        </p>
+        <fieldset className="loan-create-group">
+          <legend>Loan details</legend>
+          <div className="loan-create-fields">
+            <div className="loan-field">
+              <label htmlFor="loan-label">Loan label</label>
+              <input
+                id="loan-label"
+                autoComplete="off"
+                aria-required="true"
+                aria-invalid={loanFieldErrors.label !== undefined ? true : undefined}
+                aria-describedby={describedBy(
+                  "loan-label-hint",
+                  loanFieldErrors.label === undefined ? undefined : "loan-create-error-label"
+                )}
+                maxLength={100}
+                onChange={(event) => updateLoanDraft("label", event.currentTarget.value)}
+                ref={(element) => { loanFieldRefs.current.label = element; }}
+                value={loanDraft.label}
+              />
+              <span id="loan-label-hint" className="loan-field-hint">
+                Use a name you will recognize, such as Home mortgage.
+              </span>
+              {loanFieldErrors.label !== undefined && (
+                <span id="loan-create-error-label" className="loan-field-error">
+                  {loanFieldErrors.label}
+                </span>
+              )}
+            </div>
+            <div className="loan-field">
+              <label htmlFor="loan-principal">Principal amount</label>
+              <input
+                id="loan-principal"
+                inputMode="decimal"
+                aria-required="true"
+                aria-invalid={loanFieldErrors.principalMinor !== undefined ? true : undefined}
+                aria-describedby={describedBy(
+                  "loan-principal-hint",
+                  loanFieldErrors.principalMinor === undefined
+                    ? undefined
+                    : "loan-create-error-principalMinor"
+                )}
+                onChange={(event) => updateLoanDraft("principal", event.currentTarget.value)}
+                ref={(element) => { loanFieldRefs.current.principalMinor = element; }}
+                value={loanDraft.principal}
+              />
+              <span id="loan-principal-hint" className="loan-field-hint">
+                Use digits, with an optional comma or period and up to two decimal places.
+                Example: 3000000,00.
+              </span>
+              {loanFieldErrors.principalMinor !== undefined && (
+                <span id="loan-create-error-principalMinor" className="loan-field-error">
+                  {loanFieldErrors.principalMinor}
+                </span>
+              )}
+            </div>
+            <div className="loan-field">
+              <label htmlFor="loan-interest-rate">Annual interest rate (%)</label>
+              <input
+                id="loan-interest-rate"
+                inputMode="decimal"
+                aria-required="true"
+                aria-invalid={loanFieldErrors.annualInterestRateBasisPoints !== undefined
+                  ? true
+                  : undefined}
+                aria-describedby={describedBy(
+                  "loan-interest-rate-hint",
+                  loanFieldErrors.annualInterestRateBasisPoints === undefined
+                    ? undefined
+                    : "loan-create-error-annualInterestRateBasisPoints"
+                )}
+                onChange={(event) => updateLoanDraft(
+                  "annualInterestRate",
+                  event.currentTarget.value
+                )}
+                ref={(element) => {
+                  loanFieldRefs.current.annualInterestRateBasisPoints = element;
+                }}
+                value={loanDraft.annualInterestRate}
+              />
+              <span id="loan-interest-rate-hint" className="loan-field-hint">
+                Enter 0 to 100 percent, up to two decimal places. Example: 5,00.
+              </span>
+              {loanFieldErrors.annualInterestRateBasisPoints !== undefined && (
+                <span
+                  id="loan-create-error-annualInterestRateBasisPoints"
+                  className="loan-field-error"
+                >
+                  {loanFieldErrors.annualInterestRateBasisPoints}
+                </span>
+              )}
+            </div>
+            <div className="loan-field">
+              <label htmlFor="loan-term-years">Term (years)</label>
+              <input
+                id="loan-term-years"
+                inputMode="numeric"
+                aria-required="true"
+                aria-invalid={loanFieldErrors.termMonths !== undefined ? true : undefined}
+                aria-describedby={describedBy(
+                  "loan-term-years-hint",
+                  loanFieldErrors.termMonths === undefined
+                    ? undefined
+                    : "loan-create-error-termMonths"
+                )}
+                onChange={(event) => updateLoanDraft("termYears", event.currentTarget.value)}
+                ref={(element) => { loanFieldRefs.current.termMonths = element; }}
+                value={loanDraft.termYears}
+              />
+              <span id="loan-term-years-hint" className="loan-field-hint">
+                Enter whole years. Example: 25.
+              </span>
+              {loanFieldErrors.termMonths !== undefined && (
+                <span id="loan-create-error-termMonths" className="loan-field-error">
+                  {loanFieldErrors.termMonths}
+                </span>
+              )}
+            </div>
+          </div>
+        </fieldset>
+        <fieldset className="loan-create-group">
+          <legend>Payment details</legend>
+          <div className="loan-create-fields">
+            <div className="loan-field">
+              <label htmlFor="loan-payment-amount">Regular payment amount</label>
+              <input
+                id="loan-payment-amount"
+                inputMode="decimal"
+                aria-required="true"
+                aria-invalid={loanFieldErrors.paymentAmountMinor !== undefined ? true : undefined}
+                aria-describedby={describedBy(
+                  "loan-payment-amount-hint",
+                  loanFieldErrors.paymentAmountMinor === undefined
+                    ? undefined
+                    : "loan-create-error-paymentAmountMinor"
+                )}
+                onChange={(event) => updateLoanDraft("paymentAmount", event.currentTarget.value)}
+                ref={(element) => { loanFieldRefs.current.paymentAmountMinor = element; }}
+                value={loanDraft.paymentAmount}
+              />
+              <span id="loan-payment-amount-hint" className="loan-field-hint">
+                Use digits, with an optional comma or period and up to two decimal places.
+                Example: 17500,00.
+              </span>
+              {loanFieldErrors.paymentAmountMinor !== undefined && (
+                <span id="loan-create-error-paymentAmountMinor" className="loan-field-error">
+                  {loanFieldErrors.paymentAmountMinor}
+                </span>
+              )}
+            </div>
+            <div className="loan-field">
+              <label htmlFor="loan-payment-frequency">Payment frequency</label>
+              <select
+                id="loan-payment-frequency"
+                aria-required="true"
+                aria-invalid={loanFieldErrors.paymentFrequency !== undefined ? true : undefined}
+                aria-describedby={loanFieldErrors.paymentFrequency === undefined
+                  ? undefined
+                  : "loan-create-error-paymentFrequency"}
+                onChange={(event) => updateLoanDraft(
+                  "paymentFrequency",
+                  event.currentTarget.value as LoanPaymentFrequency
+                )}
+                ref={(element) => {
+                  loanFieldRefs.current.paymentFrequency = element;
+                }}
+                value={loanDraft.paymentFrequency}
+              >
+                {Object.entries(PAYMENT_FREQUENCY_LABELS).map(([frequency, label]) => (
+                  <option key={frequency} value={frequency}>{label}</option>
+                ))}
+              </select>
+              {loanFieldErrors.paymentFrequency !== undefined && (
+                <span id="loan-create-error-paymentFrequency" className="loan-field-error">
+                  {loanFieldErrors.paymentFrequency}
+                </span>
+              )}
+            </div>
+            <div className="loan-field">
+              <label htmlFor="loan-currency-code">Currency code</label>
+              <input
+                id="loan-currency-code"
+                autoCapitalize="characters"
+                aria-required="true"
+                aria-invalid={loanFieldErrors.currencyCode !== undefined ? true : undefined}
+                aria-describedby={describedBy(
+                  "loan-currency-code-hint",
+                  loanFieldErrors.currencyCode === undefined
+                    ? undefined
+                    : "loan-create-error-currencyCode"
+                )}
+                maxLength={3}
+                onChange={(event) => updateLoanDraft("currencyCode", event.currentTarget.value)}
+                ref={(element) => { loanFieldRefs.current.currencyCode = element; }}
+                value={loanDraft.currencyCode}
+              />
+              <span id="loan-currency-code-hint" className="loan-field-hint">
+                Enter a three-letter uppercase code such as NOK or EUR.
+              </span>
+              {loanFieldErrors.currencyCode !== undefined && (
+                <span id="loan-create-error-currencyCode" className="loan-field-error">
+                  {loanFieldErrors.currencyCode}
+                </span>
+              )}
+            </div>
+          </div>
+        </fieldset>
+        <fieldset className="loan-create-group">
+          <legend>Property link</legend>
+          <div className="loan-create-fields loan-create-fields-single">
+            <div className="loan-field">
+              <label htmlFor="loan-property">Property (optional)</label>
+              <select
+                id="loan-property"
+                aria-invalid={loanFieldErrors.propertyId !== undefined ? true : undefined}
+                aria-describedby={describedBy(
+                  "loan-property-hint",
+                  loanFieldErrors.propertyId === undefined
+                    ? undefined
+                    : "loan-create-error-propertyId"
+                )}
+                onChange={(event) => updateLoanDraft("propertyId", event.currentTarget.value)}
+                ref={(element) => { loanFieldRefs.current.propertyId = element; }}
+                value={loanDraft.propertyId}
+              >
+                <option value="">Unsecured</option>
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>{property.label}</option>
+                ))}
+              </select>
+              <span id="loan-property-hint" className="loan-field-hint">
+                Select a property or leave this loan unsecured.
+              </span>
+              {loanFieldErrors.propertyId !== undefined && (
+                <span id="loan-create-error-propertyId" className="loan-field-error">
+                  {loanFieldErrors.propertyId}
+                </span>
+              )}
+            </div>
+          </div>
+        </fieldset>
         <button disabled={isSaving || isLoading || loadError !== null} type="submit">
           Add loan
         </button>
       </form>
-      {loanError !== null && (
-        <p id={loanErrorId} className="property-registry-message" role="alert">
-          {loanError.message}
+      {loanErrorCount > 0 && (
+        <p className="loan-form-errors" role="alert">
+          {loanErrorSummary}
         </p>
+      )}
+      {loanFormError !== null && (
+        <p className="property-registry-message" role="alert">{loanFormError}</p>
       )}
       {loanStatus !== null && (
         <p className="property-registry-message" role="status">{loanStatus}</p>
@@ -447,90 +732,200 @@ export function LoanRegistrySection({
         loadError === null && <p className="property-registry-empty">No loans have been recorded.</p>
       ) : (
         <div className="loan-record-list">
+          <p id="loan-balance-history-guidance" className="loan-balance-history-guidance">
+            Every save adds a dated snapshot; it does not replace earlier entries. To correct one,
+            add another snapshot with the corrected amount and effective date. Both remain in
+            history, and Recorded at shows when each was entered.
+          </p>
           {loans.map((loan) => {
             const balanceDraft = balanceDrafts[loan.id] ?? EMPTY_BALANCE_DRAFT;
-            const balanceError = balanceErrors[loan.id];
+            const balanceError = balanceErrors[loan.id] ?? {};
+            const balanceFormError = balanceFormErrors[loan.id];
+            const balanceErrorCount = BALANCE_FIELD_ORDER
+              .filter((field) => balanceError[field] !== undefined).length;
+            const balanceErrorSummary = `Fix ${balanceErrorCount} highlighted ${
+              balanceErrorCount === 1 ? "field" : "fields"
+            } before adding the balance.`;
             const balanceErrorId = `loan-balance-error-${loan.id}`;
             const linkedProperty = loan.propertyId === undefined
               ? undefined
               : properties.find((property) => property.id === loan.propertyId);
+            const latestRecordedBalance = loan.balances.reduce<
+              LoanWithBalances["balances"][number] | undefined
+            >((latest, balance) => (
+              latest === undefined || balance.recordedAtIso > latest.recordedAtIso
+                ? balance
+                : latest
+            ), undefined);
             return (
               <section className="loan-record" aria-label={`Loan ${loan.label}`} key={loan.id}>
                 <div className="loan-record-heading">
                   <h4>{loan.label}</h4>
-                  <span>Actual balance history</span>
+                  <span>
+                    {latestRecordedBalance === undefined
+                      ? "No actual balance recorded."
+                      : `Most recently recorded: ${
+                        formatAmount(latestRecordedBalance.amountMinor, latestRecordedBalance.currencyCode)
+                      } · effective ${latestRecordedBalance.effectiveDateIso}`}
+                  </span>
                 </div>
-                <dl className="loan-terms">
-                  <div>
-                    <dt>Principal</dt>
-                    <dd>{formatAmount(loan.principalMinor, loan.currencyCode)}</dd>
+                <details className="loan-record-details">
+                  <summary>
+                    <span className="loan-details-summary-content">
+                      <span>Loan terms and balance history</span>
+                      <span>
+                        {loan.balances.length}{" "}
+                        {loan.balances.length === 1 ? "snapshot" : "snapshots"}
+                      </span>
+                    </span>
+                  </summary>
+                  <dl className="loan-terms">
+                    <div>
+                      <dt>Principal</dt>
+                      <dd>{formatAmount(loan.principalMinor, loan.currencyCode)}</dd>
+                    </div>
+                    <div>
+                      <dt>Annual interest rate</dt>
+                      <dd>{amountFormatter.format(loan.annualInterestRateBasisPoints / 100)}%</dd>
+                    </div>
+                    <div>
+                      <dt>Term</dt>
+                      <dd>{formatTerm(loan.termMonths)}</dd>
+                    </div>
+                    <div>
+                      <dt>Regular payment</dt>
+                      <dd>
+                        {formatAmount(loan.paymentAmountMinor, loan.currencyCode)}
+                        {" / "}
+                        {PAYMENT_FREQUENCY_LABELS[loan.paymentFrequency].toLowerCase()}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Property</dt>
+                      <dd>{linkedProperty?.label ?? "Unsecured"}</dd>
+                    </div>
+                  </dl>
+                  <div className="loan-balance-table-wrap">
+                    <table aria-label="Balance history">
+                      <thead>
+                        <tr>
+                          <th scope="col">Effective date</th>
+                          <th scope="col">Recorded at</th>
+                          <th scope="col">Actual balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loan.balances.map((balance) => (
+                          <tr key={balance.id}>
+                            <td>
+                              <time dateTime={balance.effectiveDateIso}>{balance.effectiveDateIso}</time>
+                            </td>
+                            <td>
+                              <time dateTime={balance.recordedAtIso}>
+                                {formatRecordedAt(balance.recordedAtIso)}
+                              </time>
+                            </td>
+                            <td className="loan-balance-value">
+                              {formatAmount(balance.amountMinor, balance.currencyCode)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <div>
-                    <dt>Annual interest rate</dt>
-                    <dd>{amountFormatter.format(loan.annualInterestRateBasisPoints / 100)}%</dd>
-                  </div>
-                  <div>
-                    <dt>Term</dt>
-                    <dd>{formatTerm(loan.termMonths)}</dd>
-                  </div>
-                  <div>
-                    <dt>Regular payment</dt>
-                    <dd>
-                      {formatAmount(loan.paymentAmountMinor, loan.currencyCode)}
-                      {" / "}
-                      {PAYMENT_FREQUENCY_LABELS[loan.paymentFrequency].toLowerCase()}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Property</dt>
-                    <dd>{linkedProperty?.label ?? "Unsecured"}</dd>
-                  </div>
-                </dl>
+                </details>
                 <form
                   className="loan-balance-form"
                   aria-label={`Add balance for ${loan.label}`}
                   onSubmit={(event) => void addBalance(event, loan)}
                 >
-                  <label>
-                    Effective date
+                  <div className="loan-field">
+                    <label htmlFor={`loan-balance-date-${loan.id}`}>Effective date</label>
                     <input
+                      id={`loan-balance-date-${loan.id}`}
                       type="date"
-                      aria-invalid={balanceError?.field === "effectiveDateIso" ? true : undefined}
-                      aria-describedby={balanceError?.field === "effectiveDateIso"
-                        ? balanceErrorId
-                        : undefined}
+                      aria-required="true"
+                      aria-invalid={balanceError.effectiveDateIso !== undefined ? true : undefined}
+                      aria-describedby={describedBy(
+                        `loan-balance-date-hint-${loan.id}`,
+                        "loan-balance-history-guidance",
+                        balanceError.effectiveDateIso === undefined
+                          ? undefined
+                          : `${balanceErrorId}-effectiveDateIso`
+                      )}
                       onChange={(event) => updateBalanceDraft(
                         loan.id,
                         "effectiveDateIso",
                         event.currentTarget.value
                       )}
+                      ref={(element) => {
+                        const fieldRefs = balanceFieldRefs.current[loan.id] ?? {};
+                        fieldRefs.effectiveDateIso = element;
+                        balanceFieldRefs.current[loan.id] = fieldRefs;
+                      }}
                       value={balanceDraft.effectiveDateIso}
                     />
-                  </label>
-                  <label>
-                    Current balance
+                    <span id={`loan-balance-date-hint-${loan.id}`} className="loan-field-hint">
+                      Choose the date this amount applies; Recorded at is set when you save.
+                    </span>
+                    {balanceError.effectiveDateIso !== undefined && (
+                      <span
+                        id={`${balanceErrorId}-effectiveDateIso`}
+                        className="loan-field-error"
+                      >
+                        {balanceError.effectiveDateIso}
+                      </span>
+                    )}
+                  </div>
+                  <div className="loan-field">
+                    <label htmlFor={`loan-balance-amount-${loan.id}`}>
+                      Actual balance on this date
+                    </label>
                     <input
+                      id={`loan-balance-amount-${loan.id}`}
                       inputMode="decimal"
-                      aria-invalid={balanceError?.field === "amountMinor" ? true : undefined}
-                      aria-describedby={balanceError?.field === "amountMinor"
-                        ? balanceErrorId
-                        : undefined}
+                      aria-required="true"
+                      aria-invalid={balanceError.amountMinor !== undefined ? true : undefined}
+                      aria-describedby={describedBy(
+                        `loan-balance-amount-hint-${loan.id}`,
+                        "loan-balance-history-guidance",
+                        balanceError.amountMinor === undefined
+                          ? undefined
+                          : `${balanceErrorId}-amountMinor`
+                      )}
                       onChange={(event) => updateBalanceDraft(
                         loan.id,
                         "amount",
                         event.currentTarget.value
                       )}
+                      ref={(element) => {
+                        const fieldRefs = balanceFieldRefs.current[loan.id] ?? {};
+                        fieldRefs.amountMinor = element;
+                        balanceFieldRefs.current[loan.id] = fieldRefs;
+                      }}
                       value={balanceDraft.amount}
                     />
-                  </label>
+                    <span id={`loan-balance-amount-hint-${loan.id}`} className="loan-field-hint">
+                      In {loan.currencyCode}; use digits with an optional comma or period, up to
+                      two decimal places. Example: 2995000,00.
+                    </span>
+                    {balanceError.amountMinor !== undefined && (
+                      <span id={`${balanceErrorId}-amountMinor`} className="loan-field-error">
+                        {balanceError.amountMinor}
+                      </span>
+                    )}
+                  </div>
                   <button disabled={isSaving || isLoading || loadError !== null} type="submit">
                     Add balance
                   </button>
                 </form>
-                {balanceError !== undefined && (
-                  <p id={balanceErrorId} className="property-registry-message" role="alert">
-                    {balanceError.message}
+                {balanceErrorCount > 0 && (
+                  <p className="loan-form-errors" role="alert">
+                    {balanceErrorSummary}
                   </p>
+                )}
+                {balanceFormError !== undefined && (
+                  <p className="property-registry-message" role="alert">{balanceFormError}</p>
                 )}
                 {balanceStatuses[loan.id] !== undefined && (
                   <p className="property-registry-message" role="status">
@@ -542,34 +937,6 @@ export function LoanRegistrySection({
                     No actual balances recorded. Forecasts remain separate.
                   </p>
                 )}
-                <div className="loan-balance-table-wrap">
-                  <table aria-label="Balance history">
-                    <thead>
-                      <tr>
-                        <th scope="col">Effective date</th>
-                        <th scope="col">Recorded at</th>
-                        <th scope="col">Actual balance</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {loan.balances.map((balance) => (
-                        <tr key={balance.id}>
-                          <td>
-                            <time dateTime={balance.effectiveDateIso}>{balance.effectiveDateIso}</time>
-                          </td>
-                          <td>
-                            <time dateTime={balance.recordedAtIso}>
-                              {formatRecordedAt(balance.recordedAtIso)}
-                            </time>
-                          </td>
-                          <td className="loan-balance-value">
-                            {formatAmount(balance.amountMinor, balance.currencyCode)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               </section>
             );
           })}

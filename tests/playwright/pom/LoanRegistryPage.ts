@@ -62,11 +62,30 @@ export class LoanRegistryPage {
   }
 
   balanceAmountInput(label: string): Locator {
-    return this.balanceForm(label).getByLabel("Current balance", { exact: true });
+    return this.balanceForm(label).getByLabel("Actual balance on this date", { exact: true });
   }
 
   balanceHistory(label: string): Locator {
     return this.loan(label).getByRole("table", { name: "Balance history", exact: true });
+  }
+
+  loanDetails(label: string): Locator {
+    return this.loan(label).locator("details.loan-record-details");
+  }
+
+  async expandLoanDetails(label: string): Promise<void> {
+    const details = this.loanDetails(label);
+    if (await details.getAttribute("open") === null) {
+      await details.locator("summary").click();
+    }
+  }
+
+  fieldError(field: string): Locator {
+    return this.createForm.locator(`#loan-create-error-${field}`);
+  }
+
+  balanceHistoryGuidance(): Locator {
+    return this.section.getByText(/Every save adds a dated snapshot/i);
   }
 
   balanceRow(label: string, effectiveDate: string): Locator {

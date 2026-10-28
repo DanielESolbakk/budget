@@ -86,6 +86,8 @@ test("loan terms and append-only balance history survive restart without rate fa
     amount: "9000",
   });
 
+  await loans.expandLoanDetails("Home mortgage");
+  await loans.expandLoanDetails("Personal loan");
   await expect(loans.balanceHistory("Home mortgage").getByRole("row")).toHaveCount(3);
   await expect(loans.balanceRow("Home mortgage", "2026-10-01")).toContainText("NOK");
   await expect(loans.balanceRow("Home mortgage", "2026-11-01"))
@@ -138,6 +140,8 @@ test("loan terms and append-only balance history survive restart without rate fa
     const restartedObservation = await installRendererNetworkAttemptObserver(restartedWindow);
     await new AppShellPage(restartedWindow).openWorkspace("Data safety");
     const restartedLoans = new LoanRegistryPage(restartedWindow);
+    await restartedLoans.expandLoanDetails("Home mortgage");
+    await restartedLoans.expandLoanDetails("Personal loan");
     const loansAfterRestart = await restartedWindow.evaluate(() => (
       globalThis as typeof globalThis & {
         budgetApi: { loanRegistry: { list: () => Promise<unknown[]> } };
@@ -186,14 +190,16 @@ test("loan entry shows field errors and remains keyboard reachable without mobil
   await loans.createButton.focus();
   await window.keyboard.press("Enter");
 
-  await expect(loans.section.getByRole("alert")).toContainText("loan label");
+  await expect(loans.section.getByRole("alert")).toContainText("2 highlighted fields");
   await expect(loans.labelInput).toHaveAttribute("aria-invalid", "true");
+  await expect(loans.principalInput).toHaveAttribute("aria-invalid", "true");
   await expect(loans.loan("Invalid loan")).toHaveCount(0);
 
   await loans.labelInput.fill("Invalid loan");
   await loans.createButton.focus();
   await window.keyboard.press("Enter");
-  await expect(loans.section.getByRole("alert")).toContainText("principal");
+  await expect(loans.section.getByRole("alert")).toContainText("1 highlighted field");
+  await expect(loans.labelInput).not.toHaveAttribute("aria-invalid", "true");
   await expect(loans.principalInput).toHaveAttribute("aria-invalid", "true");
   await expect(loans.loan("Invalid loan")).toHaveCount(0);
   expect(await window.evaluate(() =>
@@ -214,4 +220,145 @@ test("loan entry shows field errors and remains keyboard reachable without mobil
   expect(await window.evaluate(() =>
     document.documentElement.scrollWidth > document.documentElement.clientWidth
   )).toBe(false);
+});
+
+test("loan creation groups required terms and describes accepted input formats", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.openWorkspace("Data safety");
+  const loans = new LoanRegistryPage(window);
+
+  await expect(loans.createForm.getByRole("group", { name: "Loan details", exact: true }))
+    .toBeVisible();
+  await expect(loans.createForm.getByRole("group", { name: "Payment details", exact: true }))
+    .toBeVisible();
+  await expect(loans.createForm.getByRole("group", { name: "Property link", exact: true }))
+    .toBeVisible();
+  await expect(loans.section.getByText(
+    "All loan details are required except the property link.",
+    { exact: true }
+  )).toBeVisible();
+
+  await expect(loans.principalInput).toHaveAttribute("aria-required", "true");
+  await expect(loans.principalInput).toHaveAttribute("aria-describedby", /loan-principal-hint/);
+  await expect(loans.section.getByText(/up to two decimal places.*3000000,00/i)).toBeVisible();
+  await expect(loans.annualInterestRateInput).toHaveAttribute(
+    "aria-describedby",
+    /loan-interest-rate-hint/
+  );
+  await expect(loans.section.getByText(/0 to 100 percent.*5,00/i)).toBeVisible();
+  await expect(loans.termYearsInput).toHaveAttribute("aria-describedby", /loan-term-years-hint/);
+  await expect(loans.section.getByText(/whole years.*25/i)).toBeVisible();
+  await expect(loans.paymentAmountInput).toHaveAttribute(
+    "aria-describedby",
+    /loan-payment-amount-hint/
+  );
+  await expect(loans.currencyCodeInput).toHaveAttribute(
+    "aria-describedby",
+    /loan-currency-code-hint/
+  );
+  await expect(loans.section.getByText(/three-letter.*NOK.*EUR/i)).toBeVisible();
+  await expect(loans.propertySelect).not.toHaveAttribute("aria-required", "true");
+});
+
+test("loan submission shows every field error and focuses the first invalid input", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.openWorkspace("Data safety");
+  const loans = new LoanRegistryPage(window);
+  await loans.principalInput.fill("");
+  await loans.annualInterestRateInput.fill("");
+  await loans.termYearsInput.fill("");
+  await loans.paymentAmountInput.fill("");
+  await loans.currencyCodeInput.fill("");
+  await loans.createButton.click();
+
+  const invalidFields = [
+    ["label", loans.labelInput],
+    ["principalMinor", loans.principalInput],
+    ["annualInterestRateBasisPoints", loans.annualInterestRateInput],
+    ["termMonths", loans.termYearsInput],
+    ["paymentAmountMinor", loans.paymentAmountInput],
+    ["currencyCode", loans.currencyCodeInput],
+  ] as const;
+
+  await expect(loans.section.getByRole("alert")).toHaveCount(1);
+  for (const [field, input] of invalidFields) {
+    await expect(input).toHaveAttribute("aria-invalid", "true");
+    await expect(input).toHaveAttribute("aria-describedby", new RegExp(
+      `loan-create-error-${field}`
+    ));
+    await expect(loans.fieldError(field)).toBeVisible();
+  }
+  await expect(loans.labelInput).toBeFocused();
+  await expect(loans.loan("Invalid loan")).toHaveCount(0);
+});
+
+test("balance history explains its correction path and preserves both dated entries", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.openWorkspace("Data safety");
+  const loans = new LoanRegistryPage(window);
+  const label = "Correction test loan";
+  await loans.addLoan({
+    label,
+    principal: "3000000",
+    annualInterestRate: "5",
+    termYears: "25",
+    paymentAmount: "17500",
+    paymentFrequency: "monthly",
+    currencyCode: "NOK",
+  });
+
+  await expect(loans.balanceHistoryGuidance())
+    .toContainText(/does not replace earlier entries/i);
+  await expect(loans.balanceHistoryGuidance())
+    .toContainText(/To correct one, add another snapshot/i);
+  await expect(loans.balanceAmountInput(label)).toBeVisible();
+
+  await loans.addBalance(label, {
+    effectiveDate: "2026-10-01",
+    amount: "3000000",
+  });
+  await loans.addBalance(label, {
+    effectiveDate: "2026-10-01",
+    amount: "2995000",
+  });
+  await loans.expandLoanDetails(label);
+
+  const sameDateRows = loans.balanceHistory(label).getByRole("row")
+    .filter({ hasText: "2026-10-01" });
+  await expect(sameDateRows).toHaveCount(2);
+  const rowText = (await sameDateRows.allTextContents()).join(" ");
+  expect(rowText).toMatch(/NOK 3[\s\u00a0\u202f]000[\s\u00a0\u202f]000,00/);
+  expect(rowText).toMatch(/NOK 2[\s\u00a0\u202f]995[\s\u00a0\u202f]000,00/);
+});
+
+test("loan details collapse without hiding the next balance action", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.openWorkspace("Data safety");
+  const loans = new LoanRegistryPage(window);
+  const label = "Compact loan";
+  await loans.addLoan({
+    label,
+    principal: "10000",
+    annualInterestRate: "4",
+    termYears: "3",
+    paymentAmount: "300",
+    paymentFrequency: "monthly",
+    currencyCode: "EUR",
+  });
+
+  const details = loans.loanDetails(label);
+  await expect(details).toBeVisible();
+  await expect(details).not.toHaveAttribute("open", "");
+  await expect(loans.balanceForm(label)).toBeVisible();
+  await loans.expandLoanDetails(label);
+  await expect(loans.balanceHistory(label)).toBeVisible();
+  await expect(loans.loan(label).getByText("Principal", { exact: true })).toBeVisible();
 });

@@ -4744,26 +4744,54 @@ section[aria-label="Category Target Entry"] [role="status"] {
   outline-offset: 3px;
 }
 
-.loan-create-form,
-.loan-balance-form {
-  display: grid;
-  align-items: end;
-  gap: 0.75rem;
-}
-
 .loan-create-form {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid;
+  gap: 0.85rem;
   margin-top: 1rem;
 }
 
 .loan-balance-form {
-  grid-template-columns: minmax(10rem, 1fr) minmax(8rem, 1fr) auto;
+  display: grid;
+  align-items: end;
+  grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 1fr) auto;
+  gap: 0.75rem;
   margin-top: 0.9rem;
 }
 
-.loan-create-form label,
-.loan-balance-form label {
+.loan-required-note {
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+}
+
+.loan-create-group {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 0.75rem 0 0;
+}
+
+.loan-create-group legend {
+  padding: 0 0.4rem 0 0;
+  color: var(--paper);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.loan-create-fields {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.loan-create-fields-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.loan-field {
+  display: grid;
+  align-content: start;
   min-width: 0;
   gap: 0.4rem;
   color: var(--paper-muted);
@@ -4771,16 +4799,46 @@ section[aria-label="Category Target Entry"] [role="status"] {
   font-weight: 700;
 }
 
-.loan-create-form input,
-.loan-create-form select,
-.loan-balance-form input {
+.loan-field input,
+.loan-field select {
   width: 100%;
   min-width: 0;
+}
+
+.loan-field-hint {
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.loan-field-error,
+.loan-form-errors {
+  color: var(--error);
+}
+
+.loan-field-error {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.loan-form-errors {
+  margin: 0.75rem 0 0;
+}
+
+.loan-balance-history-guidance {
+  max-width: 70ch;
+  margin: 0.75rem 0 0;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .loan-create-form button,
 .loan-balance-form button {
   min-height: 2.8rem;
+  justify-self: start;
 }
 
 .loan-record-list {
@@ -4810,8 +4868,39 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .loan-record-heading span {
+  max-width: 60%;
   color: var(--paper-muted);
   font-size: 0.75rem;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.loan-record-details {
+  min-width: 0;
+  margin-top: 0.75rem;
+}
+
+.loan-record-details > summary {
+  min-height: 2.75rem;
+  padding: 0.55rem 0;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.loan-details-summary-content {
+  display: inline-flex;
+  width: calc(100% - 1rem);
+  vertical-align: middle;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.loan-record-details[open] > summary {
+  margin-bottom: 0.65rem;
+  color: var(--paper);
 }
 
 .loan-terms {
@@ -4875,12 +4964,26 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 @media (max-width: 680px) {
-  .loan-create-form,
+  .loan-create-fields,
   .loan-balance-form {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .loan-record-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .loan-record-heading span {
+    max-width: none;
+    text-align: left;
+  }
+
+  .loan-record-details > summary {
+    min-height: 2.75rem;
+  }
+
+  .loan-details-summary-content {
     align-items: flex-start;
     flex-direction: column;
   }
