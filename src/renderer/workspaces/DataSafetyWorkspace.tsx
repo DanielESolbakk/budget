@@ -226,7 +226,7 @@ function PropertyRegistrySection({
       {isLoading ? (
         <p className="property-registry-empty" role="status">Loading property records...</p>
       ) : properties.length === 0 ? (
-        <p className="property-registry-empty">No properties have been recorded.</p>
+        error === null && <p className="property-registry-empty">No properties have been recorded.</p>
       ) : (
         <div className="property-record-list">
           {properties.map((property) => {

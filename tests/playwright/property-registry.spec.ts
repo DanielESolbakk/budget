@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { _electron as electron } from "@playwright/test";
 import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
@@ -119,6 +120,76 @@ test("property history survives a restart without converting currency or using t
     await restartedApp.close();
   }
 });
+
+test("does not announce an empty registry when property loading fails", async ({
+  appShell,
+  databasePath,
+  window,
+}) => {
+  const database = new DatabaseSync(databasePath);
+  try {
+    database.exec("DROP TABLE properties");
+  } finally {
+    database.close();
+  }
+
+  await appShell.openWorkspace("Data safety");
+  const registry = new PropertyRegistryPage(window);
+
+  await expect(registry.errorMessage).toContainText("properties");
+  await expect(
+    registry.section.getByText("No properties have been recorded.", { exact: true })
+  ).toHaveCount(0);
+});
+
+for (const viewport of [
+  { name: "mobile", width: 390, height: 844 },
+  { name: "desktop", width: 1280, height: 800 },
+]) {
+  test(`property registry states remain reachable at ${viewport.name} size`, async ({
+    appShell,
+    window,
+  }) => {
+    await window.setViewportSize({ width: viewport.width, height: viewport.height });
+    await appShell.openWorkspace("Data safety");
+    const registry = new PropertyRegistryPage(window);
+
+    await expect(
+      registry.section.getByText("No properties have been recorded.", { exact: true })
+    ).toBeVisible();
+    expect(await window.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth
+    )).toBe(false);
+
+    await registry.addProperty("Home");
+    const home = registry.property("Home");
+    await expect(home.getByText("No valuations have been recorded.", { exact: true }))
+      .toBeVisible();
+    expect(await window.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth
+    )).toBe(false);
+
+    await registry.addValuation("Home", {
+      effectiveDate: "2026-10-01",
+      amount: "5000000",
+      currencyCode: "NOK",
+    });
+    await expect(registry.valuationRow("Home", "2026-10-01")).toContainText("NOK");
+    expect(await window.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth
+    )).toBe(false);
+
+    await registry.addValuation("Home", {
+      effectiveDate: "2026-11-01",
+      amount: "450000",
+      currencyCode: "EUR",
+    });
+    await expect(registry.valuationRow("Home", "2026-11-01")).toContainText("EUR");
+    expect(await window.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth
+    )).toBe(false);
+  });
+}
 
 test("property validation stays keyboard-operable and responsive", async ({ appShell, window }) => {
   await window.setViewportSize({ width: 390, height: 844 });

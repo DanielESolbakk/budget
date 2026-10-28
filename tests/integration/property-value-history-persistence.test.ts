@@ -246,6 +246,7 @@ describe("property value history persistence", () => {
       restored.replaceLedgerSnapshotData(snapshot);
       const [restoredProperty] = createPropertyRegistry(restored).list();
 
+      expect(restoredProperty).toMatchObject(property);
       expect(restoredProperty?.label).toBe("Home");
       expect(restoredProperty?.valuations).toHaveLength(2);
       expect(restoredProperty?.valuations).toEqual([
