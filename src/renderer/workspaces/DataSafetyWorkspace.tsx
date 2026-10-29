@@ -2,7 +2,6 @@ import React from "react";
 import { BackupSection } from "../backup/BackupSection.js";
 import { ExportSection } from "../backup/ExportSection.js";
 import { RestoreSnapshotSection } from "../dashboard/RestoreSnapshotSection.js";
-import { LoanRegistrySection } from "./LoanRegistrySection.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
 import {
   validatePropertyValuationCorrectionInput,
@@ -22,31 +21,21 @@ interface DataSafetyWorkspaceProps {
 
 export function DataSafetyWorkspace({ isActive, onRestoreSuccess }: DataSafetyWorkspaceProps): React.JSX.Element {
   const [catalogRevision, setCatalogRevision] = React.useState(0);
-  const [propertyRevision, setPropertyRevision] = React.useState(0);
 
   function refreshSnapshotCatalog(): void {
     setCatalogRevision((revision) => revision + 1);
   }
 
-  function refreshPropertyRegistry(): void {
-    setPropertyRevision((revision) => revision + 1);
-  }
-
   return (
-    <section className="destination-workspace" aria-label="Data safety workspace" hidden={!isActive}>
+    <section
+      className="destination-workspace household-workspace"
+      aria-label="Data safety workspace"
+      hidden={!isActive}
+    >
       <div className="destination-heading">
         <h2>Data safety</h2>
-        <p>Record property values and loan balances, or back up, export, and restore your local ledger.</p>
+        <p>Create a local backup, export ledger data, or restore a saved snapshot.</p>
       </div>
-      <PropertyRegistrySection
-        isActive={isActive}
-        refreshRevision={catalogRevision}
-        onPropertyRegistryChange={refreshPropertyRegistry}
-      />
-      <LoanRegistrySection
-        isActive={isActive}
-        refreshRevision={catalogRevision + propertyRevision}
-      />
       <div className="workflow-recovery-grid">
         <BackupSection onBackupSuccess={refreshSnapshotCatalog} />
         <ExportSection />
@@ -55,7 +44,6 @@ export function DataSafetyWorkspace({ isActive, onRestoreSuccess }: DataSafetyWo
           onRestoreSuccess={() => {
             onRestoreSuccess();
             refreshSnapshotCatalog();
-            refreshPropertyRegistry();
           }}
         />
       </div>
@@ -67,6 +55,7 @@ interface PropertyRegistrySectionProps {
   isActive: boolean;
   refreshRevision: number;
   onPropertyRegistryChange: () => void;
+  requestedPropertyId: string | null;
 }
 
 interface PropertyValuationDraft {
@@ -139,16 +128,21 @@ function correctionErrorMessage(error: unknown): string {
   return valuationErrorMessage(error);
 }
 
-function PropertyRegistrySection({
+export function PropertyRegistrySection({
   isActive,
   refreshRevision,
   onPropertyRegistryChange,
+  requestedPropertyId,
 }: PropertyRegistrySectionProps): React.JSX.Element {
   const [properties, setProperties] = React.useState<PropertyWithValuations[]>([]);
   const [propertyLabel, setPropertyLabel] = React.useState("");
+  const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
+  const [isCompactPropertyDetailOpen, setIsCompactPropertyDetailOpen] = React.useState(false);
   const [propertyLabelDrafts, setPropertyLabelDrafts] = React.useState<Record<string, string>>({});
   const [valuationDrafts, setValuationDrafts] = React.useState<Record<string, PropertyValuationDraft>>({});
   const [correctionDrafts, setCorrectionDrafts] = React.useState<Record<string, PropertyValuationDraft>>({});
+  const [isPropertyCreateFormOpen, setIsPropertyCreateFormOpen] = React.useState(false);
+  const [activeValuationPropertyId, setActiveValuationPropertyId] = React.useState<string | null>(null);
   const [formErrors, setFormErrors] = React.useState<Record<string, PropertyFormError>>({});
   const [formStatuses, setFormStatuses] = React.useState<Record<string, string>>({});
   const [revision, setRevision] = React.useState(0);
@@ -157,6 +151,59 @@ function PropertyRegistrySection({
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [propertyCreateError, setPropertyCreateError] = React.useState<string | null>(null);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
+  const addPropertyButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const propertyNavigationButtonRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const propertyRecordRefs = React.useRef<Record<string, HTMLElement | null>>({});
+  const recordValueButtonRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const valuationFieldRefs = React.useRef<
+    Record<string, Partial<Record<PropertyValuationDraftField, HTMLInputElement | null>>>
+  >({});
+  const restorePropertyFormFocusRef = React.useRef(false);
+  const restoreValuationFocusPropertyIdRef = React.useRef<string | null>(null);
+  const restorePropertyNavigationFocusIdRef = React.useRef<string | null>(null);
+  const focusSelectedPropertyIdRef = React.useRef<string | null>(null);
+
+  function focusPropertyRecord(propertyId: string): void {
+    const propertyRecord = propertyRecordRefs.current[propertyId] ??
+      document.getElementById(`property-record-${propertyId}`);
+    propertyRecord?.scrollIntoView({ block: "start" });
+    propertyRecord?.focus();
+  }
+
+  React.useLayoutEffect(() => {
+    if (isPropertyCreateFormOpen || !restorePropertyFormFocusRef.current) return;
+    restorePropertyFormFocusRef.current = false;
+    addPropertyButtonRef.current?.focus();
+  }, [isPropertyCreateFormOpen]);
+
+  React.useLayoutEffect(() => {
+    if (activeValuationPropertyId !== null) return;
+    const propertyId = restoreValuationFocusPropertyIdRef.current;
+    if (propertyId === null) return;
+    restoreValuationFocusPropertyIdRef.current = null;
+    const recordValueButton = recordValueButtonRefs.current[propertyId];
+    recordValueButton?.scrollIntoView({ block: "start" });
+    recordValueButton?.focus();
+  }, [activeValuationPropertyId]);
+
+  React.useLayoutEffect(() => {
+    const propertyId = focusSelectedPropertyIdRef.current;
+    if (propertyId === null || activeValuationPropertyId !== null || isPropertyCreateFormOpen) {
+      return;
+    }
+    const propertyRecord = propertyRecordRefs.current[propertyId];
+    if (propertyRecord === null || propertyRecord === undefined) return;
+    focusSelectedPropertyIdRef.current = null;
+    focusPropertyRecord(propertyId);
+  }, [activeValuationPropertyId, isPropertyCreateFormOpen, properties, selectedPropertyId]);
+
+  React.useLayoutEffect(() => {
+    if (isCompactPropertyDetailOpen) return;
+    const propertyId = restorePropertyNavigationFocusIdRef.current;
+    if (propertyId === null) return;
+    restorePropertyNavigationFocusIdRef.current = null;
+    propertyNavigationButtonRefs.current[propertyId]?.focus();
+  }, [isCompactPropertyDetailOpen]);
 
   function setFormError(key: string, value: PropertyFormError | null): void {
     setFormErrors((current) => {
@@ -189,7 +236,13 @@ function PropertyRegistrySection({
     setLoadError(null);
     window.budgetApi.propertyRegistry.list()
       .then((loadedProperties) => {
-        if (active) setProperties(loadedProperties);
+        if (!active) return;
+        setProperties(loadedProperties);
+        setSelectedPropertyId((selectedId) => (
+          selectedId !== null && loadedProperties.some((property) => property.id === selectedId)
+            ? selectedId
+            : loadedProperties[0]?.id ?? null
+        ));
       })
       .catch((loadError: unknown) => {
         if (active) setLoadError(errorMessage(loadError, "Unable to load properties."));
@@ -201,6 +254,49 @@ function PropertyRegistrySection({
       active = false;
     };
   }, [isActive, refreshRevision, revision]);
+
+  React.useEffect(() => {
+    if (
+      !isActive ||
+      requestedPropertyId === null ||
+      !properties.some((property) => property.id === requestedPropertyId)
+    ) {
+      return;
+    }
+    selectProperty(requestedPropertyId);
+  }, [isActive, properties, requestedPropertyId]);
+
+  function openPropertyCreateForm(): void {
+    setPropertyCreateError(null);
+    setStatusMessage(null);
+    setIsPropertyCreateFormOpen(true);
+  }
+
+  function selectProperty(propertyId: string): void {
+    focusSelectedPropertyIdRef.current = propertyId;
+    setSelectedPropertyId(propertyId);
+    setIsCompactPropertyDetailOpen(true);
+  }
+
+  function showPropertyList(propertyId: string): void {
+    restorePropertyNavigationFocusIdRef.current = propertyId;
+    setIsCompactPropertyDetailOpen(false);
+  }
+
+  function cancelPropertyCreateForm(): void {
+    if (isSaving) return;
+    if (
+      propertyLabel.trim().length > 0 &&
+      !window.confirm("Discard the unsaved property label?")
+    ) {
+      return;
+    }
+
+    setPropertyLabel("");
+    setPropertyCreateError(null);
+    restorePropertyFormFocusRef.current = true;
+    setIsPropertyCreateFormOpen(false);
+  }
 
   async function addProperty(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -214,11 +310,14 @@ function PropertyRegistrySection({
 
     setIsSaving(true);
     try {
-      await window.budgetApi.propertyRegistry.create({ label: propertyLabel.trim() });
+      const property = await window.budgetApi.propertyRegistry.create({ label: propertyLabel.trim() });
       setPropertyLabel("");
       setStatusMessage("Property added.");
+      focusSelectedPropertyIdRef.current = property.id;
+      selectProperty(property.id);
       onPropertyRegistryChange();
       setRevision((current) => current + 1);
+      setIsPropertyCreateFormOpen(false);
     } catch (saveError: unknown) {
       setPropertyCreateError(errorMessage(saveError, "Unable to add the property."));
     } finally {
@@ -240,6 +339,55 @@ function PropertyRegistrySection({
         [field]: value,
       },
     }));
+  }
+
+  function openValuationForm(propertyId: string): void {
+    setFormError(`valuation:${propertyId}`, null);
+    setFormStatus(`valuation:${propertyId}`, null);
+    setActiveValuationPropertyId(propertyId);
+  }
+
+  function setValuationFieldRef(
+    propertyId: string,
+    field: PropertyValuationDraftField,
+    element: HTMLInputElement | null
+  ): void {
+    const fieldRefs = valuationFieldRefs.current[propertyId] ?? {};
+    fieldRefs[field] = element;
+    valuationFieldRefs.current[propertyId] = fieldRefs;
+  }
+
+  function focusValuationError(
+    propertyId: string,
+    field: PropertyFormError["field"] | undefined
+  ): void {
+    window.requestAnimationFrame(() => {
+      const valuationField = field === "label" ? undefined : field;
+      if (valuationField !== undefined) {
+        valuationFieldRefs.current[propertyId]?.[valuationField]?.focus();
+      }
+      document.getElementById(`valuation-error-${propertyId}`)
+        ?.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  function cancelValuationForm(propertyId: string): void {
+    if (isSaving) return;
+    const draft = valuationDrafts[propertyId] ?? EMPTY_VALUATION_DRAFT;
+    const isDirty =
+      draft.effectiveDateIso.length > 0 ||
+      draft.amount.length > 0 ||
+      draft.currencyCode !== EMPTY_VALUATION_DRAFT.currencyCode;
+    if (isDirty && !window.confirm("Discard the unsaved property value?")) return;
+
+    setValuationDrafts((current) => ({
+      ...current,
+      [propertyId]: EMPTY_VALUATION_DRAFT,
+    }));
+    setFormError(`valuation:${propertyId}`, null);
+    setFormStatus(`valuation:${propertyId}`, null);
+    restoreValuationFocusPropertyIdRef.current = propertyId;
+    setActiveValuationPropertyId(null);
   }
 
   function updatePropertyLabelDraft(propertyId: string, value: string): void {
@@ -292,6 +440,7 @@ function PropertyRegistrySection({
         message: "Enter a non-negative amount with up to two decimal places.",
         field: "amount",
       });
+      focusValuationError(property.id, "amount");
       return;
     }
 
@@ -304,13 +453,18 @@ function PropertyRegistrySection({
         currencyCode: draft.currencyCode,
       });
     } catch (validationError: unknown) {
-      setFormError(feedbackKey, propertyValuationFormError(validationError));
+      const error = propertyValuationFormError(validationError);
+      setFormError(feedbackKey, error);
+      focusValuationError(property.id, error.field);
       return;
     }
 
     setIsSaving(true);
     try {
       await window.budgetApi.propertyRegistry.appendValuation(input);
+      const propertyRecord = propertyRecordRefs.current[property.id];
+      propertyRecord?.scrollIntoView({ block: "start" });
+      propertyRecord?.focus();
       setFormStatus(feedbackKey, `Valuation added for ${property.label}.`);
       setValuationDrafts((current) => ({
         ...current,
@@ -321,8 +475,13 @@ function PropertyRegistrySection({
         },
       }));
       setRevision((current) => current + 1);
+      focusSelectedPropertyIdRef.current = property.id;
+      setActiveValuationPropertyId(null);
+      window.requestAnimationFrame(() => focusPropertyRecord(property.id));
     } catch (saveError: unknown) {
-      setFormError(feedbackKey, propertyValuationFormError(saveError));
+      const error = propertyValuationFormError(saveError);
+      setFormError(feedbackKey, error);
+      focusValuationError(property.id, error.field);
     } finally {
       setIsSaving(false);
     }
@@ -443,28 +602,45 @@ function PropertyRegistrySection({
     }
   }
 
+  const activePropertyId = selectedPropertyId ?? properties[0]?.id ?? null;
+
   return (
     <section className="property-registry-section" aria-label="Property registry">
-      <header className="property-registry-heading">
-        <h3>Property registry</h3>
-        <p>Record a property label and add dated values in the currency you enter.</p>
-      </header>
-      <form className="property-create-form" aria-label="Add property" onSubmit={addProperty}>
-        <label>
-          Property label
-          <input
-            autoComplete="off"
-            aria-invalid={propertyCreateError === "Enter a property label." ? true : undefined}
-            aria-describedby={propertyCreateError === "Enter a property label."
-              ? "property-label-create-error"
-              : undefined}
-            maxLength={100}
-            onChange={(event) => setPropertyLabel(event.currentTarget.value)}
-            value={propertyLabel}
-          />
-        </label>
-        <button disabled={isSaving} type="submit">Add property</button>
-      </form>
+      {!isPropertyCreateFormOpen && (
+        <button
+          ref={addPropertyButtonRef}
+          disabled={isSaving || isLoading || loadError !== null}
+          onClick={openPropertyCreateForm}
+          type="button"
+        >
+          Add property
+        </button>
+      )}
+      {isPropertyCreateFormOpen && (
+        <form className="property-create-form" aria-label="Add property" onSubmit={addProperty}>
+          <label>
+            Property label
+            <input
+              autoComplete="off"
+              aria-invalid={propertyCreateError === "Enter a property label." ? true : undefined}
+              aria-describedby={propertyCreateError === null
+                ? undefined
+                : "property-label-create-error"}
+              aria-required="true"
+              autoFocus
+              maxLength={100}
+              onChange={(event) => setPropertyLabel(event.currentTarget.value)}
+              value={propertyLabel}
+            />
+          </label>
+          <button disabled={isSaving} type="submit">
+            {isSaving ? "Saving property..." : "Save property"}
+          </button>
+          <button disabled={isSaving} onClick={cancelPropertyCreateForm} type="button">
+            Cancel
+          </button>
+        </form>
+      )}
       {propertyCreateError !== null && (
         <p
           id="property-label-create-error"
@@ -474,10 +650,6 @@ function PropertyRegistrySection({
           {propertyCreateError}
         </p>
       )}
-      <p className="property-registry-local-note">
-        Property labels and valuations stay on this device and are included in local backup snapshots.
-        Nothing is fetched online.
-      </p>
       {statusMessage !== null && <p className="property-registry-message" role="status">{statusMessage}</p>}
       {loadError !== null && <p className="property-registry-message" role="alert">{loadError}</p>}
       {isLoading ? (
@@ -485,8 +657,32 @@ function PropertyRegistrySection({
       ) : properties.length === 0 ? (
         loadError === null && <p className="property-registry-empty">No properties have been recorded.</p>
       ) : (
-        <div className="property-record-list">
-          {properties.map((property) => {
+        <div className={`property-workspace-grid${isCompactPropertyDetailOpen
+          ? " is-compact-detail-open"
+          : ""}`}>
+          <nav className="property-record-navigation" aria-label="Property records">
+            {properties.map((property) => (
+              <button
+                key={property.id}
+                ref={(element) => { propertyNavigationButtonRefs.current[property.id] = element; }}
+                type="button"
+                aria-label={`Select property ${property.label}`}
+                aria-current={property.id === activePropertyId ? "page" : undefined}
+                onClick={() => selectProperty(property.id)}
+              >
+                <span>{property.label}</span>
+                <small>
+                  {property.valuations.length === 0
+                    ? "No values recorded"
+                    : `${property.valuations.length} ${
+                      property.valuations.length === 1 ? "valuation" : "valuations"
+                    }`}
+                </small>
+              </button>
+            ))}
+          </nav>
+          <div className="property-record-detail">
+          {properties.filter((property) => property.id === activePropertyId).map((property) => {
             const draft = valuationDrafts[property.id] ?? EMPTY_VALUATION_DRAFT;
             const labelDraft = propertyLabelDrafts[property.id] ?? property.label;
             const labelFeedbackKey = `label:${property.id}`;
@@ -508,9 +704,21 @@ function PropertyRegistrySection({
             return (
               <section
                 className="property-record"
+                id={`property-record-${property.id}`}
                 aria-label={`Property ${property.label}`}
                 key={property.id}
+                ref={(element) => { propertyRecordRefs.current[property.id] = element; }}
+                tabIndex={-1}
               >
+                {isCompactPropertyDetailOpen && (
+                  <button
+                    className="property-detail-back"
+                    onClick={() => showPropertyList(property.id)}
+                    type="button"
+                  >
+                    Back to properties
+                  </button>
+                )}
                 <div className="property-record-heading">
                   <h4>{property.label}</h4>
                   <details className="property-label-editor">
@@ -551,11 +759,12 @@ function PropertyRegistrySection({
                     </form>
                   </details>
                 </div>
-                <form
-                  className="property-valuation-form"
-                  aria-label={`Add valuation for ${property.label}`}
-                  onSubmit={(event) => void addValuation(event, property)}
-                >
+                {activeValuationPropertyId === property.id ? (
+                  <form
+                    className="property-valuation-form"
+                    aria-label={`Add valuation for ${property.label}`}
+                    onSubmit={(event) => void addValuation(event, property)}
+                  >
                   <label>
                     Effective date
                     <input
@@ -568,6 +777,11 @@ function PropertyRegistrySection({
                         property.id,
                         "effectiveDateIso",
                         event.currentTarget.value
+                      )}
+                      ref={(element) => setValuationFieldRef(
+                        property.id,
+                        "effectiveDateIso",
+                        element
                       )}
                       value={draft.effectiveDateIso}
                     />
@@ -583,6 +797,7 @@ function PropertyRegistrySection({
                         "amount",
                         event.currentTarget.value
                       )}
+                      ref={(element) => setValuationFieldRef(property.id, "amount", element)}
                       value={draft.amount}
                     />
                   </label>
@@ -600,11 +815,34 @@ function PropertyRegistrySection({
                         "currencyCode",
                         event.currentTarget.value
                       )}
+                      ref={(element) => setValuationFieldRef(
+                        property.id,
+                        "currencyCode",
+                        element
+                      )}
                       value={draft.currencyCode}
                     />
                   </label>
-                  <button disabled={isSaving} type="submit">Add valuation</button>
-                </form>
+                    <button disabled={isSaving} type="submit">
+                      {isSaving ? "Saving value..." : "Save value"}
+                    </button>
+                    <button
+                      disabled={isSaving}
+                      onClick={() => cancelValuationForm(property.id)}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    ref={(element) => { recordValueButtonRefs.current[property.id] = element; }}
+                    onClick={() => openValuationForm(property.id)}
+                    type="button"
+                  >
+                    Record value
+                  </button>
+                )}
                 {valuationError !== undefined && (
                   <p
                     id={valuationErrorId}
@@ -788,6 +1026,7 @@ function PropertyRegistrySection({
               </section>
             );
           })}
+          </div>
         </div>
       )}
     </section>

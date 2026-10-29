@@ -19,6 +19,7 @@ export interface LoanBalanceInput {
 export class LoanRegistryPage {
   readonly section: Locator;
   readonly createForm: Locator;
+  readonly addLoanButton: Locator;
   readonly labelInput: Locator;
   readonly principalInput: Locator;
   readonly annualInterestRateInput: Locator;
@@ -32,6 +33,7 @@ export class LoanRegistryPage {
   constructor(page: Page) {
     this.section = page.getByRole("region", { name: "Loan registry", exact: true });
     this.createForm = this.section.getByRole("form", { name: "Add loan", exact: true });
+    this.addLoanButton = this.section.getByRole("button", { name: "Add loan", exact: true });
     this.labelInput = this.createForm.getByLabel("Loan label", { exact: true });
     this.principalInput = this.createForm.getByLabel("Principal amount", { exact: true });
     this.annualInterestRateInput = this.createForm.getByLabel("Annual interest rate (%)", { exact: true });
@@ -46,7 +48,25 @@ export class LoanRegistryPage {
       name: "Property (optional)",
       exact: true,
     });
-    this.createButton = this.createForm.getByRole("button", { name: "Add loan", exact: true });
+    this.createButton = this.createForm.getByRole("button", { name: "Save loan", exact: true });
+  }
+
+  get loanNavigation() {
+    return this.section.getByRole("navigation", { name: "Loan records", exact: true });
+  }
+
+  get backToLoanListButton() {
+    return this.section.getByRole("button", { name: "Back to loans", exact: true });
+  }
+
+  async selectLoan(label: string): Promise<void> {
+    if (await this.loan(label).isVisible()) return;
+    if (await this.backToLoanListButton.isVisible()) {
+      await this.backToLoanListButton.click();
+    }
+    await this.loanNavigation
+      .getByRole("button", { name: `Select loan ${label}`, exact: true })
+      .click();
   }
 
   loan(label: string): Locator {
@@ -74,6 +94,7 @@ export class LoanRegistryPage {
   }
 
   async expandLoanDetails(label: string): Promise<void> {
+    await this.selectLoan(label);
     const details = this.loanDetails(label);
     if (await details.getAttribute("open") === null) {
       await details.locator("summary").click();
@@ -85,7 +106,13 @@ export class LoanRegistryPage {
   }
 
   balanceHistoryGuidance(): Locator {
-    return this.section.getByText(/Every save adds a dated snapshot/i);
+    return this.section.getByText(/Each entry stays in history/i);
+  }
+
+  async openCreateForm(): Promise<void> {
+    if (!(await this.createForm.isVisible())) {
+      await this.addLoanButton.click();
+    }
   }
 
   balanceRow(label: string, effectiveDate: string): Locator {
@@ -95,6 +122,7 @@ export class LoanRegistryPage {
   }
 
   async addLoan(input: LoanInput): Promise<void> {
+    await this.openCreateForm();
     await this.labelInput.fill(input.label);
     await this.principalInput.fill(input.principal);
     await this.annualInterestRateInput.fill(input.annualInterestRate);
@@ -109,6 +137,7 @@ export class LoanRegistryPage {
   }
 
   async addBalance(label: string, input: LoanBalanceInput): Promise<void> {
+    await this.selectLoan(label);
     const form = this.balanceForm(label);
     await this.balanceDateInput(label).fill(input.effectiveDate);
     await this.balanceAmountInput(label).fill(input.amount);

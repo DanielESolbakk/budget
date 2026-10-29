@@ -21,6 +21,7 @@ import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
 interface LoanRegistrySectionProps {
   isActive: boolean;
   refreshRevision: number;
+  onViewProperty: (propertyId: string) => void;
 }
 
 interface LoanDraft {
@@ -152,9 +153,12 @@ function describedBy(...ids: Array<string | undefined>): string {
 export function LoanRegistrySection({
   isActive,
   refreshRevision,
+  onViewProperty,
 }: LoanRegistrySectionProps): React.JSX.Element {
   const [loans, setLoans] = React.useState<LoanWithBalances[]>([]);
   const [properties, setProperties] = React.useState<PropertyRecord[]>([]);
+  const [selectedLoanId, setSelectedLoanId] = React.useState<string | null>(null);
+  const [isCompactLoanDetailOpen, setIsCompactLoanDetailOpen] = React.useState(false);
   const [loanDraft, setLoanDraft] = React.useState<LoanDraft>(EMPTY_LOAN_DRAFT);
   const [balanceDrafts, setBalanceDrafts] = React.useState<Record<string, BalanceDraft>>({});
   const [balanceErrors, setBalanceErrors] = React.useState<Record<string, BalanceFieldErrors>>({});
@@ -163,6 +167,7 @@ export function LoanRegistrySection({
   const [loanFieldErrors, setLoanFieldErrors] = React.useState<LoanFieldErrors>({});
   const [loanFormError, setLoanFormError] = React.useState<string | null>(null);
   const [loanStatus, setLoanStatus] = React.useState<string | null>(null);
+  const [isLoanFormOpen, setIsLoanFormOpen] = React.useState(false);
   const [revision, setRevision] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -171,6 +176,37 @@ export function LoanRegistrySection({
   const balanceFieldRefs = React.useRef<
     Record<string, FocusableFieldRefs<LoanBalanceValidationField>>
   >({});
+  const loanNavigationButtonRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const loanRecordRefs = React.useRef<Record<string, HTMLElement | null>>({});
+  const focusSelectedLoanIdRef = React.useRef<string | null>(null);
+  const restoreLoanNavigationFocusIdRef = React.useRef<string | null>(null);
+  const addLoanButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const restoreAddLoanFocusRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (isLoanFormOpen || !restoreAddLoanFocusRef.current) return;
+    restoreAddLoanFocusRef.current = false;
+    addLoanButtonRef.current?.focus();
+  }, [isLoanFormOpen]);
+
+  React.useLayoutEffect(() => {
+    const loanId = focusSelectedLoanIdRef.current;
+    if (loanId === null || isLoanFormOpen) return;
+    const loanRecord = loanRecordRefs.current[loanId] ??
+      document.getElementById(`loan-record-${loanId}`);
+    if (loanRecord === null || loanRecord === undefined) return;
+    focusSelectedLoanIdRef.current = null;
+    loanRecord.scrollIntoView({ block: "start" });
+    loanRecord.focus();
+  }, [isLoanFormOpen, loans, selectedLoanId]);
+
+  React.useLayoutEffect(() => {
+    if (isCompactLoanDetailOpen) return;
+    const loanId = restoreLoanNavigationFocusIdRef.current;
+    if (loanId === null) return;
+    restoreLoanNavigationFocusIdRef.current = null;
+    loanNavigationButtonRefs.current[loanId]?.focus();
+  }, [isCompactLoanDetailOpen]);
 
   React.useEffect(() => {
     if (!isActive) return;
@@ -185,6 +221,11 @@ export function LoanRegistrySection({
         if (!active) return;
         setLoans(loadedLoans);
         setProperties(loadedProperties);
+        setSelectedLoanId((selectedId) => (
+          selectedId !== null && loadedLoans.some((loan) => loan.id === selectedId)
+            ? selectedId
+            : loadedLoans[0]?.id ?? null
+        ));
       })
       .catch((loadFailure: unknown) => {
         if (active) {
@@ -241,6 +282,45 @@ export function LoanRegistrySection({
         [field]: value,
       },
     }));
+  }
+
+  function openLoanForm(): void {
+    setLoanFieldErrors({});
+    setLoanFormError(null);
+    setLoanStatus(null);
+    setIsLoanFormOpen(true);
+  }
+
+  function selectLoan(loanId: string): void {
+    focusSelectedLoanIdRef.current = loanId;
+    setSelectedLoanId(loanId);
+    setIsCompactLoanDetailOpen(true);
+  }
+
+  function showLoanList(loanId: string): void {
+    restoreLoanNavigationFocusIdRef.current = loanId;
+    setIsCompactLoanDetailOpen(false);
+  }
+
+  function cancelLoanForm(): void {
+    if (isSaving) return;
+    const hasDraft =
+      loanDraft.label.trim().length > 0 ||
+      loanDraft.principal.length > 0 ||
+      loanDraft.annualInterestRate.length > 0 ||
+      loanDraft.termYears.length > 0 ||
+      loanDraft.paymentAmount.length > 0 ||
+      loanDraft.paymentFrequency !== EMPTY_LOAN_DRAFT.paymentFrequency ||
+      loanDraft.currencyCode !== EMPTY_LOAN_DRAFT.currencyCode ||
+      loanDraft.propertyId.length > 0;
+    if (hasDraft && !window.confirm("Discard the unsaved loan details?")) return;
+
+    setLoanDraft(EMPTY_LOAN_DRAFT);
+    setLoanFieldErrors({});
+    setLoanFormError(null);
+    setLoanStatus(null);
+    restoreAddLoanFocusRef.current = true;
+    setIsLoanFormOpen(false);
   }
 
   async function addLoan(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -321,10 +401,13 @@ export function LoanRegistrySection({
 
     setIsSaving(true);
     try {
-      await window.budgetApi.loanRegistry.create(validated);
+      const loan = await window.budgetApi.loanRegistry.create(validated);
       setLoanDraft(EMPTY_LOAN_DRAFT);
       setLoanStatus("Loan added. Add an actual balance to begin its history.");
+      selectLoan(loan.id);
       setRevision((current) => current + 1);
+      restoreAddLoanFocusRef.current = true;
+      setIsLoanFormOpen(false);
     } catch (saveFailure: unknown) {
       setLoanFormError(validationError(saveFailure, "Unable to add the loan.").message);
     } finally {
@@ -455,14 +538,26 @@ export function LoanRegistrySection({
   const loanErrorSummary = `Fix ${loanErrorCount} highlighted ${
     loanErrorCount === 1 ? "field" : "fields"
   } before adding the loan.`;
+  const activeLoanId = selectedLoanId ?? loans[0]?.id ?? null;
 
   return (
     <section className="property-registry-section loan-registry-section" aria-label="Loan registry">
-      <header className="property-registry-heading">
-        <h3>Loan registry</h3>
-        <p>Keep loan terms and dated actual balances separate from forecast projections.</p>
-      </header>
-      <form className="loan-create-form" aria-label="Add loan" onSubmit={(event) => void addLoan(event)}>
+      {!isLoanFormOpen && (
+        <button
+          ref={addLoanButtonRef}
+          type="button"
+          disabled={isLoading || isSaving || loadError !== null}
+          onClick={openLoanForm}
+        >
+          Add loan
+        </button>
+      )}
+      {isLoanFormOpen && (
+        <form
+          className="loan-create-form"
+          aria-label="Add loan"
+          onSubmit={(event) => void addLoan(event)}
+        >
         <p className="loan-required-note">
           All loan details are required except the property link.
         </p>
@@ -474,6 +569,7 @@ export function LoanRegistrySection({
               <input
                 id="loan-label"
                 autoComplete="off"
+                autoFocus
                 aria-required="true"
                 aria-invalid={loanFieldErrors.label !== undefined ? true : undefined}
                 aria-describedby={describedBy(
@@ -690,13 +786,13 @@ export function LoanRegistrySection({
                 ref={(element) => { loanFieldRefs.current.propertyId = element; }}
                 value={loanDraft.propertyId}
               >
-                <option value="">Unsecured</option>
+                <option value="">No property linked</option>
                 {properties.map((property) => (
                   <option key={property.id} value={property.id}>{property.label}</option>
                 ))}
               </select>
               <span id="loan-property-hint" className="loan-field-hint">
-                Select a property or leave this loan unsecured.
+                Select a property or leave the link blank.
               </span>
               {loanFieldErrors.propertyId !== undefined && (
                 <span id="loan-create-error-propertyId" className="loan-field-error">
@@ -706,10 +802,16 @@ export function LoanRegistrySection({
             </div>
           </div>
         </fieldset>
-        <button disabled={isSaving || isLoading || loadError !== null} type="submit">
-          Add loan
-        </button>
-      </form>
+          <div className="loan-create-actions">
+            <button disabled={isSaving || isLoading || loadError !== null} type="submit">
+              {isSaving ? "Saving loan..." : "Save loan"}
+            </button>
+            <button disabled={isSaving} onClick={cancelLoanForm} type="button">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
       {loanErrorCount > 0 && (
         <p className="loan-form-errors" role="alert">
           {loanErrorSummary}
@@ -721,23 +823,45 @@ export function LoanRegistrySection({
       {loanStatus !== null && (
         <p className="property-registry-message" role="status">{loanStatus}</p>
       )}
-      <p className="property-registry-local-note">
-        Loan terms and actual balance history stay on this device and are included in local backup snapshots.
-        No rates are substituted and nothing is fetched online.
-      </p>
       {loadError !== null && <p className="property-registry-message" role="alert">{loadError}</p>}
       {isLoading ? (
         <p className="property-registry-empty" role="status">Loading loan records...</p>
       ) : loans.length === 0 ? (
         loadError === null && <p className="property-registry-empty">No loans have been recorded.</p>
       ) : (
-        <div className="loan-record-list">
-          <p id="loan-balance-history-guidance" className="loan-balance-history-guidance">
-            Every save adds a dated snapshot; it does not replace earlier entries. To correct one,
-            add another snapshot with the corrected amount and effective date. Both remain in
-            history, and Recorded at shows when each was entered.
-          </p>
-          {loans.map((loan) => {
+        <div className={`loan-workspace-grid${isCompactLoanDetailOpen
+          ? " is-compact-detail-open"
+          : ""}`}>
+          <nav className="loan-record-navigation" aria-label="Loan records">
+            {loans.map((loan) => {
+              const latestBalance = loan.balances.reduce<
+                LoanWithBalances["balances"][number] | undefined
+              >((latest, balance) => (
+                latest === undefined || balance.recordedAtIso > latest.recordedAtIso
+                  ? balance
+                  : latest
+              ), undefined);
+              return (
+                <button
+                  key={loan.id}
+                  ref={(element) => { loanNavigationButtonRefs.current[loan.id] = element; }}
+                  type="button"
+                  aria-label={`Select loan ${loan.label}`}
+                  aria-current={loan.id === activeLoanId ? "page" : undefined}
+                  onClick={() => selectLoan(loan.id)}
+                >
+                  <span>{loan.label}</span>
+                  <small>
+                    {latestBalance === undefined
+                      ? "No balance recorded"
+                      : `Last recorded: ${formatAmount(latestBalance.amountMinor, latestBalance.currencyCode)}`}
+                  </small>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="loan-record-detail">
+          {loans.filter((loan) => loan.id === activeLoanId).map((loan) => {
             const balanceDraft = balanceDrafts[loan.id] ?? EMPTY_BALANCE_DRAFT;
             const balanceError = balanceErrors[loan.id] ?? {};
             const balanceFormError = balanceFormErrors[loan.id];
@@ -758,13 +882,29 @@ export function LoanRegistrySection({
                 : latest
             ), undefined);
             return (
-              <section className="loan-record" aria-label={`Loan ${loan.label}`} key={loan.id}>
+              <section
+                className="loan-record"
+                id={`loan-record-${loan.id}`}
+                aria-label={`Loan ${loan.label}`}
+                key={loan.id}
+                ref={(element) => { loanRecordRefs.current[loan.id] = element; }}
+                tabIndex={-1}
+              >
+                {isCompactLoanDetailOpen && (
+                  <button
+                    className="loan-detail-back"
+                    onClick={() => showLoanList(loan.id)}
+                    type="button"
+                  >
+                    Back to loans
+                  </button>
+                )}
                 <div className="loan-record-heading">
                   <h4>{loan.label}</h4>
                   <span>
                     {latestRecordedBalance === undefined
-                      ? "No actual balance recorded."
-                      : `Most recently recorded: ${
+                      ? "No balance recorded."
+                      : `Last recorded balance: ${
                         formatAmount(latestRecordedBalance.amountMinor, latestRecordedBalance.currencyCode)
                       } · effective ${latestRecordedBalance.effectiveDateIso}`}
                   </span>
@@ -802,7 +942,20 @@ export function LoanRegistrySection({
                     </div>
                     <div>
                       <dt>Property</dt>
-                      <dd>{linkedProperty?.label ?? "Unsecured"}</dd>
+                      <dd>
+                        {linkedProperty === undefined ? "No property linked" : (
+                          <>
+                            {linkedProperty.label}
+                            <button
+                              className="loan-view-property"
+                              onClick={() => onViewProperty(linkedProperty.id)}
+                              type="button"
+                            >
+                              View property
+                            </button>
+                          </>
+                        )}
+                      </dd>
                     </div>
                   </dl>
                   <div className="loan-balance-table-wrap">
@@ -834,6 +987,10 @@ export function LoanRegistrySection({
                     </table>
                   </div>
                 </details>
+                <p id="loan-balance-history-guidance" className="loan-balance-history-guidance">
+                  Each entry stays in history. Add another recorded balance to capture a new amount
+                  and effective date. Recorded at shows when it was entered.
+                </p>
                 <form
                   className="loan-balance-form"
                   aria-label={`Add balance for ${loan.label}`}
@@ -940,6 +1097,7 @@ export function LoanRegistrySection({
               </section>
             );
           })}
+          </div>
         </div>
       )}
     </section>

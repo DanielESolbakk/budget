@@ -17,6 +17,243 @@ import {
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
+test("Household navigation separates property, loan, exchange-rate, and data-safety destinations", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.destination("Household").click();
+
+  const householdNavigation = window.getByRole("navigation", { name: "Household tools" });
+  for (const destination of ["Properties", "Loans", "Exchange rates", "Data safety"]) {
+    await expect(
+      householdNavigation.getByRole("button", { name: destination, exact: true })
+    ).toBeVisible();
+  }
+  await expect(
+    householdNavigation.getByRole("button", { name: "Properties", exact: true })
+  ).toHaveAttribute("aria-current", "page");
+});
+
+test("Household records and recovery tools occupy separate destinations", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.destination("Household").click();
+  const householdNavigation = window.getByRole("navigation", { name: "Household tools" });
+
+  const propertiesButton = householdNavigation.getByRole("button", {
+    name: "Properties",
+    exact: true,
+  });
+  await expect(propertiesButton).toBeVisible();
+  await propertiesButton.click();
+  await expect(window.getByRole("region", { name: "Property registry" })).toBeVisible();
+  await expect(window.getByRole("region", { name: "Loan registry" })).toHaveCount(0);
+
+  const loansButton = householdNavigation.getByRole("button", { name: "Loans", exact: true });
+  await expect(loansButton).toBeVisible();
+  await loansButton.click();
+  await expect(window.getByRole("region", { name: "Loan registry" })).toBeVisible();
+  await expect(window.getByRole("region", { name: "Property registry" })).toHaveCount(0);
+
+  const dataSafetyButton = householdNavigation.getByRole("button", {
+    name: "Data safety",
+    exact: true,
+  });
+  await expect(dataSafetyButton).toBeVisible();
+  await dataSafetyButton.click();
+  const dataSafety = window.getByRole("region", { name: "Data safety workspace" });
+  await expect(dataSafety).toBeVisible();
+  await expect(dataSafety.getByRole("region", { name: "Property registry" })).toHaveCount(0);
+  await expect(dataSafety.getByRole("region", { name: "Loan registry" })).toHaveCount(0);
+  await expect(dataSafety.getByRole("region", { name: "Backup" })).toBeVisible();
+  await expect(dataSafety.getByRole("region", { name: "Export" })).toBeVisible();
+  await expect(dataSafety.getByRole("region", { name: "Restore Snapshot" })).toBeVisible();
+});
+
+test("loan creation opens only after the user requests it", async ({ appShell, window }) => {
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+
+  await expect(loans.section.getByText("No loans have been recorded.", { exact: true }))
+    .toBeVisible();
+  await expect(loans.createForm).toBeHidden();
+  await expect(loans.addLoanButton).toBeVisible();
+  await loans.openCreateForm();
+  await expect(loans.createForm).toBeVisible();
+});
+
+test("saving a loan focuses and reveals its selected detail on compact screens", async ({
+  appShell,
+  window,
+}) => {
+  await window.setViewportSize({ width: 390, height: 844 });
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  await loans.addLoan({
+    label: "New mortgage",
+    principal: "3000000",
+    annualInterestRate: "5",
+    termYears: "25",
+    paymentAmount: "17500",
+    paymentFrequency: "monthly",
+    currencyCode: "NOK",
+  });
+
+  await expect(loans.loan("New mortgage")).toBeFocused();
+  await expect(loans.loan("New mortgage")).toBeInViewport();
+});
+
+test("loan summary identifies the last recorded balance without inferring security", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  const label = "Unlinked home loan";
+  await loans.addLoan({
+    label,
+    principal: "10000",
+    annualInterestRate: "4",
+    termYears: "3",
+    paymentAmount: "300",
+    paymentFrequency: "monthly",
+    currencyCode: "NOK",
+  });
+  await loans.addBalance(label, {
+    effectiveDate: "2026-10-01",
+    amount: "9000",
+  });
+
+  const lastRecordedBalance = loans.loan(label).getByText(/^Last recorded balance:/);
+  await expect(lastRecordedBalance).toContainText(/NOK 9[\s\u00a0\u202f]000,00/);
+  await expect(lastRecordedBalance).toContainText("2026-10-01");
+  await loans.expandLoanDetails(label);
+  await expect(loans.loan(label).getByText("No property linked", { exact: true })).toBeVisible();
+  await expect(lastRecordedBalance).not.toContainText("Current balance");
+});
+
+test("linked loan opens its property record without network requests", async ({
+  appShell,
+  electronApp,
+  window,
+}) => {
+  await installRendererNetworkAttemptBlocker(window);
+  await installMainProcessNetworkProbe(electronApp);
+  const rendererObservation = await installRendererNetworkAttemptObserver(window);
+  await appShell.openWorkspace("Properties");
+  const properties = new PropertyRegistryPage(window);
+  await properties.addProperty("Home");
+
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  await loans.addLoan({
+    label: "Home mortgage",
+    principal: "3000000",
+    annualInterestRate: "5",
+    termYears: "25",
+    paymentAmount: "17500",
+    paymentFrequency: "monthly",
+    currencyCode: "NOK",
+    propertyLabel: "Home",
+  });
+  await loans.expandLoanDetails("Home mortgage");
+
+  const viewPropertyButton = loans.loan("Home mortgage").getByRole("button", {
+    name: "View property",
+    exact: true,
+  });
+  await expect(viewPropertyButton).toBeVisible();
+  await viewPropertyButton.click();
+  await expect(appShell.workspace("Properties")).toBeVisible();
+  await expect(properties.property("Home")).toBeVisible();
+  expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
+  expect(await rendererNetworkAttempts(window)).toEqual([]);
+  expect(await rendererNetworkBlockedAttempts(window)).toEqual([]);
+  expect(rendererObservation.httpRequests).toEqual([]);
+  expect(rendererObservation.webSocketRequests).toEqual([]);
+});
+
+test("@visual Visual: linked loan records remain composed for desktop and compact windows", async ({
+  appShell,
+  window,
+}) => {
+  await window.setViewportSize({ width: 1280, height: 800 });
+  await appShell.openWorkspace("Properties");
+  const properties = new PropertyRegistryPage(window);
+  await properties.addProperty("Home");
+
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  await loans.addLoan({
+    label: "Home mortgage",
+    principal: "3000000",
+    annualInterestRate: "5",
+    termYears: "25",
+    paymentAmount: "17500",
+    paymentFrequency: "monthly",
+    currencyCode: "NOK",
+    propertyLabel: "Home",
+  });
+  await loans.addBalance("Home mortgage", {
+    effectiveDate: "2026-10-01",
+    amount: "2995000",
+  });
+  await loans.expandLoanDetails("Home mortgage");
+  await expect(loans.balanceRow("Home mortgage", "2026-10-01")).toBeVisible();
+
+  await expect(window).toHaveScreenshot("loan-records-desktop.png", {
+    animations: "disabled",
+    mask: [window.locator('time[datetime*="T"]')],
+    maskColor: "#fffdfa",
+    maxDiffPixelRatio: 0.01,
+  });
+
+  await window.setViewportSize({ width: 390, height: 844 });
+  await expect(loans.backToLoanListButton).toBeVisible();
+  await expect(window).toHaveScreenshot("loan-records-compact.png", {
+    animations: "disabled",
+    mask: [window.locator('time[datetime*="T"]')],
+    maskColor: "#fffdfa",
+    maxDiffPixelRatio: 0.01,
+  });
+});
+
+test("loan records use a selected detail and return to the list on compact screens", async ({
+  appShell,
+  window,
+}) => {
+  await window.setViewportSize({ width: 1280, height: 800 });
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  const loanTerms = {
+    principal: "10000",
+    annualInterestRate: "4",
+    termYears: "3",
+    paymentAmount: "300",
+    paymentFrequency: "monthly" as const,
+    currencyCode: "NOK",
+  };
+  await loans.addLoan({ ...loanTerms, label: "Home mortgage" });
+  await loans.addLoan({ ...loanTerms, label: "Car loan" });
+
+  await expect(loans.loanNavigation).toBeVisible();
+  await expect(loans.backToLoanListButton).toBeHidden();
+  await expect(loans.loan("Car loan")).toBeVisible();
+  await expect(loans.loan("Home mortgage")).toHaveCount(0);
+  await loans.selectLoan("Home mortgage");
+  await expect(loans.loan("Home mortgage")).toBeVisible();
+  await expect(loans.loan("Car loan")).toHaveCount(0);
+
+  await window.setViewportSize({ width: 390, height: 844 });
+  await expect(loans.backToLoanListButton).toBeVisible();
+  await loans.backToLoanListButton.click();
+  await expect(loans.loanNavigation).toBeVisible();
+  await expect(loans.loan("Home mortgage")).toHaveCount(0);
+  await loans.selectLoan("Car loan");
+  await expect(loans.loan("Car loan")).toBeVisible();
+});
+
 test("loan terms and append-only balance history survive restart without rate fallback or network access", async ({
   appShell,
   databasePath,
@@ -27,10 +264,10 @@ test("loan terms and append-only balance history survive restart without rate fa
   await installRendererNetworkAttemptBlocker(window);
   await installMainProcessNetworkProbe(electronApp);
   const rendererObservation = await installRendererNetworkAttemptObserver(window);
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
 
   const properties = new PropertyRegistryPage(window);
-  await expect(properties.section.getByRole("heading", { name: "Property registry" })).toBeVisible();
+  await expect(window.getByRole("heading", { name: "Properties", level: 2 })).toBeVisible();
   await properties.addProperty("Home");
   await properties.addValuation("Home", {
     effectiveDate: "2026-09-01",
@@ -43,6 +280,7 @@ test("loan terms and append-only balance history survive restart without rate fa
     }
   ).budgetApi.propertyRegistry.list());
 
+  await appShell.openWorkspace("Loans");
   const loans = new LoanRegistryPage(window);
   await expect(loans.section).toBeVisible();
   await expect(window.evaluate(() => (
@@ -87,24 +325,37 @@ test("loan terms and append-only balance history survive restart without rate fa
   });
 
   await loans.expandLoanDetails("Home mortgage");
-  await loans.expandLoanDetails("Personal loan");
   await expect(loans.balanceHistory("Home mortgage").getByRole("row")).toHaveCount(3);
   await expect(loans.balanceRow("Home mortgage", "2026-10-01")).toContainText("NOK");
   await expect(loans.balanceRow("Home mortgage", "2026-11-01"))
     .toContainText(/2[\s\u00a0\u202f]995[\s\u00a0\u202f]000,00/);
-  await expect(loans.loan("Personal loan")).toContainText("Unsecured");
+  await expect(loans.loan("Home mortgage")).toContainText("Last recorded balance");
+  await expect(loans.loan("Home mortgage")).toContainText("2026-11-01");
+  await loans.expandLoanDetails("Personal loan");
+  await expect(loans.loan("Personal loan")).toContainText("No property linked");
   await expect(loans.balanceRow("Personal loan", "2026-11-01")).toContainText("EUR");
   await loans.section.evaluate((section) => section.scrollIntoView({ block: "start" }));
-  await expect(loans.section.getByRole("heading", { name: "Loan registry" })).toBeInViewport();
+  await expect(loans.loan("Personal loan").getByRole("heading", {
+    name: "Personal loan",
+    exact: true,
+  })).toBeInViewport();
   await window.screenshot({ path: testInfo.outputPath("loan-registry-populated-desktop.png") });
   await window.setViewportSize({ width: 390, height: 844 });
   expect(await window.evaluate(() =>
     document.documentElement.scrollWidth > document.documentElement.clientWidth
   )).toBe(false);
   await loans.section.evaluate((section) => section.scrollIntoView({ block: "start" }));
-  await expect(loans.section.getByRole("heading", { name: "Loan registry" })).toBeInViewport();
+  await loans.expandLoanDetails("Home mortgage");
   await expect(loans.balanceHistory("Home mortgage")).toBeVisible();
+  await loans.expandLoanDetails("Personal loan");
   await expect(loans.balanceRow("Personal loan", "2026-11-01")).toContainText("EUR");
+  await expect(
+    loans.balanceRow("Personal loan", "2026-11-01").getByRole("cell").nth(2)
+  ).toBeInViewport();
+  await expect(loans.loan("Personal loan").getByRole("heading", {
+    name: "Personal loan",
+    exact: true,
+  })).toBeInViewport();
   await window.screenshot({ path: testInfo.outputPath("loan-registry-populated-mobile.png") });
   const loansBeforeRestart = await window.evaluate(() => (
     globalThis as typeof globalThis & {
@@ -138,10 +389,9 @@ test("loan terms and append-only balance history survive restart without rate fa
     await installRendererNetworkAttemptBlocker(restartedWindow);
     await installMainProcessNetworkProbe(restartedApp);
     const restartedObservation = await installRendererNetworkAttemptObserver(restartedWindow);
-    await new AppShellPage(restartedWindow).openWorkspace("Data safety");
+    await new AppShellPage(restartedWindow).openWorkspace("Loans");
     const restartedLoans = new LoanRegistryPage(restartedWindow);
     await restartedLoans.expandLoanDetails("Home mortgage");
-    await restartedLoans.expandLoanDetails("Personal loan");
     const loansAfterRestart = await restartedWindow.evaluate(() => (
       globalThis as typeof globalThis & {
         budgetApi: { loanRegistry: { list: () => Promise<unknown[]> } };
@@ -152,6 +402,7 @@ test("loan terms and append-only balance history survive restart without rate fa
     await expect(restartedLoans.balanceRow("Home mortgage", "2026-10-01")).toContainText("NOK");
     await expect(restartedLoans.balanceRow("Home mortgage", "2026-11-01"))
       .toContainText(/2[\s\u00a0\u202f]995[\s\u00a0\u202f]000,00/);
+    await restartedLoans.expandLoanDetails("Personal loan");
     await expect(restartedLoans.balanceRow("Personal loan", "2026-11-01")).toContainText("EUR");
     await expect(restartedWindow.evaluate(() => (
       globalThis as typeof globalThis & {
@@ -173,12 +424,13 @@ test("loan entry shows field errors and remains keyboard reachable without mobil
   window,
 }) => {
   await window.setViewportSize({ width: 390, height: 844 });
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Loans");
   const loans = new LoanRegistryPage(window);
   await expect(loans.section).toBeVisible();
   await expect(loans.section.getByText("No loans have been recorded.", { exact: true }))
     .toBeVisible();
 
+  await loans.openCreateForm();
   await loans.labelInput.focus();
   await window.keyboard.press("Tab");
   await loans.principalInput.fill("-1");
@@ -226,9 +478,10 @@ test("loan creation groups required terms and describes accepted input formats",
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Loans");
   const loans = new LoanRegistryPage(window);
 
+  await loans.openCreateForm();
   await expect(loans.createForm.getByRole("group", { name: "Loan details", exact: true }))
     .toBeVisible();
   await expect(loans.createForm.getByRole("group", { name: "Payment details", exact: true }))
@@ -266,8 +519,9 @@ test("loan submission shows every field error and focuses the first invalid inpu
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Loans");
   const loans = new LoanRegistryPage(window);
+  await loans.openCreateForm();
   await loans.principalInput.fill("");
   await loans.annualInterestRateInput.fill("");
   await loans.termYearsInput.fill("");
@@ -296,11 +550,11 @@ test("loan submission shows every field error and focuses the first invalid inpu
   await expect(loans.loan("Invalid loan")).toHaveCount(0);
 });
 
-test("balance history explains its correction path and preserves both dated entries", async ({
+test("balance history explains append-only entries and preserves duplicate effective dates", async ({
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Loans");
   const loans = new LoanRegistryPage(window);
   const label = "Correction test loan";
   await loans.addLoan({
@@ -314,9 +568,9 @@ test("balance history explains its correction path and preserves both dated entr
   });
 
   await expect(loans.balanceHistoryGuidance())
-    .toContainText(/does not replace earlier entries/i);
+    .toContainText(/Each entry stays in history/i);
   await expect(loans.balanceHistoryGuidance())
-    .toContainText(/To correct one, add another snapshot/i);
+    .toContainText(/Add another recorded balance/i);
   await expect(loans.balanceAmountInput(label)).toBeVisible();
 
   await loans.addBalance(label, {
@@ -341,7 +595,7 @@ test("loan details collapse without hiding the next balance action", async ({
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Loans");
   const loans = new LoanRegistryPage(window);
   const label = "Compact loan";
   await loans.addLoan({

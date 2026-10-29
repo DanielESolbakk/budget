@@ -5,6 +5,8 @@ export type WorkspaceName =
   | "Activity"
   | "Accounts"
   | "Household"
+  | "Properties"
+  | "Loans"
   | "Transactions"
   | "Coverage"
   | "Pending"
@@ -55,7 +57,10 @@ export class AppShellPage {
         ? "Activity"
         : name === "Coverage"
           ? "Accounts"
-          : name === "Data safety" || name === "Settings"
+          : name === "Properties" ||
+              name === "Loans" ||
+              name === "Data safety" ||
+              name === "Settings"
             ? "Household"
             : name;
     return this.primaryNavigation.getByRole("button", { name: parentName, exact: true });
@@ -72,15 +77,15 @@ export class AppShellPage {
         .getByRole("navigation", { name: "Activity views" })
         .getByRole("button", { name, exact: true })
         .click();
-    } else if (name === "Data safety") {
+    } else if (
+      name === "Properties" ||
+      name === "Loans" ||
+      name === "Data safety" ||
+      name === "Settings"
+    ) {
       await this.page
         .getByRole("navigation", { name: "Household tools" })
-        .getByRole("button", { name, exact: true })
-        .click();
-    } else if (name === "Settings") {
-      await this.page
-        .getByRole("navigation", { name: "Household tools" })
-        .getByRole("button", { name: "Exchange rates", exact: true })
+        .getByRole("button", { name: name === "Settings" ? "Exchange rates" : name, exact: true })
         .click();
     }
   }

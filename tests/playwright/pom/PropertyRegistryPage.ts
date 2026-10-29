@@ -8,15 +8,19 @@ export interface PropertyValuationInput {
 
 export class PropertyRegistryPage {
   readonly section: Locator;
+  readonly propertyCreateForm: Locator;
   readonly propertyLabelInput: Locator;
+  readonly addPropertyAction: Locator;
   readonly addPropertyButton: Locator;
   readonly errorMessage: Locator;
 
   constructor(page: Page) {
     this.section = page.getByRole("region", { name: "Property registry", exact: true });
-    const propertyForm = this.section.getByRole("form", { name: "Add property", exact: true });
-    this.propertyLabelInput = propertyForm.getByLabel("Property label", { exact: true });
-    this.addPropertyButton = propertyForm.getByRole("button", { name: "Add property", exact: true });
+    this.propertyCreateForm = this.section.getByRole("form", { name: "Add property", exact: true });
+    this.propertyLabelInput = this.propertyCreateForm.getByLabel("Property label", { exact: true });
+    this.addPropertyAction = this.section.getByRole("button", { name: "Add property", exact: true });
+    this.addPropertyButton = this.propertyCreateForm
+      .getByRole("button", { name: "Save property", exact: true });
     this.errorMessage = this.section.getByRole("alert");
   }
 
@@ -24,32 +28,47 @@ export class PropertyRegistryPage {
     return this.section.getByRole("region", { name: `Property ${label}`, exact: true });
   }
 
+  get propertyNavigation() {
+    return this.section.getByRole("navigation", { name: "Property records", exact: true });
+  }
+
+  get backToPropertyListButton() {
+    return this.section.getByRole("button", { name: "Back to properties", exact: true });
+  }
+
+  async selectProperty(label: string): Promise<void> {
+    if (await this.property(label).isVisible()) return;
+    if (await this.backToPropertyListButton.isVisible()) {
+      await this.backToPropertyListButton.click();
+    }
+    await this.propertyNavigation
+      .getByRole("button", { name: `Select property ${label}`, exact: true })
+      .click();
+  }
+
   propertyError(label: string): Locator {
     return this.property(label).getByRole("alert");
   }
 
-  effectiveDateInput(label: string): Locator {
+  valuationForm(label: string): Locator {
     return this.property(label)
-      .getByRole("form", { name: `Add valuation for ${label}`, exact: true })
-      .getByLabel("Effective date", { exact: true });
+      .getByRole("form", { name: `Add valuation for ${label}`, exact: true });
+  }
+
+  effectiveDateInput(label: string): Locator {
+    return this.valuationForm(label).getByLabel("Effective date", { exact: true });
   }
 
   amountInput(label: string): Locator {
-    return this.property(label)
-      .getByRole("form", { name: `Add valuation for ${label}`, exact: true })
-      .getByLabel("Amount", { exact: true });
+    return this.valuationForm(label).getByLabel("Amount", { exact: true });
   }
 
   currencyCodeInput(label: string): Locator {
-    return this.property(label)
-      .getByRole("form", { name: `Add valuation for ${label}`, exact: true })
-      .getByLabel("Currency code", { exact: true });
+    return this.valuationForm(label).getByLabel("Currency code", { exact: true });
   }
 
   addValuationButton(label: string): Locator {
-    return this.property(label)
-      .getByRole("form", { name: `Add valuation for ${label}`, exact: true })
-      .getByRole("button", { name: "Add valuation", exact: true });
+    return this.valuationForm(label).getByRole("button", { name: "Save value", exact: true });
   }
 
   valuationHistory(label: string): Locator {
@@ -87,6 +106,7 @@ export class PropertyRegistryPage {
   }
 
   async changePropertyLabel(label: string, newLabel: string): Promise<void> {
+    await this.selectProperty(label);
     const property = this.property(label);
     await property.getByText("Change property label", { exact: true }).click({ timeout: 5000 });
     const form = property.getByRole("form", { name: "Change property label", exact: true });
@@ -95,11 +115,27 @@ export class PropertyRegistryPage {
   }
 
   async addProperty(label: string): Promise<void> {
+    await this.openCreateForm();
     await this.propertyLabelInput.fill(label);
     await this.addPropertyButton.click();
   }
 
+  async openCreateForm(): Promise<void> {
+    if (!(await this.propertyCreateForm.isVisible())) {
+      await this.addPropertyAction.click();
+    }
+  }
+
+  async openValuationForm(label: string): Promise<void> {
+    await this.selectProperty(label);
+    const form = this.valuationForm(label);
+    if (!(await form.isVisible())) {
+      await this.property(label).getByRole("button", { name: "Record value", exact: true }).click();
+    }
+  }
+
   async addValuation(label: string, input: PropertyValuationInput): Promise<void> {
+    await this.openValuationForm(label);
     await this.effectiveDateInput(label).fill(input.effectiveDate);
     await this.amountInput(label).fill(input.amount);
     await this.currencyCodeInput(label).fill(input.currencyCode);
