@@ -16,6 +16,8 @@ import {
   type Account,
   type ExchangeRate,
   type Household,
+  type HoldingRecord,
+  type HoldingValuationSnapshot,
   type ImportJob,
   type LoanBalanceSnapshot,
   type LoanPaymentFrequency,
@@ -423,6 +425,108 @@ function validatePropertyValuations(
   }
 }
 
+function validateHoldings(
+  value: unknown[],
+  householdId: string,
+  snapshotPath: string
+): asserts value is HoldingRecord[] {
+  const holdingIds = new Set<string>();
+  for (const holding of value) {
+    if (
+      !isRecord(holding) ||
+      !isNonEmptyString(holding.id) ||
+      !isNonEmptyString(holding.householdId) ||
+      holding.householdId !== householdId ||
+      !isNonEmptyString(holding.label) ||
+      holding.label.length > 100 ||
+      typeof holding.quantity !== "number" ||
+      !Number.isFinite(holding.quantity) ||
+      holding.quantity <= 0 ||
+      typeof holding.costBasisMinor !== "number" ||
+      !Number.isSafeInteger(holding.costBasisMinor) ||
+      holding.costBasisMinor < 0 ||
+      !isCurrencyCode(holding.currencyCode) ||
+      !isNonEmptyString(holding.createdAtIso) ||
+      !holding.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(holding.createdAtIso)) ||
+      holdingIds.has(holding.id)
+    ) {
+      invalidSnapshot(snapshotPath, "investment holdings");
+    }
+    if (holding.revisions !== undefined) {
+      if (!Array.isArray(holding.revisions)) invalidSnapshot(snapshotPath, "holding revisions");
+      const revisionIds = new Set<string>();
+      for (const revision of holding.revisions) {
+        if (!isRecord(revision) || !isNonEmptyString(revision.id) || revisionIds.has(revision.id) ||
+            !isNonEmptyString(revision.label) || revision.label.length > 100 ||
+            typeof revision.quantity !== "number" || !Number.isFinite(revision.quantity) ||
+            revision.quantity <= 0 || typeof revision.costBasisMinor !== "number" ||
+            !Number.isSafeInteger(revision.costBasisMinor) || revision.costBasisMinor < 0 ||
+            !isCurrencyCode(revision.currencyCode) || !isNonEmptyString(revision.correctedAtIso) ||
+            !revision.correctedAtIso.includes("T") || Number.isNaN(Date.parse(revision.correctedAtIso))) {
+          invalidSnapshot(snapshotPath, "holding revisions");
+        }
+        revisionIds.add(revision.id);
+      }
+    }
+    holdingIds.add(holding.id);
+  }
+}
+
+function validateHoldingValuations(
+  value: unknown[],
+  holdingIds: Set<string>,
+  snapshotPath: string
+): asserts value is HoldingValuationSnapshot[] {
+  const valuationIds = new Set<string>();
+  const valuations = new Map<string, { holdingId: string; target?: string }>();
+  for (const valuation of value) {
+    if (
+      !isRecord(valuation) ||
+      !isNonEmptyString(valuation.id) ||
+      !isNonEmptyString(valuation.holdingId) ||
+      !holdingIds.has(valuation.holdingId) ||
+      !isIsoCalendarDate(valuation.effectiveDateIso) ||
+      typeof valuation.amountMinor !== "number" ||
+      !Number.isSafeInteger(valuation.amountMinor) ||
+      valuation.amountMinor < 0 ||
+      !isCurrencyCode(valuation.currencyCode) ||
+      !isNonEmptyString(valuation.recordedAtIso) ||
+      !valuation.recordedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(valuation.recordedAtIso)) ||
+      valuationIds.has(valuation.id) ||
+      (valuation.correction !== undefined &&
+        (!isRecord(valuation.correction) || !isNonEmptyString(valuation.correction.targetValuationId)))
+    ) {
+      invalidSnapshot(snapshotPath, "holding valuations");
+    }
+    valuationIds.add(valuation.id);
+    const correction = valuation.correction;
+    valuations.set(valuation.id, {
+      holdingId: valuation.holdingId,
+      ...(isRecord(correction) && typeof correction.targetValuationId === "string"
+        ? { target: correction.targetValuationId } : {}),
+    });
+  }
+  const corrected = new Set<string>();
+  for (const [id, valuation] of valuations) {
+    if (valuation.target === undefined) continue;
+    const target = valuations.get(valuation.target);
+    if (target === undefined || target.holdingId !== valuation.holdingId ||
+        valuation.target === id || corrected.has(valuation.target)) {
+      invalidSnapshot(snapshotPath, "holding valuation corrections");
+    }
+    corrected.add(valuation.target);
+    const visited = new Set([id]);
+    let cursor: string | undefined = valuation.target;
+    while (cursor !== undefined) {
+      if (visited.has(cursor)) invalidSnapshot(snapshotPath, "holding valuation correction cycle");
+      visited.add(cursor);
+      cursor = valuations.get(cursor)?.target;
+    }
+  }
+}
+
 function validateLoanRecords(
   value: unknown[],
   householdId: string,
@@ -537,6 +641,8 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version !== "3" &&
     metadata.version !== "4" &&
     metadata.version !== "5" &&
+    metadata.version !== "6" &&
+    metadata.version !== "7" &&
     metadata.version !== SNAPSHOT_VERSION
   ) {
     throw new Error(
@@ -579,6 +685,10 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   const propertyValuations = value.propertyValuations === undefined
     ? []
     : value.propertyValuations;
+  const holdings = value.holdings === undefined ? [] : value.holdings;
+  const holdingValuations = value.holdingValuations === undefined
+    ? []
+    : value.holdingValuations;
   const loanRecords = value.loanRecords === undefined ? [] : value.loanRecords;
   const loanBalanceSnapshots = value.loanBalanceSnapshots === undefined
     ? []
@@ -587,18 +697,28 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version === "3" ||
     metadata.version === "4" ||
     metadata.version === "5" ||
+    metadata.version === "6" ||
+    metadata.version === "7" ||
     metadata.version === SNAPSHOT_VERSION;
   const hasPropertyCollections =
     metadata.version === "4" ||
     metadata.version === "5" ||
+    metadata.version === "6" ||
+    metadata.version === "7" ||
     metadata.version === SNAPSHOT_VERSION;
-  const hasLoanCollections = metadata.version === SNAPSHOT_VERSION;
+  const hasLoanCollections =
+    metadata.version === "6" ||
+    metadata.version === "7" ||
+    metadata.version === SNAPSHOT_VERSION;
+  const hasHoldingCollections = metadata.version === "7" || metadata.version === SNAPSHOT_VERSION;
   if (
     !Array.isArray(accountStatementCoveragePeriods) ||
     !Array.isArray(accountBalanceCheckpoints) ||
     !Array.isArray(exchangeRates) ||
     !Array.isArray(properties) ||
     !Array.isArray(propertyValuations) ||
+    !Array.isArray(holdings) ||
+    !Array.isArray(holdingValuations) ||
     !Array.isArray(loanRecords) ||
     !Array.isArray(loanBalanceSnapshots) ||
     (hasCoverageCollections &&
@@ -608,9 +728,13 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     (hasPropertyCollections &&
       (value.properties === undefined || value.propertyValuations === undefined)) ||
     (hasLoanCollections &&
-      (value.loanRecords === undefined || value.loanBalanceSnapshots === undefined))
+      (value.loanRecords === undefined || value.loanBalanceSnapshots === undefined)) ||
+    (hasHoldingCollections &&
+      (value.holdings === undefined || value.holdingValuations === undefined))
   ) {
-    throw new Error(`Invalid snapshot registry, account coverage, or exchange-rate collections: ${snapshotPath}`);
+    throw new Error(
+      `Invalid snapshot registry, account coverage, exchange-rate, or holding collections: ${snapshotPath}`
+    );
   }
 
   if (
@@ -635,6 +759,12 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   validatePropertyValuations(
     propertyValuations,
     new Set(properties.map((property) => property.id)),
+    snapshotPath
+  );
+  validateHoldings(holdings, value.household.id, snapshotPath);
+  validateHoldingValuations(
+    holdingValuations,
+    new Set(holdings.map((holding) => holding.id)),
     snapshotPath
   );
   validateLoanRecords(
@@ -683,6 +813,8 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     exchangeRates,
     properties,
     propertyValuations,
+    holdings,
+    holdingValuations,
     loanRecords,
     loanBalanceSnapshots,
   };
@@ -755,6 +887,8 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     exchangeRates: snapshot.exchangeRates,
     properties: snapshot.properties,
     propertyValuations: snapshot.propertyValuations,
+    holdings: snapshot.holdings,
+    holdingValuations: snapshot.holdingValuations,
     loanRecords: snapshot.loanRecords,
     loanBalanceSnapshots: snapshot.loanBalanceSnapshots,
     transactionCount: snapshot.transactions.length,

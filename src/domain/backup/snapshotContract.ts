@@ -4,6 +4,8 @@ import type {
   Account,
   ExchangeRate,
   Household,
+  HoldingRecord,
+  HoldingValuationSnapshot,
   ImportJob,
   LoanBalanceSnapshot,
   LoanRecord,
@@ -16,9 +18,9 @@ import type {
 } from "../types.js";
 
 /** Snapshot format version – increment when the serialized recovery contract changes. */
-export const SNAPSHOT_VERSION = "6" as const;
+export const SNAPSHOT_VERSION = "8" as const;
 
-export type SnapshotVersion = "1" | "2" | "3" | "4" | "5" | typeof SNAPSHOT_VERSION;
+export type SnapshotVersion = "1" | "2" | "3" | "4" | "5" | "6" | "7" | typeof SNAPSHOT_VERSION;
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {
@@ -53,6 +55,8 @@ export interface BackupSnapshot {
   exchangeRates: ExchangeRate[];
   properties: PropertyRecord[];
   propertyValuations: PropertyValuationSnapshot[];
+  holdings: HoldingRecord[];
+  holdingValuations: HoldingValuationSnapshot[];
   loanRecords: LoanRecord[];
   loanBalanceSnapshots: LoanBalanceSnapshot[];
 }
@@ -76,6 +80,8 @@ export interface LedgerSnapshotData {
   exchangeRates?: ExchangeRate[];
   properties?: PropertyRecord[];
   propertyValuations?: PropertyValuationSnapshot[];
+  holdings?: HoldingRecord[];
+  holdingValuations?: HoldingValuationSnapshot[];
   loanRecords?: LoanRecord[];
   loanBalanceSnapshots?: LoanBalanceSnapshot[];
   /** Override the creation timestamp (ISO 8601). Defaults to current UTC time. */
@@ -152,6 +158,8 @@ export interface RestoreSnapshotOutput {
   exchangeRates: ExchangeRate[];
   properties: PropertyRecord[];
   propertyValuations: PropertyValuationSnapshot[];
+  holdings: HoldingRecord[];
+  holdingValuations: HoldingValuationSnapshot[];
   loanRecords: LoanRecord[];
   loanBalanceSnapshots: LoanBalanceSnapshot[];
   /** Number of transactions that were restored. */

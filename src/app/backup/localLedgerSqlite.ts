@@ -34,12 +34,21 @@ import {
   validateLoanBalanceInput,
   validateLoanRecordInput,
 } from "../../domain/loanRecordValidation.js";
+import {
+  validateHoldingRecordInput,
+  validateHoldingRevision,
+  validateHoldingValuationCorrectionMetadata,
+  validateHoldingValuationInput,
+} from "../../domain/holdingRecordValidation.js";
 import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
   Account,
   CategorizationDecision,
   Household,
+  HoldingRecord,
+  HoldingRecordRevision,
+  HoldingValuationSnapshot,
   ImportJob,
   ImportJobProvenance,
   ImportReviewItem,
@@ -78,6 +87,8 @@ interface LocalLedgerSeedData {
   exchangeRates?: ExchangeRate[];
   properties?: PropertyRecord[];
   propertyValuations?: PropertyValuationSnapshot[];
+  holdings?: HoldingRecord[];
+  holdingValuations?: HoldingValuationSnapshot[];
   loanRecords?: LoanRecord[];
   loanBalanceSnapshots?: LoanBalanceSnapshot[];
 }
@@ -118,6 +129,11 @@ export interface LocalLedgerDatabase {
   listPropertyRecords: (householdId: string) => PropertyRecord[];
   appendPropertyValuationSnapshot: (valuation: PropertyValuationSnapshot) => void;
   listPropertyValuationSnapshots: (propertyId: string) => PropertyValuationSnapshot[];
+  createHoldingRecord: (holding: HoldingRecord) => void;
+  correctHoldingRecord: (holding: HoldingRecord, revision: HoldingRecordRevision) => void;
+  listHoldingRecords: (householdId: string) => HoldingRecord[];
+  appendHoldingValuationSnapshot: (valuation: HoldingValuationSnapshot) => void;
+  listHoldingValuationSnapshots: (holdingId: string) => HoldingValuationSnapshot[];
   createLoanRecord: (loan: LoanRecord) => void;
   listLoanRecords: (householdId: string) => LoanRecord[];
   appendLoanBalanceSnapshot: (balance: LoanBalanceSnapshot) => void;
@@ -658,6 +674,33 @@ function ensureSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS property_valuations_by_property_date
       ON property_valuation_snapshots (property_id, effective_date_iso, recorded_at_iso, id);
 
+    CREATE TABLE IF NOT EXISTS investment_holdings (
+      id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      quantity REAL NOT NULL CHECK (quantity > 0),
+      cost_basis_minor INTEGER NOT NULL CHECK (cost_basis_minor >= 0),
+      currency_code TEXT NOT NULL,
+      created_at_iso TEXT NOT NULL,
+      revisions_json TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS holdings_by_household_label
+      ON investment_holdings (household_id, label COLLATE NOCASE, id);
+
+    CREATE TABLE IF NOT EXISTS holding_valuation_snapshots (
+      id TEXT PRIMARY KEY,
+      holding_id TEXT NOT NULL,
+      effective_date_iso TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),
+      currency_code TEXT NOT NULL,
+      recorded_at_iso TEXT NOT NULL,
+      correction_json TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS holding_valuations_by_holding_date
+      ON holding_valuation_snapshots (holding_id, effective_date_iso, recorded_at_iso, id);
+
     CREATE TABLE IF NOT EXISTS loan_records (
       id TEXT PRIMARY KEY,
       household_id TEXT NOT NULL,
@@ -789,6 +832,14 @@ function ensureSchema(db: DatabaseSync): void {
     .all() as Array<{ name: string }>;
   if (!propertyValuationColumns.some((column) => column.name === "correction_json")) {
     db.exec("ALTER TABLE property_valuation_snapshots ADD COLUMN correction_json TEXT");
+  }
+  const holdingColumns = db.prepare("PRAGMA table_info(investment_holdings)").all() as Array<{ name: string }>;
+  if (!holdingColumns.some((column) => column.name === "revisions_json")) {
+    db.exec("ALTER TABLE investment_holdings ADD COLUMN revisions_json TEXT");
+  }
+  const holdingValuationColumns = db.prepare("PRAGMA table_info(holding_valuation_snapshots)").all() as Array<{ name: string }>;
+  if (!holdingValuationColumns.some((column) => column.name === "correction_json")) {
+    db.exec("ALTER TABLE holding_valuation_snapshots ADD COLUMN correction_json TEXT");
   }
 
   const pendingObservationColumns = db
@@ -934,6 +985,24 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
     insertProperty.run(property.id, property.householdId, property.label, property.createdAtIso);
   }
 
+  const insertHolding = db.prepare(`
+    INSERT INTO investment_holdings (
+      id, household_id, label, quantity, cost_basis_minor, currency_code, created_at_iso, revisions_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const holding of snapshot.holdings ?? []) {
+    insertHolding.run(
+      holding.id,
+      holding.householdId,
+      holding.label,
+      holding.quantity,
+      holding.costBasisMinor,
+      holding.currencyCode,
+      holding.createdAtIso,
+      holding.revisions === undefined ? null : JSON.stringify(holding.revisions)
+    );
+  }
+
   const insertLoanRecord = db.prepare(`
     INSERT INTO loan_records (
       id, household_id, label, principal_minor, annual_interest_rate_basis_points,
@@ -982,6 +1051,23 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
     insertPropertyValuation.run(
       valuation.id,
       valuation.propertyId,
+      valuation.effectiveDateIso,
+      valuation.amountMinor,
+      valuation.currencyCode,
+      valuation.recordedAtIso,
+      valuation.correction === undefined ? null : JSON.stringify(valuation.correction)
+    );
+  }
+
+  const insertHoldingValuation = db.prepare(`
+    INSERT INTO holding_valuation_snapshots (
+      id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso, correction_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const valuation of snapshot.holdingValuations ?? []) {
+    insertHoldingValuation.run(
+      valuation.id,
+      valuation.holdingId,
       valuation.effectiveDateIso,
       valuation.amountMinor,
       valuation.currencyCode,
@@ -1783,6 +1869,182 @@ export function createLocalLedgerDatabase(
     });
   }
 
+  function createHoldingRecord(holding: HoldingRecord): void {
+    if (
+      holding.id.trim().length === 0 ||
+      holding.householdId.trim().length === 0 ||
+      !holding.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(holding.createdAtIso))
+    ) {
+      throw new Error("Investment holding identity or creation timestamp is invalid.");
+    }
+    if (
+      db.prepare("SELECT 1 FROM households WHERE id = ?").get(holding.householdId) === undefined
+    ) {
+      throw new Error(`Household not found for investment holding: ${holding.householdId}`);
+    }
+
+    const validated = validateHoldingRecordInput(holding);
+    db.prepare(`
+      INSERT INTO investment_holdings (
+        id, household_id, label, quantity, cost_basis_minor, currency_code, created_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      holding.id,
+      holding.householdId,
+      validated.label,
+      validated.quantity,
+      validated.costBasisMinor,
+      validated.currencyCode,
+      holding.createdAtIso
+    );
+  }
+
+  function listHoldingRecords(householdId: string): HoldingRecord[] {
+    return db.prepare(`
+      SELECT id, household_id, label, quantity, cost_basis_minor, currency_code, created_at_iso, revisions_json
+      FROM investment_holdings
+      WHERE household_id = ?
+      ORDER BY label COLLATE NOCASE, id
+    `).all(householdId).map((row) => {
+      const holding = row as {
+        id: string;
+        household_id: string;
+        label: string;
+        quantity: number;
+        cost_basis_minor: number;
+        currency_code: string;
+        created_at_iso: string;
+        revisions_json: string | null;
+      };
+      const parsed: unknown = holding.revisions_json === null ? [] : JSON.parse(holding.revisions_json);
+      if (!Array.isArray(parsed)) throw new Error("Investment holding revisions are invalid.");
+      const revisions = parsed.map(validateHoldingRevision);
+      if (new Set(revisions.map((revision) => revision.id)).size !== revisions.length) {
+        throw new Error("Investment holding revision IDs must be unique.");
+      }
+      return {
+        id: holding.id,
+        householdId: holding.household_id,
+        label: holding.label,
+        quantity: holding.quantity,
+        costBasisMinor: holding.cost_basis_minor,
+        currencyCode: holding.currency_code,
+        createdAtIso: holding.created_at_iso,
+        ...(revisions.length === 0 ? {} : { revisions }),
+      };
+    });
+  }
+
+  function correctHoldingRecord(holding: HoldingRecord, revision: HoldingRecordRevision): void {
+    const validated = validateHoldingRecordInput(holding);
+    const previous = validateHoldingRevision(revision);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = listHoldingRecords(holding.householdId).find((record) => record.id === holding.id);
+      if (current === undefined || current.createdAtIso !== holding.createdAtIso ||
+          current.label !== previous.label || current.quantity !== previous.quantity ||
+          current.costBasisMinor !== previous.costBasisMinor ||
+          current.currencyCode !== previous.currencyCode) {
+        throw new Error("Investment holding changed before the correction could be saved.");
+      }
+      const revisions = [...(current.revisions ?? []), previous];
+      if (new Set(revisions.map((item) => item.id)).size !== revisions.length) {
+        throw new Error("Investment holding revision IDs must be unique.");
+      }
+      db.prepare(`
+        UPDATE investment_holdings
+        SET label = ?, quantity = ?, cost_basis_minor = ?, currency_code = ?, revisions_json = ?
+        WHERE id = ? AND household_id = ?
+      `).run(validated.label, validated.quantity, validated.costBasisMinor,
+        validated.currencyCode, JSON.stringify(revisions), holding.id, holding.householdId);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function appendHoldingValuationSnapshot(valuation: HoldingValuationSnapshot): void {
+    if (
+      valuation.id.trim().length === 0 ||
+      !valuation.recordedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(valuation.recordedAtIso))
+    ) {
+      throw new Error("Investment holding valuation identity or recorded timestamp is invalid.");
+    }
+    const validated = validateHoldingValuationInput(valuation);
+    if (
+      db.prepare("SELECT 1 FROM investment_holdings WHERE id = ?")
+        .get(validated.holdingId) === undefined
+    ) {
+      throw new Error(`Investment holding not found for valuation: ${validated.holdingId}`);
+    }
+
+    const correction = valuation.correction === undefined
+      ? undefined
+      : validateHoldingValuationCorrectionMetadata(valuation.correction);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      if (correction !== undefined) {
+        const values = listHoldingValuationSnapshots(validated.holdingId);
+        if (correction.targetValuationId === valuation.id ||
+            !values.some((value) => value.id === correction.targetValuationId) ||
+            values.some((value) => value.correction?.targetValuationId === correction.targetValuationId)) {
+          throw new Error("Investment holding value is missing or has already been corrected.");
+        }
+      }
+      db.prepare(`
+        INSERT INTO holding_valuation_snapshots (
+          id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso, correction_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        valuation.id,
+        validated.holdingId,
+        validated.effectiveDateIso,
+        validated.amountMinor,
+        validated.currencyCode,
+        valuation.recordedAtIso,
+        correction === undefined ? null : JSON.stringify(correction)
+      );
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function listHoldingValuationSnapshots(holdingId: string): HoldingValuationSnapshot[] {
+    return db.prepare(`
+      SELECT id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso, correction_json
+      FROM holding_valuation_snapshots
+      WHERE holding_id = ?
+      ORDER BY effective_date_iso, recorded_at_iso, id
+    `).all(holdingId).map((row) => {
+      const valuation = row as {
+        id: string;
+        holding_id: string;
+        effective_date_iso: string;
+        amount_minor: number;
+        currency_code: string;
+        recorded_at_iso: string;
+        correction_json: string | null;
+      };
+      const correction = valuation.correction_json === null
+        ? undefined
+        : validateHoldingValuationCorrectionMetadata(JSON.parse(valuation.correction_json) as unknown);
+      return {
+        id: valuation.id,
+        holdingId: valuation.holding_id,
+        effectiveDateIso: valuation.effective_date_iso,
+        amountMinor: valuation.amount_minor,
+        currencyCode: valuation.currency_code,
+        recordedAtIso: valuation.recorded_at_iso,
+        ...(correction === undefined ? {} : { correction }),
+      };
+    });
+  }
+
   function createLoanRecord(loan: LoanRecord): void {
     if (
       loan.id.trim().length === 0 ||
@@ -2166,6 +2428,34 @@ export function createLocalLedgerDatabase(
         ...(correction === undefined ? {} : { correction }),
       };
     });
+    const holdings = listHoldingRecords(householdRow.id);
+    const holdingValuations = db.prepare(`
+      SELECT id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso, correction_json
+      FROM holding_valuation_snapshots
+      ORDER BY holding_id, effective_date_iso, recorded_at_iso, id
+    `).all().map((row) => {
+      const valuation = row as {
+        id: string;
+        holding_id: string;
+        effective_date_iso: string;
+        amount_minor: number;
+        currency_code: string;
+        recorded_at_iso: string;
+        correction_json: string | null;
+      };
+      const correction = valuation.correction_json === null
+        ? undefined
+        : validateHoldingValuationCorrectionMetadata(JSON.parse(valuation.correction_json) as unknown);
+      return {
+        id: valuation.id,
+        holdingId: valuation.holding_id,
+        effectiveDateIso: valuation.effective_date_iso,
+        amountMinor: valuation.amount_minor,
+        currencyCode: valuation.currency_code,
+        recordedAtIso: valuation.recorded_at_iso,
+        ...(correction === undefined ? {} : { correction }),
+      };
+    });
     const loanRecords = listLoanRecords(householdRow.id);
     const loanBalanceSnapshots = db.prepare(`
       SELECT id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
@@ -2261,6 +2551,8 @@ export function createLocalLedgerDatabase(
       exchangeRates,
       properties,
       propertyValuations,
+      holdings,
+      holdingValuations,
       loanRecords,
       loanBalanceSnapshots,
     };
@@ -2285,6 +2577,8 @@ export function createLocalLedgerDatabase(
         DELETE FROM merchant_category_rules;
         DELETE FROM loan_balance_snapshots;
         DELETE FROM loan_records;
+        DELETE FROM holding_valuation_snapshots;
+        DELETE FROM investment_holdings;
         DELETE FROM property_valuation_snapshots;
         DELETE FROM properties;
         DELETE FROM accounts;
@@ -3729,6 +4023,11 @@ export function createLocalLedgerDatabase(
     listPropertyRecords,
     appendPropertyValuationSnapshot,
     listPropertyValuationSnapshots,
+    createHoldingRecord,
+    listHoldingRecords,
+    correctHoldingRecord,
+    appendHoldingValuationSnapshot,
+    listHoldingValuationSnapshots,
     createLoanRecord,
     listLoanRecords,
     appendLoanBalanceSnapshot,

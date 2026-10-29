@@ -6,6 +6,7 @@ import "./app.css";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
 import {
   DataSafetyWorkspace,
+  HoldingRegistrySection,
   PropertyRegistrySection,
 } from "./workspaces/DataSafetyWorkspace.js";
 import { LoanRegistrySection } from "./workspaces/LoanRegistrySection.js";
@@ -30,6 +31,7 @@ type WorkspaceId =
   | "import"
   | "properties"
   | "loans"
+  | "investments"
   | "data-safety"
   | "settings";
 type PrimaryWorkspaceId = "review" | "activity" | "accounts" | "household";
@@ -38,7 +40,7 @@ const PRIMARY_WORKSPACES: Array<{ id: PrimaryWorkspaceId; label: string; descrip
   { id: "review", label: "Review", description: "Monthly position" },
   { id: "activity", label: "Activity", description: "Ledger, pending and imports" },
   { id: "accounts", label: "Accounts", description: "Statements and balances" },
-  { id: "household", label: "Household", description: "Properties, loans, rates, and data safety" },
+  { id: "household", label: "Household", description: "Properties, loans, investments, rates, and data safety" },
 ];
 
 function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
@@ -48,6 +50,7 @@ function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
   if (
     workspace === "properties" ||
     workspace === "loans" ||
+    workspace === "investments" ||
     workspace === "data-safety" ||
     workspace === "settings"
   ) {
@@ -279,12 +282,14 @@ export function App(): React.JSX.Element {
           )}
           {(activeWorkspace === "properties" ||
             activeWorkspace === "loans" ||
+            activeWorkspace === "investments" ||
             activeWorkspace === "data-safety" ||
             activeWorkspace === "settings") && (
             <nav className="workspace-subnavigation" aria-label="Household tools">
               {([
                 ["properties", "Properties"],
                 ["loans", "Loans"],
+                ["investments", "Investments"],
                 ["settings", "Exchange rates"],
                 ["data-safety", "Data safety"],
               ] as const).map(([workspaceId, label]) => (
@@ -415,6 +420,26 @@ export function App(): React.JSX.Element {
                 isActive={activeWorkspace === "loans"}
                 refreshRevision={refreshCounter + propertyRegistryRevision}
                 onViewProperty={openPropertyRecord}
+              />
+            </section>
+          )}
+          {visitedWorkspaces.has("investments") && (
+            <section
+              className="destination-workspace household-workspace"
+              aria-label="Investments workspace"
+              hidden={activeWorkspace !== "investments"}
+            >
+              <div className="destination-heading">
+                <h2>Investments</h2>
+                <p>
+                  Record holdings and dated values manually. Entries stay on this device and
+                  preserve original currencies without brokerage, market-quote, or exchange-rate
+                  lookups.
+                </p>
+              </div>
+              <HoldingRegistrySection
+                isActive={activeWorkspace === "investments"}
+                refreshRevision={refreshCounter}
               />
             </section>
           )}

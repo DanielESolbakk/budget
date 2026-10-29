@@ -4445,6 +4445,144 @@ section[aria-label="Category Target Entry"] [role="status"] {
   background: var(--panel);
 }
 
+.holding-registry-section {
+  min-width: 0;
+  margin-top: 1rem;
+  border: 1px solid var(--line-strong);
+  padding: clamp(1rem, 2vw, 1.5rem);
+  background: var(--panel);
+}
+
+.holding-local-note,
+.holding-registry-empty,
+.holding-summary dt {
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.holding-create-form,
+.holding-valuation-form {
+  display: grid;
+  min-width: 0;
+  align-items: end;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.holding-create-form {
+  grid-template-columns: minmax(8rem, 1.3fr) minmax(6rem, 0.65fr)
+    minmax(8rem, 1fr) minmax(6rem, 0.6fr) auto;
+}
+
+.holding-valuation-form {
+  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 1fr) minmax(7rem, 0.7fr) auto;
+}
+
+.holding-create-form label,
+.holding-valuation-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.holding-create-form input,
+.holding-valuation-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.holding-create-form button,
+.holding-valuation-form button {
+  min-height: 2.8rem;
+}
+
+.holding-registry-message {
+  margin: 0.75rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.holding-registry-message[role="alert"] {
+  color: var(--error);
+}
+
+.holding-registry-message[role="status"] {
+  color: var(--success);
+}
+
+.holding-record {
+  min-width: 0;
+  border-top: 1px solid var(--line-strong);
+  padding: 1rem 0;
+}
+
+.holding-record h3 {
+  margin: 0;
+  color: var(--paper);
+  overflow-wrap: anywhere;
+}
+
+.holding-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0.8rem 0;
+}
+
+.holding-summary div {
+  min-width: 0;
+}
+
+.holding-summary dt,
+.holding-summary dd {
+  margin: 0;
+}
+
+.holding-summary dd {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.holding-history-table-wrap {
+  max-width: 100%;
+  margin-top: 0.9rem;
+  overflow-x: auto;
+}
+
+.holding-history-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.holding-history-table-wrap th,
+.holding-history-table-wrap td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.65rem 0.75rem;
+  white-space: nowrap;
+}
+
+.holding-history-table-wrap th {
+  color: var(--paper-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.holding-history-table-wrap td {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+
+.holding-registry-section :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 .property-registry-empty {
   color: var(--paper-muted);
   line-height: 1.5;
@@ -4701,6 +4839,25 @@ section[aria-label="Category Target Entry"] [role="status"] {
 .loan-registry-section :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
+}
+
+@media (max-width: 680px) {
+  .holding-create-form,
+  .holding-valuation-form,
+  .holding-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .holding-create-form button,
+  .holding-valuation-form button {
+    justify-self: start;
+  }
+
+  .holding-history-table-wrap th,
+  .holding-history-table-wrap td {
+    padding: 0.45rem 0.35rem;
+    font-size: 0.78rem;
+  }
 }
 
 .loan-create-form {
@@ -5074,6 +5231,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .household-workspace .property-registry-section,
+.household-workspace .holding-registry-section,
 .household-workspace .loan-registry-section {
   margin-top: 1.35rem;
   border: 0;
@@ -5083,6 +5241,9 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
 .household-workspace .property-registry-empty,
 .household-workspace .property-registry-empty,
+.household-workspace .holding-local-note,
+.household-workspace .holding-registry-empty,
+.household-workspace .holding-summary dt,
 .household-workspace .loan-required-note,
 .household-workspace .loan-field-hint,
 .household-workspace .loan-balance-history-guidance,
@@ -5137,6 +5298,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .household-workspace .property-registry-message[role="alert"],
+.household-workspace .holding-registry-message[role="alert"],
 .household-workspace .loan-field-error,
 .household-workspace .loan-form-errors {
   color: var(--household-error);
@@ -5146,7 +5308,12 @@ section[aria-label="Category Target Entry"] [role="status"] {
   color: var(--household-success);
 }
 
+.household-workspace .holding-registry-message[role="status"] {
+  color: var(--household-success);
+}
+
 .property-workspace-grid,
+.holding-workspace-grid,
 .loan-workspace-grid {
   display: grid;
   grid-template-columns: minmax(13rem, 0.72fr) minmax(0, 1.8fr);
@@ -5156,12 +5323,14 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .property-record-navigation,
+.holding-record-navigation,
 .loan-record-navigation {
   display: grid;
   border-top: 1px solid var(--household-border);
 }
 
 .household-workspace .property-record-navigation button,
+.household-workspace .holding-record-navigation button,
 .household-workspace .loan-record-navigation button {
   display: grid;
   min-width: 0;
@@ -5176,12 +5345,14 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .household-workspace .property-record-navigation button:hover:not(:disabled),
+.household-workspace .holding-record-navigation button:hover:not(:disabled),
 .household-workspace .loan-record-navigation button:hover:not(:disabled) {
   color: var(--household-oxblood);
   background: #efe4de;
 }
 
 .household-workspace .property-record-navigation button[aria-current="page"],
+.household-workspace .holding-record-navigation button[aria-current="page"],
 .household-workspace .loan-record-navigation button[aria-current="page"] {
   color: var(--household-oxblood);
   background: var(--household-paper);
@@ -5216,7 +5387,33 @@ section[aria-label="Category Target Entry"] [role="status"] {
   background: var(--household-paper);
 }
 
+.household-workspace .holding-record {
+  border-color: var(--household-border);
+  color: var(--household-ink);
+  background: var(--household-paper);
+}
+
+.holding-correction {
+  margin-top: 1rem;
+}
+
+.household-workspace .holding-correction > summary {
+  color: var(--household-oxblood);
+  cursor: pointer;
+  text-underline-offset: 0.2em;
+}
+
+.holding-correction ul {
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.holding-record-navigation button {
+  overflow-wrap: anywhere;
+}
+
 .household-workspace .property-record h4,
+.household-workspace .holding-record h3,
 .household-workspace .loan-record-heading h4 {
   color: var(--household-oxblood);
   font-family: Georgia, "Times New Roman", serif;
@@ -5231,6 +5428,8 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .household-workspace .property-valuation-form,
+.household-workspace .holding-create-form,
+.household-workspace .holding-valuation-form,
 .household-workspace .loan-create-form,
 .household-workspace .loan-balance-form {
   margin-top: 0.85rem;
@@ -5247,6 +5446,8 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
 .household-workspace .property-create-form label,
 .household-workspace .property-valuation-form label,
+.household-workspace .holding-create-form label,
+.household-workspace .holding-valuation-form label,
 .household-workspace .property-label-editor form label,
 .household-workspace .property-correction-form label,
 .household-workspace .loan-field {
@@ -5263,18 +5464,23 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
 .household-workspace .loan-terms dt,
 .household-workspace .property-history-table-wrap th,
+.household-workspace .holding-history-table-wrap th,
 .household-workspace .loan-balance-table-wrap th {
   color: var(--household-muted);
 }
 
 .household-workspace .loan-terms dd,
 .household-workspace .property-history-table-wrap td,
+.household-workspace .holding-summary dd,
+.household-workspace .holding-history-table-wrap td,
 .household-workspace .loan-balance-table-wrap td {
   color: var(--household-ink);
 }
 
 .household-workspace .property-history-table-wrap th,
 .household-workspace .property-history-table-wrap td,
+.household-workspace .holding-history-table-wrap th,
+.household-workspace .holding-history-table-wrap td,
 .household-workspace .loan-balance-table-wrap th,
 .household-workspace .loan-balance-table-wrap td {
   border-color: var(--household-border);
@@ -5338,6 +5544,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
 @media (max-width: 1050px) {
   .property-workspace-grid,
+  .holding-workspace-grid,
   .loan-workspace-grid {
     grid-template-columns: minmax(11rem, 0.68fr) minmax(0, 1.5fr);
   }
@@ -5354,6 +5561,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   .property-workspace-grid,
+  .holding-workspace-grid,
   .loan-workspace-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;
