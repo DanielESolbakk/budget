@@ -4,10 +4,21 @@ import { ExportSection } from "../backup/ExportSection.js";
 import { RestoreSnapshotSection } from "../dashboard/RestoreSnapshotSection.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
 import {
+  HoldingRecordValidationError,
+  validateHoldingRecordInput,
+  validateHoldingValuationInput,
+} from "../../domain/holdingRecordValidation.js";
+import {
   validatePropertyValuationCorrectionInput,
   validatePropertyValuationInput,
 } from "../../domain/propertyRecordValidation.js";
 import type {
+  HoldingRecordValidationField,
+} from "../../domain/holdingRecordValidation.js";
+import type {
+  HoldingRecordInput,
+  HoldingValuationInput,
+  HoldingWithValuations,
   PropertyValuationCorrectionInput,
   PropertyValuationInput,
   PropertyValuationSnapshot,
@@ -47,6 +58,596 @@ export function DataSafetyWorkspace({ isActive, onRestoreSuccess }: DataSafetyWo
           }}
         />
       </div>
+    </section>
+  );
+}
+
+interface HoldingDraft {
+  label: string;
+  quantity: string;
+  costBasis: string;
+  currencyCode: string;
+}
+
+interface HoldingValuationDraft {
+  effectiveDateIso: string;
+  amount: string;
+  currencyCode: string;
+}
+
+type HoldingFormField = "label" | "quantity" | "costBasisMinor" | "currencyCode";
+type HoldingValuationFormField = "effectiveDateIso" | "amountMinor" | "currencyCode";
+
+const EMPTY_HOLDING_DRAFT: HoldingDraft = {
+  label: "",
+  quantity: "",
+  costBasis: "",
+  currencyCode: "NOK",
+};
+
+const holdingAmountFormatter = new Intl.NumberFormat("nb-NO", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const holdingRecordedAtFormatter = new Intl.DateTimeFormat("nb-NO", {
+  dateStyle: "short",
+  timeStyle: "short",
+});
+
+function formatHoldingAmount(amountMinor: number, currencyCode: string): string {
+  return `${currencyCode} ${holdingAmountFormatter.format(amountMinor / 100)}`;
+}
+
+function holdingFormField(field: HoldingRecordValidationField): HoldingFormField | undefined {
+  if (
+    field === "label" ||
+    field === "quantity" ||
+    field === "costBasisMinor" ||
+    field === "currencyCode"
+  ) {
+    return field;
+  }
+  return undefined;
+}
+
+function holdingValuationFormField(
+  field: HoldingRecordValidationField
+): HoldingValuationFormField | undefined {
+  if (
+    field === "holdingId" ||
+    field === "effectiveDateIso" ||
+    field === "amountMinor" ||
+    field === "currencyCode"
+  ) {
+    return field === "holdingId" ? undefined : field;
+  }
+  return undefined;
+}
+
+export function HoldingRegistrySection({
+  isActive,
+  refreshRevision,
+}: {
+  isActive: boolean;
+  refreshRevision: number;
+}): React.JSX.Element {
+  const [holdings, setHoldings] = React.useState<HoldingWithValuations[]>([]);
+  const [holdingDraft, setHoldingDraft] = React.useState(EMPTY_HOLDING_DRAFT);
+  const [valuationDrafts, setValuationDrafts] = React.useState<
+    Record<string, HoldingValuationDraft>
+  >({});
+  const [holdingErrors, setHoldingErrors] = React.useState<Partial<Record<HoldingFormField, string>>>({});
+  const [holdingFormError, setHoldingFormError] = React.useState<string | null>(null);
+  const [holdingStatus, setHoldingStatus] = React.useState<string | null>(null);
+  const [valuationErrors, setValuationErrors] = React.useState<
+    Record<string, Partial<Record<HoldingValuationFormField, string>>>
+  >({});
+  const [valuationFormErrors, setValuationFormErrors] = React.useState<Record<string, string>>({});
+  const [valuationStatuses, setValuationStatuses] = React.useState<Record<string, string>>({});
+  const [revision, setRevision] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const holdingFieldRefs = React.useRef<Partial<Record<HoldingFormField, HTMLInputElement | null>>>({});
+  const valuationFieldRefs = React.useRef<
+    Record<string, Partial<Record<"effectiveDateIso" | "amount" | "currencyCode", HTMLInputElement | null>>>
+  >({});
+
+  React.useEffect(() => {
+    if (!isActive) return;
+    let active = true;
+    setIsLoading(true);
+    setLoadError(null);
+    window.budgetApi.holdingRegistry.list()
+      .then((loadedHoldings) => {
+        if (active) setHoldings(loadedHoldings);
+      })
+      .catch((error: unknown) => {
+        if (active) setLoadError(errorMessage(error, "Unable to load investment holdings."));
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isActive, refreshRevision, revision]);
+
+  function focusHoldingField(field: HoldingFormField): void {
+    window.requestAnimationFrame(() => holdingFieldRefs.current[field]?.focus());
+  }
+
+  function focusValuationField(
+    holdingId: string,
+    field: "effectiveDateIso" | "amount" | "currencyCode"
+  ): void {
+    window.requestAnimationFrame(() => valuationFieldRefs.current[holdingId]?.[field]?.focus());
+  }
+
+  function updateHoldingDraft(field: keyof HoldingDraft, value: string): void {
+    const validationField = field === "costBasis" ? "costBasisMinor" : field;
+    setHoldingErrors((current) => {
+      const next = { ...current };
+      delete next[validationField];
+      return next;
+    });
+    setHoldingFormError(null);
+    setHoldingStatus(null);
+    setHoldingDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  async function addHolding(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (isSaving || isLoading || loadError !== null) return;
+    setHoldingErrors({});
+    setHoldingFormError(null);
+    setHoldingStatus(null);
+
+    const costBasisMinor = parseCurrencyAmountMinor(holdingDraft.costBasis);
+    if (costBasisMinor === null) {
+      setHoldingErrors({
+        costBasisMinor: "Enter a non-negative cost basis with up to two decimal places.",
+      });
+      focusHoldingField("costBasisMinor");
+      return;
+    }
+
+    let validated: HoldingRecordInput;
+    try {
+      validated = validateHoldingRecordInput({
+        label: holdingDraft.label,
+        quantity: Number(holdingDraft.quantity),
+        costBasisMinor,
+        currencyCode: holdingDraft.currencyCode,
+      });
+    } catch (validationError: unknown) {
+      if (validationError instanceof HoldingRecordValidationError) {
+        const allFieldErrors: Partial<Record<HoldingFormField, string>> = {};
+        for (const field of ["label", "quantity", "costBasisMinor", "currencyCode"] as const) {
+          const message = validationError.fieldErrors?.[field];
+          if (message !== undefined) allFieldErrors[field] = message;
+        }
+        if (Object.keys(allFieldErrors).length > 0) {
+          setHoldingErrors(allFieldErrors);
+          const firstField = (["label", "quantity", "costBasisMinor", "currencyCode"] as const)
+            .find((field) => allFieldErrors[field] !== undefined);
+          if (firstField !== undefined) focusHoldingField(firstField);
+          return;
+        }
+        const field = holdingFormField(validationError.field);
+        if (field !== undefined) {
+          setHoldingErrors({ [field]: validationError.message });
+          focusHoldingField(field);
+        } else {
+          setHoldingFormError(validationError.message);
+        }
+      } else {
+        setHoldingFormError(errorMessage(validationError, "Unable to validate the investment holding."));
+      }
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await window.budgetApi.holdingRegistry.create(validated);
+      setHoldingDraft(EMPTY_HOLDING_DRAFT);
+      setHoldingStatus("Investment holding added.");
+      setRevision((current) => current + 1);
+    } catch (saveError: unknown) {
+      setHoldingFormError(errorMessage(saveError, "Unable to add the investment holding."));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function initialValuationDraft(holding: HoldingWithValuations): HoldingValuationDraft {
+    return {
+      effectiveDateIso: "",
+      amount: "",
+      currencyCode: holding.currencyCode,
+    };
+  }
+
+  function valuationDraft(holding: HoldingWithValuations): HoldingValuationDraft {
+    return valuationDrafts[holding.id] ?? initialValuationDraft(holding);
+  }
+
+  function updateValuationDraft(
+    holdingId: string,
+    field: keyof HoldingValuationDraft,
+    value: string,
+    defaultCurrencyCode: string
+  ): void {
+    setValuationErrors((current) => {
+      const next = { ...current };
+      const holdingErrors = { ...(next[holdingId] ?? {}) };
+      const validationField = field === "amount" ? "amountMinor" : field;
+      delete holdingErrors[validationField];
+      if (Object.keys(holdingErrors).length === 0) {
+        delete next[holdingId];
+      } else {
+        next[holdingId] = holdingErrors;
+      }
+      return next;
+    });
+    setValuationFormErrors((current) => {
+      const next = { ...current };
+      delete next[holdingId];
+      return next;
+    });
+    setValuationStatuses((current) => {
+      const next = { ...current };
+      delete next[holdingId];
+      return next;
+    });
+    setValuationDrafts((current) => ({
+      ...current,
+      [holdingId]: {
+        ...(current[holdingId] ?? {
+          effectiveDateIso: "",
+          amount: "",
+          currencyCode: defaultCurrencyCode,
+        }),
+        [field]: value,
+      },
+    }));
+  }
+
+  async function addValuation(
+    event: React.FormEvent<HTMLFormElement>,
+    holding: HoldingWithValuations
+  ): Promise<void> {
+    event.preventDefault();
+    if (isSaving || isLoading || loadError !== null) return;
+    setValuationErrors((current) => {
+      const next = { ...current };
+      delete next[holding.id];
+      return next;
+    });
+    setValuationFormErrors((current) => {
+      const next = { ...current };
+      delete next[holding.id];
+      return next;
+    });
+    setValuationStatuses((current) => {
+      const next = { ...current };
+      delete next[holding.id];
+      return next;
+    });
+
+    const draft = valuationDraft(holding);
+    const amountMinor = parseCurrencyAmountMinor(draft.amount);
+    if (amountMinor === null) {
+      setValuationErrors((current) => ({
+        ...current,
+        [holding.id]: {
+          amountMinor: "Enter a non-negative value with up to two decimal places.",
+        },
+      }));
+      focusValuationField(holding.id, "amount");
+      return;
+    }
+
+    let validated: HoldingValuationInput;
+    try {
+      validated = validateHoldingValuationInput({
+        holdingId: holding.id,
+        effectiveDateIso: draft.effectiveDateIso,
+        amountMinor,
+        currencyCode: draft.currencyCode,
+      });
+    } catch (validationError: unknown) {
+      if (validationError instanceof HoldingRecordValidationError) {
+        const field = holdingValuationFormField(validationError.field);
+        if (field !== undefined) {
+          setValuationErrors((current) => ({
+            ...current,
+            [holding.id]: { [field]: validationError.message },
+          }));
+          focusValuationField(
+            holding.id,
+            field === "amountMinor" ? "amount" : field
+          );
+        } else {
+          setValuationFormErrors((current) => ({
+            ...current,
+            [holding.id]: validationError.message,
+          }));
+        }
+      } else {
+        setValuationFormErrors((current) => ({
+          ...current,
+          [holding.id]: errorMessage(validationError, "Unable to validate the value."),
+        }));
+      }
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await window.budgetApi.holdingRegistry.appendValuation(validated);
+      setValuationDrafts((current) => ({
+        ...current,
+        [holding.id]: {
+          ...(current[holding.id] ?? initialValuationDraft(holding)),
+          effectiveDateIso: "",
+          amount: "",
+        },
+      }));
+      setValuationStatuses((current) => ({
+        ...current,
+        [holding.id]: `Value added for ${holding.label}.`,
+      }));
+      setRevision((current) => current + 1);
+    } catch (saveError: unknown) {
+      setValuationFormErrors((current) => ({
+        ...current,
+        [holding.id]: errorMessage(saveError, "Unable to add the holding value."),
+      }));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <section className="holding-registry-section" aria-label="Investment holdings registry">
+      <p className="holding-local-note">
+        Enter holdings and values manually. Entries stay on this device, retain their original
+        currencies, and do not use brokerage connections, market quotes, or exchange-rate lookups.
+      </p>
+      <form
+        className="holding-create-form"
+        aria-label="Add investment holding"
+        onSubmit={(event) => void addHolding(event)}
+      >
+        <label>
+          Holding label
+          <input
+            autoComplete="off"
+            aria-invalid={holdingErrors.label === undefined ? undefined : true}
+            aria-describedby={holdingErrors.label === undefined ? undefined : "holding-error-label"}
+            maxLength={100}
+            onChange={(event) => updateHoldingDraft("label", event.currentTarget.value)}
+            ref={(element) => { holdingFieldRefs.current.label = element; }}
+            value={holdingDraft.label}
+          />
+        </label>
+        <label>
+          Quantity
+          <input
+            type="number"
+            inputMode="decimal"
+            step="any"
+            aria-invalid={holdingErrors.quantity === undefined ? undefined : true}
+            aria-describedby={holdingErrors.quantity === undefined ? undefined : "holding-error-quantity"}
+            onChange={(event) => updateHoldingDraft("quantity", event.currentTarget.value)}
+            ref={(element) => { holdingFieldRefs.current.quantity = element; }}
+            value={holdingDraft.quantity}
+          />
+        </label>
+        <label>
+          Cost basis
+          <input
+            inputMode="decimal"
+            aria-invalid={holdingErrors.costBasisMinor === undefined ? undefined : true}
+            aria-describedby={holdingErrors.costBasisMinor === undefined
+              ? undefined
+              : "holding-error-costBasisMinor"}
+            onChange={(event) => updateHoldingDraft("costBasis", event.currentTarget.value)}
+            ref={(element) => { holdingFieldRefs.current.costBasisMinor = element; }}
+            value={holdingDraft.costBasis}
+          />
+        </label>
+        <label>
+          Currency code
+          <input
+            autoCapitalize="characters"
+            maxLength={3}
+            aria-invalid={holdingErrors.currencyCode === undefined ? undefined : true}
+            aria-describedby={holdingErrors.currencyCode === undefined
+              ? undefined
+              : "holding-error-currencyCode"}
+            onChange={(event) => updateHoldingDraft("currencyCode", event.currentTarget.value)}
+            ref={(element) => { holdingFieldRefs.current.currencyCode = element; }}
+            value={holdingDraft.currencyCode}
+          />
+        </label>
+        <button disabled={isSaving || isLoading || loadError !== null} type="submit">
+          {isSaving ? "Saving holding..." : "Save holding"}
+        </button>
+      </form>
+      {Object.entries(holdingErrors).map(([field, message]) => (
+        <p
+          key={field}
+          id={`holding-error-${field}`}
+          className="holding-registry-message"
+          role="alert"
+        >
+          {message}
+        </p>
+      ))}
+      {holdingFormError !== null && (
+        <p className="holding-registry-message" role="alert">{holdingFormError}</p>
+      )}
+      {holdingStatus !== null && (
+        <p className="holding-registry-message" role="status">{holdingStatus}</p>
+      )}
+      {loadError !== null && (
+        <p className="holding-registry-message" role="alert">{loadError}</p>
+      )}
+      {isLoading ? (
+        <p className="holding-registry-empty" role="status">Loading investment holdings...</p>
+      ) : holdings.length === 0 ? (
+        loadError === null && (
+          <p className="holding-registry-empty">No investment holdings have been recorded.</p>
+        )
+      ) : (
+        <div className="holding-record-list">
+          {holdings.map((holding) => {
+            const draft = valuationDraft(holding);
+            const fields = valuationErrors[holding.id] ?? {};
+            const generalError = valuationFormErrors[holding.id];
+            const status = valuationStatuses[holding.id];
+            const errorId = `holding-valuation-error-${holding.id}`;
+            return (
+              <section
+                className="holding-record"
+                key={holding.id}
+                aria-label={`Holding ${holding.label}`}
+              >
+                <h3>{holding.label}</h3>
+                <dl className="holding-summary">
+                  <div>
+                    <dt>Quantity</dt>
+                    <dd>{holding.quantity}</dd>
+                  </div>
+                  <div>
+                    <dt>Cost basis</dt>
+                    <dd>{formatHoldingAmount(holding.costBasisMinor, holding.currencyCode)}</dd>
+                  </div>
+                </dl>
+                <form
+                  className="holding-valuation-form"
+                  aria-label={`Add valuation for ${holding.label}`}
+                  onSubmit={(event) => void addValuation(event, holding)}
+                >
+                  <label>
+                    Effective date
+                    <input
+                      type="date"
+                      aria-invalid={fields.effectiveDateIso === undefined ? undefined : true}
+                      aria-describedby={fields.effectiveDateIso === undefined ? undefined : errorId}
+                      onChange={(event) =>
+                        updateValuationDraft(
+                          holding.id,
+                          "effectiveDateIso",
+                          event.currentTarget.value,
+                          holding.currencyCode
+                        )}
+                      ref={(element) => {
+                        const refs = valuationFieldRefs.current[holding.id] ?? {};
+                        refs.effectiveDateIso = element;
+                        valuationFieldRefs.current[holding.id] = refs;
+                      }}
+                      value={draft.effectiveDateIso}
+                    />
+                  </label>
+                  <label>
+                    Amount
+                    <input
+                      inputMode="decimal"
+                      aria-invalid={fields.amountMinor === undefined ? undefined : true}
+                      aria-describedby={fields.amountMinor === undefined ? undefined : errorId}
+                      onChange={(event) =>
+                        updateValuationDraft(
+                          holding.id,
+                          "amount",
+                          event.currentTarget.value,
+                          holding.currencyCode
+                        )}
+                      ref={(element) => {
+                        const refs = valuationFieldRefs.current[holding.id] ?? {};
+                        refs.amount = element;
+                        valuationFieldRefs.current[holding.id] = refs;
+                      }}
+                      value={draft.amount}
+                    />
+                  </label>
+                  <label>
+                    Currency code
+                    <input
+                      autoCapitalize="characters"
+                      maxLength={3}
+                      aria-invalid={fields.currencyCode === undefined ? undefined : true}
+                      aria-describedby={fields.currencyCode === undefined ? undefined : errorId}
+                      onChange={(event) =>
+                        updateValuationDraft(
+                          holding.id,
+                          "currencyCode",
+                          event.currentTarget.value,
+                          holding.currencyCode
+                        )}
+                      ref={(element) => {
+                        const refs = valuationFieldRefs.current[holding.id] ?? {};
+                        refs.currencyCode = element;
+                        valuationFieldRefs.current[holding.id] = refs;
+                      }}
+                      value={draft.currencyCode}
+                    />
+                  </label>
+                  <button disabled={isSaving || isLoading || loadError !== null} type="submit">
+                    {isSaving ? "Saving value..." : "Save value"}
+                  </button>
+                </form>
+                {Object.keys(fields).length > 0 && (
+                  <p id={errorId} className="holding-registry-message" role="alert">
+                    {Object.values(fields).join(" ")}
+                  </p>
+                )}
+                {generalError !== undefined && (
+                  <p className="holding-registry-message" role="alert">{generalError}</p>
+                )}
+                {status !== undefined && (
+                  <p className="holding-registry-message" role="status">{status}</p>
+                )}
+                {holding.valuations.length === 0 ? (
+                  <p className="holding-registry-empty">No values have been recorded.</p>
+                ) : (
+                  <div className="holding-history-table-wrap">
+                    <table aria-label="Valuation history">
+                      <thead>
+                        <tr>
+                          <th scope="col">Effective date</th>
+                          <th scope="col">Value</th>
+                          <th scope="col">Recorded at (local time)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {holding.valuations.map((valuation) => (
+                          <tr key={valuation.id}>
+                            <td>
+                              <time dateTime={valuation.effectiveDateIso}>
+                                {valuation.effectiveDateIso}
+                              </time>
+                            </td>
+                            <td>{formatHoldingAmount(valuation.amountMinor, valuation.currencyCode)}</td>
+                            <td>
+                              <time dateTime={valuation.recordedAtIso}>
+                                {holdingRecordedAtFormatter.format(new Date(valuation.recordedAtIso))}
+                              </time>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

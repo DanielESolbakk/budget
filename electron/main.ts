@@ -26,6 +26,7 @@ import {
 import { exportLedgerCsvToFile, type ExportCsvSummary } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
+import { createHoldingRegistry } from "../src/app/holdingRegistry.js";
 import { createLoanRegistry } from "../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../src/app/propertyRegistry.js";
 import {
@@ -120,6 +121,10 @@ import {
   type AccountBalanceCheckpoint,
   type AccountStatementCoveragePeriod,
   type Household,
+  type HoldingRecord,
+  type HoldingValuationInput,
+  type HoldingValuationSnapshot,
+  type HoldingWithValuations,
   type Account,
   type ManualEntryInput,
   type ImportReviewCorrectionInput,
@@ -133,6 +138,10 @@ import {
   type Transaction,
   type TransactionCategoryAllocation,
 } from "../src/domain/types.js";
+import {
+  validateHoldingRecordInput,
+  validateHoldingValuationInput,
+} from "../src/domain/holdingRecordValidation.js";
 import {
   validateLoanBalanceInput,
   validateLoanRecordInput,
@@ -224,6 +233,7 @@ const localLedgerDatabase = createLocalLedgerDatabase({
     : {}),
 });
 const propertyRegistry = createPropertyRegistry(localLedgerDatabase);
+const holdingRegistry = createHoldingRegistry(localLedgerDatabase);
 const loanRegistry = createLoanRegistry(localLedgerDatabase);
 const learnedCategoryRules = new Map(
   localLedgerDatabase.listMerchantCategoryRules().map((rule) => [rule.merchantAlias, rule.categoryId])
@@ -1143,6 +1153,11 @@ app.whenReady().then(async () => {
     return propertyRegistry.list();
   });
 
+  ipcMain.handle("holdingRegistry:list", (event): HoldingWithValuations[] => {
+    assertTrustedRenderer(event);
+    return holdingRegistry.list();
+  });
+
   ipcMain.handle("loanRegistry:list", (event): LoanWithBalances[] => {
     assertTrustedRenderer(event);
     return loanRegistry.list();
@@ -1161,6 +1176,21 @@ app.whenReady().then(async () => {
       assertTrustedRenderer(event);
       const validated: LoanBalanceInput = validateLoanBalanceInput(input);
       return ledgerOperationCoordinator.runExclusive(() => loanRegistry.appendBalance(validated));
+    }
+  );
+
+  ipcMain.handle("holdingRegistry:create", (event, input: unknown): Promise<HoldingRecord> => {
+    assertTrustedRenderer(event);
+    const validated = validateHoldingRecordInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => holdingRegistry.create(validated));
+  });
+
+  ipcMain.handle(
+    "holdingRegistry:appendValuation",
+    (event, input: unknown): Promise<HoldingValuationSnapshot> => {
+      assertTrustedRenderer(event);
+      const validated: HoldingValuationInput = validateHoldingValuationInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => holdingRegistry.appendValuation(validated));
     }
   );
 

@@ -34,12 +34,18 @@ import {
   validateLoanBalanceInput,
   validateLoanRecordInput,
 } from "../../domain/loanRecordValidation.js";
+import {
+  validateHoldingRecordInput,
+  validateHoldingValuationInput,
+} from "../../domain/holdingRecordValidation.js";
 import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
   Account,
   CategorizationDecision,
   Household,
+  HoldingRecord,
+  HoldingValuationSnapshot,
   ImportJob,
   ImportJobProvenance,
   ImportReviewItem,
@@ -78,6 +84,8 @@ interface LocalLedgerSeedData {
   exchangeRates?: ExchangeRate[];
   properties?: PropertyRecord[];
   propertyValuations?: PropertyValuationSnapshot[];
+  holdings?: HoldingRecord[];
+  holdingValuations?: HoldingValuationSnapshot[];
   loanRecords?: LoanRecord[];
   loanBalanceSnapshots?: LoanBalanceSnapshot[];
 }
@@ -118,6 +126,10 @@ export interface LocalLedgerDatabase {
   listPropertyRecords: (householdId: string) => PropertyRecord[];
   appendPropertyValuationSnapshot: (valuation: PropertyValuationSnapshot) => void;
   listPropertyValuationSnapshots: (propertyId: string) => PropertyValuationSnapshot[];
+  createHoldingRecord: (holding: HoldingRecord) => void;
+  listHoldingRecords: (householdId: string) => HoldingRecord[];
+  appendHoldingValuationSnapshot: (valuation: HoldingValuationSnapshot) => void;
+  listHoldingValuationSnapshots: (holdingId: string) => HoldingValuationSnapshot[];
   createLoanRecord: (loan: LoanRecord) => void;
   listLoanRecords: (householdId: string) => LoanRecord[];
   appendLoanBalanceSnapshot: (balance: LoanBalanceSnapshot) => void;
@@ -658,6 +670,31 @@ function ensureSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS property_valuations_by_property_date
       ON property_valuation_snapshots (property_id, effective_date_iso, recorded_at_iso, id);
 
+    CREATE TABLE IF NOT EXISTS investment_holdings (
+      id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      quantity REAL NOT NULL CHECK (quantity > 0),
+      cost_basis_minor INTEGER NOT NULL CHECK (cost_basis_minor >= 0),
+      currency_code TEXT NOT NULL,
+      created_at_iso TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS holdings_by_household_label
+      ON investment_holdings (household_id, label COLLATE NOCASE, id);
+
+    CREATE TABLE IF NOT EXISTS holding_valuation_snapshots (
+      id TEXT PRIMARY KEY,
+      holding_id TEXT NOT NULL,
+      effective_date_iso TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),
+      currency_code TEXT NOT NULL,
+      recorded_at_iso TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS holding_valuations_by_holding_date
+      ON holding_valuation_snapshots (holding_id, effective_date_iso, recorded_at_iso, id);
+
     CREATE TABLE IF NOT EXISTS loan_records (
       id TEXT PRIMARY KEY,
       household_id TEXT NOT NULL,
@@ -934,6 +971,23 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
     insertProperty.run(property.id, property.householdId, property.label, property.createdAtIso);
   }
 
+  const insertHolding = db.prepare(`
+    INSERT INTO investment_holdings (
+      id, household_id, label, quantity, cost_basis_minor, currency_code, created_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const holding of snapshot.holdings ?? []) {
+    insertHolding.run(
+      holding.id,
+      holding.householdId,
+      holding.label,
+      holding.quantity,
+      holding.costBasisMinor,
+      holding.currencyCode,
+      holding.createdAtIso
+    );
+  }
+
   const insertLoanRecord = db.prepare(`
     INSERT INTO loan_records (
       id, household_id, label, principal_minor, annual_interest_rate_basis_points,
@@ -987,6 +1041,22 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       valuation.currencyCode,
       valuation.recordedAtIso,
       valuation.correction === undefined ? null : JSON.stringify(valuation.correction)
+    );
+  }
+
+  const insertHoldingValuation = db.prepare(`
+    INSERT INTO holding_valuation_snapshots (
+      id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const valuation of snapshot.holdingValuations ?? []) {
+    insertHoldingValuation.run(
+      valuation.id,
+      valuation.holdingId,
+      valuation.effectiveDateIso,
+      valuation.amountMinor,
+      valuation.currencyCode,
+      valuation.recordedAtIso
     );
   }
 
@@ -1783,6 +1853,121 @@ export function createLocalLedgerDatabase(
     });
   }
 
+  function createHoldingRecord(holding: HoldingRecord): void {
+    if (
+      holding.id.trim().length === 0 ||
+      holding.householdId.trim().length === 0 ||
+      !holding.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(holding.createdAtIso))
+    ) {
+      throw new Error("Investment holding identity or creation timestamp is invalid.");
+    }
+    if (
+      db.prepare("SELECT 1 FROM households WHERE id = ?").get(holding.householdId) === undefined
+    ) {
+      throw new Error(`Household not found for investment holding: ${holding.householdId}`);
+    }
+
+    const validated = validateHoldingRecordInput(holding);
+    db.prepare(`
+      INSERT INTO investment_holdings (
+        id, household_id, label, quantity, cost_basis_minor, currency_code, created_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      holding.id,
+      holding.householdId,
+      validated.label,
+      validated.quantity,
+      validated.costBasisMinor,
+      validated.currencyCode,
+      holding.createdAtIso
+    );
+  }
+
+  function listHoldingRecords(householdId: string): HoldingRecord[] {
+    return db.prepare(`
+      SELECT id, household_id, label, quantity, cost_basis_minor, currency_code, created_at_iso
+      FROM investment_holdings
+      WHERE household_id = ?
+      ORDER BY label COLLATE NOCASE, id
+    `).all(householdId).map((row) => {
+      const holding = row as {
+        id: string;
+        household_id: string;
+        label: string;
+        quantity: number;
+        cost_basis_minor: number;
+        currency_code: string;
+        created_at_iso: string;
+      };
+      return {
+        id: holding.id,
+        householdId: holding.household_id,
+        label: holding.label,
+        quantity: holding.quantity,
+        costBasisMinor: holding.cost_basis_minor,
+        currencyCode: holding.currency_code,
+        createdAtIso: holding.created_at_iso,
+      };
+    });
+  }
+
+  function appendHoldingValuationSnapshot(valuation: HoldingValuationSnapshot): void {
+    if (
+      valuation.id.trim().length === 0 ||
+      !valuation.recordedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(valuation.recordedAtIso))
+    ) {
+      throw new Error("Investment holding valuation identity or recorded timestamp is invalid.");
+    }
+    const validated = validateHoldingValuationInput(valuation);
+    if (
+      db.prepare("SELECT 1 FROM investment_holdings WHERE id = ?")
+        .get(validated.holdingId) === undefined
+    ) {
+      throw new Error(`Investment holding not found for valuation: ${validated.holdingId}`);
+    }
+
+    db.prepare(`
+      INSERT INTO holding_valuation_snapshots (
+        id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      valuation.id,
+      validated.holdingId,
+      validated.effectiveDateIso,
+      validated.amountMinor,
+      validated.currencyCode,
+      valuation.recordedAtIso
+    );
+  }
+
+  function listHoldingValuationSnapshots(holdingId: string): HoldingValuationSnapshot[] {
+    return db.prepare(`
+      SELECT id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      FROM holding_valuation_snapshots
+      WHERE holding_id = ?
+      ORDER BY effective_date_iso, recorded_at_iso, id
+    `).all(holdingId).map((row) => {
+      const valuation = row as {
+        id: string;
+        holding_id: string;
+        effective_date_iso: string;
+        amount_minor: number;
+        currency_code: string;
+        recorded_at_iso: string;
+      };
+      return {
+        id: valuation.id,
+        holdingId: valuation.holding_id,
+        effectiveDateIso: valuation.effective_date_iso,
+        amountMinor: valuation.amount_minor,
+        currencyCode: valuation.currency_code,
+        recordedAtIso: valuation.recorded_at_iso,
+      };
+    });
+  }
+
   function createLoanRecord(loan: LoanRecord): void {
     if (
       loan.id.trim().length === 0 ||
@@ -2166,6 +2351,29 @@ export function createLocalLedgerDatabase(
         ...(correction === undefined ? {} : { correction }),
       };
     });
+    const holdings = listHoldingRecords(householdRow.id);
+    const holdingValuations = db.prepare(`
+      SELECT id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      FROM holding_valuation_snapshots
+      ORDER BY holding_id, effective_date_iso, recorded_at_iso, id
+    `).all().map((row) => {
+      const valuation = row as {
+        id: string;
+        holding_id: string;
+        effective_date_iso: string;
+        amount_minor: number;
+        currency_code: string;
+        recorded_at_iso: string;
+      };
+      return {
+        id: valuation.id,
+        holdingId: valuation.holding_id,
+        effectiveDateIso: valuation.effective_date_iso,
+        amountMinor: valuation.amount_minor,
+        currencyCode: valuation.currency_code,
+        recordedAtIso: valuation.recorded_at_iso,
+      };
+    });
     const loanRecords = listLoanRecords(householdRow.id);
     const loanBalanceSnapshots = db.prepare(`
       SELECT id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
@@ -2261,6 +2469,8 @@ export function createLocalLedgerDatabase(
       exchangeRates,
       properties,
       propertyValuations,
+      holdings,
+      holdingValuations,
       loanRecords,
       loanBalanceSnapshots,
     };
@@ -2285,6 +2495,8 @@ export function createLocalLedgerDatabase(
         DELETE FROM merchant_category_rules;
         DELETE FROM loan_balance_snapshots;
         DELETE FROM loan_records;
+        DELETE FROM holding_valuation_snapshots;
+        DELETE FROM investment_holdings;
         DELETE FROM property_valuation_snapshots;
         DELETE FROM properties;
         DELETE FROM accounts;
@@ -3729,6 +3941,10 @@ export function createLocalLedgerDatabase(
     listPropertyRecords,
     appendPropertyValuationSnapshot,
     listPropertyValuationSnapshots,
+    createHoldingRecord,
+    listHoldingRecords,
+    appendHoldingValuationSnapshot,
+    listHoldingValuationSnapshots,
     createLoanRecord,
     listLoanRecords,
     appendLoanBalanceSnapshot,

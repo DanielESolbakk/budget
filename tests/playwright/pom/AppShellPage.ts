@@ -7,6 +7,7 @@ export type WorkspaceName =
   | "Household"
   | "Properties"
   | "Loans"
+  | "Investments"
   | "Transactions"
   | "Coverage"
   | "Pending"
@@ -59,6 +60,7 @@ export class AppShellPage {
           ? "Accounts"
           : name === "Properties" ||
               name === "Loans" ||
+              name === "Investments" ||
               name === "Data safety" ||
               name === "Settings"
             ? "Household"
@@ -80,6 +82,7 @@ export class AppShellPage {
     } else if (
       name === "Properties" ||
       name === "Loans" ||
+      name === "Investments" ||
       name === "Data safety" ||
       name === "Settings"
     ) {
