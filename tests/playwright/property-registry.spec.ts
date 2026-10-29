@@ -3,6 +3,7 @@ import { _electron as electron } from "@playwright/test";
 import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
+import { LoanRegistryPage } from "./pom/LoanRegistryPage.js";
 import { PropertyRegistryPage } from "./pom/PropertyRegistryPage.js";
 import {
   installMainProcessNetworkProbe,
@@ -17,20 +18,221 @@ import {
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
+function relativeLuminance(color: string): number {
+  const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+  if (channels === undefined || channels.length !== 3) {
+    throw new Error(`Unexpected RGB color: ${color}`);
+  }
+  const linear = channels.map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function seedExistingAccountAndTransaction(databasePath: string): void {
+  const database = new DatabaseSync(databasePath);
+  try {
+    database.prepare(`
+      INSERT INTO accounts (id, household_id, name, currency_code)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "property-regression-account",
+      "sample-hh",
+      "Synthetic existing account",
+      "NOK"
+    );
+    database.prepare(`
+      INSERT INTO transactions (
+        id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        merchant_search, currency_code, source_type, source_reference, category_id,
+        import_job_id, categorization_json, category_allocations_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      "property-regression-transaction",
+      "sample-hh",
+      "property-regression-account",
+      "2026-09-15T00:00:00.000Z",
+      -12_500,
+      "SYNTHETIC EXISTING TRANSACTION",
+      "SYNTHETIC EXISTING TRANSACTION",
+      "NOK",
+      "manual",
+      null,
+      null,
+      null,
+      null,
+      null
+    );
+  } finally {
+    database.close();
+  }
+}
+
+function readExistingLedgerRecords(databasePath: string) {
+  const database = new DatabaseSync(databasePath);
+  try {
+    return {
+      accounts: database.prepare("SELECT * FROM accounts ORDER BY id").all(),
+      transactions: database.prepare("SELECT * FROM transactions ORDER BY id").all(),
+    };
+  } finally {
+    database.close();
+  }
+}
+
+test("Household record canvas is opaque and keeps heading contrast accessible", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.openWorkspace("Properties");
+  const workspace = window.getByRole("region", { name: "Properties workspace" });
+  const colors = await workspace.evaluate((element) => {
+    const heading = element.querySelector(".destination-heading h2");
+    if (heading === null) throw new Error("Properties workspace heading is missing.");
+    return {
+      background: getComputedStyle(element).backgroundColor,
+      foreground: getComputedStyle(heading).color,
+    };
+  });
+
+  expect(colors.background).not.toBe("rgba(0, 0, 0, 0)");
+  expect(contrastRatio(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5);
+
+  const registry = new PropertyRegistryPage(window);
+  await registry.addProperty("Home");
+  const recordColors = await registry.property("Home").evaluate((record) => {
+    const heading = record.querySelector("h4");
+    if (heading === null) throw new Error("Selected property heading is missing.");
+    return {
+      background: getComputedStyle(record).backgroundColor,
+      foreground: getComputedStyle(heading).color,
+    };
+  });
+  expect(recordColors.background).not.toBe("rgba(0, 0, 0, 0)");
+  expect(contrastRatio(recordColors.foreground, recordColors.background))
+    .toBeGreaterThanOrEqual(4.5);
+});
+
+test("property creation and valuation entry open only when requested", async ({
+  appShell,
+  window,
+}) => {
+  await appShell.openWorkspace("Properties");
+  const registry = new PropertyRegistryPage(window);
+
+  await expect(registry.propertyCreateForm).toBeHidden();
+  await expect(registry.addPropertyAction).toBeVisible();
+  await registry.openCreateForm();
+  await expect(registry.propertyCreateForm).toBeVisible();
+  await registry.addProperty("Home");
+
+  await expect(registry.valuationForm("Home")).toBeHidden();
+  await expect(registry.property("Home").getByRole("button", {
+    name: "Record value",
+    exact: true,
+  })).toBeVisible();
+  await registry.openValuationForm("Home");
+  await expect(registry.valuationForm("Home")).toBeVisible();
+});
+
+test("property records use a selected detail and return to the list on compact screens", async ({
+  appShell,
+  window,
+}) => {
+  await window.setViewportSize({ width: 1280, height: 800 });
+  await appShell.openWorkspace("Properties");
+  const registry = new PropertyRegistryPage(window);
+  await registry.addProperty("Home");
+  await registry.addProperty("Cabin");
+
+  await expect(registry.propertyNavigation).toBeVisible();
+  await expect(registry.backToPropertyListButton).toBeHidden();
+  await expect(registry.property("Cabin")).toBeVisible();
+  await expect(registry.property("Home")).toHaveCount(0);
+  await registry.selectProperty("Home");
+  await expect(registry.property("Home")).toBeVisible();
+  await expect(registry.property("Cabin")).toHaveCount(0);
+
+  await window.setViewportSize({ width: 390, height: 844 });
+  await expect(registry.backToPropertyListButton).toBeVisible();
+  await registry.backToPropertyListButton.click();
+  await expect(registry.propertyNavigation).toBeVisible();
+  await expect(registry.property("Home")).toHaveCount(0);
+  await registry.selectProperty("Cabin");
+  await expect(registry.property("Cabin")).toBeVisible();
+});
+
+test("@visual Visual: property records remain composed for desktop and compact windows", async ({
+  appShell,
+  window,
+}) => {
+  await window.setViewportSize({ width: 1280, height: 800 });
+  await appShell.openWorkspace("Properties");
+  const registry = new PropertyRegistryPage(window);
+  await registry.addProperty("Home");
+  await registry.addValuation("Home", {
+    effectiveDate: "2026-10-01",
+    amount: "5000000",
+    currencyCode: "NOK",
+  });
+  await expect(registry.valuationRow("Home", "2026-10-01")).toBeVisible();
+
+  await expect(window).toHaveScreenshot("property-records-desktop.png", {
+    animations: "disabled",
+    mask: [window.locator('time[datetime*="T"]')],
+    maskColor: "#fffdfa",
+    maxDiffPixelRatio: 0.01,
+  });
+
+  await window.setViewportSize({ width: 390, height: 844 });
+  await expect(registry.backToPropertyListButton).toBeVisible();
+  await expect(window).toHaveScreenshot("property-records-compact.png", {
+    animations: "disabled",
+    mask: [window.locator('time[datetime*="T"]')],
+    maskColor: "#fffdfa",
+    maxDiffPixelRatio: 0.01,
+  });
+});
+
+test("Household record pages do not repeat their registry title", async ({ appShell, window }) => {
+  await appShell.openWorkspace("Properties");
+  const properties = new PropertyRegistryPage(window);
+  await expect(window.getByRole("heading", { name: "Properties", level: 2 })).toBeVisible();
+  await expect(properties.section.getByRole("heading", {
+    name: "Property registry",
+    exact: true,
+  })).toHaveCount(0);
+
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  await expect(window.getByRole("heading", { name: "Loans", level: 2 })).toBeVisible();
+  await expect(loans.section.getByRole("heading", { name: "Loan registry", exact: true }))
+    .toHaveCount(0);
+});
+
 test("property history survives a restart without converting currency or using the network", async ({
   appShell,
   databasePath,
   electronApp,
   window,
-}) => {
+}, testInfo) => {
   await window.setViewportSize({ width: 1280, height: 800 });
   await installRendererNetworkAttemptBlocker(window);
   await installMainProcessNetworkProbe(electronApp);
   const rendererNetworkObservation = await installRendererNetworkAttemptObserver(window);
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
-  await expect(registry.section.getByRole("heading", { name: "Property registry" })).toBeVisible();
-  await expect(registry.propertyLabelInput).toBeInViewport();
+  await expect(window.getByRole("heading", { name: "Properties", level: 2 })).toBeVisible();
+  await expect(registry.addPropertyAction).toBeInViewport();
   await expect(window.evaluate(() => (
     globalThis as typeof globalThis & {
       budgetApi: { exchangeRates: { list: (currencyCode: string) => Promise<unknown[]> } };
@@ -58,6 +260,11 @@ test("property history survives a restart without converting currency or using t
   await expect(registry.valuationRow("Home", "2026-11-01")).toContainText(
     /450[\s\u00a0\u202f]000,00/
   );
+  await window.screenshot({ path: testInfo.outputPath("property-registry-populated-desktop.png") });
+  await window.setViewportSize({ width: 390, height: 844 });
+  await expect(registry.property("Home")).toBeInViewport();
+  await window.screenshot({ path: testInfo.outputPath("property-registry-populated-mobile.png") });
+  await window.setViewportSize({ width: 1280, height: 800 });
   const nokValuationBeforeRestart = await registry
     .valuationRow("Home", "2026-10-01")
     .getByRole("cell")
@@ -93,7 +300,7 @@ test("property history survives a restart without converting currency or using t
     await installRendererNetworkAttemptBlocker(restartedWindow);
     await installMainProcessNetworkProbe(restartedApp);
     const restartedNetworkObservation = await installRendererNetworkAttemptObserver(restartedWindow);
-    await new AppShellPage(restartedWindow).openWorkspace("Data safety");
+    await new AppShellPage(restartedWindow).openWorkspace("Properties");
     const restartedRegistry = new PropertyRegistryPage(restartedWindow);
     const propertyRecordsAfterRestart = await restartedWindow.evaluate(() => (
       globalThis as typeof globalThis & {
@@ -133,7 +340,7 @@ test("does not announce an empty registry when property loading fails", async ({
     database.close();
   }
 
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
 
   await expect(registry.errorMessage).toContainText("properties");
@@ -151,7 +358,7 @@ for (const viewport of [
     window,
   }) => {
     await window.setViewportSize({ width: viewport.width, height: viewport.height });
-    await appShell.openWorkspace("Data safety");
+    await appShell.openWorkspace("Properties");
     const registry = new PropertyRegistryPage(window);
 
     await expect(
@@ -193,11 +400,12 @@ for (const viewport of [
 
 test("property validation stays keyboard-operable and responsive", async ({ appShell, window }) => {
   await window.setViewportSize({ width: 390, height: 844 });
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
   await expect(registry.section).toBeVisible();
-  await expect(registry.propertyLabelInput).toBeInViewport();
+  await expect(registry.addPropertyAction).toBeInViewport();
 
+  await registry.openCreateForm();
   await registry.propertyLabelInput.focus();
   await window.keyboard.press("Enter");
   await expect(registry.errorMessage).toContainText("Enter a property label.");
@@ -205,13 +413,14 @@ test("property validation stays keyboard-operable and responsive", async ({ appS
   await expect(registry.property("Home")).toHaveCount(0);
 
   await registry.addProperty("Home");
+  await registry.openValuationForm("Home");
   await registry.effectiveDateInput("Home").fill("");
   await registry.amountInput("Home").fill("5000000");
   await registry.currencyCodeInput("Home").fill("NOK");
   await registry.addValuationButton("Home").focus();
   await window.keyboard.press("Enter");
   await expect(registry.propertyError("Home")).toContainText("Enter a valid effective date.");
-  await expect(registry.addValuationButton("Home")).toBeFocused();
+  await expect(registry.effectiveDateInput("Home")).toBeFocused();
   await expect(registry.valuationHistory("Home").getByRole("row")).toHaveCount(1);
   expect(await window.evaluate(() =>
     document.documentElement.scrollWidth > document.documentElement.clientWidth
@@ -230,13 +439,15 @@ test("property validation stays keyboard-operable and responsive", async ({ appS
 });
 
 test("refreshes property history after restoring a local backup", async ({
+  appShell,
   databasePath,
   recovery,
   window,
 }) => {
   const registry = new PropertyRegistryPage(window);
   const recoveryPage = recovery;
-  await expect(registry.propertyLabelInput).toBeInViewport();
+  await appShell.openWorkspace("Properties");
+  await expect(registry.addPropertyAction).toBeInViewport();
   await registry.addProperty("Home");
   await registry.addValuation("Home", {
     effectiveDate: "2026-10-01",
@@ -249,12 +460,15 @@ test("refreshes property history after restoring a local backup", async ({
     .allTextContents();
 
   const snapshotPath = join(dirname(databasePath), "property-registry-backup.json");
+  await appShell.openWorkspace("Data safety");
   await recoveryPage.backupPathInput.fill(snapshotPath);
   await recoveryPage.backupCreateButton.click();
   await expect(recoveryPage.backupSuccess).toBeVisible();
 
+  await appShell.openWorkspace("Properties");
   await registry.addProperty("Cabin");
   await expect(registry.property("Cabin")).toBeVisible();
+  await appShell.openWorkspace("Data safety");
   await recoveryPage.restorePathInput.fill(snapshotPath);
   await recoveryPage.reviewSnapshotButton.click();
   await expect(recoveryPage.snapshotReviewSuccess).toBeVisible();
@@ -263,10 +477,53 @@ test("refreshes property history after restoring a local backup", async ({
   await recoveryPage.restoreButton.click();
 
   await expect(recoveryPage.restoreSuccess).toBeVisible();
+  await appShell.openWorkspace("Properties");
   await expect(registry.property("Home")).toBeVisible();
   await expect(registry.property("Cabin")).toHaveCount(0);
   await expect(registry.valuationRow("Home", "2026-10-01").getByRole("cell"))
     .toHaveText(valuationBeforeRestore);
+});
+
+test("property entry leaves existing account and transaction records unchanged", async ({
+  databasePath,
+  electronApp,
+}) => {
+  await electronApp.close();
+  seedExistingAccountAndTransaction(databasePath);
+  const ledgerRecordsBefore = readExistingLedgerRecords(databasePath);
+  expect(ledgerRecordsBefore.accounts).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: "property-regression-account" }),
+  ]));
+  expect(ledgerRecordsBefore.transactions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: "property-regression-transaction" }),
+  ]));
+
+  const propertyApp = await electron.launch({
+    args: [MAIN_ENTRY],
+    env: {
+      ...process.env,
+      NODE_ENV: "test",
+      BUDGET_DB_PATH: databasePath,
+    },
+  });
+
+  try {
+    const propertyWindow = await propertyApp.firstWindow();
+    await propertyWindow.waitForLoadState("domcontentloaded");
+    const appShell = new AppShellPage(propertyWindow);
+    await appShell.openWorkspace("Properties");
+    const registry = new PropertyRegistryPage(propertyWindow);
+    await registry.addProperty("Home");
+    await registry.addValuation("Home", {
+      effectiveDate: "2026-10-01",
+      amount: "5000000",
+      currencyCode: "NOK",
+    });
+
+    expect(readExistingLedgerRecords(databasePath)).toEqual(ledgerRecordsBefore);
+  } finally {
+    await propertyApp.close();
+  }
 });
 
 test("renderer network observer fails closed while the interceptor blocks HTTP, HTTPS, WS, and WSS", async ({
@@ -348,7 +605,7 @@ test("keeps valuation errors beside the property that needs attention", async ({
   window,
 }) => {
   await window.setViewportSize({ width: 390, height: 844 });
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
 
   for (let index = 1; index <= 8; index += 1) {
@@ -364,6 +621,7 @@ test("keeps valuation errors beside the property that needs attention", async ({
 
   const error = registry.propertyError("Property 8");
   await expect(error).toContainText("Enter a non-negative amount");
+  await expect(registry.amountInput("Property 8")).toBeFocused();
   await expect(error).toBeInViewport();
   await expect(registry.amountInput("Property 8")).toHaveAttribute("aria-invalid", "true");
   const errorId = await error.getAttribute("id");
@@ -376,7 +634,7 @@ test("shows the amount and currency in the initial mobile history view", async (
   window,
 }) => {
   await window.setViewportSize({ width: 390, height: 844 });
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
   await registry.addProperty("Home");
   await registry.addValuation("Home", {
@@ -385,6 +643,7 @@ test("shows the amount and currency in the initial mobile history view", async (
     currencyCode: "NOK",
   });
 
+  await expect(registry.property("Home")).toBeFocused();
   const valueCell = registry.valuationValueCell("Home", "2026-10-01");
   const viewport = registry.valuationHistoryViewport("Home");
   await expect(valueCell).toContainText("NOK");
@@ -411,14 +670,10 @@ test("explains local storage and backup coverage for property records", async ({
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
-  const registry = new PropertyRegistryPage(window);
+  await appShell.openWorkspace("Properties");
 
-  await expect(registry.section).toContainText(
-    /property labels and valuations stay on this device and are included in local backup snapshots/i
-  );
-  await expect(window.getByRole("region", { name: "Data safety workspace" }))
-    .toContainText(/property values.*back up.*export.*restore/i);
+  await expect(window.getByRole("region", { name: "Properties workspace" }))
+    .toContainText(/entries stay on this device and are included in backup snapshots/i);
 });
 
 test("wraps a maximum-length unbroken property label on mobile", async ({
@@ -426,7 +681,7 @@ test("wraps a maximum-length unbroken property label on mobile", async ({
   window,
 }) => {
   await window.setViewportSize({ width: 390, height: 844 });
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
   const label = "W".repeat(100);
   await registry.addProperty(label);
@@ -449,10 +704,11 @@ test("uses a native date picker for valuation effective dates", async ({
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
   await registry.addProperty("Home");
 
+  await registry.openValuationForm("Home");
   await expect(registry.effectiveDateInput("Home")).toHaveAttribute("type", "date");
   await registry.effectiveDateInput("Home").fill("2026-10-01");
   await expect(registry.effectiveDateInput("Home")).toHaveValue("2026-10-01");
@@ -462,7 +718,7 @@ test("renames a property without changing its valuation history", async ({
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
   await registry.addProperty("Home");
   await registry.addValuation("Home", {
@@ -482,7 +738,7 @@ test("appends a superseding valuation and preserves the earlier snapshot", async
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
   await registry.addProperty("Home");
   await registry.addValuation("Home", {
@@ -514,7 +770,7 @@ test("appends a void record instead of deleting a valuation", async ({
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
   await registry.addProperty("Home");
   await registry.addValuation("Home", {
@@ -540,7 +796,7 @@ test("property label and correction workflows remain local-only", async ({
   await installRendererNetworkAttemptBlocker(window);
   await installMainProcessNetworkProbe(electronApp);
   const rendererNetworkObservation = await installRendererNetworkAttemptObserver(window);
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
   const registry = new PropertyRegistryPage(window);
   await registry.addProperty("Home");
   await registry.addValuation("Home", {
@@ -572,7 +828,7 @@ test("keeps functional status text legible at desktop and mobile widths", async 
   appShell,
   window,
 }) => {
-  await appShell.openWorkspace("Data safety");
+  await appShell.openWorkspace("Properties");
 
   for (const viewport of [
     { width: 320, height: 780 },

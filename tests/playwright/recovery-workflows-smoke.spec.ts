@@ -13,6 +13,26 @@ import type { BackupSnapshot } from "../../src/domain/backup/snapshotContract.js
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
+function relativeLuminance(color: string): number {
+  const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+  if (channels === undefined || channels.length !== 3) {
+    throw new Error(`Unexpected RGB color: ${color}`);
+  }
+  const linear = channels.map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 const LEDGER_READ_SEED = {
   household: {
     id: "ledger-read-hh",
@@ -184,6 +204,15 @@ test.describe("Recovery and portability renderer workflows", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
     await expect(recovery.recentSnapshotsSummary).toBeVisible();
+    const colors = await recovery.recentSnapshotsSummary.evaluate((summary) => {
+      const workspace = summary.closest(".household-workspace");
+      if (workspace === null) throw new Error("Data Safety workspace canvas is missing.");
+      return {
+        foreground: getComputedStyle(summary).color,
+        background: getComputedStyle(workspace).backgroundColor,
+      };
+    });
+    expect(contrastRatio(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5);
 
     const target = await recovery.recentSnapshotsSummary.boundingBox();
     expect(target).not.toBeNull();

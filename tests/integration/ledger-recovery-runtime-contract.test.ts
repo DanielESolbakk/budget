@@ -65,6 +65,8 @@ function createSnapshotData(): LedgerSnapshotData {
     exchangeRates: [],
     properties: [],
     propertyValuations: [],
+    loanRecords: [],
+    loanBalanceSnapshots: [],
   };
 }
 

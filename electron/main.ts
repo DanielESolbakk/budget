@@ -26,6 +26,7 @@ import {
 import { exportLedgerCsvToFile, type ExportCsvSummary } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
+import { createLoanRegistry } from "../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../src/app/propertyRegistry.js";
 import {
   catalogBackupSnapshot,
@@ -122,12 +123,20 @@ import {
   type Account,
   type ManualEntryInput,
   type ImportReviewCorrectionInput,
+  type LoanBalanceInput,
+  type LoanBalanceSnapshot,
+  type LoanRecord,
+  type LoanWithBalances,
   type MonthlyCategoryTargetInput,
   type SameMerchantPropagationInput,
   type SameMerchantPropagationPreviewRequest,
   type Transaction,
   type TransactionCategoryAllocation,
 } from "../src/domain/types.js";
+import {
+  validateLoanBalanceInput,
+  validateLoanRecordInput,
+} from "../src/domain/loanRecordValidation.js";
 import {
   validatePropertyLabelUpdateInput,
   validatePropertyRecordInput,
@@ -215,6 +224,7 @@ const localLedgerDatabase = createLocalLedgerDatabase({
     : {}),
 });
 const propertyRegistry = createPropertyRegistry(localLedgerDatabase);
+const loanRegistry = createLoanRegistry(localLedgerDatabase);
 const learnedCategoryRules = new Map(
   localLedgerDatabase.listMerchantCategoryRules().map((rule) => [rule.merchantAlias, rule.categoryId])
 );
@@ -1132,6 +1142,27 @@ app.whenReady().then(async () => {
     assertTrustedRenderer(event);
     return propertyRegistry.list();
   });
+
+  ipcMain.handle("loanRegistry:list", (event): LoanWithBalances[] => {
+    assertTrustedRenderer(event);
+    return loanRegistry.list();
+  });
+
+  ipcMain.handle("loanRegistry:create", (event, input: unknown): Promise<LoanRecord> => {
+    assertTrustedRenderer(event);
+    const propertyIds = propertyRegistry.list().map((property) => property.id);
+    const validated = validateLoanRecordInput(input, propertyIds);
+    return ledgerOperationCoordinator.runExclusive(() => loanRegistry.create(validated));
+  });
+
+  ipcMain.handle(
+    "loanRegistry:appendBalance",
+    (event, input: unknown): Promise<LoanBalanceSnapshot> => {
+      assertTrustedRenderer(event);
+      const validated: LoanBalanceInput = validateLoanBalanceInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => loanRegistry.appendBalance(validated));
+    }
+  );
 
   ipcMain.handle("propertyRegistry:create", (event, input: unknown): Promise<PropertyRecord> => {
     assertTrustedRenderer(event);

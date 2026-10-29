@@ -30,6 +30,10 @@ import {
 import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
 import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
 import { validatePropertyValuationCorrectionMetadata } from "../../domain/propertyRecordValidation.js";
+import {
+  validateLoanBalanceInput,
+  validateLoanRecordInput,
+} from "../../domain/loanRecordValidation.js";
 import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
@@ -39,6 +43,8 @@ import type {
   ImportJob,
   ImportJobProvenance,
   ImportReviewItem,
+  LoanBalanceSnapshot,
+  LoanRecord,
   MerchantCorrectionProvenance,
   MerchantCategoryRule,
   MonthlyCategoryTarget,
@@ -72,6 +78,8 @@ interface LocalLedgerSeedData {
   exchangeRates?: ExchangeRate[];
   properties?: PropertyRecord[];
   propertyValuations?: PropertyValuationSnapshot[];
+  loanRecords?: LoanRecord[];
+  loanBalanceSnapshots?: LoanBalanceSnapshot[];
 }
 
 export interface LocalLedgerRuntimeMetadata {
@@ -110,6 +118,10 @@ export interface LocalLedgerDatabase {
   listPropertyRecords: (householdId: string) => PropertyRecord[];
   appendPropertyValuationSnapshot: (valuation: PropertyValuationSnapshot) => void;
   listPropertyValuationSnapshots: (propertyId: string) => PropertyValuationSnapshot[];
+  createLoanRecord: (loan: LoanRecord) => void;
+  listLoanRecords: (householdId: string) => LoanRecord[];
+  appendLoanBalanceSnapshot: (balance: LoanBalanceSnapshot) => void;
+  listLoanBalanceSnapshots: (loanId: string) => LoanBalanceSnapshot[];
   loadLedgerSnapshotData: () => LedgerSnapshotData;
   replaceLedgerSnapshotData: (snapshot: LedgerSnapshotData) => void;
   saveBackupSnapshot: (entry: BackupSnapshotCatalogEntry) => void;
@@ -646,6 +658,37 @@ function ensureSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS property_valuations_by_property_date
       ON property_valuation_snapshots (property_id, effective_date_iso, recorded_at_iso, id);
 
+    CREATE TABLE IF NOT EXISTS loan_records (
+      id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      principal_minor INTEGER NOT NULL CHECK (principal_minor > 0),
+      annual_interest_rate_basis_points INTEGER NOT NULL
+        CHECK (annual_interest_rate_basis_points BETWEEN 0 AND 10000),
+      term_months INTEGER NOT NULL CHECK (term_months > 0),
+      payment_amount_minor INTEGER NOT NULL CHECK (payment_amount_minor > 0),
+      payment_frequency TEXT NOT NULL
+        CHECK (payment_frequency IN ('weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')),
+      currency_code TEXT NOT NULL,
+      property_id TEXT,
+      created_at_iso TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS loans_by_household_label
+      ON loan_records (household_id, label COLLATE NOCASE, id);
+
+    CREATE TABLE IF NOT EXISTS loan_balance_snapshots (
+      id TEXT PRIMARY KEY,
+      loan_id TEXT NOT NULL,
+      effective_date_iso TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),
+      currency_code TEXT NOT NULL,
+      recorded_at_iso TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS loan_balances_by_loan_date
+      ON loan_balance_snapshots (loan_id, effective_date_iso, recorded_at_iso, id);
+
     CREATE TABLE IF NOT EXISTS exchange_rates (
       id TEXT PRIMARY KEY,
       currency_code TEXT NOT NULL,
@@ -889,6 +932,45 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   );
   for (const property of snapshot.properties ?? []) {
     insertProperty.run(property.id, property.householdId, property.label, property.createdAtIso);
+  }
+
+  const insertLoanRecord = db.prepare(`
+    INSERT INTO loan_records (
+      id, household_id, label, principal_minor, annual_interest_rate_basis_points,
+      term_months, payment_amount_minor, payment_frequency, currency_code, property_id,
+      created_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const loan of snapshot.loanRecords ?? []) {
+    insertLoanRecord.run(
+      loan.id,
+      loan.householdId,
+      loan.label,
+      loan.principalMinor,
+      loan.annualInterestRateBasisPoints,
+      loan.termMonths,
+      loan.paymentAmountMinor,
+      loan.paymentFrequency,
+      loan.currencyCode,
+      loan.propertyId ?? null,
+      loan.createdAtIso
+    );
+  }
+
+  const insertLoanBalance = db.prepare(`
+    INSERT INTO loan_balance_snapshots (
+      id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const balance of snapshot.loanBalanceSnapshots ?? []) {
+    insertLoanBalance.run(
+      balance.id,
+      balance.loanId,
+      balance.effectiveDateIso,
+      balance.amountMinor,
+      balance.currencyCode,
+      balance.recordedAtIso
+    );
   }
 
   const insertPropertyValuation = db.prepare(`
@@ -1701,6 +1783,143 @@ export function createLocalLedgerDatabase(
     });
   }
 
+  function createLoanRecord(loan: LoanRecord): void {
+    if (
+      loan.id.trim().length === 0 ||
+      loan.householdId.trim().length === 0 ||
+      !loan.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(loan.createdAtIso))
+    ) {
+      throw new Error("Loan record identity or creation timestamp is invalid.");
+    }
+    if (
+      db.prepare("SELECT 1 FROM households WHERE id = ?").get(loan.householdId) === undefined
+    ) {
+      throw new Error(`Household not found for loan: ${loan.householdId}`);
+    }
+
+    const propertyIds = listPropertyRecords(loan.householdId).map((property) => property.id);
+    const validated = validateLoanRecordInput(loan, propertyIds);
+    db.prepare(`
+      INSERT INTO loan_records (
+        id, household_id, label, principal_minor, annual_interest_rate_basis_points,
+        term_months, payment_amount_minor, payment_frequency, currency_code, property_id,
+        created_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      loan.id,
+      loan.householdId,
+      validated.label,
+      validated.principalMinor,
+      validated.annualInterestRateBasisPoints,
+      validated.termMonths,
+      validated.paymentAmountMinor,
+      validated.paymentFrequency,
+      validated.currencyCode,
+      validated.propertyId ?? null,
+      loan.createdAtIso
+    );
+  }
+
+  function listLoanRecords(householdId: string): LoanRecord[] {
+    return db.prepare(`
+      SELECT id, household_id, label, principal_minor, annual_interest_rate_basis_points,
+        term_months, payment_amount_minor, payment_frequency, currency_code, property_id,
+        created_at_iso
+      FROM loan_records
+      WHERE household_id = ?
+      ORDER BY label COLLATE NOCASE, id
+    `).all(householdId).map((row) => {
+      const loan = row as {
+        id: string;
+        household_id: string;
+        label: string;
+        principal_minor: number;
+        annual_interest_rate_basis_points: number;
+        term_months: number;
+        payment_amount_minor: number;
+        payment_frequency: LoanRecord["paymentFrequency"];
+        currency_code: string;
+        property_id: string | null;
+        created_at_iso: string;
+      };
+      return {
+        id: loan.id,
+        householdId: loan.household_id,
+        label: loan.label,
+        principalMinor: loan.principal_minor,
+        annualInterestRateBasisPoints: loan.annual_interest_rate_basis_points,
+        termMonths: loan.term_months,
+        paymentAmountMinor: loan.payment_amount_minor,
+        paymentFrequency: loan.payment_frequency,
+        currencyCode: loan.currency_code,
+        ...(loan.property_id === null ? {} : { propertyId: loan.property_id }),
+        createdAtIso: loan.created_at_iso,
+      };
+    });
+  }
+
+  function appendLoanBalanceSnapshot(balance: LoanBalanceSnapshot): void {
+    if (
+      balance.id.trim().length === 0 ||
+      !balance.recordedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(balance.recordedAtIso))
+    ) {
+      throw new Error("Loan balance snapshot identity or recorded timestamp is invalid.");
+    }
+    const loan = db.prepare(`
+      SELECT currency_code
+      FROM loan_records
+      WHERE id = ?
+    `).get(balance.loanId) as { currency_code: string } | undefined;
+    if (loan === undefined) {
+      throw new Error(`Loan not found for balance snapshot: ${balance.loanId}`);
+    }
+    const validated = validateLoanBalanceInput(balance);
+    if (balance.currencyCode !== loan.currency_code) {
+      throw new Error("Loan balance currency must match the loan's original currency.");
+    }
+
+    db.prepare(`
+      INSERT INTO loan_balance_snapshots (
+        id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      balance.id,
+      validated.loanId,
+      validated.effectiveDateIso,
+      validated.amountMinor,
+      balance.currencyCode,
+      balance.recordedAtIso
+    );
+  }
+
+  function listLoanBalanceSnapshots(loanId: string): LoanBalanceSnapshot[] {
+    return db.prepare(`
+      SELECT id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      FROM loan_balance_snapshots
+      WHERE loan_id = ?
+      ORDER BY effective_date_iso, recorded_at_iso, id
+    `).all(loanId).map((row) => {
+      const balance = row as {
+        id: string;
+        loan_id: string;
+        effective_date_iso: string;
+        amount_minor: number;
+        currency_code: string;
+        recorded_at_iso: string;
+      };
+      return {
+        id: balance.id,
+        loanId: balance.loan_id,
+        effectiveDateIso: balance.effective_date_iso,
+        amountMinor: balance.amount_minor,
+        currencyCode: balance.currency_code,
+        recordedAtIso: balance.recorded_at_iso,
+      };
+    });
+  }
+
   function backfillImportJobHistory(): void {
     const legacyJobs = db.prepare(`
       SELECT job.id, job.household_id, job.source_type, job.source_name, job.adapter_id,
@@ -1947,6 +2166,29 @@ export function createLocalLedgerDatabase(
         ...(correction === undefined ? {} : { correction }),
       };
     });
+    const loanRecords = listLoanRecords(householdRow.id);
+    const loanBalanceSnapshots = db.prepare(`
+      SELECT id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      FROM loan_balance_snapshots
+      ORDER BY loan_id, effective_date_iso, recorded_at_iso, id
+    `).all().map((row) => {
+      const balance = row as {
+        id: string;
+        loan_id: string;
+        effective_date_iso: string;
+        amount_minor: number;
+        currency_code: string;
+        recorded_at_iso: string;
+      };
+      return {
+        id: balance.id,
+        loanId: balance.loan_id,
+        effectiveDateIso: balance.effective_date_iso,
+        amountMinor: balance.amount_minor,
+        currencyCode: balance.currency_code,
+        recordedAtIso: balance.recorded_at_iso,
+      };
+    });
 
     const mappedTransactions: Transaction[] = transactions.map((transaction) => {
       const mapped = mapTransactionRow(transaction);
@@ -2019,6 +2261,8 @@ export function createLocalLedgerDatabase(
       exchangeRates,
       properties,
       propertyValuations,
+      loanRecords,
+      loanBalanceSnapshots,
     };
   }
 
@@ -2039,6 +2283,8 @@ export function createLocalLedgerDatabase(
         DELETE FROM transactions;
         DELETE FROM import_jobs;
         DELETE FROM merchant_category_rules;
+        DELETE FROM loan_balance_snapshots;
+        DELETE FROM loan_records;
         DELETE FROM property_valuation_snapshots;
         DELETE FROM properties;
         DELETE FROM accounts;
@@ -3483,6 +3729,10 @@ export function createLocalLedgerDatabase(
     listPropertyRecords,
     appendPropertyValuationSnapshot,
     listPropertyValuationSnapshots,
+    createLoanRecord,
+    listLoanRecords,
+    appendLoanBalanceSnapshot,
+    listLoanBalanceSnapshots,
     loadLedgerSnapshotData,
     replaceLedgerSnapshotData,
     queryTransactions,

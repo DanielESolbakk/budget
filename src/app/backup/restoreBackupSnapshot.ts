@@ -17,6 +17,9 @@ import {
   type ExchangeRate,
   type Household,
   type ImportJob,
+  type LoanBalanceSnapshot,
+  type LoanPaymentFrequency,
+  type LoanRecord,
   type MerchantCategoryRule,
   type MonthlyCategoryTarget,
   type PendingTransactionObservation,
@@ -420,6 +423,86 @@ function validatePropertyValuations(
   }
 }
 
+function validateLoanRecords(
+  value: unknown[],
+  householdId: string,
+  propertyIds: Set<string>,
+  snapshotPath: string
+): asserts value is LoanRecord[] {
+  const loanIds = new Set<string>();
+  const paymentFrequencies: LoanPaymentFrequency[] = [
+    "weekly",
+    "biweekly",
+    "monthly",
+    "quarterly",
+    "yearly",
+  ];
+  for (const loan of value) {
+    if (
+      !isRecord(loan) ||
+      !isNonEmptyString(loan.id) ||
+      loanIds.has(loan.id) ||
+      loan.householdId !== householdId ||
+      !isNonEmptyString(loan.label) ||
+      loan.label.trim().length > 100 ||
+      !Number.isSafeInteger(loan.principalMinor) ||
+      typeof loan.principalMinor !== "number" ||
+      loan.principalMinor <= 0 ||
+      !Number.isSafeInteger(loan.annualInterestRateBasisPoints) ||
+      typeof loan.annualInterestRateBasisPoints !== "number" ||
+      loan.annualInterestRateBasisPoints < 0 ||
+      loan.annualInterestRateBasisPoints > 10_000 ||
+      !Number.isSafeInteger(loan.termMonths) ||
+      typeof loan.termMonths !== "number" ||
+      loan.termMonths <= 0 ||
+      !Number.isSafeInteger(loan.paymentAmountMinor) ||
+      typeof loan.paymentAmountMinor !== "number" ||
+      loan.paymentAmountMinor <= 0 ||
+      !paymentFrequencies.some((frequency) => frequency === loan.paymentFrequency) ||
+      !isCurrencyCode(loan.currencyCode) ||
+      !isNonEmptyString(loan.createdAtIso) ||
+      !loan.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(loan.createdAtIso)) ||
+      (loan.propertyId !== undefined &&
+        (typeof loan.propertyId !== "string" || !propertyIds.has(loan.propertyId)))
+    ) {
+      invalidSnapshot(snapshotPath, "loan records");
+    }
+    loanIds.add(loan.id);
+  }
+}
+
+function validateLoanBalanceSnapshots(
+  value: unknown[],
+  loans: LoanRecord[],
+  snapshotPath: string
+): asserts value is LoanBalanceSnapshot[] {
+  const loanById = new Map(loans.map((loan) => [loan.id, loan]));
+  const snapshotIds = new Set<string>();
+  for (const balance of value) {
+    const loan = isRecord(balance) && typeof balance.loanId === "string"
+      ? loanById.get(balance.loanId)
+      : undefined;
+    if (
+      !isRecord(balance) ||
+      !isNonEmptyString(balance.id) ||
+      snapshotIds.has(balance.id) ||
+      loan === undefined ||
+      !isIsoCalendarDate(balance.effectiveDateIso) ||
+      !Number.isSafeInteger(balance.amountMinor) ||
+      typeof balance.amountMinor !== "number" ||
+      balance.amountMinor < 0 ||
+      balance.currencyCode !== loan.currencyCode ||
+      !isNonEmptyString(balance.recordedAtIso) ||
+      !balance.recordedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(balance.recordedAtIso))
+    ) {
+      invalidSnapshot(snapshotPath, "loan balance snapshots");
+    }
+    snapshotIds.add(balance.id);
+  }
+}
+
 function validateMerchantCategoryRules(
   value: unknown,
   snapshotPath: string
@@ -453,6 +536,7 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version !== "2" &&
     metadata.version !== "3" &&
     metadata.version !== "4" &&
+    metadata.version !== "5" &&
     metadata.version !== SNAPSHOT_VERSION
   ) {
     throw new Error(
@@ -495,21 +579,36 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   const propertyValuations = value.propertyValuations === undefined
     ? []
     : value.propertyValuations;
+  const loanRecords = value.loanRecords === undefined ? [] : value.loanRecords;
+  const loanBalanceSnapshots = value.loanBalanceSnapshots === undefined
+    ? []
+    : value.loanBalanceSnapshots;
   const hasCoverageCollections =
-    metadata.version === "3" || metadata.version === "4" || metadata.version === SNAPSHOT_VERSION;
-  const hasPropertyCollections = metadata.version === "4" || metadata.version === SNAPSHOT_VERSION;
+    metadata.version === "3" ||
+    metadata.version === "4" ||
+    metadata.version === "5" ||
+    metadata.version === SNAPSHOT_VERSION;
+  const hasPropertyCollections =
+    metadata.version === "4" ||
+    metadata.version === "5" ||
+    metadata.version === SNAPSHOT_VERSION;
+  const hasLoanCollections = metadata.version === SNAPSHOT_VERSION;
   if (
     !Array.isArray(accountStatementCoveragePeriods) ||
     !Array.isArray(accountBalanceCheckpoints) ||
     !Array.isArray(exchangeRates) ||
     !Array.isArray(properties) ||
     !Array.isArray(propertyValuations) ||
+    !Array.isArray(loanRecords) ||
+    !Array.isArray(loanBalanceSnapshots) ||
     (hasCoverageCollections &&
       (value.accountStatementCoveragePeriods === undefined ||
         value.accountBalanceCheckpoints === undefined ||
         value.exchangeRates === undefined)) ||
     (hasPropertyCollections &&
-      (value.properties === undefined || value.propertyValuations === undefined))
+      (value.properties === undefined || value.propertyValuations === undefined)) ||
+    (hasLoanCollections &&
+      (value.loanRecords === undefined || value.loanBalanceSnapshots === undefined))
   ) {
     throw new Error(`Invalid snapshot registry, account coverage, or exchange-rate collections: ${snapshotPath}`);
   }
@@ -538,6 +637,13 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     new Set(properties.map((property) => property.id)),
     snapshotPath
   );
+  validateLoanRecords(
+    loanRecords,
+    value.household.id,
+    new Set(properties.map((property) => property.id)),
+    snapshotPath
+  );
+  validateLoanBalanceSnapshots(loanBalanceSnapshots, loanRecords, snapshotPath);
   validateTargets(monthlyCategoryTargets, snapshotPath);
   if (metadata.version !== "1") {
     validateMerchantCategoryRules(value.merchantCategoryRules, snapshotPath);
@@ -577,6 +683,8 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     exchangeRates,
     properties,
     propertyValuations,
+    loanRecords,
+    loanBalanceSnapshots,
   };
 }
 
@@ -647,6 +755,8 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     exchangeRates: snapshot.exchangeRates,
     properties: snapshot.properties,
     propertyValuations: snapshot.propertyValuations,
+    loanRecords: snapshot.loanRecords,
+    loanBalanceSnapshots: snapshot.loanBalanceSnapshots,
     transactionCount: snapshot.transactions.length,
   };
 }

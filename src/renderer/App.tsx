@@ -4,7 +4,11 @@ import "@fontsource/barlow-condensed/700.css";
 import "@fontsource/barlow-condensed/800.css";
 import "./app.css";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
-import { DataSafetyWorkspace } from "./workspaces/DataSafetyWorkspace.js";
+import {
+  DataSafetyWorkspace,
+  PropertyRegistrySection,
+} from "./workspaces/DataSafetyWorkspace.js";
+import { LoanRegistrySection } from "./workspaces/LoanRegistrySection.js";
 import { ImportWorkspace } from "./workspaces/ImportWorkspace.js";
 import { PendingTransactionsWorkspace } from "./workspaces/PendingTransactionsWorkspace.js";
 import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
@@ -18,21 +22,37 @@ import type { ReviewState } from "./workspaces/types.js";
 const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
 type AppState = ReviewState;
 
-type WorkspaceId = "review" | "transactions" | "coverage" | "pending" | "import" | "data-safety" | "settings";
+type WorkspaceId =
+  | "review"
+  | "transactions"
+  | "coverage"
+  | "pending"
+  | "import"
+  | "properties"
+  | "loans"
+  | "data-safety"
+  | "settings";
 type PrimaryWorkspaceId = "review" | "activity" | "accounts" | "household";
 
 const PRIMARY_WORKSPACES: Array<{ id: PrimaryWorkspaceId; label: string; description: string }> = [
   { id: "review", label: "Review", description: "Monthly position" },
   { id: "activity", label: "Activity", description: "Ledger, pending and imports" },
   { id: "accounts", label: "Accounts", description: "Statements and balances" },
-  { id: "household", label: "Household", description: "Rates, property values, and data safety" },
+  { id: "household", label: "Household", description: "Properties, loans, rates, and data safety" },
 ];
 
 function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
   if (workspace === "transactions" || workspace === "pending" || workspace === "import") {
     return "activity";
   }
-  if (workspace === "data-safety" || workspace === "settings") return "household";
+  if (
+    workspace === "properties" ||
+    workspace === "loans" ||
+    workspace === "data-safety" ||
+    workspace === "settings"
+  ) {
+    return "household";
+  }
   if (workspace === "coverage") return "accounts";
   return "review";
 }
@@ -46,6 +66,8 @@ export function App(): React.JSX.Element {
   );
   const [reviewQueueFocusRequest, setReviewQueueFocusRequest] = React.useState(0);
   const [refreshCounter, setRefreshCounter] = React.useState(0);
+  const [propertyRegistryRevision, setPropertyRegistryRevision] = React.useState(0);
+  const [requestedPropertyId, setRequestedPropertyId] = React.useState<string | null>(null);
   const [isChangingMonth, setIsChangingMonth] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [monthChangeError, setMonthChangeError] = React.useState<string | null>(null);
@@ -151,12 +173,17 @@ export function App(): React.JSX.Element {
     });
   }
 
+  function openPropertyRecord(propertyId: string): void {
+    setRequestedPropertyId(propertyId);
+    openWorkspace("properties");
+  }
+
   function openPrimaryWorkspace(workspaceId: PrimaryWorkspaceId): void {
     const defaultWorkspace: Record<PrimaryWorkspaceId, WorkspaceId> = {
       review: "review",
       activity: "transactions",
       accounts: "coverage",
-      household: "settings",
+      household: "properties",
     };
     openWorkspace(defaultWorkspace[workspaceId]);
   }
@@ -250,9 +277,14 @@ export function App(): React.JSX.Element {
               ))}
             </nav>
           )}
-          {(activeWorkspace === "data-safety" || activeWorkspace === "settings") && (
+          {(activeWorkspace === "properties" ||
+            activeWorkspace === "loans" ||
+            activeWorkspace === "data-safety" ||
+            activeWorkspace === "settings") && (
             <nav className="workspace-subnavigation" aria-label="Household tools">
               {([
+                ["properties", "Properties"],
+                ["loans", "Loans"],
                 ["settings", "Exchange rates"],
                 ["data-safety", "Data safety"],
               ] as const).map(([workspaceId, label]) => (
@@ -342,6 +374,49 @@ export function App(): React.JSX.Element {
               isActive={activeWorkspace === "data-safety"}
               onRestoreSuccess={() => setRefreshCounter((counter) => counter + 1)}
             />
+          )}
+          {visitedWorkspaces.has("properties") && (
+            <section
+              className="destination-workspace household-workspace"
+              aria-label="Properties workspace"
+              hidden={activeWorkspace !== "properties"}
+            >
+              <div className="destination-heading">
+                <h2>Properties</h2>
+                <p>
+                  Track dated property values. Entries stay on this device and are included in
+                  backup snapshots.
+                </p>
+              </div>
+              <PropertyRegistrySection
+                isActive={activeWorkspace === "properties"}
+                refreshRevision={refreshCounter}
+                requestedPropertyId={requestedPropertyId}
+                onPropertyRegistryChange={() => {
+                  setPropertyRegistryRevision((revision) => revision + 1);
+                }}
+              />
+            </section>
+          )}
+          {visitedWorkspaces.has("loans") && (
+            <section
+              className="destination-workspace household-workspace"
+              aria-label="Loans workspace"
+              hidden={activeWorkspace !== "loans"}
+            >
+              <div className="destination-heading">
+                <h2>Loans</h2>
+                <p>
+                  Review loan terms and dated balances. Original currencies are preserved without
+                  rate or network lookups.
+                </p>
+              </div>
+              <LoanRegistrySection
+                isActive={activeWorkspace === "loans"}
+                refreshRevision={refreshCounter + propertyRegistryRevision}
+                onViewProperty={openPropertyRecord}
+              />
+            </section>
           )}
           {visitedWorkspaces.has("settings") && (
             <section

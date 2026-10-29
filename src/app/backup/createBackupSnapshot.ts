@@ -78,6 +78,16 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
       left.recordedAtIso.localeCompare(right.recordedAtIso) ||
       left.id.localeCompare(right.id)
   );
+  const loanRecords = [...(input.loanRecords ?? [])].sort((left, right) =>
+    left.id.localeCompare(right.id)
+  );
+  const loanBalanceSnapshots = [...(input.loanBalanceSnapshots ?? [])].sort(
+    (left, right) =>
+      left.loanId.localeCompare(right.loanId) ||
+      left.effectiveDateIso.localeCompare(right.effectiveDateIso) ||
+      left.recordedAtIso.localeCompare(right.recordedAtIso) ||
+      left.id.localeCompare(right.id)
+  );
   return {
     metadata: {
       version: SNAPSHOT_VERSION,
@@ -97,6 +107,8 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     exchangeRates,
     properties,
     propertyValuations,
+    loanRecords,
+    loanBalanceSnapshots,
   };
 }
 

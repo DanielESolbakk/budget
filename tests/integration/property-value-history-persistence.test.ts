@@ -10,6 +10,7 @@ import {
 import { createPropertyRegistry } from "../../src/app/propertyRegistry.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
+import type { Transaction } from "../../src/domain/types.js";
 
 const HOUSEHOLD = {
   id: "household-property-test",
@@ -70,7 +71,7 @@ describe("property value history persistence", () => {
       importJobs: [],
       monthlyCategoryTargets: [],
       createdAtIso: "2026-10-03T09:00:00.000Z",
-    }).metadata.version).toBe("5");
+    }).metadata.version).toBe("6");
   });
 
   it("restores property records and valuation snapshots unchanged", () => {
@@ -246,7 +247,7 @@ describe("property value history persistence", () => {
     }
   });
 
-  it("restores every property valuation without changing its date, timestamp, amount, or currency", () => {
+  it("restores property valuations and preserves existing accounts and transactions", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-property-backup-"));
     const sourcePath = join(directory, "source.sqlite");
     const restoredPath = join(directory, "restored.sqlite");
@@ -262,6 +263,21 @@ describe("property value history persistence", () => {
     const restored = openLedger(restoredPath);
 
     try {
+      const transaction: Transaction = {
+        id: "transaction-existing",
+        householdId: HOUSEHOLD.id,
+        accountId: "account-nok",
+        bookedAtIso: "2026-09-15T00:00:00.000Z",
+        amountMinor: -12_500,
+        merchantRaw: "SYNTHETIC EXISTING TRANSACTION",
+        currencyCode: "NOK",
+        sourceType: "manual",
+      };
+      source.replaceLedgerSnapshotData({
+        ...source.loadLedgerSnapshotData(),
+        transactions: [transaction],
+      });
+      const existingLedgerData = source.loadLedgerSnapshotData();
       const registry = createPropertyRegistry(source, {
         createId: () => `property-record-${++idIndex}`,
         now: () => new Date(recordedTimes[timestampIndex++]!),
@@ -288,6 +304,7 @@ describe("property value history persistence", () => {
       const snapshot = restoreBackupSnapshot({ snapshotPath });
       restored.replaceLedgerSnapshotData(snapshot);
       const [restoredProperty] = createPropertyRegistry(restored).list();
+      const restoredLedgerData = restored.loadLedgerSnapshotData();
 
       expect(restoredProperty).toMatchObject(property);
       expect(restoredProperty?.label).toBe("Home");
@@ -310,6 +327,8 @@ describe("property value history persistence", () => {
           recordedAtIso: "2026-11-02T09:00:00.000Z",
         },
       ]);
+      expect(restoredLedgerData.accounts).toEqual(existingLedgerData.accounts);
+      expect(restoredLedgerData.transactions).toEqual(existingLedgerData.transactions);
       expect(restored.listExchangeRates()).toEqual([]);
     } finally {
       source.close();

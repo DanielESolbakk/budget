@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures/electron.js";
 import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { buildBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { LoanRegistryPage } from "./pom/LoanRegistryPage.js";
 import { PropertyRegistryPage } from "./pom/PropertyRegistryPage.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
@@ -134,6 +135,111 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(categoryTarget.categoryIdInput).toBeFocused();
   });
 
+  test("Household property creation remains keyboard-operable from navigation", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.destination("Household").focus();
+    await window.keyboard.press("Enter");
+    const householdTools = window.getByRole("navigation", { name: "Household tools" });
+    const propertiesTab = householdTools.getByRole("button", { name: "Properties" });
+    await window.keyboard.press("Tab");
+    await expect(propertiesTab).toBeFocused();
+    await window.keyboard.press("Enter");
+
+    await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Loans" })).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Data safety" })).toBeFocused();
+    const properties = new PropertyRegistryPage(window);
+    await expect(properties.addPropertyAction).toBeEnabled();
+    await window.keyboard.press("Tab");
+    await expect(properties.addPropertyAction).toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(properties.propertyLabelInput).toBeFocused();
+    await window.keyboard.type("Home");
+    await window.keyboard.press("Tab");
+    await expect(properties.addPropertyButton).toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(properties.property("Home")).toBeFocused();
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect(properties.backToPropertyListButton).toBeVisible();
+    await properties.backToPropertyListButton.focus();
+    await window.keyboard.press("Enter");
+    await expect(properties.propertyNavigation).toBeVisible();
+    const homePropertyButton = properties.propertyNavigation.getByRole("button", {
+      name: "Select property Home",
+      exact: true,
+    });
+    await homePropertyButton.focus();
+    await window.keyboard.press("Enter");
+    await expect(properties.property("Home")).toBeVisible();
+  });
+
+  test("Household loan creation moves keyboard focus to the first field", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.destination("Household").focus();
+    await window.keyboard.press("Enter");
+    const householdTools = window.getByRole("navigation", { name: "Household tools" });
+    await window.keyboard.press("Tab");
+    await window.keyboard.press("Tab");
+    const loansTab = householdTools.getByRole("button", { name: "Loans" });
+    await expect(loansTab).toBeFocused();
+    await window.keyboard.press("Enter");
+
+    await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Data safety" })).toBeFocused();
+    const loans = new LoanRegistryPage(window);
+    await expect(loans.addLoanButton).toBeEnabled();
+    await window.keyboard.press("Tab");
+    await expect(loans.addLoanButton).toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(loans.labelInput).toBeFocused();
+    await window.keyboard.type("Keyboard mortgage");
+    await window.keyboard.press("Tab");
+    await expect(loans.principalInput).toBeFocused();
+    await window.keyboard.type("3000000");
+    await window.keyboard.press("Tab");
+    await window.keyboard.type("5");
+    await window.keyboard.press("Tab");
+    await window.keyboard.type("25");
+    await window.keyboard.press("Tab");
+    await window.keyboard.type("17500");
+    await window.keyboard.press("Tab");
+    await expect(loans.paymentFrequencySelect).toBeFocused();
+    await window.keyboard.press("Home");
+    await expect(loans.paymentFrequencySelect).toHaveValue("weekly");
+    await window.keyboard.press("Tab");
+    await expect(loans.currencyCodeInput).toBeFocused();
+    await window.keyboard.type("NOK");
+    await window.keyboard.press("Tab");
+    await expect(loans.propertySelect).toBeFocused();
+    await expect(loans.propertySelect).toHaveValue("");
+    await window.keyboard.press("Tab");
+    await expect(loans.createButton).toBeFocused();
+    await window.keyboard.press("Enter");
+    await expect(loans.loan("Keyboard mortgage")).toBeFocused();
+
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect(loans.backToLoanListButton).toBeVisible();
+    await loans.backToLoanListButton.focus();
+    await window.keyboard.press("Enter");
+    await expect(loans.loanNavigation).toBeVisible();
+    const keyboardMortgageButton = loans.loanNavigation.getByRole("button", {
+      name: "Select loan Keyboard mortgage",
+      exact: true,
+    });
+    await keyboardMortgageButton.focus();
+    await window.keyboard.press("Enter");
+    await expect(loans.loan("Keyboard mortgage")).toBeVisible();
+  });
+
   test("Data Safety backup, export, and restore expose keyboard actions and text outcomes", async ({
     appShell,
     databasePath,
@@ -168,16 +274,18 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Enter");
     await window.keyboard.press("Tab");
     const householdTools = window.getByRole("navigation", { name: "Household tools" });
+    const propertiesTab = householdTools.getByRole("button", { name: "Properties" });
+    await expect(propertiesTab).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Loans" })).toBeFocused();
+    await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
     await window.keyboard.press("Tab");
     const dataSafetyTab = householdTools.getByRole("button", { name: "Data safety" });
     await expect(dataSafetyTab).toBeFocused();
     await window.keyboard.press("Enter");
-    const propertyRegistry = new PropertyRegistryPage(window);
-    await window.keyboard.press("Tab");
-    await expect(propertyRegistry.propertyLabelInput).toBeFocused();
-    await window.keyboard.press("Tab");
-    await expect(propertyRegistry.addPropertyButton).toBeFocused();
+    await expect(window.getByRole("region", { name: "Property registry" })).toHaveCount(0);
+    await expect(window.getByRole("region", { name: "Loan registry" })).toHaveCount(0);
     await window.keyboard.press("Tab");
     await expect(recovery.backupPathInput).toBeFocused();
     await recovery.backupPathInput.fill(backupPath);

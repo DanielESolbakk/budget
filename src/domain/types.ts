@@ -97,6 +97,44 @@ export interface PropertyWithValuations extends PropertyRecord {
   valuations: PropertyValuationSnapshot[];
 }
 
+export type LoanPaymentFrequency = "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
+
+export interface LoanRecordInput {
+  label: string;
+  principalMinor: number;
+  annualInterestRateBasisPoints: number;
+  termMonths: number;
+  paymentAmountMinor: number;
+  paymentFrequency: LoanPaymentFrequency;
+  currencyCode: CurrencyCode;
+  propertyId?: string;
+}
+
+export interface LoanBalanceInput {
+  loanId: string;
+  effectiveDateIso: string;
+  amountMinor: number;
+}
+
+export interface LoanRecord extends LoanRecordInput {
+  id: string;
+  householdId: string;
+  createdAtIso: string;
+}
+
+export interface LoanBalanceSnapshot {
+  id: string;
+  loanId: string;
+  effectiveDateIso: string;
+  amountMinor: number;
+  currencyCode: CurrencyCode;
+  recordedAtIso: string;
+}
+
+export interface LoanWithBalances extends LoanRecord {
+  balances: LoanBalanceSnapshot[];
+}
+
 /** ISO 4217-style uppercase three-letter currency code used by an account. */
 export type CurrencyCode = string;
 
