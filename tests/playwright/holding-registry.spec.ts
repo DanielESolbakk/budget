@@ -7,6 +7,12 @@ import {
   installMainProcessNetworkProbe,
   mainProcessNetworkRequests,
 } from "./helpers/networkProbe.js";
+import {
+  installRendererNetworkAttemptBlocker,
+  installRendererNetworkAttemptObserver,
+  rendererNetworkBlockedAttempts,
+  rendererNetworkAttempts,
+} from "./helpers/rendererNetworkProbe.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -143,13 +149,15 @@ test("holding labels and values remain legible on the household canvas", async (
   expect(contrastRatio(colors.value, colors.background)).toBeGreaterThanOrEqual(4.5);
 });
 
-test("holding history survives restart without conversion or main-process network", async ({
+test("holding history survives restart without conversion or network requests", async ({
   appShell,
   databasePath,
   electronApp,
   window,
 }) => {
   await window.setViewportSize({ width: 1280, height: 800 });
+  await installRendererNetworkAttemptBlocker(window);
+  const rendererNetworkObservation = await installRendererNetworkAttemptObserver(window);
   await installMainProcessNetworkProbe(electronApp);
   await openInvestments(appShell);
   await expect(registry(window)).toBeVisible();
@@ -218,6 +226,10 @@ test("holding history survives restart without conversion or main-process networ
   )).toBe(false);
   await window.setViewportSize({ width: 1280, height: 800 });
   expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
+  expect(await rendererNetworkAttempts(window)).toEqual([]);
+  expect(await rendererNetworkBlockedAttempts(window)).toEqual([]);
+  expect(rendererNetworkObservation.httpRequests).toEqual([]);
+  expect(rendererNetworkObservation.webSocketRequests).toEqual([]);
 
   await electronApp.close();
   const restartedApp = await electron.launch({
@@ -232,22 +244,35 @@ test("holding history survives restart without conversion or main-process networ
   try {
     const restartedWindow = await restartedApp.firstWindow();
     await restartedWindow.waitForLoadState("domcontentloaded");
+    await installRendererNetworkAttemptBlocker(restartedWindow);
+    const restartedNetworkObservation =
+      await installRendererNetworkAttemptObserver(restartedWindow);
     await installMainProcessNetworkProbe(restartedApp);
     await openInvestments(new AppShellPage(restartedWindow));
     const afterRestart = await listHoldings(restartedWindow);
 
     expect(afterRestart).toEqual(beforeRestart);
     expect(await listEurRates(restartedWindow)).toEqual([]);
+    const restartedHolding = holding(restartedWindow, "Global fund");
+    await expect(restartedHolding.getByText("10", { exact: true })).toBeVisible();
+    await expect(restartedHolding.getByText(/^EUR\s+10\s*000,00$/)).toBeVisible();
     for (const valuation of afterRestart[0]!.valuations) {
       const row = holding(restartedWindow, "Global fund")
         .getByRole("table", { name: "Valuation history", exact: true })
         .getByRole("row")
         .filter({ hasText: valuation.effectiveDateIso });
       await expect(row.getByRole("cell").nth(1)).toContainText("EUR");
+      await expect(row.getByRole("cell").nth(1)).toContainText(
+        valuation.effectiveDateIso === "2026-10-01" ? /11\s*000,00/ : /11\s*500,00/
+      );
       await expect(row.getByRole("cell").nth(2).locator("time"))
         .toHaveAttribute("datetime", valuation.recordedAtIso);
     }
     expect(await mainProcessNetworkRequests(restartedApp)).toEqual([]);
+    expect(await rendererNetworkAttempts(restartedWindow)).toEqual([]);
+    expect(await rendererNetworkBlockedAttempts(restartedWindow)).toEqual([]);
+    expect(restartedNetworkObservation.httpRequests).toEqual([]);
+    expect(restartedNetworkObservation.webSocketRequests).toEqual([]);
   } finally {
     await restartedApp.close();
   }
@@ -301,6 +326,23 @@ test("holding errors are field-specific and keyboard entry works on desktop", as
   await expect(holding(window, "Global fund").getByText("No values have been recorded.", {
     exact: true,
   })).toBeVisible();
+  const valuationForm = holding(window, "Global fund").getByRole("form", {
+    name: "Add valuation for Global fund",
+    exact: true,
+  });
+  await valuationForm.getByLabel("Effective date", { exact: true }).fill("2026-11-01");
+  const amountInput = valuationForm.getByLabel("Amount", { exact: true });
+  await amountInput.fill("-1");
+  await valuationForm.getByRole("button", { name: "Save value", exact: true }).click();
+  await expect(registry(window).getByText(
+    "Enter a non-negative value with up to two decimal places.",
+    { exact: true }
+  )).toBeVisible();
+  await expect(amountInput).toHaveAttribute("aria-invalid", "true");
+  await expect(holding(window, "Global fund").getByText("No values have been recorded.", {
+    exact: true,
+  })).toBeVisible();
+  expect((await listHoldings(window))[0]?.valuations).toEqual([]);
   expect(await window.evaluate(() =>
     document.documentElement.scrollWidth > document.documentElement.clientWidth
   )).toBe(false);

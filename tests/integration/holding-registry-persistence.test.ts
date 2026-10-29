@@ -42,6 +42,7 @@ describe("holding registry persistence and backup", () => {
       "2026-10-01T08:00:00.000Z",
       "2026-10-02T09:00:00.000Z",
       "2026-11-02T09:00:00.000Z",
+      "2026-10-03T10:00:00.000Z",
     ];
     let recordedTimeIndex = 0;
     let idIndex = 0;
@@ -70,6 +71,12 @@ describe("holding registry persistence and backup", () => {
         amountMinor: 1_150_000,
         currencyCode: "EUR",
       });
+      registry.appendValuation({
+        holdingId: "holding-record-1",
+        effectiveDateIso: "2026-10-01",
+        amountMinor: 1_125_000,
+        currencyCode: "EUR",
+      });
 
       const expected = [
         {
@@ -88,6 +95,14 @@ describe("holding registry persistence and backup", () => {
               amountMinor: 1_100_000,
               currencyCode: "EUR",
               recordedAtIso: "2026-10-02T09:00:00.000Z",
+            },
+            {
+              id: "holding-record-4",
+              holdingId: "holding-record-1",
+              effectiveDateIso: "2026-10-01",
+              amountMinor: 1_125_000,
+              currencyCode: "EUR",
+              recordedAtIso: "2026-10-03T10:00:00.000Z",
             },
             {
               id: "holding-record-3",
@@ -123,6 +138,7 @@ describe("holding registry persistence and backup", () => {
       "2026-10-01T08:00:00.000Z",
       "2026-10-02T09:00:00.000Z",
       "2026-11-02T09:00:00.000Z",
+      "2026-10-03T10:00:00.000Z",
     ];
     let recordedTimeIndex = 0;
     let idIndex = 0;
@@ -168,6 +184,12 @@ describe("holding registry persistence and backup", () => {
         amountMinor: 1_150_000,
         currencyCode: "EUR",
       });
+      registry.appendValuation({
+        holdingId: "holding-record-1",
+        effectiveDateIso: "2026-10-01",
+        amountMinor: 1_125_000,
+        currencyCode: "EUR",
+      });
       createBackupSnapshot({
         ...source.loadLedgerSnapshotData(),
         outputPath: snapshotPath,
@@ -194,6 +216,14 @@ describe("holding registry persistence and backup", () => {
               amountMinor: 1_100_000,
               currencyCode: "EUR",
               recordedAtIso: "2026-10-02T09:00:00.000Z",
+            },
+            {
+              id: "holding-record-4",
+              holdingId: "holding-record-1",
+              effectiveDateIso: "2026-10-01",
+              amountMinor: 1_125_000,
+              currencyCode: "EUR",
+              recordedAtIso: "2026-10-03T10:00:00.000Z",
             },
             {
               id: "holding-record-3",

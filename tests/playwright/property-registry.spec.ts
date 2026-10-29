@@ -185,6 +185,8 @@ test("@visual Visual: property records remain composed for desktop and compact w
     currencyCode: "NOK",
   });
   await expect(registry.valuationRow("Home", "2026-10-01")).toBeVisible();
+  await window.evaluate(() => globalThis.scrollTo(0, 0));
+  expect(await window.evaluate(() => globalThis.scrollY)).toBe(0);
 
   await expect(window).toHaveScreenshot("property-records-desktop.png", {
     animations: "disabled",
@@ -195,6 +197,8 @@ test("@visual Visual: property records remain composed for desktop and compact w
 
   await window.setViewportSize({ width: 390, height: 844 });
   await expect(registry.backToPropertyListButton).toBeVisible();
+  await window.evaluate(() => globalThis.scrollTo(0, 0));
+  expect(await window.evaluate(() => globalThis.scrollY)).toBe(0);
   await expect(window).toHaveScreenshot("property-records-compact.png", {
     animations: "disabled",
     mask: [window.locator('time[datetime*="T"]')],
