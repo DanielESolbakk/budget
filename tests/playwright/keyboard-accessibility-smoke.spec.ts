@@ -150,6 +150,8 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Loans" })).toBeFocused();
     await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Investments" })).toBeFocused();
+    await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Data safety" })).toBeFocused();
@@ -191,6 +193,8 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(loansTab).toBeFocused();
     await window.keyboard.press("Enter");
 
+    await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Investments" })).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
     await window.keyboard.press("Tab");
@@ -278,6 +282,8 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(propertiesTab).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Loans" })).toBeFocused();
+    await window.keyboard.press("Tab");
+    await expect(householdTools.getByRole("button", { name: "Investments" })).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
     await window.keyboard.press("Tab");

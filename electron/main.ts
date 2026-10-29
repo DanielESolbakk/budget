@@ -139,7 +139,9 @@ import {
   type TransactionCategoryAllocation,
 } from "../src/domain/types.js";
 import {
+  validateHoldingCorrectionInput,
   validateHoldingRecordInput,
+  validateHoldingValuationCorrectionInput,
   validateHoldingValuationInput,
 } from "../src/domain/holdingRecordValidation.js";
 import {
@@ -1184,6 +1186,21 @@ app.whenReady().then(async () => {
     const validated = validateHoldingRecordInput(input);
     return ledgerOperationCoordinator.runExclusive(() => holdingRegistry.create(validated));
   });
+
+  ipcMain.handle("holdingRegistry:correctHolding", (event, input: unknown): Promise<HoldingRecord> => {
+    assertTrustedRenderer(event);
+    const validated = validateHoldingCorrectionInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => holdingRegistry.correctHolding(validated));
+  });
+
+  ipcMain.handle(
+    "holdingRegistry:correctValuation",
+    (event, input: unknown): Promise<HoldingValuationSnapshot> => {
+      assertTrustedRenderer(event);
+      const validated = validateHoldingValuationCorrectionInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => holdingRegistry.correctValuation(validated));
+    }
+  );
 
   ipcMain.handle(
     "holdingRegistry:appendValuation",

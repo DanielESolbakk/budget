@@ -69,7 +69,7 @@ describe("loan registry persistence and backup", () => {
     expect(snapshot).toMatchObject({
       loanRecords: [loan],
       loanBalanceSnapshots: [balance],
-      metadata: { version: "7" },
+      metadata: { version: "8" },
     });
   });
 

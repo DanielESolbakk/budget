@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import {
+  validateHoldingCorrectionInput,
   validateHoldingRecordInput,
+  validateHoldingValuationCorrectionInput,
   validateHoldingValuationInput,
 } from "../domain/holdingRecordValidation.js";
 import type {
+  HoldingCorrectionInput,
   HoldingRecord,
   HoldingRecordInput,
+  HoldingRecordRevision,
+  HoldingValuationCorrectionInput,
   HoldingValuationInput,
   HoldingValuationSnapshot,
   HoldingWithValuations,
@@ -21,6 +26,8 @@ export interface HoldingRegistry {
   list: () => HoldingWithValuations[];
   create: (input: HoldingRecordInput) => HoldingRecord;
   appendValuation: (input: HoldingValuationInput) => HoldingValuationSnapshot;
+  correctHolding: (input: HoldingCorrectionInput) => HoldingRecord;
+  correctValuation: (input: HoldingValuationCorrectionInput) => HoldingValuationSnapshot;
 }
 
 export function createHoldingRegistry(
@@ -76,5 +83,48 @@ export function createHoldingRegistry(
     return snapshot;
   }
 
-  return { list, create, appendValuation };
+  function correctHolding(input: HoldingCorrectionInput): HoldingRecord {
+    const validated = validateHoldingCorrectionInput(input);
+    const current = database.listHoldingRecords(currentHouseholdId())
+      .find((holding) => holding.id === validated.holdingId);
+    if (current === undefined) throw new Error(`Investment holding not found: ${validated.holdingId}`);
+    const revision: HoldingRecordRevision = {
+      id: createId(),
+      correctedAtIso: now().toISOString(),
+      label: current.label,
+      quantity: current.quantity,
+      costBasisMinor: current.costBasisMinor,
+      currencyCode: current.currencyCode,
+    };
+    const corrected: HoldingRecord = {
+      ...current,
+      label: validated.label,
+      quantity: validated.quantity,
+      costBasisMinor: validated.costBasisMinor,
+      currencyCode: validated.currencyCode,
+      revisions: [...(current.revisions ?? []), revision],
+    };
+    database.correctHoldingRecord(corrected, revision);
+    return corrected;
+  }
+
+  function correctValuation(input: HoldingValuationCorrectionInput): HoldingValuationSnapshot {
+    const validated = validateHoldingValuationCorrectionInput(input);
+    const holding = database.listHoldingRecords(currentHouseholdId())
+      .find((record) => record.id === validated.holdingId);
+    if (holding === undefined) throw new Error(`Investment holding not found: ${validated.holdingId}`);
+    const snapshot: HoldingValuationSnapshot = {
+      id: createId(),
+      holdingId: validated.holdingId,
+      effectiveDateIso: validated.effectiveDateIso,
+      amountMinor: validated.amountMinor,
+      currencyCode: validated.currencyCode,
+      recordedAtIso: now().toISOString(),
+      correction: { targetValuationId: validated.targetValuationId },
+    };
+    database.appendHoldingValuationSnapshot(snapshot);
+    return snapshot;
+  }
+
+  return { list, create, appendValuation, correctHolding, correctValuation };
 }

@@ -21,9 +21,11 @@ import type {
   Account,
   ExchangeRate,
   ForecastEntry,
+  HoldingCorrectionInput,
   HoldingRecord,
   HoldingRecordInput,
   HoldingValuationInput,
+  HoldingValuationCorrectionInput,
   HoldingValuationSnapshot,
   HoldingWithValuations,
   ImportReviewCorrectionInput,
@@ -204,6 +206,8 @@ export interface HoldingRegistryApi {
   list: () => Promise<HoldingWithValuations[]>;
   create: (input: HoldingRecordInput) => Promise<HoldingRecord>;
   appendValuation: (input: HoldingValuationInput) => Promise<HoldingValuationSnapshot>;
+  correctHolding: (input: HoldingCorrectionInput) => Promise<HoldingRecord>;
+  correctValuation: (input: HoldingValuationCorrectionInput) => Promise<HoldingValuationSnapshot>;
 }
 
 export interface LoanRegistryApi {
@@ -378,6 +382,10 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("holdingRegistry:create", input),
     appendValuation: (input: HoldingValuationInput): Promise<HoldingValuationSnapshot> =>
       ipcRenderer.invoke("holdingRegistry:appendValuation", input),
+    correctHolding: (input: HoldingCorrectionInput): Promise<HoldingRecord> =>
+      ipcRenderer.invoke("holdingRegistry:correctHolding", input),
+    correctValuation: (input: HoldingValuationCorrectionInput): Promise<HoldingValuationSnapshot> =>
+      ipcRenderer.invoke("holdingRegistry:correctValuation", input),
   },
   loanRegistry: {
     list: (): Promise<LoanWithBalances[]> =>

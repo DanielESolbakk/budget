@@ -111,15 +111,30 @@ export interface HoldingValuationInput {
   currencyCode: CurrencyCode;
 }
 
+export interface HoldingCorrectionInput extends HoldingRecordInput {
+  holdingId: string;
+}
+
+export interface HoldingValuationCorrectionInput extends HoldingValuationInput {
+  targetValuationId: string;
+}
+
+export interface HoldingRecordRevision extends HoldingRecordInput {
+  id: string;
+  correctedAtIso: string;
+}
+
 export interface HoldingRecord extends HoldingRecordInput {
   id: string;
   householdId: string;
   createdAtIso: string;
+  revisions?: HoldingRecordRevision[];
 }
 
 export interface HoldingValuationSnapshot extends HoldingValuationInput {
   id: string;
   recordedAtIso: string;
+  correction?: { targetValuationId: string };
 }
 
 export interface HoldingWithValuations extends HoldingRecord {

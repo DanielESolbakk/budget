@@ -140,6 +140,7 @@ test("holding labels and values remain legible on the household canvas", async (
     }
     return {
       background: getComputedStyle(workspace).backgroundColor,
+      recordBackground: getComputedStyle(record!).backgroundColor,
       heading: getComputedStyle(heading).color,
       value: getComputedStyle(value).color,
     };
@@ -147,6 +148,84 @@ test("holding labels and values remain legible on the household canvas", async (
 
   expect(contrastRatio(colors.heading, colors.background)).toBeGreaterThanOrEqual(4.5);
   expect(contrastRatio(colors.value, colors.background)).toBeGreaterThanOrEqual(4.5);
+  expect(contrastRatio(colors.heading, colors.recordBackground)).toBeGreaterThanOrEqual(4.5);
+  expect(contrastRatio(colors.value, colors.recordBackground)).toBeGreaterThanOrEqual(4.5);
+});
+
+test("investment records can be selected without losing valuation drafts", async ({
+  appShell,
+  window,
+}) => {
+  await openInvestments(appShell);
+  const registryRegion = registry(window);
+  await addHolding(window, {
+    label: "Global fund",
+    quantity: "10",
+    costBasis: "10000",
+    currencyCode: "EUR",
+  });
+  const firstForm = holding(window, "Global fund").getByRole("form", {
+    name: "Add valuation for Global fund",
+  });
+  await firstForm.getByLabel("Amount").fill("11000");
+  await addHolding(window, {
+    label: "Savings fund",
+    quantity: "5",
+    costBasis: "5000",
+    currencyCode: "NOK",
+  });
+  const navigation = registryRegion.getByRole("navigation", { name: "Investment holdings" });
+  await navigation.getByRole("button", { name: "Global fund" }).click();
+  await expect(firstForm.getByLabel("Amount")).toHaveValue("11000");
+  await expect(holding(window, "Savings fund")).toHaveCount(0);
+  await navigation.getByRole("button", { name: "Savings fund" }).click();
+  await expect(holding(window, "Savings fund")).toBeVisible();
+  await expect(holding(window, "Global fund")).toHaveCount(0);
+  await expect(registryRegion).toContainText("total acquisition cost");
+  await expect(registryRegion).toContainText("total value of the holding");
+});
+
+test("holding and valuation corrections retain visible original history", async ({ appShell, window }) => {
+  await openInvestments(appShell);
+  await addHolding(window, {
+    label: "Global fund",
+    quantity: "10",
+    costBasis: "10000",
+    currencyCode: "EUR",
+  });
+  await addValuation(window, "Global fund", {
+    effectiveDate: "2026-10-01",
+    amount: "11000",
+  });
+  const record = holding(window, "Global fund");
+  await expect(record.getByText("Correct holding details", { exact: true })).toBeVisible();
+  await record.getByText("Correct holding details", { exact: true }).click();
+  const detailsForm = record.getByRole("form", { name: "Correct holding details" });
+  await detailsForm.getByLabel("Holding label").fill("Global fund corrected");
+  await detailsForm.getByLabel("Quantity").fill("12");
+  await detailsForm.getByRole("button", { name: "Save holding correction" }).click();
+  const correctedRecord = holding(window, "Global fund corrected");
+  await expect(correctedRecord).toContainText("12");
+  await correctedRecord.getByText("Previous holding details", { exact: true }).click();
+  await expect(correctedRecord).toContainText("Global fund");
+  await expect(correctedRecord).toContainText("10");
+  await correctedRecord.getByRole("button", { name: "Correct value for 2026-10-01" }).click();
+  const correction = correctedRecord.getByRole("form", { name: "Correct holding value" });
+  await correction.getByLabel("Amount").fill("12500");
+  await correction.getByRole("button", { name: "Save value correction" }).click();
+  const history = correctedRecord.getByRole("table", { name: "Valuation history" });
+  await expect(history.getByRole("row")).toHaveCount(3);
+  await expect(history).toContainText("Superseded");
+  await expect(history).toContainText("Corrects value from 2026-10-01");
+  await expect(history).toContainText(/11\s*000,00/);
+  await expect(history).toContainText(/12\s*500,00/);
+  await history.getByRole("row").nth(2).getByRole("button", { name: "Correct value for 2026-10-01" }).click();
+  await correctedRecord.getByRole("form", { name: "Correct holding value" })
+    .getByLabel("Amount").fill("13000");
+  await correctedRecord.getByRole("button", { name: "Save value correction" }).click();
+  await expect(history.getByRole("row")).toHaveCount(4);
+  await expect(history.getByRole("row").nth(2)).toContainText("Superseded");
+  await expect(history.getByRole("row").nth(2)).toContainText("Corrects value from 2026-10-01");
 });
 
 test("holding history survives restart without conversion or network requests", async ({
@@ -178,7 +257,7 @@ test("holding history survives restart without conversion or network requests", 
     amount: "11500",
   });
 
-  const beforeRestart = await listHoldings(window);
+  let beforeRestart = await listHoldings(window);
   expect(beforeRestart).toHaveLength(1);
   expect(beforeRestart[0]).toMatchObject({
     label: "Global fund",
@@ -225,6 +304,32 @@ test("holding history survives restart without conversion or network requests", 
     document.documentElement.scrollWidth > document.documentElement.clientWidth
   )).toBe(false);
   await window.setViewportSize({ width: 1280, height: 800 });
+  const record = holding(window, "Global fund");
+  await record.getByText("Correct holding details", { exact: true }).click();
+  const detailsForm = record.getByRole("form", { name: "Correct holding details" });
+  await detailsForm.getByLabel("Quantity").fill("12");
+  await detailsForm.getByRole("button", { name: "Save holding correction" }).click();
+  await expect(record.getByText("Previous holding details", { exact: true })).toBeVisible();
+  await record.getByRole("button", { name: "Correct value for 2026-11-01" }).click();
+  const correctionForm = record.getByRole("form", { name: "Correct holding value" });
+  await correctionForm.getByLabel("Amount").fill("12000");
+  await correctionForm.getByRole("button", { name: "Save value correction" }).click();
+  await expect(record.getByRole("table", { name: "Valuation history" })).toBeFocused();
+  beforeRestart = await listHoldings(window);
+  expect(beforeRestart[0]).toMatchObject({
+    quantity: 12,
+    revisions: [{ quantity: 10 }],
+    valuations: [
+      { amountMinor: 1_100_000 },
+      { amountMinor: 1_150_000 },
+      { amountMinor: 1_200_000, correction: { targetValuationId: beforeRestart[0]?.valuations[1]?.id } },
+    ],
+  });
+  await window.setViewportSize({ width: 390, height: 844 });
+  await expect(mobileHistory).toContainText("Corrects value from 2026-11-01");
+  expect(await window.evaluate(() =>
+    document.documentElement.scrollWidth > document.documentElement.clientWidth
+  )).toBe(false);
   expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   expect(await rendererNetworkAttempts(window)).toEqual([]);
   expect(await rendererNetworkBlockedAttempts(window)).toEqual([]);
@@ -254,16 +359,17 @@ test("holding history survives restart without conversion or network requests", 
     expect(afterRestart).toEqual(beforeRestart);
     expect(await listEurRates(restartedWindow)).toEqual([]);
     const restartedHolding = holding(restartedWindow, "Global fund");
-    await expect(restartedHolding.getByText("10", { exact: true })).toBeVisible();
+    await expect(restartedHolding.getByText("12", { exact: true })).toBeVisible();
     await expect(restartedHolding.getByText(/^EUR\s+10\s*000,00$/)).toBeVisible();
     for (const valuation of afterRestart[0]!.valuations) {
       const row = holding(restartedWindow, "Global fund")
         .getByRole("table", { name: "Valuation history", exact: true })
         .getByRole("row")
-        .filter({ hasText: valuation.effectiveDateIso });
+        .filter({ has: restartedWindow.locator(`time[datetime="${valuation.recordedAtIso}"]`) });
       await expect(row.getByRole("cell").nth(1)).toContainText("EUR");
       await expect(row.getByRole("cell").nth(1)).toContainText(
-        valuation.effectiveDateIso === "2026-10-01" ? /11\s*000,00/ : /11\s*500,00/
+        valuation.amountMinor === 1_100_000 ? /11\s*000,00/
+          : valuation.amountMinor === 1_150_000 ? /11\s*500,00/ : /12\s*000,00/
       );
       await expect(row.getByRole("cell").nth(2).locator("time"))
         .toHaveAttribute("datetime", valuation.recordedAtIso);

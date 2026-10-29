@@ -1,10 +1,16 @@
 import { isCurrencyCode } from "./types.js";
 import type {
+  HoldingCorrectionInput,
   HoldingRecordInput,
+  HoldingRecordRevision,
+  HoldingValuationCorrectionInput,
   HoldingValuationInput,
 } from "./types.js";
 
-export type HoldingRecordValidationField = keyof HoldingRecordInput | keyof HoldingValuationInput;
+export type HoldingRecordValidationField =
+  | keyof HoldingRecordInput
+  | keyof HoldingValuationInput
+  | "targetValuationId";
 
 export class HoldingRecordValidationError extends Error {
   constructor(
@@ -121,4 +127,41 @@ export function validateHoldingValuationInput(input: unknown): HoldingValuationI
   }
 
   return { holdingId, effectiveDateIso, amountMinor, currencyCode };
+}
+
+export function validateHoldingCorrectionInput(input: unknown): HoldingCorrectionInput {
+  if (!isRecord(input) || typeof input.holdingId !== "string" || input.holdingId.trim() === "") {
+    throw new HoldingRecordValidationError("holdingId", "Choose an existing investment holding.");
+  }
+  return { ...validateHoldingRecordInput(input), holdingId: input.holdingId };
+}
+
+export function validateHoldingValuationCorrectionInput(
+  input: unknown
+): HoldingValuationCorrectionInput {
+  const valuation = validateHoldingValuationInput(input);
+  if (!isRecord(input) || typeof input.targetValuationId !== "string" ||
+      input.targetValuationId.trim() === "") {
+    throw new HoldingRecordValidationError("targetValuationId", "Choose a value to correct.");
+  }
+  return { ...valuation, targetValuationId: input.targetValuationId };
+}
+
+export function validateHoldingRevision(input: unknown): HoldingRecordRevision {
+  if (!isRecord(input) || typeof input.id !== "string" || input.id.trim() === "" ||
+      typeof input.correctedAtIso !== "string" || !input.correctedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(input.correctedAtIso))) {
+    throw new Error("Investment holding revision identity or timestamp is invalid.");
+  }
+  return { ...validateHoldingRecordInput(input), id: input.id, correctedAtIso: input.correctedAtIso };
+}
+
+export function validateHoldingValuationCorrectionMetadata(
+  input: unknown
+): { targetValuationId: string } {
+  if (!isRecord(input) || typeof input.targetValuationId !== "string" ||
+      input.targetValuationId.trim() === "") {
+    throw new Error("Investment holding valuation correction is invalid.");
+  }
+  return { targetValuationId: input.targetValuationId };
 }

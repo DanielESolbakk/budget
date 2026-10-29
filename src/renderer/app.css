@@ -4512,11 +4512,6 @@ section[aria-label="Category Target Entry"] [role="status"] {
   color: var(--success);
 }
 
-.holding-record-list {
-  min-width: 0;
-  margin-top: 1.25rem;
-}
-
 .holding-record {
   min-width: 0;
   border-top: 1px solid var(--line-strong);
@@ -5318,6 +5313,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .property-workspace-grid,
+.holding-workspace-grid,
 .loan-workspace-grid {
   display: grid;
   grid-template-columns: minmax(13rem, 0.72fr) minmax(0, 1.8fr);
@@ -5327,12 +5323,14 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .property-record-navigation,
+.holding-record-navigation,
 .loan-record-navigation {
   display: grid;
   border-top: 1px solid var(--household-border);
 }
 
 .household-workspace .property-record-navigation button,
+.household-workspace .holding-record-navigation button,
 .household-workspace .loan-record-navigation button {
   display: grid;
   min-width: 0;
@@ -5347,12 +5345,14 @@ section[aria-label="Category Target Entry"] [role="status"] {
 }
 
 .household-workspace .property-record-navigation button:hover:not(:disabled),
+.household-workspace .holding-record-navigation button:hover:not(:disabled),
 .household-workspace .loan-record-navigation button:hover:not(:disabled) {
   color: var(--household-oxblood);
   background: #efe4de;
 }
 
 .household-workspace .property-record-navigation button[aria-current="page"],
+.household-workspace .holding-record-navigation button[aria-current="page"],
 .household-workspace .loan-record-navigation button[aria-current="page"] {
   color: var(--household-oxblood);
   background: var(--household-paper);
@@ -5385,6 +5385,31 @@ section[aria-label="Category Target Entry"] [role="status"] {
   padding: 0;
   color: var(--household-ink);
   background: var(--household-paper);
+}
+
+.household-workspace .holding-record {
+  border-color: var(--household-border);
+  color: var(--household-ink);
+  background: var(--household-paper);
+}
+
+.holding-correction {
+  margin-top: 1rem;
+}
+
+.household-workspace .holding-correction > summary {
+  color: var(--household-oxblood);
+  cursor: pointer;
+  text-underline-offset: 0.2em;
+}
+
+.holding-correction ul {
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.holding-record-navigation button {
+  overflow-wrap: anywhere;
 }
 
 .household-workspace .property-record h4,
@@ -5519,6 +5544,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
 @media (max-width: 1050px) {
   .property-workspace-grid,
+  .holding-workspace-grid,
   .loan-workspace-grid {
     grid-template-columns: minmax(11rem, 0.68fr) minmax(0, 1.5fr);
   }
@@ -5535,6 +5561,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
   }
 
   .property-workspace-grid,
+  .holding-workspace-grid,
   .loan-workspace-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;

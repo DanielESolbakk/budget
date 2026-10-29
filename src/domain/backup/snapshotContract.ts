@@ -18,9 +18,9 @@ import type {
 } from "../types.js";
 
 /** Snapshot format version – increment when the serialized recovery contract changes. */
-export const SNAPSHOT_VERSION = "7" as const;
+export const SNAPSHOT_VERSION = "8" as const;
 
-export type SnapshotVersion = "1" | "2" | "3" | "4" | "5" | "6" | typeof SNAPSHOT_VERSION;
+export type SnapshotVersion = "1" | "2" | "3" | "4" | "5" | "6" | "7" | typeof SNAPSHOT_VERSION;
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {

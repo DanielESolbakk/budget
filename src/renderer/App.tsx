@@ -432,8 +432,9 @@ export function App(): React.JSX.Element {
               <div className="destination-heading">
                 <h2>Investments</h2>
                 <p>
-                  Record holdings and dated values manually. Original currencies are preserved
-                  without brokerage, market-quote, or exchange-rate lookups.
+                  Record holdings and dated values manually. Entries stay on this device and
+                  preserve original currencies without brokerage, market-quote, or exchange-rate
+                  lookups.
                 </p>
               </div>
               <HoldingRegistrySection

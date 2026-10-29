@@ -453,6 +453,22 @@ function validateHoldings(
     ) {
       invalidSnapshot(snapshotPath, "investment holdings");
     }
+    if (holding.revisions !== undefined) {
+      if (!Array.isArray(holding.revisions)) invalidSnapshot(snapshotPath, "holding revisions");
+      const revisionIds = new Set<string>();
+      for (const revision of holding.revisions) {
+        if (!isRecord(revision) || !isNonEmptyString(revision.id) || revisionIds.has(revision.id) ||
+            !isNonEmptyString(revision.label) || revision.label.length > 100 ||
+            typeof revision.quantity !== "number" || !Number.isFinite(revision.quantity) ||
+            revision.quantity <= 0 || typeof revision.costBasisMinor !== "number" ||
+            !Number.isSafeInteger(revision.costBasisMinor) || revision.costBasisMinor < 0 ||
+            !isCurrencyCode(revision.currencyCode) || !isNonEmptyString(revision.correctedAtIso) ||
+            !revision.correctedAtIso.includes("T") || Number.isNaN(Date.parse(revision.correctedAtIso))) {
+          invalidSnapshot(snapshotPath, "holding revisions");
+        }
+        revisionIds.add(revision.id);
+      }
+    }
     holdingIds.add(holding.id);
   }
 }
@@ -463,6 +479,7 @@ function validateHoldingValuations(
   snapshotPath: string
 ): asserts value is HoldingValuationSnapshot[] {
   const valuationIds = new Set<string>();
+  const valuations = new Map<string, { holdingId: string; target?: string }>();
   for (const valuation of value) {
     if (
       !isRecord(valuation) ||
@@ -477,11 +494,36 @@ function validateHoldingValuations(
       !isNonEmptyString(valuation.recordedAtIso) ||
       !valuation.recordedAtIso.includes("T") ||
       Number.isNaN(Date.parse(valuation.recordedAtIso)) ||
-      valuationIds.has(valuation.id)
+      valuationIds.has(valuation.id) ||
+      (valuation.correction !== undefined &&
+        (!isRecord(valuation.correction) || !isNonEmptyString(valuation.correction.targetValuationId)))
     ) {
       invalidSnapshot(snapshotPath, "holding valuations");
     }
     valuationIds.add(valuation.id);
+    const correction = valuation.correction;
+    valuations.set(valuation.id, {
+      holdingId: valuation.holdingId,
+      ...(isRecord(correction) && typeof correction.targetValuationId === "string"
+        ? { target: correction.targetValuationId } : {}),
+    });
+  }
+  const corrected = new Set<string>();
+  for (const [id, valuation] of valuations) {
+    if (valuation.target === undefined) continue;
+    const target = valuations.get(valuation.target);
+    if (target === undefined || target.holdingId !== valuation.holdingId ||
+        valuation.target === id || corrected.has(valuation.target)) {
+      invalidSnapshot(snapshotPath, "holding valuation corrections");
+    }
+    corrected.add(valuation.target);
+    const visited = new Set([id]);
+    let cursor: string | undefined = valuation.target;
+    while (cursor !== undefined) {
+      if (visited.has(cursor)) invalidSnapshot(snapshotPath, "holding valuation correction cycle");
+      visited.add(cursor);
+      cursor = valuations.get(cursor)?.target;
+    }
   }
 }
 
@@ -600,6 +642,7 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version !== "4" &&
     metadata.version !== "5" &&
     metadata.version !== "6" &&
+    metadata.version !== "7" &&
     metadata.version !== SNAPSHOT_VERSION
   ) {
     throw new Error(
@@ -655,16 +698,19 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version === "4" ||
     metadata.version === "5" ||
     metadata.version === "6" ||
+    metadata.version === "7" ||
     metadata.version === SNAPSHOT_VERSION;
   const hasPropertyCollections =
     metadata.version === "4" ||
     metadata.version === "5" ||
     metadata.version === "6" ||
+    metadata.version === "7" ||
     metadata.version === SNAPSHOT_VERSION;
   const hasLoanCollections =
     metadata.version === "6" ||
+    metadata.version === "7" ||
     metadata.version === SNAPSHOT_VERSION;
-  const hasHoldingCollections = metadata.version === SNAPSHOT_VERSION;
+  const hasHoldingCollections = metadata.version === "7" || metadata.version === SNAPSHOT_VERSION;
   if (
     !Array.isArray(accountStatementCoveragePeriods) ||
     !Array.isArray(accountBalanceCheckpoints) ||
