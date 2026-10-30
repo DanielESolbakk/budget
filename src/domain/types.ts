@@ -56,6 +56,11 @@ export interface PropertyLabelUpdateInput {
   label: string;
 }
 
+export interface PropertyOwnershipShareUpdateInput {
+  propertyId: string;
+  ownershipShareBasisPoints: number;
+}
+
 export type PropertyValuationCorrectionInput =
   | {
       action: "supersede";
@@ -81,6 +86,7 @@ export interface PropertyRecord {
   householdId: string;
   label: string;
   createdAtIso: string;
+  ownershipShareBasisPoints?: number;
 }
 
 export interface PropertyValuationSnapshot {
@@ -160,10 +166,16 @@ export interface LoanBalanceInput {
   amountMinor: number;
 }
 
+export interface LoanResponsibilityShareUpdateInput {
+  loanId: string;
+  responsibilityShareBasisPoints: number;
+}
+
 export interface LoanRecord extends LoanRecordInput {
   id: string;
   householdId: string;
   createdAtIso: string;
+  responsibilityShareBasisPoints?: number;
 }
 
 export interface LoanBalanceSnapshot {

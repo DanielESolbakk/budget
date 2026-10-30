@@ -59,7 +59,7 @@ describe("property value history persistence", () => {
     };
     const built = JSON.parse(JSON.stringify(buildBackupSnapshot(data))) as Record<string, unknown>;
 
-    expect(built["properties"]).toEqual([property]);
+    expect(built["properties"]).toEqual([{ ...property, ownershipShareBasisPoints: 10_000 }]);
     expect(built["propertyValuations"]).toEqual([valuation]);
   });
 
@@ -71,7 +71,7 @@ describe("property value history persistence", () => {
       importJobs: [],
       monthlyCategoryTargets: [],
       createdAtIso: "2026-10-03T09:00:00.000Z",
-    }).metadata.version).toBe("8");
+    }).metadata.version).toBe("9");
   });
 
   it("restores property records and valuation snapshots unchanged", () => {
@@ -107,7 +107,7 @@ describe("property value history persistence", () => {
 
       const restored = restoreBackupSnapshot({ snapshotPath });
 
-      expect(restored.properties).toEqual([property]);
+      expect(restored.properties).toEqual([{ ...property, ownershipShareBasisPoints: 10_000 }]);
       expect(restored.propertyValuations).toEqual([valuation]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -177,7 +177,7 @@ describe("property value history persistence", () => {
 
       const restored = restoreBackupSnapshot({ snapshotPath });
 
-      expect(restored.properties).toEqual([property]);
+      expect(restored.properties).toEqual([{ ...property, ownershipShareBasisPoints: 10_000 }]);
       expect(restored.propertyValuations).toEqual([valuation]);
     } finally {
       rmSync(directory, { recursive: true, force: true });

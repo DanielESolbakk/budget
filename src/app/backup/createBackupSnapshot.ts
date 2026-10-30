@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
 import {
   SNAPSHOT_VERSION,
   type BackupSnapshot,
@@ -68,7 +69,10 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
       left.kind.localeCompare(right.kind) ||
       left.id.localeCompare(right.id)
   );
-  const properties = [...(input.properties ?? [])].sort((left, right) =>
+  const properties = (input.properties ?? []).map((property) => ({
+    ...property,
+    ownershipShareBasisPoints: defaultHouseholdShare(property.ownershipShareBasisPoints, "Property ownership share"),
+  })).sort((left, right) =>
     left.id.localeCompare(right.id)
   );
   const propertyValuations = [...(input.propertyValuations ?? [])].sort(
@@ -88,7 +92,10 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
       left.recordedAtIso.localeCompare(right.recordedAtIso) ||
       left.id.localeCompare(right.id)
   );
-  const loanRecords = [...(input.loanRecords ?? [])].sort((left, right) =>
+  const loanRecords = (input.loanRecords ?? []).map((loan) => ({
+    ...loan,
+    responsibilityShareBasisPoints: defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share"),
+  })).sort((left, right) =>
     left.id.localeCompare(right.id)
   );
   const loanBalanceSnapshots = [...(input.loanBalanceSnapshots ?? [])].sort(

@@ -32,6 +32,7 @@ import {
   type TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import { defaultHouseholdShare, isHouseholdShare } from "../../domain/householdShareValidation.js";
 import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
 import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
 import { isPropertyValuationCorrectionMetadata } from "../../domain/propertyRecordValidation.js";
@@ -332,7 +333,8 @@ function validateExchangeRates(value: unknown[], snapshotPath: string): asserts 
 function validateProperties(
   value: unknown[],
   householdId: string,
-  snapshotPath: string
+  snapshotPath: string,
+  requiresHouseholdShares: boolean
 ): asserts value is PropertyRecord[] {
   const propertyIds = new Set<string>();
   for (const property of value) {
@@ -345,6 +347,9 @@ function validateProperties(
       !isNonEmptyString(property.createdAtIso) ||
       !property.createdAtIso.includes("T") ||
       Number.isNaN(Date.parse(property.createdAtIso)) ||
+      (property.ownershipShareBasisPoints === undefined
+        ? requiresHouseholdShares
+        : !isHouseholdShare(property.ownershipShareBasisPoints)) ||
       propertyIds.has(property.id)
     ) {
       invalidSnapshot(snapshotPath, "properties");
@@ -531,7 +536,8 @@ function validateLoanRecords(
   value: unknown[],
   householdId: string,
   propertyIds: Set<string>,
-  snapshotPath: string
+  snapshotPath: string,
+  requiresHouseholdShares: boolean
 ): asserts value is LoanRecord[] {
   const loanIds = new Set<string>();
   const paymentFrequencies: LoanPaymentFrequency[] = [
@@ -567,6 +573,9 @@ function validateLoanRecords(
       !isNonEmptyString(loan.createdAtIso) ||
       !loan.createdAtIso.includes("T") ||
       Number.isNaN(Date.parse(loan.createdAtIso)) ||
+      (loan.responsibilityShareBasisPoints === undefined
+        ? requiresHouseholdShares
+        : !isHouseholdShare(loan.responsibilityShareBasisPoints)) ||
       (loan.propertyId !== undefined &&
         (typeof loan.propertyId !== "string" || !propertyIds.has(loan.propertyId)))
     ) {
@@ -643,6 +652,7 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version !== "5" &&
     metadata.version !== "6" &&
     metadata.version !== "7" &&
+    metadata.version !== "8" &&
     metadata.version !== SNAPSHOT_VERSION
   ) {
     throw new Error(
@@ -699,18 +709,22 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version === "5" ||
     metadata.version === "6" ||
     metadata.version === "7" ||
+    metadata.version === "8" ||
     metadata.version === SNAPSHOT_VERSION;
   const hasPropertyCollections =
     metadata.version === "4" ||
     metadata.version === "5" ||
     metadata.version === "6" ||
     metadata.version === "7" ||
+    metadata.version === "8" ||
     metadata.version === SNAPSHOT_VERSION;
   const hasLoanCollections =
     metadata.version === "6" ||
     metadata.version === "7" ||
+    metadata.version === "8" ||
     metadata.version === SNAPSHOT_VERSION;
-  const hasHoldingCollections = metadata.version === "7" || metadata.version === SNAPSHOT_VERSION;
+  const hasHoldingCollections = metadata.version === "7" || metadata.version === "8" ||
+    metadata.version === SNAPSHOT_VERSION;
   if (
     !Array.isArray(accountStatementCoveragePeriods) ||
     !Array.isArray(accountBalanceCheckpoints) ||
@@ -755,7 +769,8 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   const accountCurrencies = new Map(
     accounts.map((account) => [account.id, account.currencyCode] as const)
   );
-  validateProperties(properties, value.household.id, snapshotPath);
+  const requiresHouseholdShares = Number(metadata.version) >= 9;
+  validateProperties(properties, value.household.id, snapshotPath, requiresHouseholdShares);
   validatePropertyValuations(
     propertyValuations,
     new Set(properties.map((property) => property.id)),
@@ -771,7 +786,8 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     loanRecords,
     value.household.id,
     new Set(properties.map((property) => property.id)),
-    snapshotPath
+    snapshotPath,
+    requiresHouseholdShares
   );
   validateLoanBalanceSnapshots(loanBalanceSnapshots, loanRecords, snapshotPath);
   validateTargets(monthlyCategoryTargets, snapshotPath);
@@ -811,11 +827,17 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     accountStatementCoveragePeriods,
     accountBalanceCheckpoints,
     exchangeRates,
-    properties,
+    properties: properties.map((property) => ({
+      ...property,
+      ownershipShareBasisPoints: defaultHouseholdShare(property.ownershipShareBasisPoints, "Property ownership share"),
+    })),
     propertyValuations,
     holdings,
     holdingValuations,
-    loanRecords,
+    loanRecords: loanRecords.map((loan) => ({
+      ...loan,
+      responsibilityShareBasisPoints: defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share"),
+    })),
     loanBalanceSnapshots,
   };
 }

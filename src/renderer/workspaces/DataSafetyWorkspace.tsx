@@ -3,6 +3,8 @@ import { BackupSection } from "../backup/BackupSection.js";
 import { ExportSection } from "../backup/ExportSection.js";
 import { RestoreSnapshotSection } from "../dashboard/RestoreSnapshotSection.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
+import { HouseholdShareForm, useHouseholdShareFormStates } from "./HouseholdShareForm.js";
+import { DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS } from "../../domain/householdShareValidation.js";
 import {
   HoldingRecordValidationError,
   validateHoldingCorrectionInput,
@@ -1037,6 +1039,7 @@ export function PropertyRegistrySection({
   const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
   const [isCompactPropertyDetailOpen, setIsCompactPropertyDetailOpen] = React.useState(false);
   const [propertyLabelDrafts, setPropertyLabelDrafts] = React.useState<Record<string, string>>({});
+  const [shareFormStates, setShareFormStates] = useHouseholdShareFormStates();
   const [valuationDrafts, setValuationDrafts] = React.useState<Record<string, PropertyValuationDraft>>({});
   const [correctionDrafts, setCorrectionDrafts] = React.useState<Record<string, PropertyValuationDraft>>({});
   const [isPropertyCreateFormOpen, setIsPropertyCreateFormOpen] = React.useState(false);
@@ -1658,6 +1661,23 @@ export function PropertyRegistrySection({
                     </form>
                   </details>
                 </div>
+                <HouseholdShareForm
+                  recordId={property.id}
+                  formStates={shareFormStates}
+                  setFormStates={setShareFormStates}
+                  label="Household ownership share (basis points)"
+                  buttonLabel="Save ownership share"
+                  successMessage="Ownership share saved."
+                  value={property.ownershipShareBasisPoints ?? DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS}
+                  onSave={async (ownershipShareBasisPoints) => {
+                    await window.budgetApi.propertyRegistry.updateOwnershipShare({
+                      propertyId: property.id, ownershipShareBasisPoints,
+                    });
+                    setProperties((current) => current.map((record) => record.id === property.id
+                      ? { ...record, ownershipShareBasisPoints }
+                      : record));
+                  }}
+                />
                 {activeValuationPropertyId === property.id ? (
                   <form
                     className="property-valuation-form"

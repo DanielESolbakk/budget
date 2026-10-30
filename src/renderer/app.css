@@ -4595,6 +4595,40 @@ section[aria-label="Category Target Entry"] [role="status"] {
   gap: 0.75rem;
 }
 
+.household-share-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.household-share-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--household-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.household-share-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.household-share-form .household-share-hint,
+.household-share-form .property-registry-message {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.household-workspace .household-share-hint {
+  color: var(--household-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 .property-create-form {
   grid-template-columns: minmax(0, 1fr) auto;
   margin-top: 1rem;
@@ -4799,7 +4833,8 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
 @media (max-width: 680px) {
   .property-create-form,
-  .property-valuation-form {
+  .property-valuation-form,
+  .household-share-form {
     grid-template-columns: minmax(0, 1fr);
   }
 

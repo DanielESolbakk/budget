@@ -17,6 +17,8 @@ import type {
 } from "../../domain/types.js";
 import { isCurrencyCode } from "../../domain/types.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
+import { HouseholdShareForm, useHouseholdShareFormStates } from "./HouseholdShareForm.js";
+import { DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS } from "../../domain/householdShareValidation.js";
 
 interface LoanRegistrySectionProps {
   isActive: boolean;
@@ -160,6 +162,7 @@ export function LoanRegistrySection({
   const [selectedLoanId, setSelectedLoanId] = React.useState<string | null>(null);
   const [isCompactLoanDetailOpen, setIsCompactLoanDetailOpen] = React.useState(false);
   const [loanDraft, setLoanDraft] = React.useState<LoanDraft>(EMPTY_LOAN_DRAFT);
+  const [shareFormStates, setShareFormStates] = useHouseholdShareFormStates();
   const [balanceDrafts, setBalanceDrafts] = React.useState<Record<string, BalanceDraft>>({});
   const [balanceErrors, setBalanceErrors] = React.useState<Record<string, BalanceFieldErrors>>({});
   const [balanceFormErrors, setBalanceFormErrors] = React.useState<Record<string, string>>({});
@@ -909,6 +912,23 @@ export function LoanRegistrySection({
                       } · effective ${latestRecordedBalance.effectiveDateIso}`}
                   </span>
                 </div>
+                <HouseholdShareForm
+                  recordId={loan.id}
+                  formStates={shareFormStates}
+                  setFormStates={setShareFormStates}
+                  label="Household loan responsibility share (basis points)"
+                  buttonLabel="Save responsibility share"
+                  successMessage="Responsibility share saved."
+                  value={loan.responsibilityShareBasisPoints ?? DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS}
+                  onSave={async (responsibilityShareBasisPoints) => {
+                    await window.budgetApi.loanRegistry.updateResponsibilityShare({
+                      loanId: loan.id, responsibilityShareBasisPoints,
+                    });
+                    setLoans((current) => current.map((record) => record.id === loan.id
+                      ? { ...record, responsibilityShareBasisPoints }
+                      : record));
+                  }}
+                />
                 <details className="loan-record-details">
                   <summary>
                     <span className="loan-details-summary-content">

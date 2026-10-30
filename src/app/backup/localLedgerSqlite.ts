@@ -8,6 +8,7 @@ import type {
   LedgerSnapshotData,
 } from "../../domain/backup/snapshotContract.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import { defaultHouseholdShare, validateHouseholdShare } from "../../domain/householdShareValidation.js";
 import { createCorrectionProvenance } from "../../domain/review/correction.js";
 import { normalizeMerchantName } from "../../domain/merchant/normalizeMerchantName.js";
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
@@ -126,6 +127,7 @@ export interface LocalLedgerDatabase {
   listExchangeRates: (currencyCode?: string) => ExchangeRate[];
   createPropertyRecord: (property: PropertyRecord) => void;
   updatePropertyRecordLabel: (propertyId: string, label: string) => void;
+  updatePropertyOwnershipShare: (propertyId: string, basisPoints: number) => void;
   listPropertyRecords: (householdId: string) => PropertyRecord[];
   appendPropertyValuationSnapshot: (valuation: PropertyValuationSnapshot) => void;
   listPropertyValuationSnapshots: (propertyId: string) => PropertyValuationSnapshot[];
@@ -135,6 +137,7 @@ export interface LocalLedgerDatabase {
   appendHoldingValuationSnapshot: (valuation: HoldingValuationSnapshot) => void;
   listHoldingValuationSnapshots: (holdingId: string) => HoldingValuationSnapshot[];
   createLoanRecord: (loan: LoanRecord) => void;
+  updateLoanResponsibilityShare: (loanId: string, basisPoints: number) => void;
   listLoanRecords: (householdId: string) => LoanRecord[];
   appendLoanBalanceSnapshot: (balance: LoanBalanceSnapshot) => void;
   listLoanBalanceSnapshots: (loanId: string) => LoanBalanceSnapshot[];
@@ -655,7 +658,9 @@ function ensureSchema(db: DatabaseSync): void {
       id TEXT PRIMARY KEY,
       household_id TEXT NOT NULL,
       label TEXT NOT NULL,
-      created_at_iso TEXT NOT NULL
+      created_at_iso TEXT NOT NULL,
+      ownership_share_basis_points INTEGER NOT NULL DEFAULT 10000
+        CHECK (typeof(ownership_share_basis_points) = 'integer' AND ownership_share_basis_points BETWEEN 0 AND 10000)
     );
 
     CREATE INDEX IF NOT EXISTS properties_by_household_label
@@ -714,7 +719,9 @@ function ensureSchema(db: DatabaseSync): void {
         CHECK (payment_frequency IN ('weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')),
       currency_code TEXT NOT NULL,
       property_id TEXT,
-      created_at_iso TEXT NOT NULL
+      created_at_iso TEXT NOT NULL,
+      responsibility_share_basis_points INTEGER NOT NULL DEFAULT 10000
+        CHECK (typeof(responsibility_share_basis_points) = 'integer' AND responsibility_share_basis_points BETWEEN 0 AND 10000)
     );
 
     CREATE INDEX IF NOT EXISTS loans_by_household_label
@@ -826,6 +833,17 @@ function ensureSchema(db: DatabaseSync): void {
       PRIMARY KEY (import_job_id, transaction_id)
     );
   `);
+
+  const propertyColumns = db.prepare("PRAGMA table_info(properties)").all() as Array<{ name: string }>;
+  if (!propertyColumns.some((column) => column.name === "ownership_share_basis_points")) {
+    db.exec(`ALTER TABLE properties ADD COLUMN ownership_share_basis_points INTEGER NOT NULL DEFAULT 10000
+      CHECK (typeof(ownership_share_basis_points) = 'integer' AND ownership_share_basis_points BETWEEN 0 AND 10000)`);
+  }
+  const loanColumns = db.prepare("PRAGMA table_info(loan_records)").all() as Array<{ name: string }>;
+  if (!loanColumns.some((column) => column.name === "responsibility_share_basis_points")) {
+    db.exec(`ALTER TABLE loan_records ADD COLUMN responsibility_share_basis_points INTEGER NOT NULL DEFAULT 10000
+      CHECK (typeof(responsibility_share_basis_points) = 'integer' AND responsibility_share_basis_points BETWEEN 0 AND 10000)`);
+  }
 
   const propertyValuationColumns = db
     .prepare("PRAGMA table_info(property_valuation_snapshots)")
@@ -979,10 +997,11 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
   }
 
   const insertProperty = db.prepare(
-    "INSERT INTO properties (id, household_id, label, created_at_iso) VALUES (?, ?, ?, ?)"
+    "INSERT INTO properties (id, household_id, label, created_at_iso, ownership_share_basis_points) VALUES (?, ?, ?, ?, ?)"
   );
   for (const property of snapshot.properties ?? []) {
-    insertProperty.run(property.id, property.householdId, property.label, property.createdAtIso);
+    insertProperty.run(property.id, property.householdId, property.label, property.createdAtIso,
+      defaultHouseholdShare(property.ownershipShareBasisPoints, "Property ownership share"));
   }
 
   const insertHolding = db.prepare(`
@@ -1007,8 +1026,8 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
     INSERT INTO loan_records (
       id, household_id, label, principal_minor, annual_interest_rate_basis_points,
       term_months, payment_amount_minor, payment_frequency, currency_code, property_id,
-      created_at_iso
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at_iso, responsibility_share_basis_points
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const loan of snapshot.loanRecords ?? []) {
     insertLoanRecord.run(
@@ -1022,7 +1041,8 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       loan.paymentFrequency,
       loan.currencyCode,
       loan.propertyId ?? null,
-      loan.createdAtIso
+      loan.createdAtIso,
+      defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share")
     );
   }
 
@@ -1715,8 +1735,9 @@ export function createLocalLedgerDatabase(
       throw new Error(`Household not found for property: ${property.householdId}`);
     }
     db.prepare(
-      "INSERT INTO properties (id, household_id, label, created_at_iso) VALUES (?, ?, ?, ?)"
-    ).run(property.id, property.householdId, property.label, property.createdAtIso);
+      "INSERT INTO properties (id, household_id, label, created_at_iso, ownership_share_basis_points) VALUES (?, ?, ?, ?, ?)"
+    ).run(property.id, property.householdId, property.label, property.createdAtIso,
+      defaultHouseholdShare(property.ownershipShareBasisPoints, "Property ownership share"));
   }
 
   function updatePropertyRecordLabel(propertyId: string, label: string): void {
@@ -1730,9 +1751,15 @@ export function createLocalLedgerDatabase(
     }
   }
 
+  function updatePropertyOwnershipShare(propertyId: string, basisPoints: number): void {
+    const result = db.prepare("UPDATE properties SET ownership_share_basis_points = ? WHERE id = ?")
+      .run(validateHouseholdShare(basisPoints, "Property ownership share"), propertyId);
+    if (Number(result.changes) !== 1) throw new Error(`Property not found: ${propertyId}`);
+  }
+
   function listPropertyRecords(householdId: string): PropertyRecord[] {
     return db.prepare(`
-      SELECT id, household_id, label, created_at_iso
+      SELECT id, household_id, label, created_at_iso, ownership_share_basis_points
       FROM properties
       WHERE household_id = ?
       ORDER BY label COLLATE NOCASE, id
@@ -1742,12 +1769,14 @@ export function createLocalLedgerDatabase(
         household_id: string;
         label: string;
         created_at_iso: string;
+        ownership_share_basis_points: number;
       };
       return {
         id: property.id,
         householdId: property.household_id,
         label: property.label,
         createdAtIso: property.created_at_iso,
+        ownershipShareBasisPoints: property.ownership_share_basis_points,
       };
     });
   }
@@ -2066,8 +2095,8 @@ export function createLocalLedgerDatabase(
       INSERT INTO loan_records (
         id, household_id, label, principal_minor, annual_interest_rate_basis_points,
         term_months, payment_amount_minor, payment_frequency, currency_code, property_id,
-        created_at_iso
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_at_iso, responsibility_share_basis_points
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       loan.id,
       loan.householdId,
@@ -2079,15 +2108,22 @@ export function createLocalLedgerDatabase(
       validated.paymentFrequency,
       validated.currencyCode,
       validated.propertyId ?? null,
-      loan.createdAtIso
+      loan.createdAtIso,
+      defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share")
     );
+  }
+
+  function updateLoanResponsibilityShare(loanId: string, basisPoints: number): void {
+    const result = db.prepare("UPDATE loan_records SET responsibility_share_basis_points = ? WHERE id = ?")
+      .run(validateHouseholdShare(basisPoints, "Loan responsibility share"), loanId);
+    if (Number(result.changes) !== 1) throw new Error(`Loan not found: ${loanId}`);
   }
 
   function listLoanRecords(householdId: string): LoanRecord[] {
     return db.prepare(`
       SELECT id, household_id, label, principal_minor, annual_interest_rate_basis_points,
         term_months, payment_amount_minor, payment_frequency, currency_code, property_id,
-        created_at_iso
+        created_at_iso, responsibility_share_basis_points
       FROM loan_records
       WHERE household_id = ?
       ORDER BY label COLLATE NOCASE, id
@@ -2104,6 +2140,7 @@ export function createLocalLedgerDatabase(
         currency_code: string;
         property_id: string | null;
         created_at_iso: string;
+        responsibility_share_basis_points: number;
       };
       return {
         id: loan.id,
@@ -2117,6 +2154,7 @@ export function createLocalLedgerDatabase(
         currencyCode: loan.currency_code,
         ...(loan.property_id === null ? {} : { propertyId: loan.property_id }),
         createdAtIso: loan.created_at_iso,
+        responsibilityShareBasisPoints: loan.responsibility_share_basis_points,
       };
     });
   }
@@ -2383,7 +2421,7 @@ export function createLocalLedgerDatabase(
     });
     const exchangeRates = listExchangeRates();
     const properties = db.prepare(`
-      SELECT id, household_id, label, created_at_iso
+      SELECT id, household_id, label, created_at_iso, ownership_share_basis_points
       FROM properties
       ORDER BY id
     `).all().map((row) => {
@@ -2392,12 +2430,14 @@ export function createLocalLedgerDatabase(
         household_id: string;
         label: string;
         created_at_iso: string;
+        ownership_share_basis_points: number;
       };
       return {
         id: property.id,
         householdId: property.household_id,
         label: property.label,
         createdAtIso: property.created_at_iso,
+        ownershipShareBasisPoints: property.ownership_share_basis_points,
       };
     });
     const propertyValuations = db.prepare(`
@@ -4020,6 +4060,7 @@ export function createLocalLedgerDatabase(
     listExchangeRates,
     createPropertyRecord,
     updatePropertyRecordLabel,
+    updatePropertyOwnershipShare,
     listPropertyRecords,
     appendPropertyValuationSnapshot,
     listPropertyValuationSnapshots,
@@ -4029,6 +4070,7 @@ export function createLocalLedgerDatabase(
     appendHoldingValuationSnapshot,
     listHoldingValuationSnapshots,
     createLoanRecord,
+    updateLoanResponsibilityShare,
     listLoanRecords,
     appendLoanBalanceSnapshot,
     listLoanBalanceSnapshots,
