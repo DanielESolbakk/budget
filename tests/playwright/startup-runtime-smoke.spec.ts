@@ -136,7 +136,7 @@ test.describe("Electron startup smoke — fallback branch", () => {
 test.describe("Fresh local setup", () => {
   test.use({ nodeEnvironment: "production" });
 
-  test("a fresh database creates a usable local household without sample transactions", async ({ window, appShell }) => {
+  test("a fresh database creates a usable local household without sample transactions", async ({ window, appShell, electronApp }, testInfo) => {
     await expect(window.getByRole("heading", { name: "Set up your household" })).toBeVisible();
     const householdNameInput = window.getByLabel("Household name");
     const accountNameInput = window.getByLabel("Account name");
@@ -145,6 +145,18 @@ test.describe("Fresh local setup", () => {
     await expect(accountNameInput).toBeVisible();
     await expect(createLedgerButton).toBeVisible();
     await expect(window.getByText("Lønn AS", { exact: true })).toHaveCount(0);
+
+    for (const viewport of [
+      { name: "desktop", width: 1440, height: 1000 },
+      { name: "compact", width: 390, height: 844 },
+    ]) {
+      await electronApp.evaluate(({ BrowserWindow }, size) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(size.width, size.height);
+      }, viewport);
+      const path = testInfo.outputPath(`setup-${viewport.name}.png`);
+      await window.screenshot({ path, fullPage: true, animations: "disabled" });
+      await testInfo.attach(`Setup ${viewport.name}`, { path, contentType: "image/png" });
+    }
 
     await householdNameInput.fill("My household");
     await accountNameInput.fill("Everyday account");

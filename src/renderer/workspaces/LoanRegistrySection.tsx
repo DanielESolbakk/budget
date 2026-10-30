@@ -916,7 +916,7 @@ export function LoanRegistrySection({
                   recordId={loan.id}
                   formStates={shareFormStates}
                   setFormStates={setShareFormStates}
-                  label="Household loan responsibility share (basis points)"
+                  label="Household loan responsibility share (%)"
                   buttonLabel="Save responsibility share"
                   successMessage="Responsibility share saved."
                   value={loan.responsibilityShareBasisPoints ?? DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS}

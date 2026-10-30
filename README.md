@@ -25,7 +25,7 @@ This starts Electron in development mode and opens the desktop window. The ledge
 
 ### Bring in transactions
 
-Open **Import** and use **New import**. Choose **Choose statement file** to select a local `.csv`, `.txt`, or digital `.pdf`; the app routes it to the matching import flow. Check the destination account and preview the dates, merchants, amounts, and any duplicate or excluded rows before confirming. Nothing is added from a statement until confirmation. The completion receipt names the source file and account and summarizes what was added or skipped. The original statement stays in its folder; the ledger stores imported rows and a history record, not a copy of the file.
+Use **Import statement** in the application header from any workspace, or open **Activity** > **Import**, then use **New import**. Choose **Choose statement file** to select a local `.csv`, `.txt`, or digital `.pdf`; the app routes it to the matching import flow. Check the destination account and preview the dates, merchants, amounts, and any duplicate or excluded rows before confirming. Nothing is added from a statement until confirmation. The completion receipt names the source file and account and summarizes what was added or skipped. The original statement stays in its folder; the ledger stores imported rows and a history record, not a copy of the file.
 
 While reviewing an unconfirmed statement, use **Hide preview** to fold the rows without losing duplicate choices or acknowledgements; **Show preview** restores them. **Cancel import** discards the unconfirmed statement and returns to file selection without saving transactions. During a long file check, **Cancel preview** stops that check.
 
@@ -45,6 +45,8 @@ When a preview finds possible duplicates, choose **Skip all duplicate candidates
 
 The main navigation groups daily work into **Review**, **Activity** (Transactions, Pending, and Import), **Accounts** (statement coverage), and **Household** (Properties, Loans, Exchange rates, and Data safety).
 
+The daylight workspace uses the same controls and financial states throughout setup, review, imports, and household records. Monthly totals and checks appear before the detailed targets, categories, and forecast. On narrow windows, navigation becomes a compact top row and content stacks vertically; wide tables retain their own horizontal scrolling. Keyboard users can use the first **Skip to workspace** link to bypass navigation.
+
 In **Activity** > **Transactions**, use **Allocate categories** to split one booked transaction across categories. Allocation amounts keep the source transaction's sign and currency and must sum exactly to its amount. Category totals use the allocations; household cashflow and CSV export retain the source transaction once.
 
 In **Review**, check the account-coverage summary before relying on monthly totals. Open **Accounts** to record statement periods and dated opening/closing balances. A period remains **Unknown** until you confirm it. Empty periods, overlapping periods, late imports, stale or missing checkpoints, and reconciliation differences are shown as distinct states. Checkpoints and coverage history are stored locally and included in backups.
@@ -55,7 +57,7 @@ In **Household** > **Properties**, create a local property label and add dated v
 
 In **Household** > **Loans**, add loan or mortgage terms and optionally link an existing property. Append dated actual balance snapshots as statements arrive; recorded timestamps and original currency are preserved in local storage and backups. These actual balances remain separate from forecast projections. The registry does not fetch or substitute exchange rates.
 
-On each property, edit the household ownership share; on each loan, edit the household responsibility share separately. Enter whole basis points from 0 to 10000 (10000 means 100%). Both default to 100% and are saved locally and in backup snapshots. Shares do not change recorded amounts or currencies and do not determine legal ownership or liability.
+On each property, edit the household ownership share; on each loan, edit the household responsibility share separately. Enter a percentage from 0 to 100 with up to two decimal places (for example, `75.25` or `75,25`). Both default to 100% and are saved locally and in backup snapshots using exact whole basis points internally. Shares do not change recorded amounts or currencies and do not determine legal ownership or liability.
 
 In **Household** > **Data safety**, create a local backup, export ledger data, or restore a saved backup snapshot.
 Version 9 backups missing a property ownership share or loan responsibility share are rejected rather than restoring an incorrect share. Older backups without these shares restore them as 100%.

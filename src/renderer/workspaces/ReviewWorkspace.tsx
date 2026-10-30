@@ -124,8 +124,7 @@ export function ReviewWorkspace({
           {isChangingMonth && <p className="rail-status" role="status">Updating month...</p>}
           {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
 
-          <div className="review-grid">
-            <div className="review-primary">
+          <div className="review-overview">
               <MonthlyTotalsSection viewContract={state.viewContract} />
               <aside className="monthly-attention" aria-label="Monthly attention">
                 <h3>Monthly checks</h3>
@@ -162,6 +161,9 @@ export function ReviewWorkspace({
                   </div>
                 )}
               </aside>
+          </div>
+          <div className="review-grid">
+            <div className="review-primary">
               <TargetVsActualSection viewContract={state.viewContract} />
               <CategoryTargetEntrySection selectedYearMonth={state.selectedYearMonth} />
             </div>

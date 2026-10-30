@@ -1,5 +1,6 @@
 import React from "react";
-import { validateHouseholdShare } from "../../domain/householdShareValidation.js";
+import { DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS } from "../../domain/householdShareValidation.js";
+import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
 
 interface HouseholdShareFormState {
   draft: string;
@@ -35,7 +36,7 @@ export function HouseholdShareForm({
   setFormStates,
 }: HouseholdShareFormProps): React.JSX.Element {
   const { draft, error, saved, saving } = formStates[recordId] ?? {
-    draft: String(value), lastValue: value, error: null, saved: false, saving: false,
+    draft: String(value / 100), lastValue: value, error: null, saved: false, saving: false,
   };
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const errorId = React.useId();
@@ -47,7 +48,7 @@ export function HouseholdShareForm({
       if (state === undefined || state.saving || state.lastValue === value) return current;
       return {
         ...current,
-        [recordId]: { ...state, draft: String(value), lastValue: value, error: null, saved: false },
+        [recordId]: { ...state, draft: String(value / 100), lastValue: value, error: null, saved: false },
       };
     });
   }, [recordId, setFormStates, value]);
@@ -56,7 +57,7 @@ export function HouseholdShareForm({
     setFormStates((current) => ({
       ...current,
       [recordId]: update(current[recordId] ?? {
-        draft: String(value), lastValue: value, error: null, saved: false, saving: false,
+        draft: String(value / 100), lastValue: value, error: null, saved: false, saving: false,
       }),
     }));
   }
@@ -65,11 +66,14 @@ export function HouseholdShareForm({
     event.preventDefault();
     updateFormState((state) => ({ ...state, saved: false, error: null }));
     try {
-      const parsed = /^\d+$/.test(draft.trim()) ? Number(draft.trim()) : NaN;
-      const share = validateHouseholdShare(parsed, label);
+      // Percentage points and currency amounts use the same two-decimal scale.
+      const share = parseCurrencyAmountMinor(draft);
+      if (share === null || share > DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS) {
+        throw new Error("Enter a percentage from 0 to 100 with up to two decimal places.");
+      }
       updateFormState((state) => ({ ...state, saving: true }));
       await onSave(share);
-      updateFormState((state) => ({ ...state, draft: String(share), lastValue: share, saved: true }));
+      updateFormState((state) => ({ ...state, draft: String(share / 100), lastValue: share, saved: true }));
     } catch (caught: unknown) {
       updateFormState((state) => ({
         ...state, error: caught instanceof Error ? caught.message : "Unable to save the share.",
@@ -86,7 +90,7 @@ export function HouseholdShareForm({
         {label}
         <input
           ref={inputRef}
-          inputMode="numeric"
+          inputMode="decimal"
           readOnly={saving}
           value={draft}
           onChange={(event) => {
@@ -99,7 +103,7 @@ export function HouseholdShareForm({
       </label>
       <button type="submit" disabled={saving}>{saving ? "Saving..." : buttonLabel}</button>
       <p className="household-share-hint" id={hintId}>
-        0 is 0%; 10000 is 100%. This does not determine legal ownership or liability.
+        Enter 0 to 100%, with up to two decimal places. This does not determine legal ownership or liability.
       </p>
       {error !== null && <p id={errorId} className="property-registry-message" role="alert">{error}</p>}
       {saved && <p className="property-registry-message" role="status">{successMessage}</p>}

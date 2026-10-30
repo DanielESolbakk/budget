@@ -37,13 +37,13 @@ for (const share of [
   {
     kind: "property",
     channel: "propertyRegistry:updateOwnershipShare",
-    label: "Household ownership share (basis points)",
+    label: "Household ownership share (%)",
     saved: "Ownership share saved",
   },
   {
     kind: "loan",
     channel: "loanRegistry:updateResponsibilityShare",
-    label: "Household loan responsibility share (basis points)",
+    label: "Household loan responsibility share (%)",
     saved: "Responsibility share saved",
   },
 ] as const) {
@@ -90,7 +90,7 @@ for (const share of [
     const field = window.getByRole("textbox", { name: share.label, exact: true });
     const form = window.getByRole("form", { name: `Edit ${share.label}`, exact: true });
     try {
-      await field.fill("7500");
+      await field.fill("75");
       await field.press("Enter");
       await expect(form.getByRole("button")).toBeDisabled();
       await expect(form).toHaveAttribute("aria-busy", "true");
@@ -115,8 +115,8 @@ for (const share of [
     await expect(form.getByRole("status")).toContainText(share.saved);
     await expect(form).toHaveAttribute("aria-busy", "false");
     await expect(field).toBeEditable();
-    await expect(field).toHaveValue("7500");
-    await field.fill("6500");
+    await expect(field).toHaveValue("75");
+    await field.fill("65");
     await field.press("Enter");
     await expect(form.getByRole("status")).toContainText(share.saved);
     const persisted = await window.evaluate(async (kind) => {
@@ -143,24 +143,24 @@ test("a failed share save keeps the input focused and allows retry", async ({
   await properties.addProperty("Cabin");
   await properties.selectProperty("Home");
   const property = properties.property("Home");
-  const field = property.getByLabel("Household ownership share (basis points)", { exact: true });
-  const form = property.getByRole("form", { name: "Edit Household ownership share (basis points)" });
+  const field = property.getByLabel("Household ownership share (%)", { exact: true });
+  const form = property.getByRole("form", { name: "Edit Household ownership share (%)" });
   const database = new DatabaseSync(databasePath);
   try {
     database.exec(`
       CREATE TRIGGER reject_share_update BEFORE UPDATE OF ownership_share_basis_points ON properties
       BEGIN SELECT RAISE(FAIL, 'Synthetic share save failure'); END
     `);
-    await field.fill("7500");
+    await field.fill("75");
     await field.press("Enter");
     await expect(form.getByRole("alert")).toBeVisible();
     await expect(field).toBeEditable();
     await expect(field).toBeFocused();
-    await expect(field).toHaveValue("7500");
+    await expect(field).toHaveValue("75");
     await properties.selectProperty("Cabin");
     await properties.selectProperty("Home");
     await expect(form.getByRole("alert")).toBeVisible();
-    await expect(field).toHaveValue("7500");
+    await expect(field).toHaveValue("75");
     const savedBeforeRetry = await window.evaluate(async () => {
       const view = document.defaultView;
       if (view === null) throw new Error("Renderer window is unavailable.");
@@ -195,10 +195,10 @@ test("editing either share preserves both existing value histories and the other
     effectiveDate: "2026-10-01", amount: "5000000", currencyCode: "NOK",
   });
   const property = properties.property("Home");
-  const ownership = property.getByLabel("Household ownership share (basis points)", { exact: true });
-  await ownership.fill("7500");
+  const ownership = property.getByLabel("Household ownership share (%)", { exact: true });
+  await ownership.fill("75");
   await property.getByRole("button", { name: "Save ownership share", exact: true }).click();
-  await expect(property.getByRole("form", { name: "Edit Household ownership share (basis points)" })
+  await expect(property.getByRole("form", { name: "Edit Household ownership share (%)" })
     .getByRole("status")).toContainText("Ownership share saved");
 
   await appShell.openWorkspace("Loans");
@@ -209,23 +209,23 @@ test("editing either share preserves both existing value histories and the other
   });
   await loans.addBalance("Mortgage", { effectiveDate: "2026-10-01", amount: "3000000" });
   const loan = loans.loan("Mortgage");
-  const responsibility = loan.getByLabel("Household loan responsibility share (basis points)", { exact: true });
+  const responsibility = loan.getByLabel("Household loan responsibility share (%)", { exact: true });
   const before = await readShareRecords(window);
   expect(before.ownership).toBe(7_500);
   expect(before.valuations).toHaveLength(1);
   expect(before.balances).toHaveLength(1);
 
-  await responsibility.fill("5000");
+  await responsibility.fill("50");
   await loan.getByRole("button", { name: "Save responsibility share", exact: true }).click();
-  await expect(loan.getByRole("form", { name: "Edit Household loan responsibility share (basis points)" })
+  await expect(loan.getByRole("form", { name: "Edit Household loan responsibility share (%)" })
     .getByRole("status")).toContainText("Responsibility share saved");
   const afterLoanEdit = await readShareRecords(window);
   expect(afterLoanEdit).toEqual({ ...before, responsibility: 5_000 });
 
   await appShell.openWorkspace("Properties");
-  await ownership.fill("6000");
+  await ownership.fill("60");
   await property.getByRole("button", { name: "Save ownership share", exact: true }).click();
-  await expect(property.getByRole("form", { name: "Edit Household ownership share (basis points)" })
+  await expect(property.getByRole("form", { name: "Edit Household ownership share (%)" })
     .getByRole("status")).toContainText("Ownership share saved");
   expect(await readShareRecords(window)).toEqual({ ...before, ownership: 6_000, responsibility: 5_000 });
 });
@@ -240,9 +240,9 @@ test("restoring a backup refreshes both share forms", async ({
   const properties = new PropertyRegistryPage(window);
   await properties.addProperty("Home");
   const property = properties.property("Home");
-  const ownership = property.getByLabel("Household ownership share (basis points)", { exact: true });
-  const ownershipForm = property.getByRole("form", { name: "Edit Household ownership share (basis points)" });
-  await ownership.fill("7500");
+  const ownership = property.getByLabel("Household ownership share (%)", { exact: true });
+  const ownershipForm = property.getByRole("form", { name: "Edit Household ownership share (%)" });
+  await ownership.fill("75");
   await ownership.press("Enter");
   await expect(ownershipForm.getByRole("status")).toContainText("Ownership share saved");
 
@@ -253,11 +253,11 @@ test("restoring a backup refreshes both share forms", async ({
     paymentAmount: "17500", paymentFrequency: "monthly", currencyCode: "NOK", propertyLabel: "Home",
   });
   const loan = loans.loan("Mortgage");
-  const responsibility = loan.getByLabel("Household loan responsibility share (basis points)", { exact: true });
+  const responsibility = loan.getByLabel("Household loan responsibility share (%)", { exact: true });
   const responsibilityForm = loan.getByRole("form", {
-    name: "Edit Household loan responsibility share (basis points)",
+    name: "Edit Household loan responsibility share (%)",
   });
-  await responsibility.fill("5000");
+  await responsibility.fill("50");
   await responsibility.press("Enter");
   await expect(responsibilityForm.getByRole("status")).toContainText("Responsibility share saved");
 
@@ -267,11 +267,11 @@ test("restoring a backup refreshes both share forms", async ({
   await recovery.backupCreateButton.click();
   await expect(recovery.backupSuccess).toBeVisible();
   await appShell.openWorkspace("Properties");
-  await ownership.fill("6000");
+  await ownership.fill("60");
   await ownership.press("Enter");
   await expect(ownershipForm.getByRole("status")).toContainText("Ownership share saved");
   await appShell.openWorkspace("Loans");
-  await responsibility.fill("4000");
+  await responsibility.fill("40");
   await responsibility.press("Enter");
   await expect(responsibilityForm.getByRole("status")).toContainText("Responsibility share saved");
 
@@ -283,10 +283,10 @@ test("restoring a backup refreshes both share forms", async ({
   await recovery.restoreButton.click();
   await expect(recovery.restoreSuccess).toBeVisible();
   await appShell.openWorkspace("Properties");
-  await expect(ownership).toHaveValue("7500");
+  await expect(ownership).toHaveValue("75");
   await expect(ownershipForm.getByRole("status")).toHaveCount(0);
   await appShell.openWorkspace("Loans");
-  await expect(responsibility).toHaveValue("5000");
+  await expect(responsibility).toHaveValue("50");
   await expect(responsibilityForm.getByRole("status")).toHaveCount(0);
 });
 
@@ -304,11 +304,11 @@ test("household shares can be edited independently without network requests", as
   await properties.addProperty("Home");
   await properties.addValuation("Home", { effectiveDate: "2026-10-01", amount: "5000000", currencyCode: "NOK" });
   const property = properties.property("Home");
-  const ownership = property.getByLabel("Household ownership share (basis points)", { exact: true });
-  await expect(ownership).toHaveValue("10000");
-  await ownership.fill("7500");
+  const ownership = property.getByLabel("Household ownership share (%)", { exact: true });
+  await expect(ownership).toHaveValue("100");
+  await ownership.fill("75");
   await property.getByRole("button", { name: "Save ownership share", exact: true }).click();
-  await expect(property.getByRole("form", { name: "Edit Household ownership share (basis points)" })
+  await expect(property.getByRole("form", { name: "Edit Household ownership share (%)" })
     .getByRole("status")).toContainText("Ownership share saved");
 
   await appShell.openWorkspace("Loans");
@@ -324,22 +324,22 @@ test("household shares can be edited independently without network requests", as
     propertyLabel: "Home",
   });
   const loan = loans.loan("Mortgage");
-  const responsibility = loan.getByLabel("Household loan responsibility share (basis points)", { exact: true });
-  await expect(responsibility).toHaveValue("10000");
-  await responsibility.fill("5000");
+  const responsibility = loan.getByLabel("Household loan responsibility share (%)", { exact: true });
+  await expect(responsibility).toHaveValue("100");
+  await responsibility.fill("50");
   await loan.getByRole("button", { name: "Save responsibility share", exact: true }).click();
   await expect(loan.getByRole("status")).toContainText("Responsibility share saved");
   await loans.addBalance("Mortgage", { effectiveDate: "2026-10-01", amount: "3000000" });
   await appShell.openWorkspace("Properties");
   await expect(properties.property("Home").getByLabel(
-    "Household ownership share (basis points)", { exact: true }
-  )).toHaveValue("7500");
-  await ownership.fill("6000");
+    "Household ownership share (%)", { exact: true }
+  )).toHaveValue("75");
+  await ownership.fill("60");
   await property.getByRole("button", { name: "Save ownership share", exact: true }).click();
-  await expect(property.getByRole("form", { name: "Edit Household ownership share (basis points)" })
+  await expect(property.getByRole("form", { name: "Edit Household ownership share (%)" })
     .getByRole("status")).toContainText("Ownership share saved");
   await appShell.openWorkspace("Loans");
-  await expect(responsibility).toHaveValue("5000");
+  await expect(responsibility).toHaveValue("50");
   expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   expect(await rendererNetworkAttempts(window)).toEqual([]);
   expect(await rendererNetworkBlockedAttempts(window)).toEqual([]);
@@ -360,14 +360,14 @@ test("household shares can be edited independently without network requests", as
     await restartedShell.openWorkspace("Properties");
     const restartedProperties = new PropertyRegistryPage(restartedWindow);
     await expect(restartedProperties.property("Home").getByRole("textbox", {
-      name: "Household ownership share (basis points)", exact: true,
-    })).toHaveValue("6000");
+      name: "Household ownership share (%)", exact: true,
+    })).toHaveValue("60");
     await expect(restartedProperties.valuationValueCell("Home", "2026-10-01")).toContainText(/NOK\s*5[\s\u00a0\u202f]000[\s\u00a0\u202f]000,00/);
     await restartedShell.openWorkspace("Loans");
     const restartedLoans = new LoanRegistryPage(restartedWindow);
     await expect(restartedLoans.loan("Mortgage").getByRole("textbox", {
-      name: "Household loan responsibility share (basis points)", exact: true,
-    })).toHaveValue("5000");
+      name: "Household loan responsibility share (%)", exact: true,
+    })).toHaveValue("50");
     await restartedLoans.expandLoanDetails("Mortgage");
     await expect(restartedLoans.balanceRow("Mortgage", "2026-10-01")).toContainText(/NOK\s*3[\s\u00a0\u202f]000[\s\u00a0\u202f]000,00/);
     expect(await mainProcessNetworkRequests(restarted)).toEqual([]);
@@ -389,9 +389,9 @@ test("invalid shares are labeled and leave saved values unchanged at compact and
   const properties = new PropertyRegistryPage(window);
   await properties.addProperty("Home");
   const property = properties.property("Home");
-  const ownership = property.getByRole("textbox", { name: "Household ownership share (basis points)", exact: true });
-  await expect(ownership).toHaveValue("10000");
-  const hint = property.getByText("0 is 0%; 10000 is 100%. This does not determine legal ownership or liability.");
+  const ownership = property.getByRole("textbox", { name: "Household ownership share (%)", exact: true });
+  await expect(ownership).toHaveValue("100");
+  const hint = property.getByText("Enter 0 to 100%, with up to two decimal places. This does not determine legal ownership or liability.");
   const contrast = await hint.evaluate((element) => {
     const luminance = (color: string): number => {
       const channels = color.match(/\d+/g)?.slice(0, 3).map(Number);
@@ -419,10 +419,10 @@ test("invalid shares are labeled and leave saved values unchanged at compact and
   await expect(property.getByRole("button", { name: "Save ownership share", exact: true })).toBeFocused();
   await window.keyboard.press("Shift+Tab");
   await expect(ownership).toBeFocused();
-  await ownership.fill("10001");
+  await ownership.fill("100.01");
   await ownership.press("Enter");
   await expect(ownership).toHaveAttribute("aria-invalid", "true");
-  await expect(property.getByRole("alert")).toContainText("whole number from 0 to 10000");
+  await expect(property.getByRole("alert")).toContainText("percentage from 0 to 100");
   await appShell.openWorkspace("Loans");
   const loans = new LoanRegistryPage(window);
   await loans.addLoan({
@@ -431,13 +431,13 @@ test("invalid shares are labeled and leave saved values unchanged at compact and
   });
   const loan = loans.loan("Mortgage");
   const responsibility = loan.getByRole("textbox", {
-    name: "Household loan responsibility share (basis points)", exact: true,
+    name: "Household loan responsibility share (%)", exact: true,
   });
-  await expect(responsibility).toHaveValue("10000");
-  await responsibility.fill("5000.5");
+  await expect(responsibility).toHaveValue("100");
+  await responsibility.fill("50.001");
   await responsibility.press("Enter");
   await expect(responsibility).toHaveAttribute("aria-invalid", "true");
-  await expect(loan.getByRole("alert")).toContainText("whole number from 0 to 10000");
+  await expect(loan.getByRole("alert")).toContainText("percentage from 0 to 100");
   expect(await window.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth)).toBe(true);
   const savedShares = await window.evaluate(async () => {
     const view = document.defaultView;
@@ -468,15 +468,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
       paymentAmount: "17500", paymentFrequency: "monthly", currencyCode: "NOK",
     });
 
-    for (const boundary of ["0", "10000"]) {
+    for (const boundary of ["0", "100"]) {
       await appShell.openWorkspace("Properties");
       const property = properties.property("Home");
-      await property.getByLabel("Household ownership share (basis points)", { exact: true }).fill(boundary);
+      await property.getByLabel("Household ownership share (%)", { exact: true }).fill(boundary);
       await property.getByRole("button", { name: "Save ownership share", exact: true }).click();
       await expect(property.getByRole("status")).toContainText("Ownership share saved");
       await appShell.openWorkspace("Loans");
       const loan = loans.loan("Mortgage");
-      await loan.getByLabel("Household loan responsibility share (basis points)", { exact: true }).fill(boundary);
+      await loan.getByLabel("Household loan responsibility share (%)", { exact: true }).fill(boundary);
       await loan.getByRole("button", { name: "Save responsibility share", exact: true }).click();
       await expect(loan.getByRole("status")).toContainText("Responsibility share saved");
       const shares = await window.evaluate(async () => {
@@ -488,7 +488,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
         ]);
         return [properties[0]?.ownershipShareBasisPoints, loans[0]?.responsibilityShareBasisPoints];
       });
-      expect(shares).toEqual([Number(boundary), Number(boundary)]);
+      expect(shares).toEqual([Number(boundary) * 100, Number(boundary) * 100]);
       expect(await window.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth)).toBe(true);
     }
   });

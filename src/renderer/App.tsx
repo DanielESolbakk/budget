@@ -1,7 +1,4 @@
 import React from "react";
-import "@fontsource/barlow-condensed/400.css";
-import "@fontsource/barlow-condensed/700.css";
-import "@fontsource/barlow-condensed/800.css";
 import "./app.css";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
 import {
@@ -38,9 +35,9 @@ type PrimaryWorkspaceId = "review" | "activity" | "accounts" | "household";
 
 const PRIMARY_WORKSPACES: Array<{ id: PrimaryWorkspaceId; label: string; description: string }> = [
   { id: "review", label: "Review", description: "Monthly position" },
-  { id: "activity", label: "Activity", description: "Ledger, pending and imports" },
+  { id: "activity", label: "Activity", description: "Transactions and imports" },
   { id: "accounts", label: "Accounts", description: "Statements and balances" },
-  { id: "household", label: "Household", description: "Properties, loans, investments, rates, and data safety" },
+  { id: "household", label: "Household", description: "Assets, rates and recovery" },
 ];
 
 function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
@@ -226,6 +223,7 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#workspace">Skip to workspace</a>
       <header className="app-header">
         <div className="brand-lockup">
           <span className="brand-stamp" aria-hidden="true">BP</span>
@@ -234,11 +232,19 @@ export function App(): React.JSX.Element {
             <p>Local household ledger</p>
           </div>
         </div>
-        <div className="header-meta" aria-label="Application status" aria-live="polite">
+        <div className="header-actions">
+          <div className="header-meta" aria-label="Application status" aria-live="polite">
           <span>On device</span>
           <span className={headerStatusClassName}>
             <i aria-hidden="true" /> {headerStatus}
           </span>
+          </div>
+          <button className="header-import-action" type="button" onClick={() => openWorkspace("import")}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5" />
+            </svg>
+            Import statement
+          </button>
         </div>
       </header>
 
@@ -259,7 +265,7 @@ export function App(): React.JSX.Element {
           ))}
         </nav>
 
-        <main className="workspace">
+        <main className="workspace" id="workspace" tabIndex={-1}>
           {(activeWorkspace === "transactions" ||
             activeWorkspace === "pending" ||
             activeWorkspace === "import") && (

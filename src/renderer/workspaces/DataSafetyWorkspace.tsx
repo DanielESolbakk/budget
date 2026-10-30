@@ -1665,7 +1665,7 @@ export function PropertyRegistrySection({
                   recordId={property.id}
                   formStates={shareFormStates}
                   setFormStates={setShareFormStates}
-                  label="Household ownership share (basis points)"
+                  label="Household ownership share (%)"
                   buttonLabel="Save ownership share"
                   successMessage="Ownership share saved."
                   value={property.ownershipShareBasisPoints ?? DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS}

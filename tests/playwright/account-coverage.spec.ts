@@ -325,13 +325,14 @@ test.describe("account statement coverage and checkpoints", () => {
     await expect.poll(async () =>
       statementForm.evaluate((form) => getComputedStyle(form).gridTemplateColumns.split(" ").length)
     ).toBe(2);
-    const statementBounds = await statementForm.boundingBox();
-    const checkpointBounds = await checkpointForm.boundingBox();
-
-    if (statementBounds === null || checkpointBounds === null) {
-      throw new Error("Coverage entry forms must remain visible in the desktop workflow.");
-    }
-    expect(checkpointBounds.y).toBeGreaterThan(statementBounds.y + statementBounds.height);
+    await expect.poll(() => coverage.evaluate((section) => {
+      const statement = section.querySelector('form[aria-label="Record statement coverage"]');
+      const checkpoint = section.querySelector('form[aria-label="Add balance checkpoint"]');
+      if (statement === null || checkpoint === null) {
+        throw new Error("Coverage entry forms must remain visible in the desktop workflow.");
+      }
+      return checkpoint.getBoundingClientRect().top - statement.getBoundingClientRect().bottom;
+    })).toBeGreaterThan(0);
   });
 
   test("@visual Visual: coverage workspace is composed for desktop and compact windows", async ({

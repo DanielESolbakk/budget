@@ -69,7 +69,8 @@ export class AppShellPage {
   }
 
   workspace(name: WorkspaceName) {
-    return this.page.getByRole("region", { name: `${name} workspace`, exact: true });
+    const regionName = name === "Pending" ? "Pending transactions" : name;
+    return this.page.getByRole("region", { name: `${regionName} workspace`, exact: true });
   }
 
   async openWorkspace(name: WorkspaceName): Promise<void> {
