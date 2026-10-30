@@ -1,64 +1,103 @@
 import React from "react";
 import { validateHouseholdShare } from "../../domain/householdShareValidation.js";
 
+interface HouseholdShareFormState {
+  draft: string;
+  lastValue: number;
+  error: string | null;
+  saved: boolean;
+  saving: boolean;
+}
+
+export function useHouseholdShareFormStates() {
+  return React.useState<Record<string, HouseholdShareFormState>>({});
+}
+
 interface HouseholdShareFormProps {
+  recordId: string;
   label: string;
   buttonLabel: string;
   successMessage: string;
   value: number;
   onSave: (value: number) => Promise<void>;
+  formStates: Record<string, HouseholdShareFormState>;
+  setFormStates: React.Dispatch<React.SetStateAction<Record<string, HouseholdShareFormState>>>;
 }
 
 export function HouseholdShareForm({
+  recordId,
   label,
   buttonLabel,
   successMessage,
   value,
   onSave,
+  formStates,
+  setFormStates,
 }: HouseholdShareFormProps): React.JSX.Element {
-  const [draft, setDraft] = React.useState(String(value));
-  const [error, setError] = React.useState<string | null>(null);
-  const [saved, setSaved] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
+  const { draft, error, saved, saving } = formStates[recordId] ?? {
+    draft: String(value), lastValue: value, error: null, saved: false, saving: false,
+  };
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const errorId = React.useId();
   const hintId = `${errorId}-hint`;
 
-  React.useEffect(() => setDraft(String(value)), [value]);
+  React.useEffect(() => {
+    setFormStates((current) => {
+      const state = current[recordId];
+      if (state === undefined || state.saving || state.lastValue === value) return current;
+      return {
+        ...current,
+        [recordId]: { ...state, draft: String(value), lastValue: value, error: null, saved: false },
+      };
+    });
+  }, [recordId, setFormStates, value]);
+
+  function updateFormState(update: (state: HouseholdShareFormState) => HouseholdShareFormState): void {
+    setFormStates((current) => ({
+      ...current,
+      [recordId]: update(current[recordId] ?? {
+        draft: String(value), lastValue: value, error: null, saved: false, saving: false,
+      }),
+    }));
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    setSaved(false);
-    setError(null);
+    updateFormState((state) => ({ ...state, saved: false, error: null }));
     try {
       const parsed = /^\d+$/.test(draft.trim()) ? Number(draft.trim()) : NaN;
       const share = validateHouseholdShare(parsed, label);
-      setSaving(true);
+      updateFormState((state) => ({ ...state, saving: true }));
       await onSave(share);
-      setDraft(String(share));
-      setSaved(true);
+      updateFormState((state) => ({ ...state, draft: String(share), lastValue: share, saved: true }));
     } catch (caught: unknown) {
-      setError(caught instanceof Error ? caught.message : "Unable to save the share.");
+      updateFormState((state) => ({
+        ...state, error: caught instanceof Error ? caught.message : "Unable to save the share.",
+      }));
       inputRef.current?.focus();
     } finally {
-      setSaving(false);
+      updateFormState((state) => ({ ...state, saving: false }));
     }
   }
 
   return (
-    <form className="household-share-form" aria-label={`Edit ${label}`} onSubmit={(event) => void submit(event)} noValidate>
+    <form className="household-share-form" aria-label={`Edit ${label}`} aria-busy={saving} onSubmit={(event) => void submit(event)} noValidate>
       <label>
         {label}
         <input
           ref={inputRef}
           inputMode="numeric"
+          readOnly={saving}
           value={draft}
-          onChange={(event) => { setDraft(event.currentTarget.value); setError(null); setSaved(false); }}
+          onChange={(event) => {
+            const nextDraft = event.currentTarget.value;
+            updateFormState((state) => ({ ...state, draft: nextDraft, error: null, saved: false }));
+          }}
           aria-invalid={error !== null ? true : undefined}
           aria-describedby={error !== null ? `${hintId} ${errorId}` : hintId}
         />
       </label>
-      <button type="submit" disabled={saving}>{buttonLabel}</button>
+      <button type="submit" disabled={saving}>{saving ? "Saving..." : buttonLabel}</button>
       <p className="household-share-hint" id={hintId}>
         0 is 0%; 10000 is 100%. This does not determine legal ownership or liability.
       </p>
