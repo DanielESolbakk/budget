@@ -149,6 +149,10 @@ import {
   validateLoanRecordInput,
 } from "../src/domain/loanRecordValidation.js";
 import {
+  validateLoanResponsibilityShareUpdate,
+  validatePropertyOwnershipShareUpdate,
+} from "../src/domain/householdShareValidation.js";
+import {
   validatePropertyLabelUpdateInput,
   validatePropertyRecordInput,
   validatePropertyValuationCorrectionInput,
@@ -1172,6 +1176,12 @@ app.whenReady().then(async () => {
     return ledgerOperationCoordinator.runExclusive(() => loanRegistry.create(validated));
   });
 
+  ipcMain.handle("loanRegistry:updateResponsibilityShare", (event, input: unknown): Promise<LoanRecord> => {
+    assertTrustedRenderer(event);
+    const validated = validateLoanResponsibilityShareUpdate(input);
+    return ledgerOperationCoordinator.runExclusive(() => loanRegistry.updateResponsibilityShare(validated));
+  });
+
   ipcMain.handle(
     "loanRegistry:appendBalance",
     (event, input: unknown): Promise<LoanBalanceSnapshot> => {
@@ -1215,6 +1225,12 @@ app.whenReady().then(async () => {
     assertTrustedRenderer(event);
     const validated = validatePropertyRecordInput(input);
     return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.create(validated));
+  });
+
+  ipcMain.handle("propertyRegistry:updateOwnershipShare", (event, input: unknown): Promise<PropertyRecord> => {
+    assertTrustedRenderer(event);
+    const validated = validatePropertyOwnershipShareUpdate(input);
+    return ledgerOperationCoordinator.runExclusive(() => propertyRegistry.updateOwnershipShare(validated));
   });
 
   ipcMain.handle(

@@ -59,7 +59,7 @@ describe("loan registry persistence and backup", () => {
       transactions: [],
       importJobs: [],
       monthlyCategoryTargets: [],
-      loanRecords: [loan],
+      loanRecords: [{ ...loan, responsibilityShareBasisPoints: 10_000 }],
       loanBalanceSnapshots: [balance],
       createdAtIso: "2026-10-03T09:00:00.000Z",
     };
@@ -69,7 +69,7 @@ describe("loan registry persistence and backup", () => {
     expect(snapshot).toMatchObject({
       loanRecords: [loan],
       loanBalanceSnapshots: [balance],
-      metadata: { version: "8" },
+      metadata: { version: "9" },
     });
   });
 
@@ -212,6 +212,7 @@ describe("loan registry persistence and backup", () => {
             paymentFrequency: "monthly",
             currencyCode: "NOK",
             createdAtIso: "2026-10-01T08:00:00.000Z",
+            responsibilityShareBasisPoints: 10_000,
           },
           {
             id: "loan-entry-4",
@@ -224,6 +225,7 @@ describe("loan registry persistence and backup", () => {
             paymentFrequency: "monthly",
             currencyCode: "EUR",
             createdAtIso: "2026-11-03T10:00:00.000Z",
+            responsibilityShareBasisPoints: 10_000,
           },
         ]);
         expect(snapshot.loanBalanceSnapshots).toEqual([

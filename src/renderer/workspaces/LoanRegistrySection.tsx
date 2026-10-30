@@ -17,6 +17,8 @@ import type {
 } from "../../domain/types.js";
 import { isCurrencyCode } from "../../domain/types.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
+import { HouseholdShareForm } from "./HouseholdShareForm.js";
+import { DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS } from "../../domain/householdShareValidation.js";
 
 interface LoanRegistrySectionProps {
   isActive: boolean;
@@ -909,6 +911,20 @@ export function LoanRegistrySection({
                       } · effective ${latestRecordedBalance.effectiveDateIso}`}
                   </span>
                 </div>
+                <HouseholdShareForm
+                  label="Household loan responsibility share (basis points)"
+                  buttonLabel="Save responsibility share"
+                  successMessage="Responsibility share saved."
+                  value={loan.responsibilityShareBasisPoints ?? DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS}
+                  onSave={async (responsibilityShareBasisPoints) => {
+                    await window.budgetApi.loanRegistry.updateResponsibilityShare({
+                      loanId: loan.id, responsibilityShareBasisPoints,
+                    });
+                    setLoans((current) => current.map((record) => record.id === loan.id
+                      ? { ...record, responsibilityShareBasisPoints }
+                      : record));
+                  }}
+                />
                 <details className="loan-record-details">
                   <summary>
                     <span className="loan-details-summary-content">

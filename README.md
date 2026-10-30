@@ -55,6 +55,8 @@ In **Household** > **Properties**, create a local property label and add dated v
 
 In **Household** > **Loans**, add loan or mortgage terms and optionally link an existing property. Append dated actual balance snapshots as statements arrive; recorded timestamps and original currency are preserved in local storage and backups. These actual balances remain separate from forecast projections. The registry does not fetch or substitute exchange rates.
 
+On each property, edit the household ownership share; on each loan, edit the household responsibility share separately. Enter whole basis points from 0 to 10000 (10000 means 100%). Both default to 100% and are saved locally and in backup snapshots. Shares do not change recorded amounts or currencies and do not determine legal ownership or liability.
+
 In **Household** > **Data safety**, create a local backup, export ledger data, or restore a saved backup snapshot.
 
 ### Build for production

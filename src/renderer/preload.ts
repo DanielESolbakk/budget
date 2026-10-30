@@ -34,6 +34,7 @@ import type {
   LoanBalanceSnapshot,
   LoanRecord,
   LoanRecordInput,
+  LoanResponsibilityShareUpdateInput,
   LoanWithBalances,
   ManualEntryInput,
   MerchantCorrectionProvenance,
@@ -41,6 +42,7 @@ import type {
   MonthlyCategoryTargetInput,
   PendingTransactionObservation,
   PropertyLabelUpdateInput,
+  PropertyOwnershipShareUpdateInput,
   PropertyRecord,
   PropertyRecordInput,
   PropertyValuationCorrectionInput,
@@ -198,6 +200,7 @@ export interface PropertyRegistryApi {
   list: () => Promise<PropertyWithValuations[]>;
   create: (input: PropertyRecordInput) => Promise<PropertyRecord>;
   renameProperty: (input: PropertyLabelUpdateInput) => Promise<PropertyRecord>;
+  updateOwnershipShare: (input: PropertyOwnershipShareUpdateInput) => Promise<PropertyRecord>;
   appendValuation: (input: PropertyValuationInput) => Promise<PropertyValuationSnapshot>;
   appendCorrection: (input: PropertyValuationCorrectionInput) => Promise<PropertyValuationSnapshot>;
 }
@@ -213,6 +216,7 @@ export interface HoldingRegistryApi {
 export interface LoanRegistryApi {
   list: () => Promise<LoanWithBalances[]>;
   create: (input: LoanRecordInput) => Promise<LoanRecord>;
+  updateResponsibilityShare: (input: LoanResponsibilityShareUpdateInput) => Promise<LoanRecord>;
   appendBalance: (input: LoanBalanceInput) => Promise<LoanBalanceSnapshot>;
 }
 
@@ -370,6 +374,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("propertyRegistry:create", input),
     renameProperty: (input: PropertyLabelUpdateInput): Promise<PropertyRecord> =>
       ipcRenderer.invoke("propertyRegistry:rename", input),
+    updateOwnershipShare: (input: PropertyOwnershipShareUpdateInput): Promise<PropertyRecord> =>
+      ipcRenderer.invoke("propertyRegistry:updateOwnershipShare", input),
     appendValuation: (input: PropertyValuationInput): Promise<PropertyValuationSnapshot> =>
       ipcRenderer.invoke("propertyRegistry:appendValuation", input),
     appendCorrection: (input: PropertyValuationCorrectionInput): Promise<PropertyValuationSnapshot> =>
@@ -392,6 +398,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("loanRegistry:list"),
     create: (input: LoanRecordInput): Promise<LoanRecord> =>
       ipcRenderer.invoke("loanRegistry:create", input),
+    updateResponsibilityShare: (input: LoanResponsibilityShareUpdateInput): Promise<LoanRecord> =>
+      ipcRenderer.invoke("loanRegistry:updateResponsibilityShare", input),
     appendBalance: (input: LoanBalanceInput): Promise<LoanBalanceSnapshot> =>
       ipcRenderer.invoke("loanRegistry:appendBalance", input),
   },

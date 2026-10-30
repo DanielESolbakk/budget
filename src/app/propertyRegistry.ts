@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import {
+  DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS,
+  validatePropertyOwnershipShareUpdate,
+} from "../domain/householdShareValidation.js";
+import {
   validatePropertyLabelUpdateInput,
   validatePropertyRecordInput,
   validatePropertyValuationCorrectionInput,
@@ -8,6 +12,7 @@ import {
 } from "../domain/propertyRecordValidation.js";
 import type {
   PropertyLabelUpdateInput,
+  PropertyOwnershipShareUpdateInput,
   PropertyRecord,
   PropertyRecordInput,
   PropertyValuationCorrectionInput,
@@ -25,6 +30,7 @@ export interface PropertyRegistry {
   list: () => PropertyWithValuations[];
   create: (input: PropertyRecordInput) => PropertyRecord;
   renameProperty: (input: PropertyLabelUpdateInput) => PropertyRecord;
+  updateOwnershipShare: (input: PropertyOwnershipShareUpdateInput) => PropertyRecord;
   appendValuation: (input: PropertyValuationInput) => PropertyValuationSnapshot;
   appendCorrection: (input: PropertyValuationCorrectionInput) => PropertyValuationSnapshot;
 }
@@ -58,6 +64,7 @@ export function createPropertyRegistry(
       householdId: currentHouseholdId(),
       label: validated.label.trim(),
       createdAtIso: now().toISOString(),
+      ownershipShareBasisPoints: DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS,
     };
     database.createPropertyRecord(property);
     return property;
@@ -75,6 +82,15 @@ export function createPropertyRegistry(
 
     database.updatePropertyRecordLabel(validated.propertyId, validated.label);
     return { ...property, label: validated.label };
+  }
+
+  function updateOwnershipShare(input: PropertyOwnershipShareUpdateInput): PropertyRecord {
+    const validated = validatePropertyOwnershipShareUpdate(input);
+    const property = database.listPropertyRecords(currentHouseholdId())
+      .find((record) => record.id === validated.propertyId);
+    if (property === undefined) throw new Error(`Property not found: ${validated.propertyId}`);
+    database.updatePropertyOwnershipShare(validated.propertyId, validated.ownershipShareBasisPoints);
+    return { ...property, ownershipShareBasisPoints: validated.ownershipShareBasisPoints };
   }
 
   function appendValuation(input: PropertyValuationInput): PropertyValuationSnapshot {
@@ -138,5 +154,5 @@ export function createPropertyRegistry(
     return snapshot;
   }
 
-  return { list, create, renameProperty, appendValuation, appendCorrection };
+  return { list, create, renameProperty, updateOwnershipShare, appendValuation, appendCorrection };
 }

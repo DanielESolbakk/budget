@@ -3,6 +3,8 @@ import { BackupSection } from "../backup/BackupSection.js";
 import { ExportSection } from "../backup/ExportSection.js";
 import { RestoreSnapshotSection } from "../dashboard/RestoreSnapshotSection.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
+import { HouseholdShareForm } from "./HouseholdShareForm.js";
+import { DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS } from "../../domain/householdShareValidation.js";
 import {
   HoldingRecordValidationError,
   validateHoldingCorrectionInput,
@@ -1657,6 +1659,20 @@ export function PropertyRegistrySection({
                     </form>
                   </details>
                 </div>
+                <HouseholdShareForm
+                  label="Household ownership share (basis points)"
+                  buttonLabel="Save ownership share"
+                  successMessage="Ownership share saved."
+                  value={property.ownershipShareBasisPoints ?? DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS}
+                  onSave={async (ownershipShareBasisPoints) => {
+                    await window.budgetApi.propertyRegistry.updateOwnershipShare({
+                      propertyId: property.id, ownershipShareBasisPoints,
+                    });
+                    setProperties((current) => current.map((record) => record.id === property.id
+                      ? { ...record, ownershipShareBasisPoints }
+                      : record));
+                  }}
+                />
                 {activeValuationPropertyId === property.id ? (
                   <form
                     className="property-valuation-form"
