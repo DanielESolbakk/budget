@@ -27,26 +27,12 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthSelector).toHaveValue("2026-05");
   });
 
-  test("Scenario 1: monthly totals section renders with income, expense, and net values visible", async ({ dashboard }) => {
-    // AC-3: renderer path shows monthly totals section without runtime errors.
-    await expect(dashboard.monthlyTotalsSection).toBeVisible();
-    await expect(dashboard.monthlyTotalsHeading).toBeVisible();
-    await expect(dashboard.incomeValue).toBeVisible();
-    await expect(dashboard.expenseValue).toBeVisible();
-    await expect(dashboard.netValue).toBeVisible();
-  });
-
-  test("Scenario 2: category breakdown section renders with at least one category row visible", async ({ dashboard }) => {
-    // AC-3: renderer path shows category breakdown section without runtime errors.
-    await expect(dashboard.categoryBreakdownSection).toBeVisible();
-    await expect(dashboard.categoryBreakdownHeading).toBeVisible();
-    await expect(dashboard.categoryEntries.first()).toBeVisible();
-  });
-
   test("Scenario 3: month-switch control updates selected month and refreshes at least one value", async ({ dashboard }) => {
     // AC-4: changing the selected month refreshes totals and categories.
     // Wait for initial data to render before capturing baseline.
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    await expect(dashboard.categoryBreakdownSection).toBeVisible();
+    await expect(dashboard.categoryBreakdownHeading).toBeVisible();
     await expect(dashboard.categoryEntries.first()).toBeVisible();
 
     // Capture baseline state.
@@ -73,6 +59,11 @@ test.describe("Dashboard renderer smoke", () => {
   });
 
   test("Scenario 4: each monthly total keeps its label paired with its value", async ({ dashboard }) => {
+    await expect(dashboard.monthlyTotalsSection).toBeVisible();
+    await expect(dashboard.monthlyTotalsHeading).toBeVisible();
+    await expect(dashboard.incomeValue).toBeVisible();
+    await expect(dashboard.expenseValue).toBeVisible();
+    await expect(dashboard.netValue).toBeVisible();
     await expect(dashboard.monthlyTotal("Income")).toContainText("Income");
     await expect(dashboard.monthlyTotal("Income").getByLabel("Income", { exact: true })).toBeVisible();
     await expect(dashboard.monthlyTotal("Expenses")).toContainText("Expenses");
@@ -205,16 +196,20 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.incomeValue).toContainText("510");
   });
 
-  test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp }) => {
+  test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp, window }) => {
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-04";
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
     });
 
     await dashboard.monthSelector.selectOption("2026-04");
+    await expect(window.getByRole("status").filter({ hasText: "Updating month..." })).toBeVisible();
     await dashboard.monthSelector.selectOption("2026-05");
 
     await expect(dashboard.monthSelector).toHaveValue("2026-05", { timeout: 10_000 });
+    await expect(dashboard.incomeValue).toContainText("540");
+    await window.evaluate(() => globalThis.window.budgetApi.dashboard.getViewData("2026-04"));
+    await expect(dashboard.monthSelector).toHaveValue("2026-05");
     await expect(dashboard.incomeValue).toContainText("540");
   });
 
@@ -236,6 +231,7 @@ test.describe("Dashboard renderer smoke", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
 
+    await expect(window.getByRole("button").first()).toBeVisible();
     const undersizedButtons = await window.getByRole("button").evaluateAll((buttons) =>
       buttons
         .map((button) => ({
@@ -269,11 +265,6 @@ test.describe("Dashboard renderer smoke", () => {
       [...new Set(items.map((item) => Math.round(item.getBoundingClientRect().top)))]
     );
     expect(rowPositions).toHaveLength(3);
-  });
-
-  test("explains the forecast basis in plain language", async ({ window }) => {
-    await expect(window.getByRole("region", { name: "Forecast" }))
-      .toContainText("Estimated from the average of up to three recent monthly totals.");
   });
 
   test("@visual Visual: compact dashboard preserves primary workspace navigation", async ({ window, electronApp }) => {

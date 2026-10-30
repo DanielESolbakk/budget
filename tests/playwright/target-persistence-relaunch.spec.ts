@@ -14,7 +14,7 @@ function persistedTargetRow(categoryId: string, targetNok: string): RegExp {
 }
 
 test.describe("Category target persistence across application restart", () => {
-  test("saved target remains visible after launching a new Electron process", async ({
+  test("created and updated targets persist across restarts and feed the dashboard", async ({
     categoryTarget,
     databasePath,
     electronApp,
@@ -46,34 +46,17 @@ test.describe("Category target persistence across application restart", () => {
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
         persistedTargetRow(RESTART_TARGET_CATEGORY_ID, INITIAL_TARGET_NOK),
       );
+      await restartedCategoryTarget.editTargetButton(RESTART_TARGET_CATEGORY_ID).click();
+      await restartedCategoryTarget.targetAmountInput.fill(UPDATED_TARGET_NOK);
+      await restartedCategoryTarget.saveButton.click();
+      await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
+        persistedTargetRow(RESTART_TARGET_CATEGORY_ID, UPDATED_TARGET_NOK),
+      );
     } finally {
       await restartedApp.close();
     }
-  });
 
-  test("updated target feeds the dashboard after a new Electron process starts", async ({
-    categoryTarget,
-    databasePath,
-    electronApp,
-  }) => {
-    await categoryTarget.addTargetButton.click();
-    await categoryTarget.categoryIdInput.fill(RESTART_TARGET_CATEGORY_ID);
-    await categoryTarget.targetAmountInput.fill(INITIAL_TARGET_NOK);
-    await categoryTarget.saveButton.click();
-    await expect(categoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
-      persistedTargetRow(RESTART_TARGET_CATEGORY_ID, INITIAL_TARGET_NOK),
-    );
-
-    await categoryTarget.editTargetButton(RESTART_TARGET_CATEGORY_ID).click();
-    await categoryTarget.targetAmountInput.fill(UPDATED_TARGET_NOK);
-    await categoryTarget.saveButton.click();
-    await expect(categoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
-      persistedTargetRow(RESTART_TARGET_CATEGORY_ID, UPDATED_TARGET_NOK),
-    );
-
-    await electronApp.close();
-
-    const restartedApp = await electron.launch({
+    const updatedApp = await electron.launch({
       args: [MAIN_ENTRY],
       env: {
         ...process.env,
@@ -83,7 +66,7 @@ test.describe("Category target persistence across application restart", () => {
     });
 
     try {
-      const restartedWindow = await restartedApp.firstWindow();
+      const restartedWindow = await updatedApp.firstWindow();
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
       const restartedDashboardTarget = new DashboardTargetPage(restartedWindow);
@@ -101,7 +84,7 @@ test.describe("Category target persistence across application restart", () => {
         /(?:-|\u2212)900,00\s*kr/,
       );
     } finally {
-      await restartedApp.close();
+      await updatedApp.close();
     }
   });
 });

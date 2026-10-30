@@ -15,6 +15,34 @@
  */
 
 import { test, expect } from "./fixtures/electron.js";
+import type { Page } from "@playwright/test";
+import { closeServer, startBlockedLoopbackServer } from "./helpers/blockedLoopbackServer.js";
+
+async function expectGuardBlocksFetch(window: Page, protocol: "http:" | "https:"): Promise<void> {
+  const blockedServer = await startBlockedLoopbackServer();
+  const target = new URL(blockedServer.url);
+  target.protocol = protocol;
+  const url = target.href;
+
+  try {
+    const [request, rejected] = await Promise.all([
+      window.waitForEvent("requestfailed", (failed) => failed.url() === url),
+      window.evaluate(async (requestUrl) => {
+        try {
+          await fetch(requestUrl);
+          return false;
+        } catch {
+          return true;
+        }
+      }, url),
+    ]);
+
+    expect(rejected).toBe(true);
+    expect(request.failure()?.errorText).toBe("net::ERR_BLOCKED_BY_CLIENT");
+  } finally {
+    await closeServer(blockedServer.server);
+  }
+}
 
 test.describe("No-network guard smoke", () => {
   test("Scenario 1: app shell renders correctly with the network guard active", async ({ appShell }) => {
@@ -30,33 +58,11 @@ test.describe("No-network guard smoke", () => {
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
   });
 
-  test("Scenario 3: external HTTPS fetch from the renderer is blocked by the guard", async ({ window }) => {
-    // F5.3 AC-2: the session-level network guard cancels outbound external requests.
-    // The fetch is expected to reject with a network error because the guard
-    // calls callback({ cancel: true }) for any non-local URL.
-    const blocked = await window.evaluate(async () => {
-      try {
-        await fetch("https://example.com/");
-        return false;
-      } catch {
-        return true;
-      }
-    });
-
-    expect(blocked).toBe(true);
+  test("Scenario 3: disallowed loopback HTTPS fetch is blocked by the guard", async ({ window }) => {
+    await expectGuardBlocksFetch(window, "https:");
   });
 
-  test("Scenario 4: external HTTP fetch from the renderer is blocked by the guard", async ({ window }) => {
-    // F5.3 AC-2: HTTP (non-TLS) external requests are also blocked.
-    const blocked = await window.evaluate(async () => {
-      try {
-        await fetch("http://example.com/");
-        return false;
-      } catch {
-        return true;
-      }
-    });
-
-    expect(blocked).toBe(true);
+  test("Scenario 4: disallowed loopback HTTP fetch is blocked by the guard", async ({ window }) => {
+    await expectGuardBlocksFetch(window, "http:");
   });
 });
