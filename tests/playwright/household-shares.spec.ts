@@ -112,6 +112,7 @@ test("invalid shares are labeled and leave saved values unchanged at compact and
   await properties.addProperty("Home");
   const property = properties.property("Home");
   const ownership = property.getByRole("textbox", { name: "Household ownership share (basis points)", exact: true });
+  await expect(ownership).toHaveValue("10000");
   const hint = property.getByText("0 is 0%; 10000 is 100%. This does not determine legal ownership or liability.");
   const contrast = await hint.evaluate((element) => {
     const luminance = (color: string): number => {

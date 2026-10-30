@@ -112,6 +112,13 @@ describe("household share defaults", () => {
       expect(loans.list()[0]?.responsibilityShareBasisPoints).toBe(5_000);
       const expectedProperties = properties.list();
       const expectedLoans = loans.list();
+      expect(expectedProperties[0]?.valuations[0]).toMatchObject({
+        amountMinor: 500_000_000, currencyCode: "NOK",
+      });
+      expect(expectedLoans[0]).toMatchObject({ principalMinor: 300_000_000, currencyCode: "NOK" });
+      expect(expectedLoans[0]?.balances[0]).toMatchObject({
+        amountMinor: 300_000_000, currencyCode: "NOK",
+      });
       source.close();
       source = createLocalLedgerDatabase({ dbPath: sourcePath, seedData });
       expect(createPropertyRegistry(source).list()).toEqual(expectedProperties);
