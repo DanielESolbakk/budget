@@ -19,10 +19,11 @@
 import { test, expect } from "./fixtures/electron.js";
 
 test.describe("Electron startup smoke", () => {
-  test("Scenario 1: window opens and root shell renders without blank-screen failure", async ({ appShell }) => {
+  test("Scenario 1: window opens with the product title and root shell", async ({ appShell, window }) => {
     // AC-1, AC-4: renderer reaches a loaded state with the application heading.
     await expect(appShell.heading).toBeVisible();
     await expect(appShell.banner).toBeVisible();
+    await expect(window).toHaveTitle("Budget Planner");
   });
 
   test("Scenario 2: preload bridge exposes window.budgetApi with dashboard contract methods", async ({ preloadBridge }) => {
@@ -36,25 +37,12 @@ test.describe("Electron startup smoke", () => {
     expect(fields.hasForecast).toBe(true);
   });
 
-  test("Scenario 3: forecast section is visible and shows projected or fallback output", async ({ forecast }) => {
-    // AC-1, AC-3: the renderer displays forecast section content after IPC resolves.
-    // Waits for loading state to transition to either projected or fallback forecast.
+  test("Scenario 3: forecast section shows projected output for the seeded history", async ({ forecast }) => {
     await expect(forecast.sectionHeading).toBeVisible();
     await expect(forecast.section).toBeVisible();
-
-    // Verify one of the two labeling paths is active in the renderer.
-    // The app boots with sample monthly totals (sufficient history), so the
-    // projected-months description is expected; the fallback label confirms
-    // the renderer handles the insufficient-history path without crashing.
-    const projectedVisible = await forecast.projectedDescription.isVisible();
-    const fallbackVisible = await forecast.fallbackLabel.isVisible();
-    expect(projectedVisible || fallbackVisible).toBe(true);
-  });
-
-  test("Scenario 4: application window title matches product name", async ({ window }) => {
-    // AC-4: minimal renderer path does not break window titling.
-    const title = await window.title();
-    expect(title).toBe("Budget Planner");
+    await expect(forecast.projectedDescription).toBeVisible();
+    await expect(forecast.section).toContainText("Estimated from the average of up to three recent monthly totals.");
+    await expect(forecast.fallbackLabel).not.toBeVisible();
   });
 
   test("Scenario 5: primary navigation exposes one focused workspace at a time", async ({ appShell }) => {

@@ -63,17 +63,20 @@ test.describe("Category target entry renderer smoke", () => {
     await categoryTarget.targetAmountInput.fill("50");
     await categoryTarget.saveButton.click();
 
-    await expect(categoryTarget.validationError).toBeVisible();
+    await expect(categoryTarget.validationError).toHaveText("Category ID is required.");
     // Confirm the app shell and section are still visible (no blank-screen regression).
     await expect(appShell.heading).toBeVisible();
     await expect(categoryTarget.section).toBeVisible();
 
-    // AC-3: submitting a negative amount also surfaces a validation error.
+    // The number input rejects a negative amount through native validation.
     await categoryTarget.categoryIdInput.fill("transport");
     await categoryTarget.targetAmountInput.fill("-10");
     await categoryTarget.saveButton.click();
 
-    await expect(categoryTarget.validationError).toBeVisible();
+    expect(await categoryTarget.targetAmountInput.evaluate(
+      (input: HTMLInputElement) => input.validity.rangeUnderflow
+    )).toBe(true);
+    await expect(categoryTarget.savedTargetItem("transport")).toHaveCount(0);
     await expect(appShell.heading).toBeVisible();
     await expect(categoryTarget.section).toBeVisible();
   });
@@ -99,19 +102,18 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     // Confirmation visible after save.
     await expect(categoryTarget.savedConfirmation).toBeVisible();
 
-    // The saved targets list should now include the new transport target.
+    // The saved targets list should include the new transport amount.
     await expect(categoryTarget.savedTargetsList).toBeVisible();
-    await expect(categoryTarget.savedTargetItem("transport")).toBeVisible();
+    await expect(categoryTarget.savedTargetItem("transport")).toContainText(/500,00\s*kr/);
 
-    // Reload the window to verify persistence in the in-memory store (main process
-    // keeps running across renderer reloads; the stored target survives the reload).
+    // Reload the renderer while the main process remains running.
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
     await window.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
 
     // After reload the saved targets list re-loads via categoryTarget:listByMonth IPC.
     await expect(categoryTarget.savedTargetsList).toBeVisible();
-    await expect(categoryTarget.savedTargetItem("transport")).toBeVisible();
+    await expect(categoryTarget.savedTargetItem("transport")).toContainText(/500,00\s*kr/);
   });
 
   test("editing a saved target updates its existing value", async ({ categoryTarget }) => {

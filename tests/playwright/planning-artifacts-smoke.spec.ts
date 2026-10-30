@@ -6,36 +6,8 @@
  * external HTTP(S) requests.
  */
 
-import { createServer } from "node:http";
-import type { AddressInfo, Server } from "node:net";
 import { test, expect } from "./fixtures/electron.js";
-
-async function startBlockedLoopbackServer(): Promise<{ server: Server; url: string }> {
-  const server = createServer((_request, response) => {
-    response.writeHead(200, { "content-type": "text/plain" });
-    response.end("network guard test endpoint");
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.2", resolve);
-  });
-
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    server.close();
-    throw new Error("Unable to determine the blocked loopback server address.");
-  }
-
-  const { port } = address as AddressInfo;
-  return { server, url: `http://127.0.0.2:${port}/guard-test` };
-}
-
-async function closeServer(server: Server): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error === undefined ? resolve() : reject(error)));
-  });
-}
+import { closeServer, startBlockedLoopbackServer } from "./helpers/blockedLoopbackServer.js";
 
 test.describe("Planning artifact availability", () => {
   test("Scenario 1: desktop shell presents the local household planning context", async ({ appShell, dashboard }) => {

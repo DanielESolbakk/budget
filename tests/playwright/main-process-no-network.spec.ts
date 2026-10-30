@@ -1,11 +1,16 @@
 import { test, expect } from "./fixtures/electron.js";
-import type { ElectronApplication } from "@playwright/test";
 import { basename, resolve } from "node:path";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 import {
   installMainProcessNetworkProbe,
   mainProcessNetworkRequests,
 } from "./helpers/networkProbe.js";
+import {
+  installRendererNetworkAttemptBlocker,
+  installRendererNetworkAttemptObserver,
+  rendererNetworkAttempts,
+  rendererNetworkBlockedAttempts,
+} from "./helpers/rendererNetworkProbe.js";
 
 const CSV_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
 const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf");
@@ -87,40 +92,20 @@ test.describe("Main-process transaction privacy", () => {
     expect(requests[6]).toMatch(/^electron\.net\.request: /);
   });
 
-  async function installFetchProbe(electronApp: ElectronApplication): Promise<void> {
-    await electronApp.evaluate(() => {
-      const state = globalThis as typeof globalThis & {
-        __budgetMainFetchRequests?: string[];
-      };
-      state.__budgetMainFetchRequests = [];
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = async (input, init) => {
-        state.__budgetMainFetchRequests?.push(String(input));
-        return originalFetch(input, init);
-      };
-    });
-  }
-
-  test("CSV import does not invoke main-process fetch", async ({ electronApp, csvImport }) => {
-    await installFetchProbe(electronApp);
+  test("CSV import does not use main-process network transports after startup", async ({ electronApp, csvImport }) => {
+    await installMainProcessNetworkProbe(electronApp);
     await csvImport.submitImport(CSV_FIXTURE_PATH);
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
 
-    const requests = await electronApp.evaluate(() =>
-      (globalThis as typeof globalThis & { __budgetMainFetchRequests?: string[] }).__budgetMainFetchRequests ?? []
-    );
-    expect(requests).toEqual([]);
+    expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   });
 
-  test("binary PDF import does not invoke main-process fetch", async ({ electronApp, pdfImport }) => {
-    await installFetchProbe(electronApp);
+  test("binary PDF import does not use main-process network transports after startup", async ({ electronApp, pdfImport }) => {
+    await installMainProcessNetworkProbe(electronApp);
     await pdfImport.submitImport(PDF_FIXTURE_PATH);
     await expect(pdfImport.successStatus).toBeVisible({ timeout: 20_000 });
 
-    const requests = await electronApp.evaluate(() =>
-      (globalThis as typeof globalThis & { __budgetMainFetchRequests?: string[] }).__budgetMainFetchRequests ?? []
-    );
-    expect(requests).toEqual([]);
+    expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   });
 
   test("correcting and dismissing import-review rows stays on device", async ({
@@ -129,11 +114,9 @@ test.describe("Main-process transaction privacy", () => {
     electronApp,
     window,
   }) => {
-    const rendererHttpRequests: string[] = [];
-    window.on("request", (request) => {
-      if (/^https?:/i.test(request.url())) rendererHttpRequests.push(request.url());
-    });
-    await installFetchProbe(electronApp);
+    await installMainProcessNetworkProbe(electronApp);
+    await installRendererNetworkAttemptBlocker(window);
+    const rendererObservation = await installRendererNetworkAttemptObserver(window);
     await appShell.openWorkspace("Import");
     await csvImport.enterFilePath(REVIEW_FIXTURE_PATH);
     await csvImport.importButton.click();
@@ -160,11 +143,11 @@ test.describe("Main-process transaction privacy", () => {
     await expect(importReview.reviewRow(2)).toContainText("Corrected");
     await expect(importReview.reviewRow(1)).toContainText("Dismissed");
 
-    const mainProcessRequests = await electronApp.evaluate(() =>
-      (globalThis as typeof globalThis & { __budgetMainFetchRequests?: string[] }).__budgetMainFetchRequests ?? []
-    );
-    expect(rendererHttpRequests).toEqual([]);
-    expect(mainProcessRequests).toEqual([]);
+    expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
+    expect(await rendererNetworkAttempts(window)).toEqual([]);
+    expect(await rendererNetworkBlockedAttempts(window)).toEqual([]);
+    expect(rendererObservation.httpRequests).toEqual([]);
+    expect(rendererObservation.webSocketRequests).toEqual([]);
   });
 
   test("rejects malformed ledger filters, saved views, and restore payloads at the IPC boundary", async ({ window }) => {

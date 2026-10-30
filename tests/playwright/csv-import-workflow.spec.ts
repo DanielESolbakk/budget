@@ -547,22 +547,6 @@ test.describe("CSV import renderer workflow", () => {
     expect(loadPersistedTransactions(databasePath)).toHaveLength(transactionsBeforePreview.length + 1);
   });
 
-  test("CSV confirmation invalidates a file changed after preview", async ({ csvImport }) => {
-    const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.csv`);
-    writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
-    await csvImport.enterFilePath(mutablePath);
-    await csvImport.importButton.click();
-    await expect(csvImport.previewRegion).toBeVisible();
-
-    writeFileSync(mutablePath, `${readFileSync(FIXTURE_PATH, "utf8")}changed after preview\n`, "utf8");
-    await csvImport.confirmImportButton.click();
-
-    await expect(csvImport.errorAlert).toBeVisible();
-    await expect(csvImport.confirmImportButton).not.toBeVisible();
-    await expect(csvImport.importButton).toBeEnabled();
-    await expect(csvImport.previewRegion).not.toBeVisible();
-  });
-
   test("Scenario 1: importing the supported synthetic CSV reports success and updates dashboard totals", async ({ appShell, csvImport, dashboard }) => {
     // AC-1: the file picker is primary; direct path entry stays advanced.
     await expect(csvImport.importSection).toBeVisible();
@@ -867,6 +851,9 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.errorAlert).toBeVisible({ timeout: 10_000 });
     await expect(csvImport.errorAlert).toContainText("Import validation failed");
     await expect(csvImport.errorAlert).toContainText("The file changed after preview.");
+    await expect(csvImport.confirmImportButton).not.toBeVisible();
+    await expect(csvImport.importButton).toBeEnabled();
+    await expect(csvImport.previewRegion).not.toBeVisible();
     await appShell.openWorkspace("Review");
     await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
     await expect(dashboard.expenseValue).toHaveText(beforeExpenseText);

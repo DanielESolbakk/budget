@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures/electron.js";
 import type { Page } from "@playwright/test";
 import type { ManualEntryValues } from "./pom/ManualEntryPage.js";
+import { LedgerPage } from "./pom/LedgerPage.js";
 
 async function rendererLocalDate(page: Page): Promise<string> {
   return page.evaluate(() => {
@@ -45,18 +46,22 @@ test.describe("Manual entry and duplicate detection", () => {
 
     await appShell.openWorkspace("Review");
     await dashboard.monthSelector.selectOption("2026-05");
-    const beforeExpenses = await dashboard.expenseValue.textContent();
+    await expect(dashboard.expenseValue).toContainText("85,00");
     await appShell.openWorkspace("Import");
     await entry.submitEntry(manualEntry);
 
     await expect(entry.successStatus).toHaveText("Added Manual Playwright Entry to your ledger.");
     await appShell.openWorkspace("Review");
-    await expect
-      .poll(async () => (await dashboard.expenseValue.textContent()) ?? "", { timeout: 10_000 })
-      .not.toBe(beforeExpenses);
+    await expect(dashboard.expenseValue).toContainText("97,50", { timeout: 10_000 });
+    await appShell.openWorkspace("Transactions");
+    const row = new LedgerPage(window).transaction(manualEntry.merchantRaw);
+    await expect(row).toContainText("23. mai 2026");
+    await expect(row).toContainText("12,50");
+    await expect(row).toContainText("Groceries");
+    await expect(row).toContainText("Brukskonto");
   });
 
-  test("Scenario 2: equivalent entry shows a duplicate warning and keeps totals unchanged", async ({ appShell, manualEntry: entry, dashboard }) => {
+  test("Scenario 2: equivalent entry shows a duplicate warning and keeps totals unchanged", async ({ appShell, manualEntry: entry, dashboard, window }) => {
     await appShell.openWorkspace("Review");
     await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
@@ -65,14 +70,16 @@ test.describe("Manual entry and duplicate detection", () => {
     await entry.submitEntry(manualEntry);
     await expect(entry.successStatus).toContainText("Added Manual Playwright Entry to your ledger.");
     await appShell.openWorkspace("Review");
-    const afterFirstEntryExpenses = await dashboard.expenseValue.textContent();
+    await expect(dashboard.expenseValue).toContainText("97,50");
 
     await appShell.openWorkspace("Import");
     await entry.submitEntry(manualEntry);
     await expect(entry.resultAlert).toContainText("This transaction is already in your ledger.");
     await expect(entry.resultAlert).toContainText("Check the Ledger section");
     await appShell.openWorkspace("Review");
-    await expect(dashboard.expenseValue).toHaveText(afterFirstEntryExpenses ?? "");
+    await expect(dashboard.expenseValue).toContainText("97,50");
+    await appShell.openWorkspace("Transactions");
+    await expect(new LedgerPage(window).transaction(manualEntry.merchantRaw)).toHaveCount(1);
   });
 
   test("Scenario 3: malformed optional category data is rejected by the IPC boundary", async ({ window: page }) => {
