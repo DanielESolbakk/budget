@@ -9,7 +9,7 @@ describe("property record validation", () => {
   it("accepts a locally labeled property without an address", () => {
     const input = { label: "Home" };
 
-    expect(validatePropertyRecordInput(input)).toBe(input);
+    expect(validatePropertyRecordInput(input)).toMatchObject({ label: "Home" });
   });
 
   it("rejects a whitespace-only property label", () => {
@@ -26,7 +26,12 @@ describe("property valuation validation", () => {
       currencyCode: "NOK",
     };
 
-    expect(validatePropertyValuationInput(input)).toBe(input);
+    expect(validatePropertyValuationInput(input)).toMatchObject({
+      propertyId: "property-home",
+      effectiveDateIso: "2026-10-01",
+      amountMinor: 500_000_000,
+      currencyCode: "NOK",
+    });
   });
 
   it("accepts a zero valuation", () => {
