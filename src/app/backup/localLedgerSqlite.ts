@@ -1370,12 +1370,19 @@ export function createLocalLedgerDatabase(
     const rows = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
         currency_code, source_type, source_reference, category_id, import_job_id,
-        category_allocations_json
+        category_allocations_json, categorization_json
       FROM transactions
       WHERE household_id = ? AND booked_at_iso >= ? AND booked_at_iso < ?
       ORDER BY booked_at_iso ASC, id ASC
-    `).all(householdId, `${yearMonth}-01`, `${nextYearMonth(yearMonth)}-01`) as unknown as TransactionRow[];
-    return rows.map(mapTransactionRow);
+    `).all(householdId, `${yearMonth}-01`, `${nextYearMonth(yearMonth)}-01`) as unknown as
+      Array<TransactionRow & { categorization_json: string | null }>;
+    return rows.map((row) => {
+      const transaction = mapTransactionRow(row);
+      if (row.categorization_json !== null) {
+        transaction.categorization = JSON.parse(row.categorization_json) as CategorizationDecision;
+      }
+      return transaction;
+    });
   }
 
   function getTransactionsForAccount(accountId: string): Transaction[] {

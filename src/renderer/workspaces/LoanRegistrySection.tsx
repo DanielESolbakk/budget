@@ -543,8 +543,11 @@ export function LoanRegistrySection({
   } before adding the loan.`;
   const activeLoanId = selectedLoanId ?? loans[0]?.id ?? null;
 
+  const isRegistryEmpty = !isLoading && loadError === null && loans.length === 0 && !isLoanFormOpen;
+
   return (
-    <section className="property-registry-section loan-registry-section" aria-label="Loan registry">
+    <section className={`property-registry-section loan-registry-section${isRegistryEmpty ? " registry-empty-state" : ""}`} aria-label="Loan registry">
+      {isRegistryEmpty && <p className="property-registry-empty">No loans have been recorded.</p>}
       {!isLoanFormOpen && (
         <button
           ref={addLoanButtonRef}
@@ -829,9 +832,7 @@ export function LoanRegistrySection({
       {loadError !== null && <p className="property-registry-message" role="alert">{loadError}</p>}
       {isLoading ? (
         <p className="property-registry-empty" role="status">Loading loan records...</p>
-      ) : loans.length === 0 ? (
-        loadError === null && <p className="property-registry-empty">No loans have been recorded.</p>
-      ) : (
+      ) : loans.length === 0 ? null : (
         <div className={`loan-workspace-grid${isCompactLoanDetailOpen
           ? " is-compact-detail-open"
           : ""}`}>
@@ -916,7 +917,7 @@ export function LoanRegistrySection({
                   recordId={loan.id}
                   formStates={shareFormStates}
                   setFormStates={setShareFormStates}
-                  label="Household loan responsibility share (basis points)"
+                  label="Household loan responsibility share (%)"
                   buttonLabel="Save responsibility share"
                   successMessage="Responsibility share saved."
                   value={loan.responsibilityShareBasisPoints ?? DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS}

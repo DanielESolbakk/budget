@@ -149,7 +149,7 @@ export function ImportWorkspace({
               <button
                 id="manual-entry-choice"
                 type="button"
-                className="import-secondary-action"
+                className="import-secondary-action action-secondary"
                 onClick={selectManualEntry}
               >
                 Enter transaction manually

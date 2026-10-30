@@ -1,5 +1,6 @@
 import { computeCategoryBreakdown } from "../domain/aggregation/computeCategoryBreakdown.js";
 import { computeMonthlyTotals } from "../domain/aggregation/computeMonthlyTotals.js";
+import { needsCategorizationReview } from "../domain/categorization/reviewQueue.js";
 import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
 import { convertCurrencyAmount } from "../domain/money/convertCurrencyAmount.js";
 import { simpleForecast } from "../domain/forecast/simpleForecast.js";
@@ -38,14 +39,18 @@ export interface DashboardInput {
   fallbackStartYearMonth?: string;
 }
 
-/** Alias for the canonical MonthSeries domain type; used as the output of buildDashboardData. */
-export type DashboardData = MonthSeries;
+export interface DashboardData extends MonthSeries {
+  incompleteCurrencyMonths?: string[];
+}
 
 export interface MonthlyDashboardSnapshot {
   selectedYearMonth: string;
+  categoryReviewCount: number;
+  hasUncategorizedTransactions?: boolean;
   monthlyTotals: MonthlyBreakdown;
   categoryBreakdown: CategoryBreakdown;
   targetVsActualCategoryRows: TargetVsActualCategoryRows;
+  currencyReport?: NokMonthlyReport;
 }
 
 export interface LoadingDashboardViewContract {
@@ -70,6 +75,7 @@ export type DashboardViewContract =
 
 export interface MonthlyAttentionSummary {
   hasUncategorizedTransactions: boolean;
+  categoryReviewCount: number;
   overTargetCategoryCount: number;
 }
 
@@ -143,6 +149,8 @@ export function queryAccountCoverageAssessment(
 export interface DashboardViewContractInput {
   transactions: Transaction[];
   selectedYearMonth: string;
+  accounts?: readonly Account[];
+  rates?: readonly ExchangeRate[];
   monthlyCategoryTargetStore?: MonthlyCategoryTargetStore;
   isLoading?: boolean;
 }
@@ -324,6 +332,36 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
   return { monthlyTotals, forecast };
 }
 
+export function queryHouseholdDashboardData(
+  database: Pick<LocalLedgerDatabase,
+    "getAccountsForHousehold" | "listExchangeRates" | "listMonthlyTotals" | "getTransactionsForMonth">,
+  householdId: string,
+): DashboardData {
+  const currencyContext = {
+    accounts: database.getAccountsForHousehold(householdId),
+    rates: database.listExchangeRates(),
+  };
+  const snapshots = database.listMonthlyTotals(householdId).map(({ yearMonth }) =>
+    queryMonthlyDashboardSnapshot(
+      database.getTransactionsForMonth(householdId, yearMonth),
+      yearMonth,
+      undefined,
+      currencyContext,
+    )
+  );
+  return {
+    ...buildDashboardData({
+      monthlyTotals: snapshots.map((snapshot) => ({
+        yearMonth: snapshot.selectedYearMonth,
+        totalMinor: snapshot.monthlyTotals.netMinor,
+      })),
+    }),
+    incompleteCurrencyMonths: snapshots
+      .filter((snapshot) => snapshot.currencyReport?.incompleteCurrencies.length)
+      .map((snapshot) => snapshot.selectedYearMonth),
+  };
+}
+
 /**
  * Returns deterministic income, expense, and net totals for a selected calendar month.
  * Only transactions whose bookedAtIso falls within the given YYYY-MM month are included.
@@ -432,17 +470,69 @@ export function queryCategoryBreakdown(
 export function queryMonthlyDashboardSnapshot(
   transactions: Transaction[],
   selectedYearMonth: string,
-  monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore()
+  monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
+  currencyContext?: Pick<NokMonthlyReportInput, "accounts" | "rates">
 ): MonthlyDashboardSnapshot {
+  if (currencyContext === undefined && transactions.some((transaction) =>
+    transaction.currencyCode !== undefined && transaction.currencyCode !== "NOK"
+  )) {
+    throw new Error("Account and exchange-rate context is required for foreign-currency dashboard transactions.");
+  }
+  const currencyReport = currencyContext === undefined ? undefined : buildNokMonthlyReport({
+    transactions,
+    ...currencyContext,
+    yearMonth: selectedYearMonth,
+  });
+  const sourceById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
+  const nokTransactions: Transaction[] = currencyReport === undefined ? transactions :
+    currencyReport.transactions.flatMap((entry): Transaction[] => {
+      if (entry.nokAmountMinor === null) return [];
+      const source = sourceById.get(entry.transactionId);
+      if (source === undefined) throw new Error(`Missing report transaction: ${entry.transactionId}`);
+      let nativePrefixMinor = 0;
+      let nokPrefixMinor = 0;
+      const categoryAllocations = source.categoryAllocations?.map((allocation) => {
+        nativePrefixMinor += allocation.amountMinor;
+        const converted = convertCurrencyAmount({
+          amountMinor: nativePrefixMinor,
+          currencyCode: entry.nativeCurrencyCode,
+          asOfDateIso: entry.bookedAtIso.slice(0, 10),
+          rates: entry.exchangeRate === null ? [] : [entry.exchangeRate],
+        });
+        if (converted.state !== "converted") {
+          throw new Error(`Missing allocation conversion for transaction: ${entry.transactionId}`);
+        }
+        // Round cumulative splits so their sum remains exactly the converted source amount.
+        const amountMinor = converted.nokAmountMinor - nokPrefixMinor;
+        nokPrefixMinor = converted.nokAmountMinor;
+        return { ...allocation, amountMinor };
+      });
+      return [{
+        ...source,
+        amountMinor: entry.nokAmountMinor,
+        currencyCode: "NOK",
+        ...(categoryAllocations === undefined ? {} : { categoryAllocations }),
+      }];
+    });
   return {
     selectedYearMonth,
-    monthlyTotals: queryMonthlyTotals(transactions, selectedYearMonth),
-    categoryBreakdown: queryCategoryBreakdown(transactions, selectedYearMonth),
+    categoryReviewCount: transactions.filter((transaction) =>
+      transaction.bookedAtIso.startsWith(selectedYearMonth) && needsCategorizationReview(transaction)
+    ).length,
+    monthlyTotals: queryMonthlyTotals(nokTransactions, selectedYearMonth),
+    categoryBreakdown: queryCategoryBreakdown(nokTransactions, selectedYearMonth),
     targetVsActualCategoryRows: queryTargetVsActualCategoryRows(
-      transactions,
+      nokTransactions,
       monthlyCategoryTargetStore,
       selectedYearMonth
     ),
+    ...(currencyReport === undefined ? {} : {
+      currencyReport,
+      hasUncategorizedTransactions: transactions.some((transaction) =>
+        transaction.bookedAtIso.startsWith(selectedYearMonth) &&
+        transaction.categoryId === undefined && !transaction.categoryAllocations?.length
+      ),
+    }),
   };
 }
 
@@ -455,7 +545,9 @@ export function getMonthlyAttentionSummary(
 
   const rows = viewContract.snapshot.targetVsActualCategoryRows.rows;
   return {
-    hasUncategorizedTransactions: rows.some((row) => row.categoryId === null),
+    hasUncategorizedTransactions: viewContract.snapshot.hasUncategorizedTransactions ??
+      rows.some((row) => row.categoryId === null),
+    categoryReviewCount: viewContract.snapshot.categoryReviewCount,
     overTargetCategoryCount: rows.filter(
       (row) => row.categoryId !== null && row.targetMinor !== null && row.deltaMinor !== null && row.deltaMinor > 0
     ).length,
@@ -467,6 +559,8 @@ export function buildDashboardViewContract(input: DashboardViewContractInput): D
     transactions,
     selectedYearMonth,
     monthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
+    accounts,
+    rates = [],
     isLoading = false,
   } = input;
 
@@ -477,10 +571,11 @@ export function buildDashboardViewContract(input: DashboardViewContractInput): D
   const snapshot = queryMonthlyDashboardSnapshot(
     transactions,
     selectedYearMonth,
-    monthlyCategoryTargetStore
+    monthlyCategoryTargetStore,
+    accounts === undefined ? undefined : { accounts, rates }
   );
 
-  if (snapshot.categoryBreakdown.entries.length === 0) {
+  if (snapshot.categoryBreakdown.entries.length === 0 && !snapshot.currencyReport?.transactions.length) {
     return { state: "empty", snapshot };
   }
 
@@ -490,18 +585,13 @@ export function buildDashboardViewContract(input: DashboardViewContractInput): D
 export function refreshDashboardViewContractMonth(
   transactions: Transaction[],
   nextSelectedYearMonth: string,
-  monthlyCategoryTargetStore?: MonthlyCategoryTargetStore
+  monthlyCategoryTargetStore?: MonthlyCategoryTargetStore,
+  currencyContext?: Pick<NokMonthlyReportInput, "accounts" | "rates">,
 ): DashboardViewContract {
-  if (monthlyCategoryTargetStore) {
-    return buildDashboardViewContract({
-      transactions,
-      selectedYearMonth: nextSelectedYearMonth,
-      monthlyCategoryTargetStore,
-    });
-  }
-
   return buildDashboardViewContract({
     transactions,
     selectedYearMonth: nextSelectedYearMonth,
+    ...currencyContext,
+    ...(monthlyCategoryTargetStore === undefined ? {} : { monthlyCategoryTargetStore }),
   });
 }

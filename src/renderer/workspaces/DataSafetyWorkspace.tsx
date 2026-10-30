@@ -710,8 +710,13 @@ export function HoldingRegistrySection({
     }
   }
 
+  const isRegistryEmpty = !isLoading && loadError === null && holdings.length === 0;
+
   return (
-    <section className="holding-registry-section" aria-label="Investment holdings registry">
+    <section className={`holding-registry-section${isRegistryEmpty ? " registry-empty-state" : ""}`} aria-label="Investment holdings registry">
+      {isRegistryEmpty && (
+        <p className="holding-registry-empty">No investment holdings have been recorded.</p>
+      )}
       <p className="holding-local-note">
         Cost basis is the total acquisition cost. Each valuation is the total value of the holding.
       </p>
@@ -798,11 +803,7 @@ export function HoldingRegistrySection({
       {isLoading && (
         <p className="holding-registry-empty" role="status">Loading investment holdings...</p>
       )}
-      {holdings.length === 0 ? (
-        !isLoading && loadError === null && (
-          <p className="holding-registry-empty">No investment holdings have been recorded.</p>
-        )
-      ) : (
+      {holdings.length === 0 ? null : (
         <div className="holding-workspace-grid">
           <nav className="holding-record-navigation" aria-label="Investment holdings">
             {holdings.map((holding) => (
@@ -1505,9 +1506,11 @@ export function PropertyRegistrySection({
   }
 
   const activePropertyId = selectedPropertyId ?? properties[0]?.id ?? null;
+  const isRegistryEmpty = !isLoading && loadError === null && properties.length === 0 && !isPropertyCreateFormOpen;
 
   return (
-    <section className="property-registry-section" aria-label="Property registry">
+    <section className={`property-registry-section${isRegistryEmpty ? " registry-empty-state" : ""}`} aria-label="Property registry">
+      {isRegistryEmpty && <p className="property-registry-empty">No properties have been recorded.</p>}
       {!isPropertyCreateFormOpen && (
         <button
           ref={addPropertyButtonRef}
@@ -1556,9 +1559,7 @@ export function PropertyRegistrySection({
       {loadError !== null && <p className="property-registry-message" role="alert">{loadError}</p>}
       {isLoading ? (
         <p className="property-registry-empty" role="status">Loading property records...</p>
-      ) : properties.length === 0 ? (
-        loadError === null && <p className="property-registry-empty">No properties have been recorded.</p>
-      ) : (
+      ) : properties.length === 0 ? null : (
         <div className={`property-workspace-grid${isCompactPropertyDetailOpen
           ? " is-compact-detail-open"
           : ""}`}>
@@ -1665,7 +1666,7 @@ export function PropertyRegistrySection({
                   recordId={property.id}
                   formStates={shareFormStates}
                   setFormStates={setShareFormStates}
-                  label="Household ownership share (basis points)"
+                  label="Household ownership share (%)"
                   buttonLabel="Save ownership share"
                   successMessage="Ownership share saved."
                   value={property.ownershipShareBasisPoints ?? DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS}

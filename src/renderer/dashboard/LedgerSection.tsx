@@ -15,6 +15,7 @@ import type {
   TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../import/categoryOptions.js";
+import { formatCurrencyAmount, getCurrencyFormatter } from "../formatCurrencyAmount.js";
 import {
   TransactionAllocationEditor,
   type AllocationDraft,
@@ -459,10 +460,7 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
     : allocationSourceTransaction.currencyCode ??
       accounts.find((account) => account.id === allocationSourceTransaction.accountId)?.currencyCode ??
       "NOK";
-  const allocationCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
-    style: "currency",
-    currency: allocationCurrencyCode,
-  });
+  const allocationCurrencyFormatter = getCurrencyFormatter(allocationCurrencyCode);
 
   return (
     <section aria-label="Ledger" aria-busy={isLoading || isFilterPending}>
@@ -668,7 +666,9 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
             </thead>
             <tbody>
               {transactions.map((transaction) => {
-                const accountName = accounts.find((account) => account.id === transaction.accountId)?.name ?? transaction.accountId;
+                const account = accounts.find((account) => account.id === transaction.accountId);
+                const accountName = account?.name ?? transaction.accountId;
+                const currencyCode = transaction.currencyCode ?? account?.currencyCode ?? "NOK";
                 const categoryName = transaction.categoryAllocations?.length
                   ? transaction.categoryAllocations.map((allocation) => categoryLabel(allocation.categoryId)).join(", ")
                   : transaction.categoryId === undefined ? "Uncategorized" : categoryLabel(transaction.categoryId);
@@ -679,11 +679,12 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
                     <tr aria-label={`Ledger transaction ${transaction.merchantRaw}`}>
                       <td>{bookedDateFormatter.format(bookedDate)}</td>
                       <td>{transaction.merchantRaw}</td>
-                      <td className="ledger-amount">{nokCurrencyFormatter.format(transaction.amountMinor / 100)}</td>
+                      <td className="ledger-amount">{formatCurrencyAmount(transaction.amountMinor, currencyCode)}</td>
                       <td>{categoryName}</td>
                       <td>{accountName}</td>
                       <td>
                         <button
+                          className="action-secondary"
                           type="button"
                           aria-label={`Edit category allocations for ${transaction.merchantRaw}`}
                           aria-expanded={editingAllocationTransactionId === transaction.id}

@@ -3,6 +3,7 @@ import {
   isCurrencyCode,
   type PendingTransactionObservation,
 } from "../../domain/types.js";
+import { formatCurrencyAmount } from "../formatCurrencyAmount.js";
 
 type PendingTransactionsState =
   | { status: "loading" }
@@ -26,12 +27,7 @@ function formatAmount(observation: PendingTransactionObservation): string {
     return `${amount.toFixed(2)} ${currencyCode}`;
   }
 
-  return new Intl.NumberFormat("nb-NO", {
-    style: "currency",
-    currency: currencyCode,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatCurrencyAmount(observation.amountMinor, currencyCode);
 }
 
 function formatDate(value: string): string {

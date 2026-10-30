@@ -12,6 +12,7 @@ import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage 
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
 import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
 import { ImportReconciliationSummary } from "./ImportReconciliationSummary.js";
+import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
 
 type ImportState =
   | { status: "idle" }
@@ -32,17 +33,6 @@ type ImportState =
   | { status: "validation"; errors: CsvImportResponse & { ok: false } };
 
 const PREVIEW_PAGE_SIZE = 100;
-
-const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
-  style: "currency",
-  currency: "NOK",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function formatAmount(amountMinor: number): string {
-  return nokCurrencyFormatter.format(amountMinor / 100);
-}
 
 interface CsvImportSectionProps {
   initialFilePath: string;
@@ -564,32 +554,6 @@ export function CsvImportSection({
           )}
         </div>
       )}
-      {preview !== null && importState.status !== "success" && <button
-        id="csv-confirm-button"
-        type="button"
-        onClick={handleImport}
-        aria-describedby="csv-confirm-help"
-        disabled={confirmationDisabled}
-      >
-        Confirm CSV import
-      </button>}
-      {preview !== null && importState.status !== "success" && <p id="csv-confirm-help" className="import-action-help">
-        {importState.status === "pending"
-          ? getImportPendingMessage(stage)
-          : !isPreviewExpanded
-            ? "Show the preview before confirming this import."
-          : preview === null
-            ? filePath
-              ? <>The selected file has not passed validation. <a href="#csv-preview-button">Preview CSV</a>.</>
-              : "Choose a statement file above before previewing it."
-            : !isMappingCurrent
-              ? <>Validate the updated column mapping before confirming. <a href="#csv-preview-button">Preview CSV</a>.</>
-              : firstInvalidRow !== undefined
-                ? <>Row <a href={`#csv-preview-row-${firstInvalidRow.rowIndex}`}>{firstInvalidRow.rowIndex + 1}</a> will be kept for review and will not become a transaction.</>
-                : unresolvedDuplicateRows[0] !== undefined
-                  ? <>Choose whether to skip or import duplicate <a href={`#csv-preview-row-${unresolvedDuplicateRows[0].rowIndex}`}>row {unresolvedDuplicateRows[0].rowIndex + 1}</a> before confirming.</>
-                  : "Review the ready rows before confirming the import."}
-      </p>}
       {importState.status === "cancelled" && <p role="status">Preview cancelled. No transactions were saved.</p>}
       {importState.status === "success" && (
         <div className="import-success">
@@ -630,7 +594,7 @@ export function CsvImportSection({
               className={importState.unresolvedCount > 0 ? "import-secondary-action" : undefined}
               onClick={onReviewUncategorized}
             >
-              Review uncategorized transactions
+              Review category decisions
             </button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
             <button type="button" className="import-secondary-action" onClick={() => void onChooseFile()}>
@@ -663,6 +627,8 @@ export function CsvImportSection({
             tabIndex={-1}
           >
           <h3>CSV import preview</h3>
+          <details className="import-mapping" open={validPreviewRowCount === 0}>
+          <summary>Match your CSV columns</summary>
           <fieldset aria-label="CSV column mapping">
             <legend>Match your CSV columns</legend>
             {mappingFields.map(({ key, label }) => (
@@ -696,6 +662,7 @@ export function CsvImportSection({
               </label>
             ))}
           </fieldset>
+          </details>
           <p className="preview-summary" aria-live="polite">
             <strong>{validPreviewRowCount} of {preview.rows.length} rows ready.</strong>{" "}
             {pendingPreviewRowCount > 0
@@ -778,9 +745,9 @@ export function CsvImportSection({
                     </td>
                     <td data-label="Amount">
                       {row.transaction !== undefined
-                        ? formatAmount(row.transaction.amountMinor)
+                        ? formatAmount(row.transaction.amountMinor, row.transaction.currencyCode ?? "NOK")
                         : row.pendingObservation !== undefined
-                          ? formatAmount(row.pendingObservation.amountMinor)
+                          ? formatAmount(row.pendingObservation.amountMinor, row.pendingObservation.currencyCode ?? "NOK")
                           : "Not ready"}
                     </td>
                     <td data-label="Currency">
@@ -806,7 +773,7 @@ export function CsvImportSection({
                               <details className="import-duplicate-match-details">
                                 <summary>Compare existing transaction</summary>
                                 <span className="import-duplicate-match">
-                                  Existing: {row.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {row.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(row.duplicateMatch.matchingTransaction.amountMinor)}
+                                  Existing: {row.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {row.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(row.duplicateMatch.matchingTransaction.amountMinor, row.duplicateMatch.matchingTransaction.currencyCode ?? "NOK")}
                                 </span>
                               </details>
                               <fieldset aria-label={`Duplicate decision for row ${row.rowIndex + 1}`}>
@@ -846,6 +813,30 @@ export function CsvImportSection({
                 Rows {previewPage * PREVIEW_PAGE_SIZE + 1}-{Math.min((previewPage + 1) * PREVIEW_PAGE_SIZE, preview.rows.length)} of {preview.rows.length.toLocaleString("nb-NO")} · Page {previewPage + 1} of {previewPageCount}
               </span>
               <button type="button" disabled={previewPage + 1 >= previewPageCount} onClick={() => setPreviewPage((page) => Math.min(previewPageCount - 1, page + 1))}>Next rows</button>
+            </div>
+          )}
+          {importState.status !== "success" && (
+            <div className="import-preview-confirmation">
+              <button
+                id="csv-confirm-button"
+                type="button"
+                onClick={handleImport}
+                aria-describedby="csv-confirm-help"
+                disabled={confirmationDisabled}
+              >
+                Confirm CSV import
+              </button>
+              <p id="csv-confirm-help" className="import-action-help">
+                {importState.status === "pending"
+                  ? getImportPendingMessage(stage)
+                  : !isMappingCurrent
+                    ? <>Validate the updated column mapping before confirming. <a href="#csv-preview-button">Update preview</a>.</>
+                    : unresolvedDuplicateRows[0] !== undefined
+                      ? <>Choose whether to skip or import duplicate <a href={`#csv-preview-row-${unresolvedDuplicateRows[0].rowIndex}`}>row {unresolvedDuplicateRows[0].rowIndex + 1}</a> before confirming.</>
+                      : firstInvalidRow !== undefined
+                        ? <>Row <a href={`#csv-preview-row-${firstInvalidRow.rowIndex}`}>{firstInvalidRow.rowIndex + 1}</a> will be kept for review and will not become a transaction.</>
+                        : "Review the evidence above, then confirm. Nothing is saved yet."}
+              </p>
             </div>
           )}
           </section>

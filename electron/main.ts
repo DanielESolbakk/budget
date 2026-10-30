@@ -14,11 +14,11 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import {
-  buildDashboardData,
   buildDashboardViewContract,
   buildNokMonthlyReport,
   createMonthlyCategoryTargetStore,
   queryAccountCoverageAssessment,
+  queryHouseholdDashboardData,
   reloadMonthlyCategoryTargets,
   type DashboardData,
   type DashboardViewContract,
@@ -312,7 +312,8 @@ function assertTrustedRenderer(event: Electron.IpcMainInvokeEvent): void {
   }
   const senderUrl = event.senderFrame?.url;
   const packagedRendererUrl = pathToFileURL(join(__dirname, "../renderer/index.html")).href;
-  if (senderUrl === packagedRendererUrl) return;
+  // Fragment navigation stays within the approved renderer document.
+  if (senderUrl?.split("#", 1)[0] === packagedRendererUrl) return;
 
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
   if (senderUrl !== undefined && rendererUrl !== undefined) {
@@ -864,13 +865,15 @@ function pdfPreviewReceiptFailure(error: ImportPreviewError): PdfImportResponse 
 }
 
 function getDashboardData(): DashboardData {
-  return buildDashboardData({ monthlyTotals: localLedgerDatabase.listMonthlyTotals(sampleHousehold.id) });
+  return queryHouseholdDashboardData(localLedgerDatabase, sampleHousehold.id);
 }
 
 function getViewData(yearMonth: string): DashboardViewContract {
   return buildDashboardViewContract({
     transactions: localLedgerDatabase.getTransactionsForMonth(sampleHousehold.id, yearMonth),
     selectedYearMonth: yearMonth,
+    accounts: localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id),
+    rates: localLedgerDatabase.listExchangeRates(),
     monthlyCategoryTargetStore: sampleTargetStore,
   });
 }

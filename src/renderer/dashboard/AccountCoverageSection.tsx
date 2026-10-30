@@ -216,7 +216,7 @@ export function AccountCoverageSection(): React.JSX.Element {
 
   return (
     <section className="account-coverage-section" aria-label="Account statement coverage" aria-busy={isLoading}>
-      <div className="section-heading">
+      <div className="section-heading destination-heading">
         <h2>Account statement coverage</h2>
         <p>Record confirmed statement periods and dated balance checkpoints before relying on account trends.</p>
       </div>

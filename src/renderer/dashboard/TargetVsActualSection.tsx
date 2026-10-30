@@ -44,10 +44,14 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
   }
 
   const { rows } = viewContract.snapshot.targetVsActualCategoryRows;
+  const isIncomplete = (viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0;
   if (rows.length === 0) {
     return (
       <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>
         <h2>Target vs Actual</h2>
+        {isIncomplete && (
+          <p className="field-help">Actuals show known NOK amounts only. Deltas remain incomplete until missing dated rates are recorded.</p>
+        )}
         <p>No target rows for this month.</p>
       </section>
     );
@@ -56,6 +60,9 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
   return (
     <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>
       <h2>Target vs Actual</h2>
+      {isIncomplete && (
+        <p className="field-help">Actuals show known NOK amounts only. Deltas remain incomplete until missing dated rates are recorded.</p>
+      )}
       <table className="target-vs-actual-table">
         <thead>
           <tr>
@@ -71,7 +78,7 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
               <td data-label="Category">{renderCategoryLabel(row.categoryId)}</td>
               <td data-label="Target">{renderTargetOrDelta(row.targetMinor)}</td>
               <td data-label="Actual">{formatMinor(row.actualMinor)}</td>
-              <td data-label="Delta">{renderTargetOrDelta(row.deltaMinor)}</td>
+              <td data-label="Delta">{isIncomplete && row.targetMinor !== null ? "Incomplete" : renderTargetOrDelta(row.deltaMinor)}</td>
             </tr>
           ))}
         </tbody>

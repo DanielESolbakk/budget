@@ -81,7 +81,7 @@ test.describe("Dashboard renderer smoke", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
     });
 
-    await expect(dashboard.monthlyAttention).toContainText("No uncategorized transactions this month.");
+    await expect(dashboard.monthlyAttention).toContainText("No category decisions need review this month.");
     await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
@@ -141,7 +141,7 @@ test.describe("Dashboard renderer smoke", () => {
     expect(overflowingAttentionItems).toEqual([]);
   });
 
-  test("compact Target vs Actual exposes its horizontal scroll and column headers", async ({
+  test("compact Target vs Actual keeps labelled amounts in view and preserves column headers", async ({
     dashboard,
     electronApp,
   }) => {
@@ -160,8 +160,23 @@ test.describe("Dashboard renderer smoke", () => {
       scrollWidth: section.scrollWidth,
       scrollbarHeight: getComputedStyle(section, "::-webkit-scrollbar").height,
     }));
-    expect(scrollState.scrollWidth).toBeGreaterThan(scrollState.clientWidth);
+    expect(scrollState.scrollWidth).toBeLessThanOrEqual(scrollState.clientWidth);
     expect(scrollState.scrollbarHeight).toBe("10px");
+    const sectionBounds = await dashboard.targetVsActualSection.boundingBox();
+    if (sectionBounds === null) throw new Error("The monthly comparison must be visible.");
+    const rows = dashboard.targetVsActualSection.locator("tbody tr");
+    await expect(rows).toHaveCount(2);
+    for (const row of await rows.all()) {
+      await expect(row.locator("td")).toHaveCount(4);
+      for (const label of ["Category", "Target", "Actual", "Delta"]) {
+        const cell = row.locator(`td[data-label="${label}"]`);
+        await expect(cell).toBeVisible();
+        const bounds = await cell.boundingBox();
+        if (bounds === null) throw new Error(`${label} must be visible.`);
+        expect(bounds.x).toBeGreaterThanOrEqual(sectionBounds.x);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(sectionBounds.x + sectionBounds.width);
+      }
+    }
   });
 
   test("Scenario 6: target overruns link to their monthly details", async ({ dashboard }) => {

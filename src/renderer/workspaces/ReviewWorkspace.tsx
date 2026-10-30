@@ -37,6 +37,7 @@ interface ReviewWorkspaceProps {
   onMonthChange: (yearMonth: string) => void;
   onOpenTransactions: () => void;
   onOpenCoverage: () => void;
+  onTargetSaved: () => void;
   onRetry: () => void;
 }
 
@@ -51,6 +52,7 @@ export function ReviewWorkspace({
   onMonthChange,
   onOpenTransactions,
   onOpenCoverage,
+  onTargetSaved,
   onRetry,
 }: ReviewWorkspaceProps): React.JSX.Element {
   const viewContract: DashboardViewContract | null = state.status === "ready" ? state.viewContract : null;
@@ -124,8 +126,7 @@ export function ReviewWorkspace({
           {isChangingMonth && <p className="rail-status" role="status">Updating month...</p>}
           {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
 
-          <div className="review-grid">
-            <div className="review-primary">
+          <div className="review-overview">
               <MonthlyTotalsSection viewContract={state.viewContract} />
               <aside className="monthly-attention" aria-label="Monthly attention">
                 <h3>Monthly checks</h3>
@@ -135,9 +136,11 @@ export function ReviewWorkspace({
                   <div className="monthly-attention-content">
                     <div className="monthly-attention-item">
                       <p>
-                        {monthlyAttention.hasUncategorizedTransactions
-                          ? "Uncategorized transactions need a category this month."
-                          : "No uncategorized transactions this month."}
+                        {monthlyAttention.categoryReviewCount > 0
+                          ? `${monthlyAttention.categoryReviewCount} category ${
+                            monthlyAttention.categoryReviewCount === 1 ? "decision needs" : "decisions need"
+                          } review this month.`
+                          : "No category decisions need review this month."}
                       </p>
                       <button type="button" onClick={onOpenTransactions}>
                         Open all-month queue
@@ -151,7 +154,10 @@ export function ReviewWorkspace({
                             : "categories"} over target
                         </a>
                       ) : (
-                        <p>No categories over target.</p>
+                        <p>{(state.viewContract.state !== "loading" &&
+                          (state.viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0)
+                          ? "Budget checks are incomplete until missing dated rates are recorded."
+                          : "No categories over target."}</p>
                       )}
                     </div>
                     <AccountCoverageSummary
@@ -162,8 +168,14 @@ export function ReviewWorkspace({
                   </div>
                 )}
               </aside>
+          </div>
+          <div className="review-grid">
+            <div className="review-primary">
               <TargetVsActualSection viewContract={state.viewContract} />
-              <CategoryTargetEntrySection selectedYearMonth={state.selectedYearMonth} />
+              <CategoryTargetEntrySection
+                selectedYearMonth={state.selectedYearMonth}
+                onTargetSaved={onTargetSaved}
+              />
             </div>
             <aside className="review-support" aria-label="Monthly context">
               <CategoryBreakdownSection viewContract={state.viewContract} />

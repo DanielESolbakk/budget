@@ -74,18 +74,54 @@ test.describe("Categorization review workflow", () => {
 
     await appShell.openWorkspace("Transactions");
     await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    const correction = reviewQueue.categorySelect("MERCHANT-005");
+    await expect(correction).toHaveAccessibleDescription(/future transactions matching this merchant/i);
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review category decisions (2)");
     await ledger.reviewUncategorizedButton.click();
     await expect(reviewQueue.firstCategorySelect).toBeFocused();
     await reviewQueue.categorySelect("MERCHANT-005").selectOption("groceries");
     await reviewQueue.saveButton("MERCHANT-005").click();
 
     await expect(reviewQueue.progressStatus).toHaveText("1 reviewed this session; 1 remaining to review");
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (1)");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review category decisions (1)");
     await expect(reviewQueue.firstCategorySelect).toBeFocused();
     await expect(reviewQueue.savedStatus).toHaveText(
       "Category saved. Future matching for this merchant will use Groceries & food."
     );
+  });
+
+  test("monthly checks surface a categorized low-confidence decision and open its review queue", async ({
+    appShell,
+    databasePath,
+    dashboard,
+    reviewQueue,
+    window,
+  }) => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      const result = database.prepare(`
+        UPDATE transactions SET categorization_json = ?
+        WHERE id = (
+          SELECT id FROM transactions
+          WHERE booked_at_iso LIKE '2026-05%' AND category_id IS NOT NULL LIMIT 1
+        )
+      `).run(JSON.stringify({
+        status: "ambiguous", categoryId: "groceries", confidence: 0.35,
+        confidenceLevel: "low", requiresReview: true, matchingRules: [],
+      }));
+      expect(result.changes).toBe(1);
+    } finally {
+      database.close();
+    }
+    await window.reload();
+    await dashboard.monthSelector.selectOption("2026-05");
+    await expect(dashboard.monthlyAttention).toContainText("1 category decision needs review this month.");
+    await expect(dashboard.monthlyAttention).toContainText("Coverage includes all recorded periods, not only this month.");
+    await dashboard.reviewQueueAction.click();
+    await expect(appShell.workspace("Transactions")).toBeVisible();
+    await expect(reviewQueue.progressStatus).toContainText("1 remaining to review");
+    await expect(reviewQueue.firstCategorySelect).toBeFocused();
+    await expect(window.getByRole("button", { name: "Review category decisions (1)", exact: true })).toBeVisible();
   });
 
   test("prioritizes lower-confidence transactions before older bookings", async ({
@@ -192,7 +228,7 @@ test.describe("Categorization review workflow", () => {
 
     await appShell.openWorkspace("Transactions");
     await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review category decisions (2)");
 
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_REVIEW_LIST_DELAY_MS"] = "800";
@@ -211,7 +247,7 @@ test.describe("Categorization review workflow", () => {
     await expect(reviewQueue.progressStatus).not.toBeVisible();
 
     await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 3 remaining to review");
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (3)");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review category decisions (3)");
   });
 
   test("clarifies that the review count is independent of ledger filters", async ({
@@ -229,7 +265,7 @@ test.describe("Categorization review workflow", () => {
     await expect(reviewQueue.progressStatus).toHaveText("0 reviewed this session; 2 remaining to review");
     await ledger.merchantInput.fill("no ledger matches");
     await expect(ledger.resultStatus).toHaveText("0 ledger transactions");
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review category decisions (2)");
     await expect(ledger.reviewUncategorizedScope).toBeVisible();
   });
 
@@ -250,13 +286,13 @@ test.describe("Categorization review workflow", () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
     });
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review category decisions (2)");
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
 
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review category decisions (2)");
     await expect(ledger.reviewUncategorizedButton).toBeInViewport();
   });
 
@@ -278,7 +314,7 @@ test.describe("Categorization review workflow", () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
     });
-    await expect(ledger.reviewUncategorizedButton).toHaveText("Review uncategorized (2)");
+    await expect(ledger.reviewUncategorizedButton).toHaveText("Review category decisions (2)");
     await expect(ledger.reviewUncategorizedScope).toBeVisible();
     const desktopDimensions = await window.evaluate(() => ({
       clientHeight: document.documentElement.clientHeight,
@@ -360,7 +396,7 @@ test.describe("Categorization review workflow", () => {
 
     await appShell.openWorkspace("Review");
   await dashboard.monthSelector.selectOption("2026-05");
-    await expect(dashboard.monthlyAttention).toContainText("Uncategorized transactions need a category this month.");
+    await expect(dashboard.monthlyAttention).toContainText("category decisions need review this month.");
     await dashboard.reviewQueueAction.click();
 
     await appShell.openWorkspace("Transactions");

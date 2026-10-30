@@ -49,6 +49,7 @@ local/sanitization-map.json
 /.impeccable/review/
 /.impeccable/critique/
 /.impeccable/live/
+/.impeccable/surfaces/
 
 /.eslintcache
 /npm-debug.log*

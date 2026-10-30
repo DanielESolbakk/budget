@@ -125,4 +125,57 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     await expect(categoryTarget.savedTargetItem("groceries")).toContainText("125,00");
     await expect(categoryTarget.categoryIdInput).not.toBeVisible();
   });
+
+  test("saving a target synchronizes its monthly comparison and over-target checks", async ({
+    categoryTarget,
+    dashboard,
+  }) => {
+    const groceries = dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "groceries" });
+    await categoryTarget.editTargetButton("groceries").click();
+    await categoryTarget.targetAmountInput.fill("10");
+    await categoryTarget.saveButton.click();
+
+    await expect(categoryTarget.savedConfirmation).toBeVisible();
+    await expect(groceries.getByRole("cell").nth(1)).toContainText("10,00");
+    await expect(groceries.getByRole("cell").nth(2)).toContainText("85,00");
+    await expect(groceries.getByRole("cell").nth(3)).toContainText("75,00");
+    await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
+    await expect(dashboard.monthSelector).toHaveValue("2026-05");
+
+    await categoryTarget.editTargetButton("groceries").click();
+    await categoryTarget.targetAmountInput.fill("125");
+    await categoryTarget.saveButton.click();
+    await expect(groceries.getByRole("cell").nth(1)).toContainText("125,00");
+    await expect(groceries.getByRole("cell").nth(3)).toContainText("−40,00");
+    await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
+  });
+
+  test("a failed post-save refresh explains stale review data and retries without losing the target", async ({
+    categoryTarget,
+    dashboard,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+    });
+    await categoryTarget.editTargetButton("groceries").click();
+    await categoryTarget.targetAmountInput.fill("10");
+    await categoryTarget.saveButton.click();
+
+    await expect(categoryTarget.savedConfirmation).toBeVisible();
+    await expect(categoryTarget.savedTargetItem("groceries")).toContainText("10,00");
+    const failure = window.getByRole("alert").filter({ hasText: "Review refresh failed" });
+    await expect(failure).toBeVisible();
+    await expect(dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "groceries" }))
+      .toContainText("90,00");
+    await electronApp.evaluate(() => {
+      delete process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"];
+    });
+    await failure.getByRole("button", { name: "Try again" }).click();
+    await expect(failure).not.toBeVisible();
+    await expect(dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "groceries" })
+      .getByRole("cell").nth(3)).toContainText("75,00");
+    await expect(dashboard.monthSelector).toHaveValue("2026-05");
+  });
 });

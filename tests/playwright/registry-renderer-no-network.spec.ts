@@ -25,10 +25,10 @@ test("property, loan, and share workflows do not attempt renderer network reques
   });
   await expect(properties.valuationRow("Home", "2026-10-01")).toContainText("NOK");
   const property = properties.property("Home");
-  await property.getByLabel("Household ownership share (basis points)", { exact: true })
-    .fill("7500");
+  await property.getByLabel("Household ownership share (%)", { exact: true })
+    .fill("75");
   await property.getByRole("button", { name: "Save ownership share", exact: true }).click();
-  await expect(property.getByRole("form", { name: "Edit Household ownership share (basis points)" })
+  await expect(property.getByRole("form", { name: "Edit Household ownership share (%)" })
     .getByRole("status")).toContainText("Ownership share saved");
 
   await appShell.openWorkspace("Loans");
@@ -45,22 +45,22 @@ test("property, loan, and share workflows do not attempt renderer network reques
   });
   await loans.addBalance("Mortgage", { effectiveDate: "2026-10-01", amount: "3000000" });
   const loan = loans.loan("Mortgage");
-  await loan.getByLabel("Household loan responsibility share (basis points)", { exact: true })
-    .fill("5000");
+  await loan.getByLabel("Household loan responsibility share (%)", { exact: true })
+    .fill("50");
   await loan.getByRole("button", { name: "Save responsibility share", exact: true }).click();
-  await expect(loan.getByRole("form", { name: "Edit Household loan responsibility share (basis points)" })
+  await expect(loan.getByRole("form", { name: "Edit Household loan responsibility share (%)" })
     .getByRole("status")).toContainText("Responsibility share saved");
   await loans.expandLoanDetails("Mortgage");
   await expect(loans.balanceRow("Mortgage", "2026-10-01")).toContainText("NOK");
 
   await appShell.openWorkspace("Properties");
   await expect(properties.property("Home").getByLabel(
-    "Household ownership share (basis points)", { exact: true }
-  )).toHaveValue("7500");
+    "Household ownership share (%)", { exact: true }
+  )).toHaveValue("75");
   await appShell.openWorkspace("Loans");
   await expect(loans.loan("Mortgage").getByLabel(
-    "Household loan responsibility share (basis points)", { exact: true }
-  )).toHaveValue("5000");
+    "Household loan responsibility share (%)", { exact: true }
+  )).toHaveValue("50");
 
   expect(await rendererNetworkAttempts(window)).toEqual([]);
   expect(await rendererNetworkBlockedAttempts(window)).toEqual([]);

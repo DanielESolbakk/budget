@@ -11,6 +11,7 @@ import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage 
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
 import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
 import { ImportReconciliationSummary } from "./ImportReconciliationSummary.js";
+import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
 
 type ImportState =
   | { status: "idle" }
@@ -32,17 +33,6 @@ type ImportState =
   | { status: "validation"; errors: PdfImportResponse & { ok: false }; source: "preview" | "import" };
 
 const PREVIEW_PAGE_SIZE = 100;
-
-const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
-  style: "currency",
-  currency: "NOK",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function formatAmount(amountMinor: number): string {
-  return nokCurrencyFormatter.format(amountMinor / 100);
-}
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("nb-NO", {
@@ -454,7 +444,7 @@ export function PdfImportSection({
               className={importState.unresolvedRowCount > 0 ? "import-secondary-action" : undefined}
               onClick={onReviewUncategorized}
             >
-              Review uncategorized transactions
+              Review category decisions
             </button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
             <button type="button" className="import-secondary-action" onClick={() => void onChooseFile()}>
@@ -559,7 +549,7 @@ export function PdfImportSection({
                 <ul aria-label={`${statementFormat} pending transactions`}>
                   {pendingObservations.map((observation) => (
                     <li key={observation.id}>
-                      Line {observation.sourceRowIndex + 1} · {formatDate(observation.transactionDateIso)} · {observation.merchantRaw} · {formatAmount(observation.amountMinor)} · {observation.sourceStatus}
+                      Line {observation.sourceRowIndex + 1} · {formatDate(observation.transactionDateIso)} · {observation.merchantRaw} · {formatAmount(observation.amountMinor, observation.currencyCode ?? "NOK")} · {observation.sourceStatus}
                       {observation.sourceReference === undefined
                         ? " · No source reference"
                         : ` · Reference ${observation.sourceReference}`}
@@ -588,39 +578,6 @@ export function PdfImportSection({
               </ul>
             </details>
           )}
-          <div className="import-preview-confirmation">
-            <button
-              id="pdf-confirm-button"
-              type="button"
-              onClick={handleImport}
-              aria-describedby="pdf-confirm-help"
-              disabled={importState.status === "pending" || preview === null || unresolvedDuplicateCandidates.length > 0}
-            >
-              Confirm statement import
-            </button>
-            <p id="pdf-confirm-help" className="import-action-help">
-              {importState.status === "pending"
-                ? "Wait for the current import operation to finish."
-                  : unresolvedRowCount > 0
-                      ? `Confirm to import valid rows and retain ${unresolvedRowCount} unresolved row${unresolvedRowCount === 1 ? "" : "s"} for review.`
-                    : unresolvedDuplicateCandidates[0] !== undefined
-                      ? <>
-                          Choose whether to skip or import duplicate row {unresolvedDuplicateCandidates[0].rowIndex + 1} before confirming.{" "}
-                          <button
-                            type="button"
-                            className="import-secondary-action import-inline-action"
-                            onClick={() => {
-                              const rowIndex = unresolvedDuplicateCandidates[0]!.rowIndex;
-                              setPreviewPage(Math.floor(rowIndex / PREVIEW_PAGE_SIZE));
-                              setDuplicateRowToFocus(rowIndex);
-                            }}
-                          >
-                            Go to unresolved duplicate
-                          </button>
-                        </>
-                      : "Review the statement rows below, then confirm. Nothing is saved yet."}
-            </p>
-          </div>
           <p>Statement format recognized: {preview.adapterId === "rogaland-sparebank-text-v1" ? "Rogaland Sparebank digital statement" : "supported bank statement"}.</p>
           <div className="preview-table-wrap">
             <table className="import-preview-table">
@@ -638,7 +595,7 @@ export function PdfImportSection({
                       <td data-label="Merchant">
                         <span className="import-preview-cell-value">{transaction.merchantRaw}</span>
                       </td>
-                      <td data-label="Amount">{formatAmount(transaction.amountMinor)}</td>
+                      <td data-label="Amount">{formatAmount(transaction.amountMinor, transaction.currencyCode ?? "NOK")}</td>
                       <td data-label="Currency">{transaction.currencyCode ?? "NOK"}</td>
                       <td data-label="Status and duplicate decision">
                         {duplicateCandidate === undefined
@@ -650,7 +607,7 @@ export function PdfImportSection({
                               <details className="import-duplicate-match-details">
                                 <summary>Compare existing transaction</summary>
                                 <span className="import-duplicate-match">
-                                  Existing: {duplicateCandidate.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {duplicateCandidate.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(duplicateCandidate.duplicateMatch.matchingTransaction.amountMinor)}
+                                  Existing: {duplicateCandidate.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {duplicateCandidate.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(duplicateCandidate.duplicateMatch.matchingTransaction.amountMinor, duplicateCandidate.duplicateMatch.matchingTransaction.currencyCode ?? "NOK")}
                                 </span>
                               </details>
                               <fieldset aria-label={`Duplicate decision for row ${rowIndex + 1}`}>
@@ -675,6 +632,39 @@ export function PdfImportSection({
               <button type="button" disabled={previewPage + 1 >= previewPageCount} onClick={() => setPreviewPage((page) => Math.min(previewPageCount - 1, page + 1))}>Next rows</button>
             </div>
           )}
+          <div className="import-preview-confirmation">
+            <button
+              id="pdf-confirm-button"
+              type="button"
+              onClick={handleImport}
+              aria-describedby="pdf-confirm-help"
+              disabled={importState.status === "pending" || unresolvedDuplicateCandidates.length > 0}
+            >
+              Confirm statement import
+            </button>
+            <p id="pdf-confirm-help" className="import-action-help">
+              {importState.status === "pending"
+                ? "Wait for the current import operation to finish."
+                : unresolvedDuplicateCandidates[0] !== undefined
+                  ? <>
+                      Choose whether to skip or import duplicate row {unresolvedDuplicateCandidates[0].rowIndex + 1} before confirming.{" "}
+                      <button
+                        type="button"
+                        className="import-secondary-action import-inline-action"
+                        onClick={() => {
+                          const rowIndex = unresolvedDuplicateCandidates[0]!.rowIndex;
+                          setPreviewPage(Math.floor(rowIndex / PREVIEW_PAGE_SIZE));
+                          setDuplicateRowToFocus(rowIndex);
+                        }}
+                      >
+                        Go to unresolved duplicate
+                      </button>
+                    </>
+                  : unresolvedRowCount > 0
+                    ? `Confirm to import valid rows and retain ${unresolvedRowCount} unresolved row${unresolvedRowCount === 1 ? "" : "s"} for review.`
+                    : "Review the evidence above, then confirm. Nothing is saved yet."}
+            </p>
+          </div>
           </section>
         </div>
       )}
