@@ -220,7 +220,7 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
         <div className="import-success">
           <p role="status">Added {entryState.response.transaction.merchantRaw} to your ledger.</p>
           <div className="import-success-actions" aria-label="Next transaction actions">
-            <button type="button" onClick={onReviewUncategorized}>Review uncategorized transactions</button>
+            <button type="button" onClick={onReviewUncategorized}>Review category decisions</button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
           </div>
         </div>

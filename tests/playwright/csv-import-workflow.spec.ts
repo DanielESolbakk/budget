@@ -480,10 +480,10 @@ test.describe("CSV import renderer workflow", () => {
 
       await expect(csvImport.importSection.getByRole("navigation", { name: "CSV import stages" })).not.toBeVisible();
 
-      await expect(window.getByRole("button", { name: "Review uncategorized transactions", exact: true })).toBeVisible();
+      await expect(window.getByRole("button", { name: "Review category decisions", exact: true })).toBeVisible();
       await expect(window.getByRole("button", { name: "Return to ledger", exact: true })).toBeVisible();
 
-      await window.getByRole("button", { name: "Review uncategorized transactions", exact: true }).click();
+      await window.getByRole("button", { name: "Review category decisions", exact: true }).click();
       await expect(appShell.destination("Transactions")).toHaveAttribute("aria-current", "page");
       await expect(window.getByRole("region", { name: "Categorization Review", exact: true })).toBeVisible();
       await expect(window.getByRole("combobox", { name: /Category for/ }).first()).toBeFocused();

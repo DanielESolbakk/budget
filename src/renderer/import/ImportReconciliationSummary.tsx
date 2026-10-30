@@ -56,26 +56,46 @@ export function ImportReconciliationSummary({
   const [visibleDispositionCount, setVisibleDispositionCount] = React.useState(DISPOSITION_BATCH_SIZE);
   const dispositionStatusRef = React.useRef<HTMLParagraphElement>(null);
   let persistedRowCount = 0;
-  let attentionRowCount = 0;
+  let nonPersistedRowCount = 0;
+  let skippedRowCount = 0;
+  let pendingRowCount = 0;
+  let actionRowCount = 0;
   const visibleRows: ImportReconciliationRow[] = [];
   for (const row of reconciliation.rows) {
     if (row.disposition === "persisted") {
       persistedRowCount += 1;
       continue;
     }
-    attentionRowCount += 1;
+    nonPersistedRowCount += 1;
+    if (row.disposition === "duplicate" || row.disposition === "skipped") skippedRowCount += 1;
+    else if (row.disposition === "pending") pendingRowCount += 1;
+    else actionRowCount += 1;
     if (visibleRows.length < visibleDispositionCount) {
       visibleRows.push(row);
     }
   }
 
+  const hasUnexplainedDifference = reconciliation.amounts.some((amount) => {
+    const explainedDifference = reconciliation.rows
+      .filter((row) => row.disposition !== "persisted" && row.currencyCode === amount.currencyCode &&
+        row.amountMinor !== undefined &&
+        (amount.direction === "incoming" ? row.amountMinor > 0 : row.amountMinor < 0))
+      .reduce((total, row) => total + row.amountMinor!, 0);
+    return explainedDifference !== amount.differenceMinor;
+  });
+  const needsReview = actionRowCount > 0 ||
+    reconciliation.rows.length === 0 ||
+    reconciliation.amounts.length === 0 ||
+    reconciliation.rows.some((row) => row.amountMinor === undefined) ||
+    hasUnexplainedDifference;
+
   function showMoreDispositions(): void {
     const nextVisibleCount = Math.min(
       visibleDispositionCount + DISPOSITION_BATCH_SIZE,
-      attentionRowCount
+      nonPersistedRowCount
     );
     setVisibleDispositionCount(nextVisibleCount);
-    if (nextVisibleCount === attentionRowCount) {
+    if (nextVisibleCount === nonPersistedRowCount) {
       dispositionStatusRef.current?.focus();
     }
   }
@@ -84,13 +104,15 @@ export function ImportReconciliationSummary({
     <section className="import-reconciliation" aria-label="Import reconciliation">
       <h4>Statement reconciliation</h4>
       <p
-        className={reconciliation.fullyReconciled ? "import-reconciliation-status is-matched" : "import-reconciliation-status is-unmatched"}
+        className={`import-reconciliation-status ${needsReview ? "is-unmatched" : reconciliation.fullyReconciled ? "is-matched" : "is-accounted"}`}
         role="status"
         aria-label="Reconciliation status"
       >
         {reconciliation.fullyReconciled
           ? "Matched: all source rows were persisted and the totals agree."
-          : "Needs review: totals differ or one or more source rows were not persisted."}
+          : needsReview
+            ? "Needs review: unresolved rows or unexplained differences remain."
+            : "All source rows accounted for. Differences reflect skipped or pending rows, not new transactions."}
       </p>
       {reconciliation.amounts.length === 0 ? (
         <p className="import-reconciliation-empty">
@@ -139,7 +161,10 @@ export function ImportReconciliationSummary({
             ? "No source transaction rows were available."
             : `${persistedRowCount} of ${reconciliation.rows.length} source transaction rows persisted.`}
         </p>
-        {attentionRowCount > 0 && (
+        <p>
+          {persistedRowCount} added; {skippedRowCount} deliberately skipped; {pendingRowCount} pending; {actionRowCount} need action.
+        </p>
+        {nonPersistedRowCount > 0 && (
           <p
             ref={dispositionStatusRef}
             className="import-reconciliation-disposition-status"
@@ -148,13 +173,13 @@ export function ImportReconciliationSummary({
             tabIndex={-1}
           >
             Showing {visibleRows.length.toLocaleString("nb-NO")} of{" "}
-            {attentionRowCount.toLocaleString("nb-NO")} rows needing attention.
+            {nonPersistedRowCount.toLocaleString("nb-NO")} rows not added as transactions.
           </p>
         )}
         <ul aria-label="Source row dispositions">
           {reconciliation.rows.length === 0 ? (
             <li>No source transaction row dispositions were returned.</li>
-          ) : attentionRowCount === 0 ? (
+          ) : nonPersistedRowCount === 0 ? (
             <li>Every source transaction row was persisted.</li>
           ) : visibleRows.map((row) => (
             <li key={row.sourceRowIndex}>
@@ -172,7 +197,7 @@ export function ImportReconciliationSummary({
             </li>
           ))}
         </ul>
-        {visibleRows.length < attentionRowCount && (
+        {visibleRows.length < nonPersistedRowCount && (
           <button
             type="button"
             className="import-reconciliation-more"

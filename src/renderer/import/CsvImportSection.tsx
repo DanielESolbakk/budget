@@ -630,7 +630,7 @@ export function CsvImportSection({
               className={importState.unresolvedCount > 0 ? "import-secondary-action" : undefined}
               onClick={onReviewUncategorized}
             >
-              Review uncategorized transactions
+              Review category decisions
             </button>
             <button type="button" className="import-secondary-action" onClick={onOpenLedger}>Return to ledger</button>
             <button type="button" className="import-secondary-action" onClick={() => void onChooseFile()}>

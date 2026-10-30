@@ -330,7 +330,7 @@ export function CategoryReviewSection({
       )}
       {hasLoaded && !isLoading && loadError === null && transactions.length === 0 ? (
         <div className="empty-state">
-          <strong>Nothing needs your attention.</strong>
+          <strong>No category decisions need review.</strong>
           <p>Uncategorized transactions and low-confidence categorizations from CSV/PDF imports or manual entry will appear here.</p>
         </div>
       ) : transactions.length > 0 ? (
@@ -358,11 +358,15 @@ export function CategoryReviewSection({
                 )}
               </div>
               <div className="review-queue-action">
+                <p id={`category-scope-${transaction.id}`}>
+                  Saving also remembers this category for future transactions matching this merchant.
+                </p>
                 <label htmlFor={`category-for-${transaction.id}`}>
                   <span>Choose a category</span>
                   <select
                     id={`category-for-${transaction.id}`}
                     aria-label={`Category for ${transaction.merchantRaw}`}
+                    aria-describedby={`category-scope-${transaction.id}`}
                     value={selectedCategories[transaction.id] ?? ""}
                     onChange={(event) =>
                       setSelectedCategories((current) => ({
@@ -381,6 +385,7 @@ export function CategoryReviewSection({
                 </label>
                 <button
                   type="button"
+                  aria-describedby={`category-scope-${transaction.id}`}
                   disabled={
                     savingTransactionId === transaction.id ||
                     (selectedCategories[transaction.id]?.trim().length ?? 0) === 0

@@ -15,6 +15,7 @@
   --panel-soft: #eaf1f5;
   --line: #dce5ec;
   --line-strong: #a0b2c0;
+  --field-border: #7a8c9c;
   --orange: #086c69;
   --orange-soft: #e2f1ee;
   --info: #246285;
@@ -32,6 +33,15 @@
 
 * {
   box-sizing: border-box;
+}
+
+.workspace-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 html {
@@ -243,7 +253,7 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--field-border);
   min-height: 44px;
   border-radius: 6px;
   padding: 0.72rem 0.8rem;
@@ -613,7 +623,7 @@ section[aria-label].destination-workspace {
 
 .month-picker label {
   color: var(--paper);
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
@@ -679,7 +689,7 @@ section[aria-label].destination-workspace {
 .account-coverage-summary-copy > h4 {
   margin: 0;
   color: var(--paper);
-  font-size: 0.82rem;
+  font-size: 0.875rem;
 }
 
 .account-coverage-summary-copy p {
@@ -693,7 +703,7 @@ section[aria-label].destination-workspace {
 .monthly-attention-item p,
 .monthly-attention-item a {
   color: var(--paper-muted);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 
@@ -709,7 +719,7 @@ section[aria-label].destination-workspace {
   padding: 0.5rem 0.65rem;
   color: var(--paper);
   background: var(--panel);
-  font-size: 0.8rem;
+  font-size: 0.875rem;
 }
 
 .monthly-attention button:hover:not(:disabled) {
@@ -2130,7 +2140,7 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
 
 .ledger-sort-direction {
   color: var(--orange);
-  font-size: 0.65rem;
+  font-size: 0.875rem;
   font-weight: 800;
 }
 
@@ -2190,7 +2200,7 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
 .ledger-quick-filters button small {
   display: block;
   color: var(--paper-muted);
-  font-size: 0.65rem;
+  font-size: 0.875rem;
 }
 
 .ledger-quick-filters button[aria-pressed="true"] small {
@@ -2244,9 +2254,11 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
 
 .ledger-saved-view-details > summary {
   width: fit-content;
+  min-height: 32px;
+  padding-block: 0.45rem;
   color: var(--paper-muted);
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
@@ -3460,6 +3472,18 @@ section[aria-label="Category Target Entry"] [role="status"] {
   color: var(--success);
 }
 
+section[aria-label="CSV Import"] .import-reconciliation-status.is-unmatched,
+section[aria-label="PDF Import"] .import-reconciliation-status.is-unmatched {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+section[aria-label="CSV Import"] .import-reconciliation-status.is-accounted,
+section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
+  border-color: var(--field-border);
+  color: var(--paper);
+}
+
 .work-bin {
   margin-top: 4.5rem;
   border-top: 3px solid var(--orange);
@@ -4339,10 +4363,6 @@ section[aria-label="Category Target Entry"] [role="status"] {
     min-width: 0;
     flex: 0 0 128px;
     gap: 0.3rem;
-  }
-
-  .month-picker label {
-    font-size: 0.72rem;
   }
 
   .month-picker-code {
@@ -5487,7 +5507,7 @@ section[aria-label="Category Target Entry"] [role="status"] {
 
 .household-workspace input,
 .household-workspace select {
-  border-color: var(--line-strong);
+  border-color: var(--field-border);
   color: var(--household-ink);
   background-color: var(--household-paper);
 }

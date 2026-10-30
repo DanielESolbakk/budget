@@ -118,7 +118,7 @@ export class LedgerPage {
   }
 
   get reviewUncategorizedButton() {
-    return this.workspace.getByRole("button", { name: /^Review uncategorized/ });
+    return this.workspace.getByRole("button", { name: /^Review category decisions/ });
   }
 
   get reviewUncategorizedAction() {

@@ -81,7 +81,7 @@ test.describe("Dashboard renderer smoke", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
     });
 
-    await expect(dashboard.monthlyAttention).toContainText("No uncategorized transactions this month.");
+    await expect(dashboard.monthlyAttention).toContainText("No category decisions need review this month.");
     await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 

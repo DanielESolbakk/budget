@@ -260,6 +260,33 @@ test.describe("matched digital PDF import reconciliation", () => {
 test.describe("mismatched CSV import reconciliation", () => {
   test.use({ importFileDialogBehavior: "csv-selected" });
 
+  test("an intentional duplicate skip explains the difference without claiming unresolved work", async ({
+    csvImport,
+  }) => {
+    const filePath = writeCsvFixture([
+      "Date;Description;Amount Out;Currency",
+      "29.05.2026;KIWI SYNTHETIC DUPLICATE;-10.00;NOK",
+    ].join("\n"));
+    await csvImport.submitImport(filePath);
+    await expect(csvImport.successStatus).toHaveText("Added 1 transaction to your ledger.");
+    await csvImport.enterFilePath(filePath);
+    await csvImport.importButton.click();
+    await expect(csvImport.previewRegion).toBeVisible();
+    await csvImport.previewRegion.getByRole("radio", { name: "Skip duplicate" }).check();
+    await csvImport.confirmImportButton.click();
+
+    await expect(csvImport.successStatus).toHaveText("No new transactions were added.");
+    await expect(csvImport.reconciliationStatus).toContainText("All source rows accounted for");
+    await expect(csvImport.reconciliationStatus).not.toContainText("Needs review");
+    await expect(csvImport.reconciliationRegion).toContainText("1 deliberately skipped");
+    await expect(csvImport.reconciliationRegion).toContainText("0 need action");
+    await expectReconciliationAmountRow(
+      csvImport.reconciliationTable, "NOK", "Outgoing", "−10,00", "0,00", "−10,00", "Mismatch"
+    );
+    await expect(csvImport.sourceRowDispositions).toContainText("Skipped");
+    await expect(csvImport.reconciliationRegion).not.toContainText("rows needing attention");
+  });
+
   test("renders reconciliation details incrementally for large imports", async ({ csvImport, window }) => {
     const invalidRows = Array.from(
       { length: 60 },
@@ -277,9 +304,9 @@ test.describe("mismatched CSV import reconciliation", () => {
     const dispositions = csvImport.sourceRowDispositions;
     const visibleRowCount = csvImport.reconciliationRegion
       .getByRole("status")
-      .filter({ hasText: "rows needing attention" });
+      .filter({ hasText: "rows not added as transactions" });
     await expect(dispositions.getByRole("listitem")).toHaveCount(50);
-    await expect(visibleRowCount).toHaveText("Showing 50 of 60 rows needing attention.");
+    await expect(visibleRowCount).toHaveText("Showing 50 of 60 rows not added as transactions.");
     await expect(dispositions).toContainText("Row 51: Invalid, sent to review");
     await expect(dispositions).not.toContainText("Row 52: Invalid, sent to review");
 
@@ -294,7 +321,7 @@ test.describe("mismatched CSV import reconciliation", () => {
     await showMoreButton.press("Enter");
 
     await expect(dispositions.getByRole("listitem")).toHaveCount(60);
-    await expect(visibleRowCount).toHaveText("Showing 60 of 60 rows needing attention.");
+    await expect(visibleRowCount).toHaveText("Showing 60 of 60 rows not added as transactions.");
     await expect(visibleRowCount).toBeFocused();
     await expect(dispositions).toContainText("Row 61: Invalid, sent to review");
     for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {

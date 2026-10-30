@@ -1,5 +1,6 @@
 import { computeCategoryBreakdown } from "../domain/aggregation/computeCategoryBreakdown.js";
 import { computeMonthlyTotals } from "../domain/aggregation/computeMonthlyTotals.js";
+import { needsCategorizationReview } from "../domain/categorization/reviewQueue.js";
 import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
 import { convertCurrencyAmount } from "../domain/money/convertCurrencyAmount.js";
 import { simpleForecast } from "../domain/forecast/simpleForecast.js";
@@ -43,6 +44,7 @@ export type DashboardData = MonthSeries;
 
 export interface MonthlyDashboardSnapshot {
   selectedYearMonth: string;
+  categoryReviewCount: number;
   monthlyTotals: MonthlyBreakdown;
   categoryBreakdown: CategoryBreakdown;
   targetVsActualCategoryRows: TargetVsActualCategoryRows;
@@ -70,6 +72,7 @@ export type DashboardViewContract =
 
 export interface MonthlyAttentionSummary {
   hasUncategorizedTransactions: boolean;
+  categoryReviewCount: number;
   overTargetCategoryCount: number;
 }
 
@@ -436,6 +439,9 @@ export function queryMonthlyDashboardSnapshot(
 ): MonthlyDashboardSnapshot {
   return {
     selectedYearMonth,
+    categoryReviewCount: transactions.filter((transaction) =>
+      transaction.bookedAtIso.startsWith(selectedYearMonth) && needsCategorizationReview(transaction)
+    ).length,
     monthlyTotals: queryMonthlyTotals(transactions, selectedYearMonth),
     categoryBreakdown: queryCategoryBreakdown(transactions, selectedYearMonth),
     targetVsActualCategoryRows: queryTargetVsActualCategoryRows(
@@ -456,6 +462,7 @@ export function getMonthlyAttentionSummary(
   const rows = viewContract.snapshot.targetVsActualCategoryRows.rows;
   return {
     hasUncategorizedTransactions: rows.some((row) => row.categoryId === null),
+    categoryReviewCount: viewContract.snapshot.categoryReviewCount,
     overTargetCategoryCount: rows.filter(
       (row) => row.categoryId !== null && row.targetMinor !== null && row.deltaMinor !== null && row.deltaMinor > 0
     ).length,

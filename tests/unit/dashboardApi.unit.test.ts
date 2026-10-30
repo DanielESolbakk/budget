@@ -202,6 +202,44 @@ describe("dashboardApi buildDashboardData", () => {
 });
 
 describe("dashboardApi monthly attention summary", () => {
+  it("counts low-confidence decisions in the selected month using review-queue eligibility", () => {
+    const uncertain = makeTx({
+      id: "uncertain",
+      bookedAtIso: "2026-05-01T00:00:00Z",
+      amountMinor: -100,
+      categoryId: "groceries",
+      categorization: {
+        status: "ambiguous",
+        categoryId: "groceries",
+        confidence: 0.35,
+        confidenceLevel: "low",
+        requiresReview: true,
+        matchingRules: [],
+      },
+    });
+    const view = buildDashboardViewContract({
+      selectedYearMonth: "2026-05",
+      transactions: [
+        uncertain,
+        { ...uncertain, id: "other-month", bookedAtIso: "2026-04-01T00:00:00Z" },
+        { ...uncertain, id: "allocated", categoryAllocations: [{ categoryId: "groceries", amountMinor: -100 }] },
+        makeTx({ id: "missing", bookedAtIso: "2026-05-03T00:00:00Z", amountMinor: -100 }),
+        {
+          ...uncertain, id: "threshold",
+          categorization: { ...uncertain.categorization!, confidence: 0.75, confidenceLevel: "high", requiresReview: false },
+        },
+        makeTx({ id: "manual-category", bookedAtIso: "2026-05-04T00:00:00Z", amountMinor: -100, categoryId: "groceries" }),
+      ],
+    });
+    expect(getMonthlyAttentionSummary(view)).toMatchObject({ categoryReviewCount: 2 });
+  });
+
+  it("reports zero review decisions for an empty month", () => {
+    expect(getMonthlyAttentionSummary(buildDashboardViewContract({
+      transactions: [], selectedYearMonth: "2026-05",
+    }))).toMatchObject({ categoryReviewCount: 0 });
+  });
+
   it("reports uncategorized activity and categories with positive target deltas", () => {
     const viewContract = buildDashboardViewContract({
       selectedYearMonth: "2026-05",
@@ -231,6 +269,7 @@ describe("dashboardApi monthly attention summary", () => {
 
     expect(getMonthlyAttentionSummary(viewContract)).toEqual({
       hasUncategorizedTransactions: true,
+      categoryReviewCount: 1,
       overTargetCategoryCount: 1,
     });
   });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import type { Transaction } from "../../src/domain/types.js";
+import { buildDashboardViewContract, getMonthlyAttentionSummary } from "../../src/app/dashboardApi.js";
 
 const HOUSEHOLD = {
   id: "hh-ledger-query",
@@ -70,6 +71,23 @@ function withDatabase<Result>(
 }
 
 describe("SQLite ledger queries", () => {
+  it("preserves categorization confidence in selected-month dashboard queries", () => {
+    const uncertain: Transaction = {
+      ...transaction("uncertain", "2026-05-01T00:00:00Z", -1000, "KIWI synthetic", { categoryId: "groceries" }),
+      categorization: {
+        status: "ambiguous", categoryId: "groceries", confidence: 0.35,
+        confidenceLevel: "low", requiresReview: true, matchingRules: [],
+      },
+    };
+    withDatabase([uncertain], (database) => {
+      const transactions = database.getTransactionsForMonth(HOUSEHOLD.id, "2026-05");
+      expect(transactions[0]?.categorization).toEqual(uncertain.categorization);
+      expect(getMonthlyAttentionSummary(buildDashboardViewContract({
+        selectedYearMonth: "2026-05", transactions,
+      }))).toMatchObject({ categoryReviewCount: 1 });
+    });
+  });
+
   it("aggregates dashboard month totals and fills missing months", () => {
     withDatabase([
       transaction("april-expense", "2026-04-03T08:00:00Z", -1200, "April expense"),

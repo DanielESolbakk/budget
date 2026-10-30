@@ -147,6 +147,7 @@ export function AccountCoverageSummary({
     >
       <div className="account-coverage-summary-copy">
         <h4>Account coverage</h4>
+        <p>Coverage includes all recorded periods, not only this month.</p>
         {isLoading && <p role="status">Checking statement coverage...</p>}
         {error !== null && <p role="alert">Coverage status unavailable: {error}</p>}
         {!isLoading && error === null && summary !== null && (

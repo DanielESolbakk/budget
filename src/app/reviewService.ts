@@ -1,8 +1,7 @@
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import { categorizeTransaction } from "../domain/categorization/categorizeTransaction.js";
 import { detectDuplicate } from "../domain/import/detectDuplicate.js";
-import { orderReviewQueueTransactions } from "../domain/categorization/reviewQueue.js";
-import { CATEGORIZATION_REVIEW_THRESHOLD } from "../domain/categorization/scoreCategorizationConfidence.js";
+import { needsCategorizationReview, orderReviewQueueTransactions } from "../domain/categorization/reviewQueue.js";
 import { validateCorrectionCategoryId } from "../domain/review/correction.js";
 import { normalizeMerchantName } from "../domain/merchant/normalizeMerchantName.js";
 import {
@@ -19,10 +18,7 @@ export function listCategorizationReviewQueue(
 ): Transaction[] {
   const reviewTransactions = database.loadLedgerSnapshotData().transactions.filter((transaction) =>
     transaction.householdId === householdId &&
-    !(transaction.categoryAllocations?.length) &&
-    (transaction.categoryId === undefined ||
-      (transaction.categorization !== undefined &&
-        transaction.categorization.confidence < CATEGORIZATION_REVIEW_THRESHOLD))
+    needsCategorizationReview(transaction)
   );
   return orderReviewQueueTransactions(reviewTransactions);
 }

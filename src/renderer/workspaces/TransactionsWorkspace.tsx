@@ -31,7 +31,7 @@ export function TransactionsWorkspace({
     <section className="destination-workspace" aria-label="Transactions workspace" hidden={!isActive}>
       <div className="destination-heading">
         <h2>Transactions</h2>
-        <p>Search the ledger and resolve entries that still need a category.</p>
+        <p>Search the ledger and review missing or uncertain category decisions.</p>
       </div>
       {uncategorizedQueueState.isReady && uncategorizedQueueState.count > 0 && (
         <div className="ledger-review-action">
@@ -41,7 +41,7 @@ export function TransactionsWorkspace({
             aria-describedby="ledger-review-uncategorized-scope"
             onClick={() => setFocusFirstRequest((current) => current + 1)}
           >
-            Review uncategorized ({uncategorizedQueueState.count})
+            Review category decisions ({uncategorizedQueueState.count})
           </button>
           <small id="ledger-review-uncategorized-scope">
             Includes all transactions, regardless of ledger filters.

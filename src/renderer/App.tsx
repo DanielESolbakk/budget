@@ -75,6 +75,29 @@ export function App(): React.JSX.Element {
   const hasLoadedInitialState = React.useRef(false);
   const selectedYearMonthRef = React.useRef(DEFAULT_YEAR_MONTH);
   const latestViewRequestRef = React.useRef(0);
+  const workspaceRef = React.useRef<HTMLElement>(null);
+  const previousWorkspaceRef = React.useRef(activeWorkspace);
+  const focusDestinationRef = React.useRef(false);
+  const [workspaceAnnouncement, setWorkspaceAnnouncement] = React.useState("");
+
+  function focusWorkspaceHeading(): void {
+    const heading = workspaceRef.current?.querySelector<HTMLHeadingElement>(
+      ".destination-workspace:not([hidden]) h2"
+    );
+    if (heading !== null && heading !== undefined) {
+      heading.tabIndex = -1;
+      heading.focus();
+    }
+  }
+
+  React.useEffect(() => {
+    if (previousWorkspaceRef.current === activeWorkspace) return;
+    previousWorkspaceRef.current = activeWorkspace;
+    const heading = workspaceRef.current?.querySelector(".destination-workspace:not([hidden]) h2");
+    setWorkspaceAnnouncement(heading?.textContent ?? activeWorkspace);
+    if (focusDestinationRef.current) focusWorkspaceHeading();
+    focusDestinationRef.current = false;
+  }, [activeWorkspace]);
 
   React.useEffect(() => {
     let isActive = true;
@@ -163,7 +186,9 @@ export function App(): React.JSX.Element {
       });
   }
 
-  function openWorkspace(workspaceId: WorkspaceId): void {
+  function openWorkspace(workspaceId: WorkspaceId, focusDestination = false): void {
+    if (workspaceId === activeWorkspace && focusDestination) focusWorkspaceHeading();
+    focusDestinationRef.current = focusDestination;
     setActiveWorkspace(workspaceId);
     setVisitedWorkspaces((current) => {
       if (current.has(workspaceId)) return current;
@@ -239,7 +264,7 @@ export function App(): React.JSX.Element {
             <i aria-hidden="true" /> {headerStatus}
           </span>
           </div>
-          <button className="header-import-action" type="button" onClick={() => openWorkspace("import")}>
+          <button className="header-import-action" type="button" onClick={() => openWorkspace("import", true)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
               <path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5" />
             </svg>
@@ -265,7 +290,10 @@ export function App(): React.JSX.Element {
           ))}
         </nav>
 
-        <main className="workspace" id="workspace" tabIndex={-1}>
+        <main className="workspace" id="workspace" tabIndex={-1} ref={workspaceRef}>
+          <p className="workspace-announcement" role="status" aria-label="Workspace destination">
+            {workspaceAnnouncement}
+          </p>
           {(activeWorkspace === "transactions" ||
             activeWorkspace === "pending" ||
             activeWorkspace === "import") && (
@@ -343,8 +371,9 @@ export function App(): React.JSX.Element {
             monthChangeError={monthChangeError}
             refreshError={refreshError}
             onMonthChange={handleMonthChange}
-            onOpenTransactions={() => openWorkspace("transactions")}
+            onOpenTransactions={openReviewQueue}
             onOpenCoverage={() => openWorkspace("coverage")}
+            onTargetSaved={() => setRefreshCounter((counter) => counter + 1)}
             onRetry={() => setRefreshCounter((counter) => counter + 1)}
           />
           {visitedWorkspaces.has("transactions") && (

@@ -16,6 +16,7 @@ function formatMinor(minor: number): string {
 
 export interface CategoryTargetEntrySectionProps {
   selectedYearMonth: string;
+  onTargetSaved: () => void;
 }
 
 type FormState =
@@ -26,6 +27,7 @@ type FormState =
 
 export function CategoryTargetEntrySection({
   selectedYearMonth,
+  onTargetSaved,
 }: CategoryTargetEntrySectionProps): React.JSX.Element {
   const [targets, setTargets] = React.useState<MonthlyCategoryTarget[]>([]);
   const [loadedMonth, setLoadedMonth] = React.useState<string | null>(null);
@@ -129,6 +131,7 @@ export function CategoryTargetEntrySection({
         setTargetNok("");
         setEditingCategoryId(null);
         setIsFormOpen(false);
+        onTargetSaved();
       })
       .catch((error: unknown) => {
         const message =

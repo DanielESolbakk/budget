@@ -76,7 +76,7 @@ export class ReviewQueuePage {
   }
 
   get emptyState() {
-    return this.section.getByText("Nothing needs your attention.", { exact: true });
+    return this.section.getByText("No category decisions need review.", { exact: true });
   }
 
   reviewItem(merchantRaw: string) {
