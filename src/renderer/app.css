@@ -3820,6 +3820,32 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   margin: 0;
   padding: 0;
   list-style: none;
+  max-block-size: min(32rem, 70vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-inline-end: 0.6rem;
+}
+
+.currency-warning {
+  padding: 0.85rem;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-soft);
+  overflow-wrap: anywhere;
+}
+
+.native-currency-subtotals p {
+  color: var(--paper-muted);
+}
+
+.snapshot-error {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.snapshot-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .review-queue-item {

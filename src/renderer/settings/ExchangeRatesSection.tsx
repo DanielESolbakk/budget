@@ -16,7 +16,9 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function ExchangeRatesSection(): React.JSX.Element {
+export function ExchangeRatesSection({
+  onRatesChanged,
+}: { onRatesChanged?: () => void }): React.JSX.Element {
   const [rates, setRates] = React.useState<ExchangeRate[]>([]);
   const [activeView, setActiveView] = React.useState<"rate-book" | "monthly-report">("rate-book");
   const [currencyCode, setCurrencyCode] = React.useState("EUR");
@@ -90,8 +92,11 @@ export function ExchangeRatesSection(): React.JSX.Element {
           )
       );
       setStatusMessage("Local exchange rate saved.");
+      setReport(null);
+      setScenarioReport(null);
       setRateNokPerUnit("");
       setSource("");
+      onRatesChanged?.();
     } catch (saveError: unknown) {
       setError(errorMessage(saveError, "Unable to save the local exchange rate."));
     } finally {
@@ -123,6 +128,9 @@ export function ExchangeRatesSection(): React.JSX.Element {
           )
       );
       setStatusMessage(`${imported.length} local exchange rate${imported.length === 1 ? "" : "s"} imported.`);
+      setReport(null);
+      setScenarioReport(null);
+      onRatesChanged?.();
     } catch (importError: unknown) {
       setError(errorMessage(importError, "Unable to import local exchange rates."));
     } finally {

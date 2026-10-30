@@ -578,39 +578,6 @@ export function PdfImportSection({
               </ul>
             </details>
           )}
-          <div className="import-preview-confirmation">
-            <button
-              id="pdf-confirm-button"
-              type="button"
-              onClick={handleImport}
-              aria-describedby="pdf-confirm-help"
-              disabled={importState.status === "pending" || preview === null || unresolvedDuplicateCandidates.length > 0}
-            >
-              Confirm statement import
-            </button>
-            <p id="pdf-confirm-help" className="import-action-help">
-              {importState.status === "pending"
-                ? "Wait for the current import operation to finish."
-                  : unresolvedRowCount > 0
-                      ? `Confirm to import valid rows and retain ${unresolvedRowCount} unresolved row${unresolvedRowCount === 1 ? "" : "s"} for review.`
-                    : unresolvedDuplicateCandidates[0] !== undefined
-                      ? <>
-                          Choose whether to skip or import duplicate row {unresolvedDuplicateCandidates[0].rowIndex + 1} before confirming.{" "}
-                          <button
-                            type="button"
-                            className="import-secondary-action import-inline-action"
-                            onClick={() => {
-                              const rowIndex = unresolvedDuplicateCandidates[0]!.rowIndex;
-                              setPreviewPage(Math.floor(rowIndex / PREVIEW_PAGE_SIZE));
-                              setDuplicateRowToFocus(rowIndex);
-                            }}
-                          >
-                            Go to unresolved duplicate
-                          </button>
-                        </>
-                      : "Review the statement rows below, then confirm. Nothing is saved yet."}
-            </p>
-          </div>
           <p>Statement format recognized: {preview.adapterId === "rogaland-sparebank-text-v1" ? "Rogaland Sparebank digital statement" : "supported bank statement"}.</p>
           <div className="preview-table-wrap">
             <table className="import-preview-table">
@@ -665,6 +632,39 @@ export function PdfImportSection({
               <button type="button" disabled={previewPage + 1 >= previewPageCount} onClick={() => setPreviewPage((page) => Math.min(previewPageCount - 1, page + 1))}>Next rows</button>
             </div>
           )}
+          <div className="import-preview-confirmation">
+            <button
+              id="pdf-confirm-button"
+              type="button"
+              onClick={handleImport}
+              aria-describedby="pdf-confirm-help"
+              disabled={importState.status === "pending" || unresolvedDuplicateCandidates.length > 0}
+            >
+              Confirm statement import
+            </button>
+            <p id="pdf-confirm-help" className="import-action-help">
+              {importState.status === "pending"
+                ? "Wait for the current import operation to finish."
+                : unresolvedDuplicateCandidates[0] !== undefined
+                  ? <>
+                      Choose whether to skip or import duplicate row {unresolvedDuplicateCandidates[0].rowIndex + 1} before confirming.{" "}
+                      <button
+                        type="button"
+                        className="import-secondary-action import-inline-action"
+                        onClick={() => {
+                          const rowIndex = unresolvedDuplicateCandidates[0]!.rowIndex;
+                          setPreviewPage(Math.floor(rowIndex / PREVIEW_PAGE_SIZE));
+                          setDuplicateRowToFocus(rowIndex);
+                        }}
+                      >
+                        Go to unresolved duplicate
+                      </button>
+                    </>
+                  : unresolvedRowCount > 0
+                    ? `Confirm to import valid rows and retain ${unresolvedRowCount} unresolved row${unresolvedRowCount === 1 ? "" : "s"} for review.`
+                    : "Review the evidence above, then confirm. Nothing is saved yet."}
+            </p>
+          </div>
           </section>
         </div>
       )}

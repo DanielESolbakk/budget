@@ -41,6 +41,10 @@ export function CategoryBreakdownSection({ viewContract }: CategoryBreakdownSect
   return (
     <section aria-label="Category Breakdown">
       <h2>Category Breakdown</h2>
+      {(viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0 && (
+        <p className="field-help">Known NOK amounts only. Transactions missing dated exchange rates are excluded.</p>
+      )}
+      {categoryBreakdown.entries.length === 0 && <p>No category amounts can be converted to NOK yet.</p>}
       <ul className="financial-rows">
         {categoryBreakdown.entries.map((entry) => (
           <li

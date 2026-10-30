@@ -66,6 +66,13 @@ export class CsvImportPage {
     return this.previewRegion.getByRole("combobox", { name: `Map ${label}` });
   }
 
+  async openColumnMapping(): Promise<void> {
+    const mapping = this.previewRegion.locator("details.import-mapping");
+    if (await mapping.getAttribute("open") === null) {
+      await mapping.locator("summary").click();
+    }
+  }
+
   /** Status message shown on successful import (role="status"). */
   get successStatus() {
     return this.importSection.getByRole("status", {

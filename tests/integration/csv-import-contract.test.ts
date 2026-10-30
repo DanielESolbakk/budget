@@ -303,6 +303,8 @@ describe("csv import contract", () => {
       const contract = buildDashboardViewContract({
         transactions,
         selectedYearMonth: "2026-05",
+        accounts: [{ id: "acc-fixture", householdId: "hh-fixture", name: "Synthetic account", currencyCode: "NOK" }],
+        rates: [],
       });
 
       expect(contract.state).toBe("ready");
@@ -310,6 +312,8 @@ describe("csv import contract", () => {
 
       expect(contract.snapshot.selectedYearMonth).toBe("2026-05");
       expect(contract.snapshot.monthlyTotals.yearMonth).toBe("2026-05");
+      expect(contract.snapshot.monthlyTotals.expenseMinor).toBe(267_980);
+      expect(contract.snapshot.currencyReport?.incompleteCurrencies).toEqual(["GBP"]);
       expect(contract.snapshot.categoryBreakdown.entries.length).toBeGreaterThan(0);
     });
   });

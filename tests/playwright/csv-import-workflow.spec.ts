@@ -351,6 +351,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.enterFilePath(FIXTURE_PATH);
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
+    await csvImport.openColumnMapping();
     await csvImport.mappingSelect("Description").selectOption("Beskrivelse");
 
     const manageProfiles = csvImport.importSection.getByText("Manage CSV profiles", { exact: false });
@@ -364,6 +365,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.importSection.getByRole("button", { name: "Use profile Norwegian bank profile", exact: true }).click();
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
+    await csvImport.openColumnMapping();
     await expect(csvImport.mappingSelect("Description")).toHaveValue("Beskrivelse");
     await expect(csvImport.importSection.getByRole("combobox", { name: "Import into account" })).toHaveValue("sample-acc");
 
@@ -610,6 +612,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
 
+    await csvImport.openColumnMapping();
     const executionDate = csvImport.mappingSelect("Execution date");
     await executionDate.selectOption("Date");
     await executionDate.selectOption("");
@@ -633,6 +636,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.enterFilePath(filePath);
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
+    await csvImport.openColumnMapping();
     await csvImport.mappingSelect("Execution date").selectOption("Date");
     await csvImport.mappingSelect("Description").selectOption("Description");
     await csvImport.mappingSelect("Amount out").selectOption("Amount Out");
@@ -650,6 +654,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.enterFilePath(filePath);
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
+    await csvImport.openColumnMapping();
     await csvImport.mappingSelect("Execution date").selectOption("Date");
     await csvImport.mappingSelect("Description").selectOption("Description");
     await csvImport.mappingSelect("Amount out").selectOption("Amount Out");
@@ -676,6 +681,7 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
 
+    await csvImport.openColumnMapping();
     await csvImport.mappingSelect("Execution date").selectOption("When");
     await csvImport.mappingSelect("Description").selectOption("Payee");
     await csvImport.mappingSelect("Amount out").selectOption("Debit amount");

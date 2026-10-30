@@ -43,6 +43,7 @@ test.describe("Keyboard accessibility smoke", () => {
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
 
+    await csvImport.openColumnMapping();
     const executionDateMapping = csvImport.mappingSelect("Execution date");
     const bookedDateMapping = csvImport.mappingSelect("Booked date");
     await executionDateMapping.focus();

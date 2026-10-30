@@ -488,21 +488,21 @@ test.describe("PDF import renderer workflow", () => {
     await expect(duplicateRow).toHaveCSS("outline-width", "3px");
   });
 
-  test("places confirmation with the statement summary before the long row list", async ({ pdfImport }) => {
+  test("places confirmation after the statement evidence without losing destination context", async ({ pdfImport }) => {
     await pdfImport.enterFilePath(BINARY_FIXTURE_PATH);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
-    const confirmationLeadsIntoRows = await pdfImport.importSection.evaluate((section) => {
+    const confirmationFollowsRows = await pdfImport.importSection.evaluate((section) => {
       const preview = section.querySelector('[aria-label="PDF import preview"]');
       const confirmation = section.querySelector("#pdf-confirm-button");
       const table = preview?.querySelector("table") ?? null;
       return preview !== null && confirmation !== null && table !== null &&
         preview.contains(confirmation) &&
-        Boolean(confirmation.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING);
+        Boolean(table.compareDocumentPosition(confirmation) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
 
-    expect(confirmationLeadsIntoRows).toBe(true);
+    expect(confirmationFollowsRows).toBe(true);
     await expect(pdfImport.previewRegion).toContainText("Importing into account: Brukskonto");
   });
 

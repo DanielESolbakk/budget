@@ -154,7 +154,10 @@ export function ReviewWorkspace({
                             : "categories"} over target
                         </a>
                       ) : (
-                        <p>No categories over target.</p>
+                        <p>{(state.viewContract.state !== "loading" &&
+                          (state.viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0)
+                          ? "Budget checks are incomplete until missing dated rates are recorded."
+                          : "No categories over target."}</p>
                       )}
                     </div>
                     <AccountCoverageSummary

@@ -14,11 +14,11 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import {
-  buildDashboardData,
   buildDashboardViewContract,
   buildNokMonthlyReport,
   createMonthlyCategoryTargetStore,
   queryAccountCoverageAssessment,
+  queryHouseholdDashboardData,
   reloadMonthlyCategoryTargets,
   type DashboardData,
   type DashboardViewContract,
@@ -865,13 +865,15 @@ function pdfPreviewReceiptFailure(error: ImportPreviewError): PdfImportResponse 
 }
 
 function getDashboardData(): DashboardData {
-  return buildDashboardData({ monthlyTotals: localLedgerDatabase.listMonthlyTotals(sampleHousehold.id) });
+  return queryHouseholdDashboardData(localLedgerDatabase, sampleHousehold.id);
 }
 
 function getViewData(yearMonth: string): DashboardViewContract {
   return buildDashboardViewContract({
     transactions: localLedgerDatabase.getTransactionsForMonth(sampleHousehold.id, yearMonth),
     selectedYearMonth: yearMonth,
+    accounts: localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id),
+    rates: localLedgerDatabase.listExchangeRates(),
     monthlyCategoryTargetStore: sampleTargetStore,
   });
 }

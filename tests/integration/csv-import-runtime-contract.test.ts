@@ -1019,6 +1019,8 @@ describe("csv-import-runtime-contract", () => {
       const contract = buildDashboardViewContract({
         transactions: allTransactions,
         selectedYearMonth: "2026-05",
+        accounts: snapshot.accounts,
+        rates: ledger.listExchangeRates(),
       });
 
       expect(contract.state).toBe("ready");
@@ -1028,6 +1030,7 @@ describe("csv-import-runtime-contract", () => {
       expect(contract.snapshot.categoryBreakdown.entries.length).toBeGreaterThan(0);
       // Monthly totals should reflect imported transaction amounts for 2026-05.
       expect(contract.snapshot.monthlyTotals.yearMonth).toBe("2026-05");
+      expect(contract.snapshot.currencyReport?.incompleteCurrencies).toEqual(["GBP"]);
     });
 
     it("category breakdown entries come from imported transactions", () => {
@@ -1044,6 +1047,8 @@ describe("csv-import-runtime-contract", () => {
       const contract = buildDashboardViewContract({
         transactions: snapshot.transactions,
         selectedYearMonth: "2026-05",
+        accounts: snapshot.accounts,
+        rates: ledger.listExchangeRates(),
       });
 
       expect(contract.state).toBe("ready");

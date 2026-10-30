@@ -19,7 +19,7 @@ const test = electronTest.extend<{ sameMerchantCsvPath: string }>({
   },
 });
 
-test("shows categorization review before the ledger on compact Transactions", async ({
+test("keeps the ledger before categorization review on compact Transactions", async ({
   appShell,
   ledger,
   reviewQueue,
@@ -32,7 +32,7 @@ test("shows categorization review before the ledger on compact Transactions", as
 
   const reviewTop = await reviewQueue.section.evaluate((element) => element.getBoundingClientRect().top);
   const ledgerTop = await ledger.section.evaluate((element) => element.getBoundingClientRect().top);
-  expect(reviewTop).toBeLessThan(ledgerTop);
+  expect(ledgerTop).toBeLessThan(reviewTop);
 });
 
 test("previews, selectively applies, and undoes same-merchant correction propagation", async ({

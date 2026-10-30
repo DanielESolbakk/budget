@@ -91,6 +91,7 @@ export function RestoreSnapshotSection({
       setRestoreState({ status: "idle" });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Restore failed. Please try again.";
+      setSnapshotSummary(null);
       setRestoreState({ status: "error", message });
     }
   }
@@ -158,6 +159,7 @@ export function RestoreSnapshotSection({
       onRestoreSuccess();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Restore failed. Please try again.";
+      setSnapshotSummary(null);
       setRestoreState({ status: "error", message });
     }
   }
@@ -333,9 +335,26 @@ export function RestoreSnapshotSection({
       {restoreState.status === "pending" && <p role="status" aria-live="polite">Restoring snapshot...</p>}
       {restoreState.status === "undoing" && <p role="status" aria-live="polite">Undoing restore...</p>}
       {(restoreState.status === "error" || restoreState.status === "undo-error") && (
-        <p role="alert">
-          {restoreState.status === "undo-error" ? "Undo failed" : "Snapshot review or restore failed"}: {restoreState.message}
-        </p>
+        <div className="snapshot-error" role="alert">
+          <p>
+            <strong>
+              {restoreState.status === "undo-error"
+                ? "Undo failed."
+                : /\bENOENT\b/.test(restoreState.message)
+                  ? "Snapshot not found."
+                  : /\b(EACCES|EPERM)\b/.test(restoreState.message)
+                    ? "Snapshot access denied."
+                    : "Snapshot review or restore failed."}
+            </strong>{" "}
+            {restoreState.status === "undo-error"
+              ? "Use Retry undo to recover from the saved safety copy. Check file access if it fails again."
+              : "Choose an existing, readable local backup file, then review it again before restoring."}
+          </p>
+          <details>
+            <summary>Technical details</summary>
+            <pre>{restoreState.message}</pre>
+          </details>
+        </div>
       )}
       {restoreState.status === "success" && (
         <p role="status">

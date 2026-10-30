@@ -29,6 +29,8 @@ Use **Import statement** in the application header from any workspace, or open *
 
 While reviewing an unconfirmed statement, use **Hide preview** to fold the rows without losing duplicate choices or acknowledgements; **Show preview** restores them. **Cancel import** discards the unconfirmed statement and returns to file selection without saving transactions. During a long file check, **Cancel preview** stops that check.
 
+CSV column mapping is collapsed when rows are recognized; expand **Match your CSV columns** to adjust it. CSV and digital-statement confirmation follows the preview evidence and duplicate decisions, rather than preceding the rows.
+
 Use **Import row review** to correct unresolved source rows into transactions or dismiss them with a reason. Correction drafts are saved on this device and restored after an app restart; draft data is temporary and is not included in backup snapshots. A changed file must be previewed again before confirmation. Use **Import history** to review completed jobs and undo an import. Undo removes only unchanged transactions from that import; transactions changed after import, or whose original values cannot be verified, are kept and listed with the reason. Categorization rules are not removed. Manual entry is a separate **Enter transaction manually** action, and uncategorized transactions appear in **Review what needs attention**.
 
 The current text/PDF adapter reads Rogaland Sparebank statements, including binary digital PDFs. Scanned images and unknown bank layouts are not supported yet; more bank adapters can be added later. For a safe trial, use the synthetic fixtures in this repository:
@@ -51,6 +53,8 @@ The daylight workspace uses the same controls and financial states throughout se
 
 An empty category-review queue uses a compact confirmation; expand it for an explanation of what appears there. Secondary row actions stay visually quieter than statement import. Workspace descriptions sit below their titles, financial comparisons align amounts, and empty household registries group their message with the existing creation action.
 
+Transactions puts ledger search before the all-month category queue. **Review category decisions** moves keyboard focus to the first decision; the queue has a bounded scroll area so a long backlog cannot stretch the workspace indefinitely.
+
 Statement previews, duplicate comparisons, category review, the ledger, allocation summaries, and pending items display each transaction's recorded currency without converting its amount. Foreign amounts include an explicit currency code, so currencies such as SEK and DKK cannot be mistaken for NOK. Compact category corrections place the future-learning explanation, category selector, and save action in reading order. In-page navigation keeps local actions available without trusting another renderer document or window.
 
 Monthly category checks include both uncategorized transactions and low-confidence category decisions for the selected month. **Open all-month queue** opens and focuses the full category-review queue, regardless of ledger filters. Saving a category also remembers it for future transactions matching that merchant; the form explains this before saving. Saving a budget target refreshes the selected month's comparison and checks. If that refresh fails, the saved target remains available and an explicit review error offers a retry.
@@ -61,6 +65,10 @@ In **Review**, check the account-coverage summary before relying on monthly tota
 
 In **Household** > **Exchange rates**, record a foreign-currency rate as NOK per one unit of currency or import a local CSV with `currencyCode,rateNokPerUnit,effectiveDate,kind` columns. Reports keep native-currency subtotals and show the dated NOK conversion and rate provenance. Missing rates leave the NOK subtotal incomplete; they are never treated as zero or a 1:1 rate. Monthly reference rates are used only after explicit selection. Latest-rate restatement is an isolated scenario and does not change historical actual reports. The app does not fetch rates or send transaction data to a service.
 
+Monthly review uses those same dated conversions for totals, category amounts, and target actuals. When a rate is missing, it prominently labels the known NOK subtotal **Incomplete**, keeps native net subtotals separate, and withholds definitive target deltas. Recording or importing local rates refreshes the monthly review and historical NOK series without changing native ledger amounts. Split conversions reconcile rounding to their source amount.
+
+The forecast is a monthly **net** outlook, not an account balance. It states its latest recorded history month and does not follow the review month selector. If any of its recent history months has missing exchange rates, estimates are withheld until that history can be converted.
+
 In **Household** > **Properties**, create a local property label and add dated valuations in the currency you record. Valuation history preserves recorded timestamps and corrections.
 
 In **Household** > **Loans**, add loan or mortgage terms and optionally link an existing property. Append dated actual balance snapshots as statements arrive; recorded timestamps and original currency are preserved in local storage and backups. These actual balances remain separate from forecast projections. The registry does not fetch or substitute exchange rates.
@@ -68,6 +76,7 @@ In **Household** > **Loans**, add loan or mortgage terms and optionally link an 
 On each property, edit the household ownership share; on each loan, edit the household responsibility share separately. Enter a percentage from 0 to 100 with up to two decimal places (for example, `75.25` or `75,25`). Both default to 100% and are saved locally and in backup snapshots using exact whole basis points internally. Shares do not change recorded amounts or currencies and do not determine legal ownership or liability.
 
 In **Household** > **Data safety**, create a local backup, export ledger data, or restore a saved backup snapshot.
+Restore failures show a next step first, with wrapped technical diagnostics available on demand. A failed restore requires snapshot review again before another replacement attempt.
 Version 9 backups missing a property ownership share or loan responsibility share are rejected rather than restoring an incorrect share. Older backups without these shares restore them as 100%.
 
 ### Build for production

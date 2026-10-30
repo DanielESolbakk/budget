@@ -554,32 +554,6 @@ export function CsvImportSection({
           )}
         </div>
       )}
-      {preview !== null && importState.status !== "success" && <button
-        id="csv-confirm-button"
-        type="button"
-        onClick={handleImport}
-        aria-describedby="csv-confirm-help"
-        disabled={confirmationDisabled}
-      >
-        Confirm CSV import
-      </button>}
-      {preview !== null && importState.status !== "success" && <p id="csv-confirm-help" className="import-action-help">
-        {importState.status === "pending"
-          ? getImportPendingMessage(stage)
-          : !isPreviewExpanded
-            ? "Show the preview before confirming this import."
-          : preview === null
-            ? filePath
-              ? <>The selected file has not passed validation. <a href="#csv-preview-button">Preview CSV</a>.</>
-              : "Choose a statement file above before previewing it."
-            : !isMappingCurrent
-              ? <>Validate the updated column mapping before confirming. <a href="#csv-preview-button">Preview CSV</a>.</>
-              : firstInvalidRow !== undefined
-                ? <>Row <a href={`#csv-preview-row-${firstInvalidRow.rowIndex}`}>{firstInvalidRow.rowIndex + 1}</a> will be kept for review and will not become a transaction.</>
-                : unresolvedDuplicateRows[0] !== undefined
-                  ? <>Choose whether to skip or import duplicate <a href={`#csv-preview-row-${unresolvedDuplicateRows[0].rowIndex}`}>row {unresolvedDuplicateRows[0].rowIndex + 1}</a> before confirming.</>
-                  : "Review the ready rows before confirming the import."}
-      </p>}
       {importState.status === "cancelled" && <p role="status">Preview cancelled. No transactions were saved.</p>}
       {importState.status === "success" && (
         <div className="import-success">
@@ -653,6 +627,8 @@ export function CsvImportSection({
             tabIndex={-1}
           >
           <h3>CSV import preview</h3>
+          <details className="import-mapping" open={validPreviewRowCount === 0}>
+          <summary>Match your CSV columns</summary>
           <fieldset aria-label="CSV column mapping">
             <legend>Match your CSV columns</legend>
             {mappingFields.map(({ key, label }) => (
@@ -686,6 +662,7 @@ export function CsvImportSection({
               </label>
             ))}
           </fieldset>
+          </details>
           <p className="preview-summary" aria-live="polite">
             <strong>{validPreviewRowCount} of {preview.rows.length} rows ready.</strong>{" "}
             {pendingPreviewRowCount > 0
@@ -836,6 +813,30 @@ export function CsvImportSection({
                 Rows {previewPage * PREVIEW_PAGE_SIZE + 1}-{Math.min((previewPage + 1) * PREVIEW_PAGE_SIZE, preview.rows.length)} of {preview.rows.length.toLocaleString("nb-NO")} · Page {previewPage + 1} of {previewPageCount}
               </span>
               <button type="button" disabled={previewPage + 1 >= previewPageCount} onClick={() => setPreviewPage((page) => Math.min(previewPageCount - 1, page + 1))}>Next rows</button>
+            </div>
+          )}
+          {importState.status !== "success" && (
+            <div className="import-preview-confirmation">
+              <button
+                id="csv-confirm-button"
+                type="button"
+                onClick={handleImport}
+                aria-describedby="csv-confirm-help"
+                disabled={confirmationDisabled}
+              >
+                Confirm CSV import
+              </button>
+              <p id="csv-confirm-help" className="import-action-help">
+                {importState.status === "pending"
+                  ? getImportPendingMessage(stage)
+                  : !isMappingCurrent
+                    ? <>Validate the updated column mapping before confirming. <a href="#csv-preview-button">Update preview</a>.</>
+                    : unresolvedDuplicateRows[0] !== undefined
+                      ? <>Choose whether to skip or import duplicate <a href={`#csv-preview-row-${unresolvedDuplicateRows[0].rowIndex}`}>row {unresolvedDuplicateRows[0].rowIndex + 1}</a> before confirming.</>
+                      : firstInvalidRow !== undefined
+                        ? <>Row <a href={`#csv-preview-row-${firstInvalidRow.rowIndex}`}>{firstInvalidRow.rowIndex + 1}</a> will be kept for review and will not become a transaction.</>
+                        : "Review the evidence above, then confirm. Nothing is saved yet."}
+              </p>
             </div>
           )}
           </section>

@@ -488,7 +488,7 @@ export function App(): React.JSX.Element {
                 <h2>Exchange rates</h2>
                 <p>Record rates locally and use them to compare household spending.</p>
               </div>
-              <ExchangeRatesSection />
+              <ExchangeRatesSection onRatesChanged={() => setRefreshCounter((counter) => counter + 1)} />
             </section>
           )}
         </main>

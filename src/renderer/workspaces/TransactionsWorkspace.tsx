@@ -49,14 +49,14 @@ export function TransactionsWorkspace({
         </div>
       )}
       <div className="transactions-workspace-grid">
+        <LedgerSection
+          refreshKey={refreshKey}
+        />
         <CategoryReviewSection
           refreshKey={refreshKey}
           onCategorySaved={onCategorySaved}
           onUncategorizedQueueStateChange={setUncategorizedQueueState}
           focusFirstRequest={focusFirstRequest}
-        />
-        <LedgerSection
-          refreshKey={refreshKey}
         />
       </div>
     </section>

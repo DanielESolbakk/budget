@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import type { Transaction } from "../../src/domain/types.js";
-import { buildDashboardViewContract, getMonthlyAttentionSummary } from "../../src/app/dashboardApi.js";
+import {
+  buildDashboardViewContract,
+  getMonthlyAttentionSummary,
+  queryHouseholdDashboardData,
+} from "../../src/app/dashboardApi.js";
 
 const HOUSEHOLD = {
   id: "hh-ledger-query",
@@ -71,6 +75,38 @@ function withDatabase<Result>(
 }
 
 describe("SQLite ledger queries", () => {
+  it("rebuilds NOK history and forecasts from persisted dated rates without changing native ledger amounts", () => {
+    withDatabase([
+      transaction("april-income", "2026-04-03T08:00:00Z", 10_000, "SYNTHETIC INCOME"),
+      transaction("may-nok", "2026-05-20T08:00:00Z", -4200, "SYNTHETIC NOK"),
+      { ...transaction("may-gbp", "2026-05-20T08:00:00Z", -7800, "SYNTHETIC GBP"), currencyCode: "GBP" },
+    ], (database) => {
+      const partial = queryHouseholdDashboardData(database, HOUSEHOLD.id);
+      expect(partial.monthlyTotals).toEqual([
+        { yearMonth: "2026-04", totalMinor: 10_000 },
+        { yearMonth: "2026-05", totalMinor: -4200 },
+      ]);
+      expect(partial.incompleteCurrencyMonths).toEqual(["2026-05"]);
+      database.upsertExchangeRate({
+        id: "gbp-rate", currencyCode: "GBP", rateNokPerUnit: "12.5",
+        effectiveDate: "2026-05-01", kind: "dated", source: "Synthetic rate", provenance: "manual",
+      });
+      const complete = queryHouseholdDashboardData(database, HOUSEHOLD.id);
+      expect(complete.monthlyTotals).toEqual([
+        { yearMonth: "2026-04", totalMinor: 10_000 },
+        { yearMonth: "2026-05", totalMinor: -101_700 },
+      ]);
+      expect(complete.incompleteCurrencyMonths).toEqual([]);
+      expect(complete.forecast.entries).toEqual([
+        { yearMonth: "2026-06", projectedMinor: -45_850, method: "moving-average-3m" },
+        { yearMonth: "2026-07", projectedMinor: -45_850, method: "moving-average-3m" },
+        { yearMonth: "2026-08", projectedMinor: -45_850, method: "moving-average-3m" },
+      ]);
+      expect(database.getTransactionsForMonth(HOUSEHOLD.id, "2026-05").find((row) => row.id === "may-gbp"))
+        .toMatchObject({ amountMinor: -7800, currencyCode: "GBP" });
+    });
+  });
+
   it("preserves categorization confidence in selected-month dashboard queries", () => {
     const uncertain: Transaction = {
       ...transaction("uncertain", "2026-05-01T00:00:00Z", -1000, "KIWI synthetic", { categoryId: "groceries" }),
