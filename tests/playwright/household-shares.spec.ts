@@ -56,6 +56,12 @@ test("household shares can be edited independently without network requests", as
   await expect(properties.property("Home").getByLabel(
     "Household ownership share (basis points)", { exact: true }
   )).toHaveValue("7500");
+  await ownership.fill("6000");
+  await property.getByRole("button", { name: "Save ownership share", exact: true }).click();
+  await expect(property.getByRole("form", { name: "Edit Household ownership share (basis points)" })
+    .getByRole("status")).toContainText("Ownership share saved");
+  await appShell.openWorkspace("Loans");
+  await expect(responsibility).toHaveValue("5000");
   expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   expect(await rendererNetworkAttempts(window)).toEqual([]);
   expect(await rendererNetworkBlockedAttempts(window)).toEqual([]);
@@ -77,15 +83,15 @@ test("household shares can be edited independently without network requests", as
     const restartedProperties = new PropertyRegistryPage(restartedWindow);
     await expect(restartedProperties.property("Home").getByRole("textbox", {
       name: "Household ownership share (basis points)", exact: true,
-    })).toHaveValue("7500");
-    await expect(restartedProperties.valuationValueCell("Home", "2026-10-01")).toContainText(/5[\s\u00a0\u202f]000[\s\u00a0\u202f]000,00/);
+    })).toHaveValue("6000");
+    await expect(restartedProperties.valuationValueCell("Home", "2026-10-01")).toContainText(/NOK\s*5[\s\u00a0\u202f]000[\s\u00a0\u202f]000,00/);
     await restartedShell.openWorkspace("Loans");
     const restartedLoans = new LoanRegistryPage(restartedWindow);
     await expect(restartedLoans.loan("Mortgage").getByRole("textbox", {
       name: "Household loan responsibility share (basis points)", exact: true,
     })).toHaveValue("5000");
     await restartedLoans.expandLoanDetails("Mortgage");
-    await expect(restartedLoans.balanceRow("Mortgage", "2026-10-01")).toContainText(/3[\s\u00a0\u202f]000[\s\u00a0\u202f]000,00/);
+    await expect(restartedLoans.balanceRow("Mortgage", "2026-10-01")).toContainText(/NOK\s*3[\s\u00a0\u202f]000[\s\u00a0\u202f]000,00/);
     expect(await mainProcessNetworkRequests(restarted)).toEqual([]);
     expect(await rendererNetworkAttempts(restartedWindow)).toEqual([]);
     expect(await rendererNetworkBlockedAttempts(restartedWindow)).toEqual([]);
@@ -129,6 +135,11 @@ test("invalid shares are labeled and leave saved values unchanged at compact and
       (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
   });
   expect(contrast).toBeGreaterThanOrEqual(4.5);
+  await ownership.focus();
+  await ownership.press("Tab");
+  await expect(property.getByRole("button", { name: "Save ownership share", exact: true })).toBeFocused();
+  await window.keyboard.press("Shift+Tab");
+  await expect(ownership).toBeFocused();
   await ownership.fill("10001");
   await ownership.press("Enter");
   await expect(ownership).toHaveAttribute("aria-invalid", "true");
@@ -143,6 +154,7 @@ test("invalid shares are labeled and leave saved values unchanged at compact and
   const responsibility = loan.getByRole("textbox", {
     name: "Household loan responsibility share (basis points)", exact: true,
   });
+  await expect(responsibility).toHaveValue("10000");
   await responsibility.fill("5000.5");
   await responsibility.press("Enter");
   await expect(responsibility).toHaveAttribute("aria-invalid", "true");
@@ -162,4 +174,80 @@ test("invalid shares are labeled and leave saved values unchanged at compact and
   await appShell.openWorkspace("Properties");
   await window.setViewportSize({ width: 1280, height: 800 });
   expect(await window.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth)).toBe(true);
+});
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+  test(`both share controls save inclusive boundaries at ${viewport.width}px`, async ({ appShell, window }) => {
+    await window.setViewportSize(viewport);
+    await appShell.openWorkspace("Properties");
+    const properties = new PropertyRegistryPage(window);
+    await properties.addProperty("Home");
+    await appShell.openWorkspace("Loans");
+    const loans = new LoanRegistryPage(window);
+    await loans.addLoan({
+      label: "Mortgage", principal: "3000000", annualInterestRate: "5", termYears: "25",
+      paymentAmount: "17500", paymentFrequency: "monthly", currencyCode: "NOK",
+    });
+
+    for (const boundary of ["0", "10000"]) {
+      await appShell.openWorkspace("Properties");
+      const property = properties.property("Home");
+      await property.getByLabel("Household ownership share (basis points)", { exact: true }).fill(boundary);
+      await property.getByRole("button", { name: "Save ownership share", exact: true }).click();
+      await expect(property.getByRole("status")).toContainText("Ownership share saved");
+      await appShell.openWorkspace("Loans");
+      const loan = loans.loan("Mortgage");
+      await loan.getByLabel("Household loan responsibility share (basis points)", { exact: true }).fill(boundary);
+      await loan.getByRole("button", { name: "Save responsibility share", exact: true }).click();
+      await expect(loan.getByRole("status")).toContainText("Responsibility share saved");
+      const shares = await window.evaluate(async () => {
+        const view = document.defaultView;
+        if (view === null) throw new Error("Renderer window is unavailable.");
+        const [properties, loans] = await Promise.all([
+          view.budgetApi.propertyRegistry.list(),
+          view.budgetApi.loanRegistry.list(),
+        ]);
+        return [properties[0]?.ownershipShareBasisPoints, loans[0]?.responsibilityShareBasisPoints];
+      });
+      expect(shares).toEqual([Number(boundary), Number(boundary)]);
+      expect(await window.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth)).toBe(true);
+    }
+  });
+}
+
+test("the IPC boundary rejects malformed shares without changing saved values", async ({ appShell, window }) => {
+  await appShell.openWorkspace("Properties");
+  await new PropertyRegistryPage(window).addProperty("Home");
+  await appShell.openWorkspace("Loans");
+  await new LoanRegistryPage(window).addLoan({
+    label: "Mortgage", principal: "3000000", annualInterestRate: "5", termYears: "25",
+    paymentAmount: "17500", paymentFrequency: "monthly", currencyCode: "NOK",
+  });
+  const result = await window.evaluate(async () => {
+    const view = document.defaultView;
+    if (view === null) throw new Error("Renderer window is unavailable.");
+    const [properties, loans] = await Promise.all([
+      view.budgetApi.propertyRegistry.list(),
+      view.budgetApi.loanRegistry.list(),
+    ]);
+    const property = properties[0];
+    const loan = loans[0];
+    if (property === undefined || loan === undefined) throw new Error("Share records are missing.");
+    const attempts = await Promise.allSettled([
+      Reflect.apply(view.budgetApi.propertyRegistry.updateOwnershipShare, null, [
+        { propertyId: property.id, ownershipShareBasisPoints: 10_001 },
+      ]),
+      Reflect.apply(view.budgetApi.loanRegistry.updateResponsibilityShare, null, [
+        { loanId: loan.id, responsibilityShareBasisPoints: 5_000.5 },
+      ]),
+    ]);
+    const [savedProperties, savedLoans] = await Promise.all([
+      view.budgetApi.propertyRegistry.list(),
+      view.budgetApi.loanRegistry.list(),
+    ]);
+    return { statuses: attempts.map((attempt) => attempt.status), savedProperties, savedLoans };
+  });
+  expect(result.statuses).toEqual(["rejected", "rejected"]);
+  expect(result.savedProperties[0]?.ownershipShareBasisPoints).toBe(10_000);
+  expect(result.savedLoans[0]?.responsibilityShareBasisPoints).toBe(10_000);
 });

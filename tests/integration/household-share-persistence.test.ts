@@ -105,8 +105,11 @@ describe("household share defaults", () => {
         currencyCode: "NOK", propertyId: property.id,
       });
       loans.appendBalance({ loanId: loan.id, effectiveDateIso: "2026-10-01", amountMinor: 300_000_000 });
-      properties.updateOwnershipShare({ propertyId: property.id, ownershipShareBasisPoints: 6_000 });
+      properties.updateOwnershipShare({ propertyId: property.id, ownershipShareBasisPoints: 7_500 });
       loans.updateResponsibilityShare({ loanId: loan.id, responsibilityShareBasisPoints: 5_000 });
+      expect(properties.list()[0]?.ownershipShareBasisPoints).toBe(7_500);
+      properties.updateOwnershipShare({ propertyId: property.id, ownershipShareBasisPoints: 6_000 });
+      expect(loans.list()[0]?.responsibilityShareBasisPoints).toBe(5_000);
       const expectedProperties = properties.list();
       const expectedLoans = loans.list();
       source.close();
@@ -171,6 +174,18 @@ describe("household share defaults", () => {
       database = createLocalLedgerDatabase({ dbPath, seedData });
       expect(createPropertyRegistry(database).list()[0]).toHaveProperty("ownershipShareBasisPoints", 10_000);
       expect(createLoanRegistry(database).list()[0]).toHaveProperty("responsibilityShareBasisPoints", 10_000);
+      const migratedProperty = createPropertyRegistry(database).list()[0]!;
+      const migratedLoan = createLoanRegistry(database).list()[0]!;
+      expect(() => createPropertyRegistry(database).updateOwnershipShare({
+        propertyId: migratedProperty.id, ownershipShareBasisPoints: 10_001,
+      })).toThrow();
+      expect(() => createLoanRegistry(database).updateResponsibilityShare({
+        loanId: migratedLoan.id, responsibilityShareBasisPoints: -1,
+      })).toThrow();
+      database.close();
+      database = createLocalLedgerDatabase({ dbPath, seedData });
+      expect(createPropertyRegistry(database).list()[0]?.ownershipShareBasisPoints).toBe(10_000);
+      expect(createLoanRegistry(database).list()[0]?.responsibilityShareBasisPoints).toBe(10_000);
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
