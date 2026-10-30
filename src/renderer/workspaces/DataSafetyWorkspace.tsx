@@ -1086,14 +1086,14 @@ export function PropertyRegistrySection({
 
   React.useLayoutEffect(() => {
     const propertyId = focusSelectedPropertyIdRef.current;
-    if (propertyId === null || activeValuationPropertyId !== null || isPropertyCreateFormOpen) {
+    if (propertyId === null || isLoading || activeValuationPropertyId !== null || isPropertyCreateFormOpen) {
       return;
     }
     const propertyRecord = propertyRecordRefs.current[propertyId];
     if (propertyRecord === null || propertyRecord === undefined) return;
     focusSelectedPropertyIdRef.current = null;
     focusPropertyRecord(propertyId);
-  }, [activeValuationPropertyId, isPropertyCreateFormOpen, properties, selectedPropertyId]);
+  }, [activeValuationPropertyId, isLoading, isPropertyCreateFormOpen, properties, selectedPropertyId]);
 
   React.useLayoutEffect(() => {
     if (isCompactPropertyDetailOpen) return;
@@ -1372,6 +1372,7 @@ export function PropertyRegistrySection({
           amount: "",
         },
       }));
+      setIsLoading(true);
       setRevision((current) => current + 1);
       focusSelectedPropertyIdRef.current = property.id;
       setActiveValuationPropertyId(null);

@@ -647,10 +647,10 @@ test("shows the amount and currency in the initial mobile history view", async (
     currencyCode: "NOK",
   });
 
-  await expect(registry.property("Home")).toBeFocused();
   const valueCell = registry.valuationValueCell("Home", "2026-10-01");
   const viewport = registry.valuationHistoryViewport("Home");
   await expect(valueCell).toContainText("NOK");
+  await expect(registry.property("Home")).toBeFocused();
   const geometry = await valueCell.evaluate((cell) => {
     const wrapper = cell.closest(".property-history-table-wrap");
     if (!wrapper) throw new Error("Valuation history viewport was not found.");

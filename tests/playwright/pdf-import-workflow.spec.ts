@@ -297,13 +297,20 @@ test.describe("PDF import renderer workflow", () => {
 
   test("hides and reopens the validated preview without losing decisions", async ({ pdfImport, window }, testInfo) => {
     const fixturePath = writeMixedStatusPdfFixture();
+    await pdfImport.submitImport(fixturePath);
+    await expect(pdfImport.successStatus).toBeVisible();
     await pdfImport.enterFilePath(fixturePath);
     await pdfImport.importButton.click();
     await expect(pdfImport.previewRegion).toBeVisible();
 
+    const skipDuplicate = pdfImport.previewRegion.getByRole("radio", { name: "Skip duplicate" });
+    await expect(skipDuplicate).toHaveCount(1);
+    await expect(pdfImport.confirmImportButton).toBeDisabled();
+    await skipDuplicate.check();
     await expect(pdfImport.confirmImportButton).toBeEnabled();
     await expect(pdfImport.previewRegion).toContainText("Pending rows (2)");
     await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await window.getByRole("button", { name: "Hide preview", exact: true }).scrollIntoViewIfNeeded();
     await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport();
     await window.screenshot({ path: testInfo.outputPath("statement-preview-visible.png") });
 
@@ -318,11 +325,12 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.previewRegion).toBeVisible();
     await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport({ ratio: 1 });
     await expect(pdfImport.previewRegion).toContainText("Pending rows (2)");
+    await expect(skipDuplicate).toBeChecked();
     await expect(pdfImport.confirmImportButton).toBeEnabled();
     await window.screenshot({ path: testInfo.outputPath("statement-preview-reopened.png") });
   });
 
-  test("keeps the preview toggle visible above a long text-statement preview", async ({ pdfImport, window }, testInfo) => {
+  test("keeps the preview toggle visible and navigates a bounded 10,000-row text-statement preview", async ({ pdfImport, window }, testInfo) => {
     await window.setViewportSize({ width: 1280, height: 800 });
     await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
     await pdfImport.importButton.click();
@@ -344,6 +352,9 @@ test.describe("PDF import renderer workflow", () => {
     await expect(reopenedToggle).toBeInViewport({ ratio: 0.99 });
     expect((await reopenedToggle.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(12);
     await window.screenshot({ path: testInfo.outputPath("long-preview-reopened.png") });
+    await pdfImport.previewRegion.getByRole("button", { name: "Next rows", exact: true }).click();
+    await expect(previewTable.getByRole("row")).toHaveCount(101);
+    await expect(pdfImport.previewRegion.getByText(/Rows 101-200 of 10/)).toBeVisible();
   });
 
   test("cancels an unconfirmed import and returns to file selection without saving rows", async ({
@@ -583,18 +594,6 @@ test.describe("PDF import renderer workflow", () => {
     }, FIXTURE_PATH);
 
     expect(result).toContain("acknowledgeExcludedRows must be a boolean when provided.");
-  });
-
-  test("10,000-row text-statement preview renders a bounded page with navigation", async ({ pdfImport }) => {
-    await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
-    await pdfImport.importButton.click();
-    await expect(pdfImport.previewRegion).toBeVisible();
-
-    const previewTable = pdfImport.previewRegion.getByRole("table", { name: "Text statement preview rows and duplicate decisions" });
-    await expect(previewTable.getByRole("row")).toHaveCount(101);
-    await pdfImport.previewRegion.getByRole("button", { name: "Next rows", exact: true }).click();
-    await expect(previewTable.getByRole("row")).toHaveCount(101);
-    await expect(pdfImport.previewRegion.getByText(/Rows 101-200 of 10/)).toBeVisible();
   });
 
   test("PDF parser diagnostics remain reviewable with the original source line", async ({ pdfImport, window }) => {
@@ -1033,38 +1032,43 @@ test.describe("PDF import renderer workflow", () => {
     await expect(pdfImport.errorAlert).toContainText(missingPath);
   });
 
-  test("Regression: PDF confirmation rejects a file changed after preview", async ({
-    appShell,
-    pdfImport,
-    dashboard,
-  }) => {
-    const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.txt`);
-    writeFileSync(mutablePath, readFileSync(FIXTURE_PATH));
-    await appShell.openWorkspace("Review");
-    await dashboard.monthSelector.selectOption("2026-05");
-    const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
-    const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
-    const beforeNetText = (await dashboard.netValue.textContent()) ?? "";
+  for (const fixture of [
+    { type: "text-statement", path: FIXTURE_PATH, extension: "txt" },
+    { type: "binary PDF", path: BINARY_FIXTURE_PATH, extension: "pdf" },
+  ]) {
+    test(`Regression: ${fixture.type} confirmation rejects a file changed after preview`, async ({
+      appShell,
+      pdfImport,
+      dashboard,
+    }) => {
+      const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.${fixture.extension}`);
+      writeFileSync(mutablePath, readFileSync(fixture.path));
+      await appShell.openWorkspace("Review");
+      await dashboard.monthSelector.selectOption("2026-05");
+      const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
+      const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
+      const beforeNetText = (await dashboard.netValue.textContent()) ?? "";
 
-    await appShell.openWorkspace("Import");
-    await pdfImport.enterFilePath(mutablePath);
-    await pdfImport.importButton.click();
-    await expect(pdfImport.previewRegion).toBeVisible();
+      await appShell.openWorkspace("Import");
+      await pdfImport.enterFilePath(mutablePath);
+      await pdfImport.importButton.click();
+      await expect(pdfImport.previewRegion).toBeVisible();
 
-    writeFileSync(mutablePath, `${readFileSync(FIXTURE_PATH, "utf8")}changed after preview\n`, "utf8");
-    await pdfImport.confirmImportButton.click();
+      writeFileSync(mutablePath, Buffer.concat([readFileSync(fixture.path), Buffer.from("\nchanged after preview\n")]));
+      await pdfImport.confirmImportButton.click();
 
-    await expect(pdfImport.errorAlert).toBeVisible({ timeout: 10_000 });
-    await expect(pdfImport.errorAlert).toContainText("Import validation failed");
-    await expect(pdfImport.errorAlert).toContainText("PREVIEW_STALE: The file changed after preview.");
-    await expect(pdfImport.confirmImportButton).not.toBeVisible();
-    await expect(pdfImport.importButton).toBeEnabled();
-    await expect(pdfImport.previewRegion).not.toBeVisible();
-    await appShell.openWorkspace("Review");
-    await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
-    await expect(dashboard.expenseValue).toHaveText(beforeExpenseText);
-    await expect(dashboard.netValue).toHaveText(beforeNetText);
-  });
+      await expect(pdfImport.errorAlert).toBeVisible({ timeout: 10_000 });
+      await expect(pdfImport.errorAlert).toContainText("Import validation failed");
+      await expect(pdfImport.errorAlert).toContainText("PREVIEW_STALE: The file changed after preview.");
+      await expect(pdfImport.confirmImportButton).not.toBeVisible();
+      await expect(pdfImport.importButton).toBeEnabled();
+      await expect(pdfImport.previewRegion).not.toBeVisible();
+      await appShell.openWorkspace("Review");
+      await expect(dashboard.incomeValue).toHaveText(beforeIncomeText);
+      await expect(dashboard.expenseValue).toHaveText(beforeExpenseText);
+      await expect(dashboard.netValue).toHaveText(beforeNetText);
+    });
+  }
 
   test("Regression: PDF import rejects an account outside the household", async ({ window }) => {
     const response = await window.evaluate(async (filePath) =>

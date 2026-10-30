@@ -174,12 +174,13 @@ test.describe("Ledger search and filter workflow", () => {
     await expect(ledger.resultStatus).toHaveText("1 ledger transactions");
   });
 
-  test("explains NOK format and retains active advanced filter identities when collapsed", async ({ ledger }) => {
+  test("explains NOK format and counts both amount bounds as one collapsed filter", async ({ ledger }) => {
     await expect(ledger.activeFiltersHeading).not.toBeVisible();
     await ledger.openMoreFilters();
     await expect(ledger.amountFormatHint).toBeVisible();
     await ledger.accountInput.selectOption("sample-acc");
     await ledger.amountFromInput.fill("100");
+    await ledger.amountToInput.fill("200");
 
     await expect(ledger.moreFiltersSummary).toContainText("2 active");
     await expect(ledger.moreFiltersSummary).toContainText("Account");
@@ -187,17 +188,6 @@ test.describe("Ledger search and filter workflow", () => {
 
     await ledger.moreFiltersSummary.click();
     await expect(ledger.amountFromInput).not.toBeVisible();
-    await expect(ledger.moreFiltersSummary).toContainText("Account");
-    await expect(ledger.moreFiltersSummary).toContainText("Amount range");
-  });
-
-  test("counts the two amount bounds as one active range filter", async ({ ledger }) => {
-    await ledger.openMoreFilters();
-    await ledger.accountInput.selectOption("sample-acc");
-    await ledger.amountFromInput.fill("100");
-    await ledger.amountToInput.fill("200");
-
-    await expect(ledger.moreFiltersSummary).toContainText("2 active");
     await expect(ledger.moreFiltersSummary).toContainText("Account");
     await expect(ledger.moreFiltersSummary).toContainText("Amount range");
   });
