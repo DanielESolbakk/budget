@@ -41,13 +41,14 @@ export function CategoryBreakdownSection({ viewContract }: CategoryBreakdownSect
   return (
     <section aria-label="Category Breakdown">
       <h2>Category Breakdown</h2>
-      <ul>
+      <ul className="financial-rows">
         {categoryBreakdown.entries.map((entry) => (
           <li
             key={entry.categoryId ?? "uncategorized"}
             aria-label={`Category ${entry.label}`}
           >
-            {entry.label}: {formatMinor(entry.totalMinor)}
+            <span>{entry.label}</span>
+            <span className="financial-row-value">{formatMinor(entry.totalMinor)}</span>
           </li>
         ))}
       </ul>

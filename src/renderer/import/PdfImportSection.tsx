@@ -11,6 +11,7 @@ import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage 
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
 import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
 import { ImportReconciliationSummary } from "./ImportReconciliationSummary.js";
+import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
 
 type ImportState =
   | { status: "idle" }
@@ -32,17 +33,6 @@ type ImportState =
   | { status: "validation"; errors: PdfImportResponse & { ok: false }; source: "preview" | "import" };
 
 const PREVIEW_PAGE_SIZE = 100;
-
-const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
-  style: "currency",
-  currency: "NOK",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function formatAmount(amountMinor: number): string {
-  return nokCurrencyFormatter.format(amountMinor / 100);
-}
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("nb-NO", {
@@ -559,7 +549,7 @@ export function PdfImportSection({
                 <ul aria-label={`${statementFormat} pending transactions`}>
                   {pendingObservations.map((observation) => (
                     <li key={observation.id}>
-                      Line {observation.sourceRowIndex + 1} · {formatDate(observation.transactionDateIso)} · {observation.merchantRaw} · {formatAmount(observation.amountMinor)} · {observation.sourceStatus}
+                      Line {observation.sourceRowIndex + 1} · {formatDate(observation.transactionDateIso)} · {observation.merchantRaw} · {formatAmount(observation.amountMinor, observation.currencyCode ?? "NOK")} · {observation.sourceStatus}
                       {observation.sourceReference === undefined
                         ? " · No source reference"
                         : ` · Reference ${observation.sourceReference}`}
@@ -638,7 +628,7 @@ export function PdfImportSection({
                       <td data-label="Merchant">
                         <span className="import-preview-cell-value">{transaction.merchantRaw}</span>
                       </td>
-                      <td data-label="Amount">{formatAmount(transaction.amountMinor)}</td>
+                      <td data-label="Amount">{formatAmount(transaction.amountMinor, transaction.currencyCode ?? "NOK")}</td>
                       <td data-label="Currency">{transaction.currencyCode ?? "NOK"}</td>
                       <td data-label="Status and duplicate decision">
                         {duplicateCandidate === undefined
@@ -650,7 +640,7 @@ export function PdfImportSection({
                               <details className="import-duplicate-match-details">
                                 <summary>Compare existing transaction</summary>
                                 <span className="import-duplicate-match">
-                                  Existing: {duplicateCandidate.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {duplicateCandidate.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(duplicateCandidate.duplicateMatch.matchingTransaction.amountMinor)}
+                                  Existing: {duplicateCandidate.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {duplicateCandidate.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(duplicateCandidate.duplicateMatch.matchingTransaction.amountMinor, duplicateCandidate.duplicateMatch.matchingTransaction.currencyCode ?? "NOK")}
                                 </span>
                               </details>
                               <fieldset aria-label={`Duplicate decision for row ${rowIndex + 1}`}>

@@ -772,9 +772,9 @@ section[aria-label].destination-workspace {
 
 .destination-heading {
   display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 2rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
   border-bottom: 1px solid var(--line);
   padding-bottom: 1.3rem;
 }
@@ -794,7 +794,7 @@ section[aria-label].destination-workspace {
 }
 
 .destination-heading p {
-  max-width: 52ch;
+  max-width: 72ch;
   color: var(--paper-muted);
   line-height: 1.5;
 }
@@ -817,6 +817,8 @@ section[aria-label].destination-workspace {
 }
 
 .import-workspace-switcher button {
+  min-height: 44px;
+  padding: 0.55rem 0.85rem;
   margin: 0;
   border-color: var(--line-strong);
   color: var(--paper-muted);
@@ -1943,6 +1945,11 @@ section[aria-label="Ledger"] form button {
   justify-self: start;
 }
 
+section[aria-label="Ledger"] form .ledger-quick-filters button {
+  align-self: stretch;
+  justify-self: stretch;
+}
+
 .ledger-more-filters-toggle {
   display: inline-flex;
   flex-wrap: wrap;
@@ -2167,6 +2174,7 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
 .ledger-quick-filters {
   display: flex;
   flex-wrap: wrap;
+  align-items: stretch;
   gap: 0.5rem;
   margin: 0.75rem 0;
 }
@@ -2178,22 +2186,33 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
   background: var(--panel-raised);
 }
 
+.ledger-quick-filters > button {
+  min-height: 64px;
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+}
+
 .ledger-quick-filters button[aria-pressed="true"] {
   border-color: var(--orange);
-  color: var(--ink);
-  background: var(--orange);
+  color: var(--orange);
+  background: var(--orange-soft);
 }
 
 .ledger-transaction-type-filters {
-  display: flex;
-  gap: 0.15rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 64px;
   border: 1px solid var(--line-strong);
-  padding: 0.15rem;
-  background: var(--panel-soft);
+  border-radius: 6px;
+  padding: 3px;
+  background: var(--panel-raised);
 }
 
 .ledger-transaction-type-filters button {
+  min-height: 0;
+  margin: 0;
   border: 0;
+  padding: 0.45rem 0.75rem;
   background: transparent;
 }
 
@@ -2204,7 +2223,7 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
 }
 
 .ledger-quick-filters button[aria-pressed="true"] small {
-  color: var(--ink);
+  color: var(--orange);
 }
 
 .ledger-amount-range {
@@ -3262,13 +3281,30 @@ section[aria-label="Monthly Totals"] dd[aria-label="Net"] {
   color: var(--orange);
 }
 
-section[aria-label="Forecast"] li {
+.financial-rows li {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid var(--line);
   padding: 0.65rem 0;
   color: var(--paper);
+  list-style: none;
+}
+
+.financial-rows li > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.financial-row-value {
+  flex-shrink: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.target-vs-actual-table :is(th, td):not(:first-child) {
+  text-align: right;
 }
 
 section[aria-label="Category Breakdown"] li::marker,
@@ -3281,6 +3317,10 @@ section[aria-label="Category Breakdown"] ul,
 section[aria-label="Category Target Entry"] ul,
 section[aria-label="Forecast"] ul {
   padding-left: 1rem;
+}
+
+section[aria-label] ul.financial-rows {
+  padding-left: 0;
 }
 
 section[aria-label="Target vs Actual"] {
@@ -3834,6 +3874,11 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   white-space: nowrap;
 }
 
+.review-queue-action select,
+.review-queue-action button {
+  min-height: 44px;
+}
+
 .review-propagation-action {
   display: flex;
   flex-wrap: wrap;
@@ -3983,6 +4028,21 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
 
 .empty-state p {
   margin: 0.35rem 0 0;
+}
+
+.category-review-empty-details summary {
+  min-height: 32px;
+  padding-block: 0.35rem;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.category-review-empty-details p {
+  max-width: 72ch;
+  margin: 0.5rem 0 0;
+  color: var(--paper-muted);
+  font-size: 0.875rem;
 }
 
 @media (max-width: 1050px) {
@@ -4210,7 +4270,23 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   }
 
   .workspace-subnavigation button {
+    min-height: 52px;
     padding-inline: 0.45rem;
+  }
+
+  .ledger-quick-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ledger-quick-filters > button {
+    width: 100%;
+    padding-inline: 0.5rem;
+  }
+
+  .ledger-transaction-type-filters {
+    grid-column: 1 / -1;
+    grid-row: 1;
   }
 
   .account-coverage-form,
@@ -4295,6 +4371,10 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   .saved-exchange-rates td[data-label="Effective date"],
   .saved-exchange-rates td[data-label="Source"] {
     grid-column: 1 / -1;
+  }
+
+  section[aria-label="Target vs Actual"] table {
+    min-width: 0;
   }
 
   .target-vs-actual-table,
@@ -4421,7 +4501,7 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   }
 
   .import-workspace-switcher button {
-    min-height: 3.15rem;
+    min-height: 52px;
     padding: 0.45rem;
     overflow-wrap: anywhere;
   }
@@ -4467,6 +4547,21 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   .review-queue-item {
     grid-template-columns: 1fr;
     gap: 0.9rem;
+  }
+
+  .review-queue-action {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .review-queue-action p {
+    margin: 0;
+  }
+
+  .review-queue-action select,
+  .review-queue-action button {
+    min-width: 0;
+    width: 100%;
   }
 
   .preview-table-wrap {
@@ -5431,9 +5526,9 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
 }
 
 .household-workspace .destination-heading {
-  align-items: flex-end;
+  align-items: flex-start;
   border-color: var(--household-border);
-  padding-bottom: 1.1rem;
+  padding-bottom: 1.3rem;
 }
 
 .household-workspace .destination-heading h2 {
@@ -5456,6 +5551,18 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   border: 0;
   padding: 0;
   background: transparent;
+}
+
+.household-workspace .registry-empty-state {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1.25rem;
+  background: var(--panel);
+}
+
+.household-workspace .registry-empty-state > p:first-child {
+  margin: 0 0 0.85rem;
+  color: var(--paper);
 }
 
 .household-workspace .property-registry-empty,

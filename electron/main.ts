@@ -312,7 +312,8 @@ function assertTrustedRenderer(event: Electron.IpcMainInvokeEvent): void {
   }
   const senderUrl = event.senderFrame?.url;
   const packagedRendererUrl = pathToFileURL(join(__dirname, "../renderer/index.html")).href;
-  if (senderUrl === packagedRendererUrl) return;
+  // Fragment navigation stays within the approved renderer document.
+  if (senderUrl?.split("#", 1)[0] === packagedRendererUrl) return;
 
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
   if (senderUrl !== undefined && rendererUrl !== undefined) {

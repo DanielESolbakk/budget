@@ -12,6 +12,7 @@ import { getImportPendingMessage, ImportStageProgress, type ImportWorkflowStage 
 import { ImportAccountSelect } from "./ImportAccountSelect.js";
 import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
 import { ImportReconciliationSummary } from "./ImportReconciliationSummary.js";
+import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
 
 type ImportState =
   | { status: "idle" }
@@ -32,17 +33,6 @@ type ImportState =
   | { status: "validation"; errors: CsvImportResponse & { ok: false } };
 
 const PREVIEW_PAGE_SIZE = 100;
-
-const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
-  style: "currency",
-  currency: "NOK",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function formatAmount(amountMinor: number): string {
-  return nokCurrencyFormatter.format(amountMinor / 100);
-}
 
 interface CsvImportSectionProps {
   initialFilePath: string;
@@ -778,9 +768,9 @@ export function CsvImportSection({
                     </td>
                     <td data-label="Amount">
                       {row.transaction !== undefined
-                        ? formatAmount(row.transaction.amountMinor)
+                        ? formatAmount(row.transaction.amountMinor, row.transaction.currencyCode ?? "NOK")
                         : row.pendingObservation !== undefined
-                          ? formatAmount(row.pendingObservation.amountMinor)
+                          ? formatAmount(row.pendingObservation.amountMinor, row.pendingObservation.currencyCode ?? "NOK")
                           : "Not ready"}
                     </td>
                     <td data-label="Currency">
@@ -806,7 +796,7 @@ export function CsvImportSection({
                               <details className="import-duplicate-match-details">
                                 <summary>Compare existing transaction</summary>
                                 <span className="import-duplicate-match">
-                                  Existing: {row.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {row.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(row.duplicateMatch.matchingTransaction.amountMinor)}
+                                  Existing: {row.duplicateMatch.matchingTransaction.bookedAtIso.slice(0, 10)} · {row.duplicateMatch.matchingTransaction.merchantRaw} · {formatAmount(row.duplicateMatch.matchingTransaction.amountMinor, row.duplicateMatch.matchingTransaction.currencyCode ?? "NOK")}
                                 </span>
                               </details>
                               <fieldset aria-label={`Duplicate decision for row ${row.rowIndex + 1}`}>

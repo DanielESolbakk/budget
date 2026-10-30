@@ -26,11 +26,11 @@ export function ForecastSection({ dashboardData }: ForecastSectionProps): React.
       ) : (
         <p>Estimated from the average of up to three recent monthly totals.</p>
       )}
-      <ul>
+      <ul className="financial-rows">
         {dashboardData.forecast.entries.map((entry) => (
           <li key={entry.yearMonth}>
-            <strong>{entry.yearMonth}</strong>:{" "}
-            <span aria-label={`Projected amount ${formatProjectedMinor(entry.projectedMinor)}`}>
+            <strong>{entry.yearMonth}</strong>
+            <span className="financial-row-value" aria-label={`Projected amount ${formatProjectedMinor(entry.projectedMinor)}`}>
               {formatProjectedMinor(entry.projectedMinor)}
             </span>
           </li>

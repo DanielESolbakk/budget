@@ -5,22 +5,7 @@ import type {
   Transaction,
 } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "./categoryOptions.js";
-
-const currencyFormatters = new Map<string, Intl.NumberFormat>();
-
-function formatAmount(amountMinor: number, currencyCode = "NOK"): string {
-  let formatter = currencyFormatters.get(currencyCode);
-  if (formatter === undefined) {
-    formatter = new Intl.NumberFormat("nb-NO", {
-      style: "currency",
-      currency: currencyCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-    currencyFormatters.set(currencyCode, formatter);
-  }
-  return formatter.format(amountMinor / 100);
-}
+import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
 
 function getCategoryLabel(categoryId: string): string {
   return CATEGORY_OPTIONS.find((category) => category.id === categoryId)?.label ?? categoryId;
@@ -280,10 +265,14 @@ export function CategoryReviewSection({
     }
   }
 
+  const isQueueEmpty = hasLoaded && !isLoading && loadError === null && transactions.length === 0;
+
   return (
-    <section aria-label="Categorization Review" aria-busy={isLoading}>
+    <section className={isQueueEmpty ? "category-review-empty" : undefined} aria-label="Categorization Review" aria-busy={isLoading}>
       <h2 ref={queueHeadingRef} tabIndex={-1}>Categorization Review</h2>
-      <p className="section-intro">These transactions are uncategorized or need a low-confidence category decision reviewed.</p>
+      {!isQueueEmpty && (
+        <p className="section-intro">These transactions are uncategorized or need a low-confidence category decision reviewed.</p>
+      )}
       {isLoading && (
         <p role="status">
           {hasLoaded ? "Updating categorization queue..." : "Loading categorization queue..."}
@@ -323,23 +312,23 @@ export function CategoryReviewSection({
           {isUndoingPropagation ? "Undoing propagation..." : "Undo propagation"}
         </button>
       )}
-      {hasLoaded && !isLoading && loadError === null && (
+      {hasLoaded && !isLoading && loadError === null && (!isQueueEmpty || reviewedCount > 0) && (
         <p role="status" aria-label="Review queue progress">
           {reviewedCount} reviewed this session; {transactions.length} remaining to review
         </p>
       )}
-      {hasLoaded && !isLoading && loadError === null && transactions.length === 0 ? (
-        <div className="empty-state">
-          <strong>No category decisions need review.</strong>
+      {isQueueEmpty ? (
+        <details className="category-review-empty-details">
+          <summary>No category decisions need review.</summary>
           <p>Uncategorized transactions and low-confidence categorizations from CSV/PDF imports or manual entry will appear here.</p>
-        </div>
+        </details>
       ) : transactions.length > 0 ? (
         <ul className="review-queue-list">
           {transactions.map((transaction) => (
             <li className="review-queue-item" key={transaction.id} aria-label={`Review ${transaction.merchantRaw}`}>
               <div className="review-queue-details">
                 <strong>{transaction.merchantRaw}</strong>
-                <span>{transaction.bookedAtIso.slice(0, 10)} · {formatAmount(transaction.amountMinor)}</span>
+                <span>{transaction.bookedAtIso.slice(0, 10)} · {formatAmount(transaction.amountMinor, transaction.currencyCode ?? "NOK")}</span>
                 {transaction.categorization !== undefined && (
                   <span>
                     Confidence: {Math.round(transaction.categorization.confidence * 100)}% ·{" "}
