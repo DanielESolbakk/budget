@@ -58,6 +58,7 @@ In **Household** > **Loans**, add loan or mortgage terms and optionally link an 
 On each property, edit the household ownership share; on each loan, edit the household responsibility share separately. Enter whole basis points from 0 to 10000 (10000 means 100%). Both default to 100% and are saved locally and in backup snapshots. Shares do not change recorded amounts or currencies and do not determine legal ownership or liability.
 
 In **Household** > **Data safety**, create a local backup, export ledger data, or restore a saved backup snapshot.
+Version 9 backups missing a property ownership share or loan responsibility share are rejected rather than restoring an incorrect share. Older backups without these shares restore them as 100%.
 
 ### Build for production
 

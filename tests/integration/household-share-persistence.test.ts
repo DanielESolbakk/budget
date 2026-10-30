@@ -8,6 +8,7 @@ import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlit
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { createLoanRegistry } from "../../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../../src/app/propertyRegistry.js";
+import type { BackupSnapshot } from "../../src/domain/backup/snapshotContract.js";
 
 describe("household share defaults", () => {
   it("defaults new property ownership and loan responsibility independently to 10000 basis points", () => {
@@ -154,6 +155,53 @@ describe("household share defaults", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it.each(["property", "loan"] as const)(
+    "rejects a version 9 snapshot missing its %s share without changing the ledger",
+    (missingShare) => {
+      const directory = mkdtempSync(join(tmpdir(), "budget-share-incomplete-backup-"));
+      const snapshotPath = join(directory, "snapshot.json");
+      const household = {
+        id: "household-share",
+        name: "Synthetic household",
+        createdAtIso: "2026-01-01T00:00:00.000Z",
+      };
+      const database = createLocalLedgerDatabase({
+        dbPath: join(directory, "ledger.sqlite"),
+        seedData: { household, accounts: [], transactions: [], importJobs: [], monthlyCategoryTargets: [] },
+      });
+
+      try {
+        const properties = createPropertyRegistry(database);
+        const loans = createLoanRegistry(database);
+        const property = properties.create({ label: "Home" });
+        const loan = loans.create({
+          label: "Mortgage", principalMinor: 300_000_000, annualInterestRateBasisPoints: 500,
+          termMonths: 300, paymentAmountMinor: 1_750_000, paymentFrequency: "monthly",
+          currencyCode: "NOK", propertyId: property.id,
+        });
+        properties.updateOwnershipShare({ propertyId: property.id, ownershipShareBasisPoints: 7_500 });
+        loans.updateResponsibilityShare({ loanId: loan.id, responsibilityShareBasisPoints: 5_000 });
+        createBackupSnapshot({ ...database.loadLedgerSnapshotData(), outputPath: snapshotPath });
+        const snapshot: BackupSnapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+        expect(snapshot.metadata.version).toBe("9");
+        if (missingShare === "property") {
+          delete snapshot.properties[0]!.ownershipShareBasisPoints;
+        } else {
+          delete snapshot.loanRecords[0]!.responsibilityShareBasisPoints;
+        }
+        writeFileSync(snapshotPath, JSON.stringify(snapshot));
+
+        expect(() => database.replaceLedgerSnapshotData(restoreBackupSnapshot({ snapshotPath })))
+          .toThrow(/Invalid snapshot/);
+        expect(properties.list()[0]?.ownershipShareBasisPoints).toBe(7_500);
+        expect(loans.list()[0]?.responsibilityShareBasisPoints).toBe(5_000);
+      } finally {
+        database.close();
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }
+  );
 
   it("migrates existing property and loan tables without shares to 10000", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-share-migration-"));
