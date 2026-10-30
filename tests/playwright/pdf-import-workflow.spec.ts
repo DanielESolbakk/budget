@@ -412,46 +412,67 @@ test.describe("PDF import renderer workflow", () => {
     await window.screenshot({ path: testInfo.outputPath("statement-import-receipt.png") });
   });
 
-  test("keeps undo confirmation and retained transaction details beside the selected import", async ({
-    pdfImport,
-    window,
-    databasePath,
-  }, testInfo) => {
-    await pdfImport.submitImport(FIXTURE_PATH);
-    const importedTransaction = loadPersistedSnapshot(databasePath).transactions.find(
-      (transaction) => transaction.importJobId !== undefined
-    );
-    expect(importedTransaction).toBeDefined();
-    if (importedTransaction === undefined) return;
+  for (const viewport of [
+    { width: 1360, height: 900 },
+    { width: 1008, height: 655 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`keeps undo confirmation and retained transaction details beside the selected import at ${viewport.width}px`, async ({
+      pdfImport,
+      electronApp,
+      window,
+      databasePath,
+    }, testInfo) => {
+      await expect(pdfImport.importHeading).toBeVisible();
+      await electronApp.evaluate(({ BrowserWindow }, viewport) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(viewport.width, viewport.height);
+      }, viewport);
+      await expect.poll(() => window.evaluate(() => ({
+        width: globalThis.innerWidth,
+        height: globalThis.innerHeight,
+      }))).toEqual(viewport);
+      await pdfImport.submitImport(FIXTURE_PATH);
+      const importedTransaction = loadPersistedSnapshot(databasePath).transactions.find(
+        (transaction) => transaction.importJobId !== undefined
+      );
+      expect(importedTransaction).toBeDefined();
+      if (importedTransaction === undefined) return;
 
-    const ledger = createLocalLedgerDatabase({ dbPath: databasePath });
-    try {
-      ledger.updateTransactionCategoryAndRule(importedTransaction.id, {
-        merchantAlias: "user-corrected merchant",
-        categoryId: "groceries",
-      });
-    } finally {
-      ledger.close();
-    }
+      const ledger = createLocalLedgerDatabase({ dbPath: databasePath });
+      try {
+        ledger.updateTransactionCategoryAndRule(importedTransaction.id, {
+          merchantAlias: "user-corrected merchant",
+          categoryId: "groceries",
+        });
+      } finally {
+        ledger.close();
+      }
 
-    await window.getByRole("button", { name: "Import history", exact: true }).click();
-    const history = window.getByRole("region", { name: "Import history", exact: true });
-    const historyTable = history.getByRole("table", { name: "Completed local import jobs" });
-    const importRow = historyTable.getByRole("row").filter({ hasText: basename(FIXTURE_PATH) }).first();
-    await importRow.getByRole("button", { name: `Undo import ${basename(FIXTURE_PATH)}` }).click();
+      await window.getByRole("button", { name: "Import history", exact: true }).click();
+      const history = window.getByRole("region", { name: "Import history", exact: true });
+      const historyTable = history.getByRole("table", { name: "Completed local import jobs" });
+      const importRow = historyTable.getByRole("row").filter({ hasText: basename(FIXTURE_PATH) }).first();
+      await importRow.getByRole("button", { name: `Undo import ${basename(FIXTURE_PATH)}` }).click();
 
-    const confirmation = history.getByRole("group", { name: "Undo import confirmation", exact: true });
-    await expect(confirmation).toBeVisible();
-    await expect(confirmation).toBeInViewport();
-    await confirmation.getByRole("button", { name: "Confirm undo", exact: true }).click();
+      const confirmation = history.getByRole("group", { name: "Undo import confirmation", exact: true });
+      await expect(confirmation).toBeVisible();
+      await expect(confirmation).toBeInViewport();
+      await confirmation.getByRole("button", { name: "Confirm undo", exact: true }).click();
 
-    const result = history.getByRole("status", { name: "Import undo result" });
-    await expect(result).toContainText("1 imported item kept");
-    await expect(result).toContainText(/changed after import/i);
-    await expect(result).toContainText(importedTransaction.merchantRaw);
-    await expect(result).toBeInViewport();
-    await window.screenshot({ path: testInfo.outputPath("statement-import-undo.png") });
-  });
+      const result = history.getByRole("status", { name: "Import undo result" });
+      await expect(result).toContainText("1 imported item kept");
+      await expect(result).toContainText(/changed after import/i);
+      await expect(result).toContainText(importedTransaction.merchantRaw);
+      await expect(result).toBeInViewport();
+      await expect(result).toBeFocused();
+      await window.screenshot({ path: testInfo.outputPath("statement-import-undo.png") });
+
+      await window.getByRole("button", { name: "New import", exact: true }).click();
+      await window.getByRole("button", { name: "Import history", exact: true }).click();
+      await expect(result).toBeVisible();
+      await expect(result).not.toBeFocused();
+    });
+  }
 
   test("shows the target account before PDF preview", async ({ pdfImport }) => {
     const accountSelect = pdfImport.importSection.getByRole("combobox", { name: "Import into account" });

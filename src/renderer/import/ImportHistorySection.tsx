@@ -72,6 +72,8 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
   const [undoResult, setUndoResult] = React.useState<UndoImportJobResult | null>(null);
   const confirmationRef = React.useRef<HTMLDivElement | null>(null);
   const confirmButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const undoResultRef = React.useRef<HTMLDivElement | null>(null);
+  const revealedUndoResultRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -98,6 +100,18 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
     confirmationRef.current?.scrollIntoView({ block: "nearest" });
     confirmButtonRef.current?.focus({ preventScroll: true });
   }, [pendingUndo]);
+
+  React.useEffect(() => {
+    if (loadState !== "ready" || undoResult === null) return;
+    if (revealedUndoResultRef.current === undoResult.importJobId) return;
+    // Wait for persisted history; the initial success render is replaced during reload.
+    if (!entries.some((entry) => entry.id === undoResult.importJobId && entry.undoneAtIso !== null)) return;
+    const result = undoResultRef.current;
+    if (result === null) return;
+    result.scrollIntoView({ block: "nearest" });
+    result.focus({ preventScroll: true });
+    revealedUndoResultRef.current = undoResult.importJobId;
+  }, [entries, loadState, undoResult]);
 
   async function confirmUndo(): Promise<void> {
     if (pendingUndo === null) return;
@@ -242,7 +256,13 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
                   {(undoResult?.importJobId === entry.id || entry.undoneAtIso !== null) && (
                     <tr className="import-history-detail-row">
                       <td colSpan={7}>
-                        <div className="import-undo-result" role="status" aria-label="Import undo result">
+                        <div
+                          ref={undoResult?.importJobId === entry.id ? undoResultRef : undefined}
+                          className="import-undo-result"
+                          role="status"
+                          aria-label="Import undo result"
+                          tabIndex={-1}
+                        >
                           <strong>Undo complete</strong>
                           <p>
                             {removedItemCount} imported item{removedItemCount === 1 ? "" : "s"} removed.
