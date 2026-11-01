@@ -21,6 +21,7 @@ export default defineConfig({
   // Keep scenarios within each file serial; the Electron fixture creates an
   // isolated application and database for every test.
   fullyParallel: false,
+  workers: 2,
   forbidOnly: !!process.env["CI"],
   timeout: process.env["CI"] ? 60_000 : 30_000,
   retries: process.env["CI"] ? 2 : 0,
