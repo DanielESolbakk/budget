@@ -65,6 +65,10 @@ export class DashboardPage {
     return this.page.getByRole("combobox", { name: "Select month" });
   }
 
+  get zeroActivityStatus() {
+    return this.page.getByRole("status", { name: "Monthly activity" });
+  }
+
   get monthlyAttention() {
     return this.page.getByRole("complementary", { name: "Monthly attention" });
   }

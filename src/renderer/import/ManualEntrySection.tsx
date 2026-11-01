@@ -5,8 +5,8 @@ import type {
   ManualEntrySuccess,
 } from "../../app/import/manualEntry.js";
 import type { Account, ManualEntryInput } from "../../domain/types.js";
+import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 import { CATEGORY_OPTIONS } from "./categoryOptions.js";
-import { toLocalIsoDate } from "../localDate.js";
 
 interface ManualEntryFormValues {
   accountId: string;
