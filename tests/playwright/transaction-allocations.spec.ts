@@ -14,7 +14,7 @@ async function tabTo(window: Page, target: Locator): Promise<void> {
 }
 
 test.describe("transaction category allocations", () => {
-  test("starts an unallocated transaction with a neutral, incomplete draft", async ({
+  test("explains how to split and shows the partial balance for an incomplete draft", async ({
     appShell,
     window,
   }) => {
@@ -29,8 +29,14 @@ test.describe("transaction category allocations", () => {
     await expect(allocationEditor.getByLabel("Allocation amount 1")).toHaveValue("-72.00");
     await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("");
     await expect(allocationEditor.getByLabel("Allocation amount 2")).toHaveValue("");
-    await expect(allocationEditor.getByText(/Allocation total:/)).toContainText("Incomplete");
-    await expect(allocationEditor).toContainText("Your saved transaction stays unchanged");
+    await expect(allocationEditor.getByText(/Allocated so far:/))
+      .toContainText(/72,00\s*kr/);
+    await expect(allocationEditor.getByText(/Balance after entered amounts:/))
+      .toContainText(/0,00\s*kr/);
+    await expect(allocationEditor).toContainText("1 allocation is incomplete.");
+    await expect(allocationEditor).toContainText(
+      "Your saved transaction stays unchanged. Adjust the first amount, then choose a second category and amount."
+    );
     await expect(allocationEditor.getByRole("button", { name: "Move allocation 1 down" }))
       .toBeDisabled();
     await allocationEditor.getByRole("button", { name: "Add allocation" }).click();
@@ -57,8 +63,8 @@ test.describe("transaction category allocations", () => {
     await expect(allocationEditor).toBeVisible();
     await expect(allocationEditor.getByText(/Source transaction:/))
       .toContainText(/72,00\s*kr/);
-    await expect(allocationEditor.getByText(/Allocation total:/))
-      .toContainText("Incomplete");
+    await expect(allocationEditor.getByText(/Allocated so far:/))
+      .toContainText(/72,00\s*kr/);
     await allocationEditor.getByLabel("Allocation category 1").selectOption("groceries");
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
@@ -72,7 +78,7 @@ test.describe("transaction category allocations", () => {
       .toBeVisible();
   });
 
-  test("marks both allocation summary values incomplete until the draft is valid", async ({
+  test("removes a saved split and restores the original categorization", async ({
     appShell,
     window,
   }) => {
@@ -83,10 +89,125 @@ test.describe("transaction category allocations", () => {
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
-    await expect(allocationEditor.getByText(/Allocation total:/))
-      .toContainText("Incomplete");
-    await expect(allocationEditor.getByText(/Remaining to allocate:/))
-      .toContainText("Incomplete");
+    await allocationEditor.getByLabel("Allocation category 1").selectOption("groceries");
+    await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
+    await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
+    await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
+    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await expect(transactionRow).toContainText("Housing");
+
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    const restoreButton = allocationEditor.getByRole("button", {
+      name: "Remove split for Kiwi",
+    });
+    await expect(restoreButton).toBeVisible();
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-split-desktop.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect(allocationEditor).toHaveScreenshot("allocation-editor-split-mobile.png", {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    });
+    const horizontalOverflow = await window.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth
+    );
+    expect(horizontalOverflow).toBe(false);
+    await restoreButton.click();
+
+    await expect(allocationEditor).toBeHidden();
+    await expect(transactionRow).toContainText("Groceries & food");
+    await expect(transactionRow).not.toContainText("Housing");
+  });
+
+  test("shows a partial balance and incomplete-row status until the draft is valid", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+
+    const allocationEditor = window.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    await expect(allocationEditor.getByText(/Allocated so far:/))
+      .toContainText(/72,00\s*kr/);
+    await expect(allocationEditor.getByText(/Balance after entered amounts:/))
+      .toContainText(/0,00\s*kr/);
+    await expect(allocationEditor).toContainText("1 allocation is incomplete.");
+  });
+
+  test("associates category errors with their field and clears them after correction", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+
+    const allocationEditor = window.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    const secondCategory = allocationEditor.getByLabel("Allocation category 2");
+    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+
+    const error = allocationEditor.getByRole("alert");
+    await expect(error).toHaveText("Choose a category for allocation 2.");
+    await expect(secondCategory).toHaveAttribute("aria-invalid", "true");
+    await expect(secondCategory).toHaveAttribute("aria-describedby", "transaction-allocation-error");
+
+    await secondCategory.selectOption("housing");
+    await expect(error).toHaveCount(0);
+    await expect(secondCategory).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  test("announces the partial balance when amount entry leaves the field", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+
+    const ledger = window.getByRole("region", { name: "Ledger" });
+    const allocationEditor = ledger.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    const firstAmount = allocationEditor.getByLabel("Allocation amount 1");
+    await firstAmount.fill("-40.00");
+    await firstAmount.press("Tab");
+
+    const status = ledger.getByRole("status", { name: "Allocation status" });
+    await expect(status).toContainText("Current allocation total");
+    await expect(status).toContainText(/32,00\s*kr/);
+    await expect(status).toContainText("1 allocation is incomplete");
+  });
+
+  test("announces successful allocation saves after the editor closes", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+
+    const ledger = window.getByRole("region", { name: "Ledger" });
+    const allocationEditor = ledger.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    await allocationEditor.getByLabel("Allocation category 1").selectOption("groceries");
+    await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
+    await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
+    await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
+    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+
+    await expect(allocationEditor).toBeHidden();
+    await expect(ledger.getByRole("status", { name: "Allocation status" }))
+      .toContainText("Allocations saved for Kiwi.");
   });
 
   test("labels an excess allocation as over-allocated", async ({ appShell, window }) => {
@@ -115,8 +236,9 @@ test.describe("transaction category allocations", () => {
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
-    await expect(allocationEditor.getByText(/Remaining to allocate:/))
-      .toContainText("Incomplete");
+    await expect(allocationEditor.getByText(/Balance after entered amounts:/))
+      .toContainText(/0,00\s*kr/);
+    await expect(allocationEditor).toContainText("1 allocation is incomplete.");
 
     await window.setViewportSize({ width: 1280, height: 800 });
     await expect(allocationEditor).toHaveScreenshot("allocation-editor-desktop.png", {
@@ -177,6 +299,32 @@ test.describe("transaction category allocations", () => {
       element.getBoundingClientRect().width
     );
     expect(editorWidth).toBeLessThanOrEqual(390);
+  });
+
+  test("keeps the allocation balance in view while editing on a compact window", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    await window.setViewportSize({ width: 390, height: 844 });
+    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+
+    const allocationEditor = window.getByRole("region", {
+      name: "Transaction category allocations for Kiwi",
+    });
+    const balance = allocationEditor.getByText(/Balance after entered amounts:/);
+    const addButton = allocationEditor.getByRole("button", { name: "Add allocation" });
+    for (let index = 0; index < 4; index++) {
+      await addButton.click();
+    }
+    await allocationEditor.getByLabel("Allocation amount 6").scrollIntoViewIfNeeded();
+
+    await expect(balance).toBeInViewport();
+    const horizontalOverflow = await window.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth
+    );
+    expect(horizontalOverflow).toBe(false);
   });
 
   test("adds and removes allocation rows with keyboard navigation", async ({
