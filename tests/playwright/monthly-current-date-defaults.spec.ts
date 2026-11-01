@@ -48,6 +48,13 @@ test.describe("Current local date defaults", () => {
       await expect(dashboard.monthSelector).toBeVisible();
       await expect(dashboard.zeroActivityStatus).toBeVisible();
 
+      const statusTypography = await dashboard.zeroActivityStatus.evaluate((element) => {
+        const { fontFamily, fontSize } = getComputedStyle(element);
+        return { fontFamily, fontSize: Number.parseFloat(fontSize) };
+      });
+      expect(statusTypography.fontSize).toBeGreaterThanOrEqual(14);
+      expect(statusTypography.fontFamily).toContain("Segoe UI");
+
       const documentWidth = await window.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,

@@ -126,7 +126,7 @@ export function ReviewWorkspace({
           {isChangingMonth && <p className="rail-status" role="status">Updating month...</p>}
           {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
           {state.viewContract.state === "empty" && (
-            <p className="rail-status" role="status" aria-label="Monthly activity">
+            <p className="rail-status is-empty-month" role="status" aria-label="Monthly activity">
               No activity has been recorded for this month.
             </p>
           )}
