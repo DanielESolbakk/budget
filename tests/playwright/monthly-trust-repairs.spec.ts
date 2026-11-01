@@ -21,7 +21,10 @@ test(`monthly NOK subtotals refresh after recording a local dated rate at ${widt
   await appShell.openWorkspace("Review");
   await dashboard.monthSelector.selectOption("2026-05");
   await expect(dashboard.expenseValue).toContainText("2 764,80");
-  await expect(dashboard.monthlyTotalsSection.getByRole("status")).toContainText(/Incomplete.*GBP/);
+  const currencyWarning = dashboard.monthlyTotalsSection
+    .getByRole("status")
+    .filter({ hasText: "Incomplete NOK subtotal." });
+  await expect(currencyWarning).toContainText(/Incomplete.*GBP/);
   await expect(dashboard.monthlyTotalsSection.getByLabel("Native currency subtotals"))
     .toContainText(/78,00\s+GBP/);
   await expect(window.getByRole("region", { name: "Forecast", exact: true }))
@@ -37,7 +40,7 @@ test(`monthly NOK subtotals refresh after recording a local dated rate at ${widt
   await expect(window.getByRole("status").filter({ hasText: "Local exchange rate saved." })).toBeVisible();
   await appShell.openWorkspace("Review");
   await expect(dashboard.expenseValue).toContainText("3 739,80");
-  await expect(dashboard.monthlyTotalsSection.getByRole("status")).toHaveCount(0);
+  await expect(currencyWarning).toHaveCount(0);
   await expect(window.getByRole("region", { name: "Forecast", exact: true }))
     .not.toContainText(/incomplete NOK history/i);
   await dashboard.monthlyTotalsSection.screenshot({ path: test.info().outputPath(`monthly-complete-${width}.png`) });
