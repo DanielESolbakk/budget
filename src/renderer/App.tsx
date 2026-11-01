@@ -14,10 +14,19 @@ import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
 import { AccountCoverageSection } from "./dashboard/AccountCoverageSection.js";
 import { ExchangeRatesSection } from "./settings/ExchangeRatesSection.js";
 import { HouseholdSetup } from "./setup/HouseholdSetup.js";
-import { toLocalYearMonth } from "./localDate.js";
+import { toLocalYearMonth } from "../domain/date/localDateDefaults.js";
 import type { ReviewState } from "./workspaces/types.js";
 
 const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
+const SELECTED_YEAR_MONTH_SESSION_KEY = "budget-planner.selected-review-month";
+
+function getInitialYearMonth(): string {
+  const selectedYearMonth = window.sessionStorage.getItem(SELECTED_YEAR_MONTH_SESSION_KEY);
+  return selectedYearMonth !== null && /^\d{4}-(0[1-9]|1[0-2])$/.test(selectedYearMonth)
+    ? selectedYearMonth
+    : DEFAULT_YEAR_MONTH;
+}
+
 type AppState = ReviewState;
 
 type WorkspaceId =
@@ -59,6 +68,7 @@ function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
 
 export function App(): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
+  const [initialYearMonth] = React.useState(getInitialYearMonth);
   const [setupRequired, setSetupRequired] = React.useState<boolean | null>(null);
   const [activeWorkspace, setActiveWorkspace] = React.useState<WorkspaceId>("review");
   const [visitedWorkspaces, setVisitedWorkspaces] = React.useState<Set<WorkspaceId>>(
@@ -73,7 +83,7 @@ export function App(): React.JSX.Element {
   const [monthChangeError, setMonthChangeError] = React.useState<string | null>(null);
   const [refreshError, setRefreshError] = React.useState<string | null>(null);
   const hasLoadedInitialState = React.useRef(false);
-  const selectedYearMonthRef = React.useRef(DEFAULT_YEAR_MONTH);
+  const selectedYearMonthRef = React.useRef(initialYearMonth);
   const latestViewRequestRef = React.useRef(0);
   const workspaceRef = React.useRef<HTMLElement>(null);
   const previousWorkspaceRef = React.useRef(activeWorkspace);
@@ -170,6 +180,7 @@ export function App(): React.JSX.Element {
       .getViewData(yearMonth)
       .then((viewContract) => {
         if (requestId !== latestViewRequestRef.current) return;
+        window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, yearMonth);
         setAppState((prev) => {
           if (prev.status !== "ready") return prev;
           return { ...prev, viewContract, selectedYearMonth: yearMonth };

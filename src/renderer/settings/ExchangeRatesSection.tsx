@@ -1,7 +1,7 @@
 import React from "react";
 import type { NokMonthlyReport } from "../../app/dashboardApi.js";
 import type { ExchangeRate } from "../../domain/types.js";
-import { toLocalYearMonth } from "../localDate.js";
+import { toLocalYearMonth } from "../../domain/date/localDateDefaults.js";
 
 const amountFormatter = new Intl.NumberFormat("nb-NO", {
   minimumFractionDigits: 2,

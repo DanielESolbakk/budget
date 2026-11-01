@@ -2565,6 +2565,12 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   font-size: 0.72rem;
 }
 
+.rail-status.is-empty-month {
+  font-family: var(--display);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 .rail-status.is-error {
   color: var(--error);
 }
