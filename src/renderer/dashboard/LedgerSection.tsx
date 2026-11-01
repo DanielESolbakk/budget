@@ -18,6 +18,7 @@ import { CATEGORY_OPTIONS } from "../import/categoryOptions.js";
 import { formatCurrencyAmount, getCurrencyFormatter } from "../formatCurrencyAmount.js";
 import {
   TransactionAllocationEditor,
+  type AllocationEditorError,
   type AllocationDraft,
 } from "./TransactionAllocationEditor.js";
 
@@ -121,7 +122,9 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   const [error, setError] = React.useState<string | null>(null);
   const [editingAllocationTransactionId, setEditingAllocationTransactionId] = React.useState<string | null>(null);
   const [allocationDraft, setAllocationDraft] = React.useState<AllocationDraft[]>([]);
-  const [allocationError, setAllocationError] = React.useState<string | null>(null);
+  const [allocationError, setAllocationError] = React.useState<AllocationEditorError | null>(null);
+  const [isAllocationSaving, setIsAllocationSaving] = React.useState(false);
+  const [allocationStatusMessage, setAllocationStatusMessage] = React.useState("");
   const [retryKey, setRetryKey] = React.useState(0);
   const hasMountedFilterEffect = React.useRef(false);
   const firstAllocationCategoryRef = React.useRef<HTMLSelectElement>(null);
@@ -341,6 +344,7 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
     allocationTriggerRef.current = trigger;
     setAllocationDraft(allocations);
     setAllocationError(null);
+    setAllocationStatusMessage("");
     setEditingAllocationTransactionId(transaction.id);
   }
 
@@ -356,44 +360,95 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   }, [editingAllocationTransactionId]);
 
   async function saveAllocations(transaction: Transaction): Promise<void> {
+    setAllocationStatusMessage("");
     const allocations: TransactionCategoryAllocation[] = [];
     for (const [index, allocation] of allocationDraft.entries()) {
       if (allocation.categoryId === "") {
-        setAllocationError(`Choose a category for allocation ${index + 1}.`);
+        setAllocationError({
+          message: `Choose a category for allocation ${index + 1}.`,
+          field: { index, name: "category" },
+        });
         return;
       }
       const amountMinor = allocationAmountToMinor(allocation.amountText);
       if (amountMinor === null) {
-        setAllocationError(`Allocation ${index + 1} must be a valid amount with at most two decimal places.`);
+        setAllocationError({
+          message: `Allocation ${index + 1} must be a valid amount with at most two decimal places.`,
+          field: { index, name: "amount" },
+        });
         return;
       }
       allocations.push({ categoryId: allocation.categoryId, amountMinor });
     }
 
     setAllocationError(null);
+    setIsAllocationSaving(true);
+    setAllocationStatusMessage(`Saving allocations for ${transaction.merchantRaw}.`);
     try {
       const result = await window.budgetApi.ledger.updateCategoryAllocations({
         transactionId: transaction.id,
         allocations,
       });
       if (!result.ok) {
-        setAllocationError(result.message);
+        setAllocationError({ message: result.message });
+        setAllocationStatusMessage("");
         return;
       }
       setTransactions((current) =>
         current.map((item) => item.id === result.transaction.id ? result.transaction : item)
       );
+      setAllocationStatusMessage(`Allocations saved for ${transaction.merchantRaw}.`);
       closeAllocationEditor();
     } catch (saveError: unknown) {
       setAllocationError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Unable to save transaction category allocations."
+        {
+          message: saveError instanceof Error
+            ? saveError.message
+            : "Unable to save transaction category allocations.",
+        }
       );
+      setAllocationStatusMessage("");
+    } finally {
+      setIsAllocationSaving(false);
+    }
+  }
+
+  async function clearAllocations(transaction: Transaction): Promise<void> {
+    setAllocationError(null);
+    setIsAllocationSaving(true);
+    setAllocationStatusMessage(`Restoring one category for ${transaction.merchantRaw}.`);
+    try {
+      const result = await window.budgetApi.ledger.updateCategoryAllocations({
+        transactionId: transaction.id,
+        allocations: [],
+      });
+      if (!result.ok) {
+        setAllocationError({ message: result.message });
+        setAllocationStatusMessage("");
+        return;
+      }
+      setTransactions((current) =>
+        current.map((item) => item.id === result.transaction.id ? result.transaction : item)
+      );
+      setAllocationStatusMessage(`Split removed for ${transaction.merchantRaw}.`);
+      closeAllocationEditor();
+    } catch (clearError: unknown) {
+      setAllocationError(
+        {
+          message: clearError instanceof Error
+            ? clearError.message
+            : "Unable to remove the transaction split.",
+        }
+      );
+      setAllocationStatusMessage("");
+    } finally {
+      setIsAllocationSaving(false);
     }
   }
 
   function updateAllocationDraft(index: number, update: Partial<AllocationDraft>): void {
+    setAllocationError(null);
+    setAllocationStatusMessage("");
     setAllocationDraft((current) =>
       current.map((allocation, currentIndex) =>
         currentIndex === index ? { ...allocation, ...update } : allocation
@@ -402,6 +457,8 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   }
 
   function addAllocationDraft(): void {
+    setAllocationError(null);
+    setAllocationStatusMessage("");
     setAllocationDraft((current) => [
       ...current,
       { categoryId: "", amountText: "" },
@@ -409,6 +466,8 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   }
 
   function moveAllocationDraft(index: number, direction: -1 | 1): void {
+    setAllocationError(null);
+    setAllocationStatusMessage("");
     setAllocationDraft((current) => {
       const targetIndex = index + direction;
       const currentAllocation = current[index];
@@ -423,6 +482,8 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   }
 
   function removeAllocationDraft(index: number): void {
+    setAllocationError(null);
+    setAllocationStatusMessage("");
     setAllocationDraft((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
@@ -447,11 +508,13 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   const allocationAmounts = allocationDraft.map((allocation) =>
     allocationAmountToMinor(allocation.amountText)
   );
-  const allocationTotalMinor = allocationAmounts.every(
-    (amount): amount is number => amount !== null
-  )
-    ? allocationAmounts.reduce((total, amount) => total + amount, 0)
-    : null;
+  const incompleteAllocationCount = allocationDraft.filter((allocation, index) =>
+    allocation.categoryId === "" || allocationAmounts[index] === null
+  ).length;
+  const allocationTotalMinor = allocationAmounts.reduce<number>(
+    (total, amount) => total + (amount ?? 0),
+    0
+  );
   const canReorderAllocations = allocationDraft.every((allocation) =>
     allocation.categoryId !== "" && allocationAmountToMinor(allocation.amountText) !== null
   );
@@ -462,9 +525,47 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
       "NOK";
   const allocationCurrencyFormatter = getCurrencyFormatter(allocationCurrencyCode);
 
+  function announceAllocationBalance(): void {
+    if (allocationSourceTransaction === undefined) return;
+
+    const remainingMinor = allocationSourceTransaction.amountMinor - allocationTotalMinor;
+    const isOverAllocated = remainingMinor !== 0 &&
+      allocationSourceTransaction.amountMinor !== 0 &&
+      Math.sign(remainingMinor) !== Math.sign(allocationSourceTransaction.amountMinor);
+    const totalLabel = incompleteAllocationCount === 0
+      ? "Allocation total"
+      : "Current allocation total";
+    const balanceLabel = isOverAllocated
+      ? "Over-allocated by"
+      : incompleteAllocationCount === 0
+        ? "Remaining to allocate"
+        : "Balance after entered amounts";
+    const incompleteMessage = incompleteAllocationCount === 1
+      ? "1 allocation is incomplete"
+      : `${incompleteAllocationCount} allocations are incomplete`;
+    const balanceAmount = isOverAllocated ? Math.abs(remainingMinor) : remainingMinor;
+    const message = [
+      `${totalLabel}: ${allocationCurrencyFormatter.format(allocationTotalMinor / 100)}`,
+      ...(incompleteAllocationCount === 0 ? [] : [incompleteMessage]),
+      `${balanceLabel}: ${allocationCurrencyFormatter.format(balanceAmount / 100)}`,
+    ];
+
+    setAllocationStatusMessage(`${message.join(". ")}.`);
+  }
+
   return (
     <section aria-label="Ledger" aria-busy={isLoading || isFilterPending}>
       <h2>Ledger</h2>
+      <p
+        id="transaction-allocation-status"
+        className="visually-hidden"
+        role="status"
+        aria-label="Allocation status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {allocationStatusMessage}
+      </p>
       <form className="ledger-filters" aria-label="Ledger filters" onSubmit={(event) => event.preventDefault()}>
         <div className="ledger-quick-filters">
           <button type="button" aria-label="Quick filter Uncategorized" aria-pressed={filters.uncategorizedOnly === true} onClick={() => toggleBooleanQuickFilter("uncategorizedOnly")}>Uncategorized</button>
@@ -711,14 +812,18 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
             allocations={allocationDraft}
             canReorder={canReorderAllocations}
             totalMinor={allocationTotalMinor}
+            incompleteAllocationCount={incompleteAllocationCount}
             currencyFormatter={allocationCurrencyFormatter}
             error={allocationError}
+            isSaving={isAllocationSaving}
             firstCategoryRef={firstAllocationCategoryRef}
+            onBalanceBlur={announceAllocationBalance}
             onUpdate={updateAllocationDraft}
             onMove={moveAllocationDraft}
             onRemove={removeAllocationDraft}
             onAdd={addAllocationDraft}
             onSave={() => void saveAllocations(allocationSourceTransaction)}
+            onClear={() => void clearAllocations(allocationSourceTransaction)}
             onCancel={closeAllocationEditor}
           />
         </div>

@@ -7,19 +7,31 @@ export interface AllocationDraft {
   amountText: string;
 }
 
+export interface AllocationEditorError {
+  message: string;
+  field?: {
+    index: number;
+    name: "category" | "amount";
+  };
+}
+
 interface TransactionAllocationEditorProps {
   transaction: Transaction;
   allocations: readonly AllocationDraft[];
   canReorder: boolean;
-  totalMinor: number | null;
+  totalMinor: number;
+  incompleteAllocationCount: number;
   currencyFormatter: Intl.NumberFormat;
-  error: string | null;
+  error: AllocationEditorError | null;
+  isSaving: boolean;
   firstCategoryRef: React.RefObject<HTMLSelectElement>;
+  onBalanceBlur: () => void;
   onUpdate: (index: number, update: Partial<AllocationDraft>) => void;
   onMove: (index: number, direction: -1 | 1) => void;
   onRemove: (index: number) => void;
   onAdd: () => void;
   onSave: () => void;
+  onClear: () => void;
   onCancel: () => void;
 }
 
@@ -28,21 +40,22 @@ export function TransactionAllocationEditor({
   allocations,
   canReorder,
   totalMinor,
+  incompleteAllocationCount,
   currencyFormatter,
   error,
+  isSaving,
   firstCategoryRef,
+  onBalanceBlur,
   onUpdate,
   onMove,
   onRemove,
   onAdd,
   onSave,
+  onClear,
   onCancel,
 }: TransactionAllocationEditorProps): React.JSX.Element {
-  const remainingMinor = totalMinor === null
-    ? null
-    : transaction.amountMinor - totalMinor;
-  const overAllocatedMinor = remainingMinor !== null &&
-      remainingMinor !== 0 &&
+  const remainingMinor = transaction.amountMinor - totalMinor;
+  const overAllocatedMinor = remainingMinor !== 0 &&
       transaction.amountMinor !== 0 &&
       Math.sign(remainingMinor) !== Math.sign(transaction.amountMinor)
     ? Math.abs(remainingMinor)
@@ -53,13 +66,14 @@ export function TransactionAllocationEditor({
       className="transaction-allocation-editor"
       id="transaction-allocation-editor"
       aria-label={`Transaction category allocations for ${transaction.merchantRaw}`}
+      aria-busy={isSaving}
       aria-describedby={error === null ? undefined : "transaction-allocation-error"}
     >
       <h3>Split {transaction.merchantRaw} across categories</h3>
       <p className="transaction-allocation-guidance">
         {transaction.categoryAllocations?.length
           ? "Your saved split stays unchanged until you save a complete replacement."
-          : "Your saved transaction stays unchanged. Choose a second category and amount to complete the split."}
+          : "Your saved transaction stays unchanged. Adjust the first amount, then choose a second category and amount."}
       </p>
       <div className="transaction-allocation-summary">
         <p>
@@ -67,93 +81,119 @@ export function TransactionAllocationEditor({
           <strong>{currencyFormatter.format(transaction.amountMinor / 100)}</strong>
         </p>
         <p>
-          Allocation total:
+          {incompleteAllocationCount === 0 ? "Allocation total:" : "Allocated so far:"}
           <strong>
-            {totalMinor === null
-              ? "Incomplete"
-              : currencyFormatter.format(totalMinor / 100)}
+            {currencyFormatter.format(totalMinor / 100)}
           </strong>
         </p>
         <p>
-          {overAllocatedMinor === null ? "Remaining to allocate:" : "Over-allocated by:"}
-          <strong>
-            {remainingMinor === null
-              ? "Incomplete"
-              : currencyFormatter.format((overAllocatedMinor ?? remainingMinor) / 100)}
-          </strong>
+          {overAllocatedMinor === null
+            ? incompleteAllocationCount === 0
+              ? "Remaining to allocate:"
+              : "Balance after entered amounts:"
+            : "Over-allocated by:"}
+          <strong>{currencyFormatter.format((overAllocatedMinor ?? remainingMinor) / 100)}</strong>
         </p>
+        {incompleteAllocationCount > 0 && (
+          <p className="transaction-allocation-incomplete">
+            {incompleteAllocationCount} {incompleteAllocationCount === 1 ? "allocation is" : "allocations are"} incomplete.
+          </p>
+        )}
       </div>
       <div className="transaction-allocation-rows">
-        {allocations.map((allocation, index) => (
-          <div
-            className="transaction-allocation-row"
-            key={`${transaction.id}-${index}`}
-            role="group"
-            aria-label={`Allocation ${index + 1}`}
-          >
-            <label>
-              Allocation category {index + 1}
-              <select
-                ref={index === 0 ? firstCategoryRef : undefined}
-                aria-label={`Allocation category ${index + 1}`}
-                value={allocation.categoryId}
-                onChange={(event) => onUpdate(index, { categoryId: event.target.value })}
-              >
-                <option value="">Choose a category</option>
-                {CATEGORY_OPTIONS.map((category) => (
-                  <option key={category.id} value={category.id}>{category.label}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Allocation amount {index + 1}
-              <input
-                aria-label={`Allocation amount ${index + 1}`}
-                inputMode="decimal"
-                value={allocation.amountText}
-                onChange={(event) => onUpdate(index, { amountText: event.target.value })}
-              />
-            </label>
-            <div className="transaction-allocation-row-actions">
-              <button
-                type="button"
-                className="action-secondary"
-                aria-label={`Move allocation ${index + 1} up`}
-                disabled={!canReorder || index === 0}
-                onClick={() => onMove(index, -1)}
-              >
-                Move up
-              </button>
-              <button
-                type="button"
-                className="action-secondary"
-                aria-label={`Move allocation ${index + 1} down`}
-                disabled={!canReorder || index === allocations.length - 1}
-                onClick={() => onMove(index, 1)}
-              >
-                Move down
-              </button>
-              {allocations.length > 2 && (
+        {allocations.map((allocation, index) => {
+          const errorForIndex = error?.field?.index === index ? error : null;
+          const categoryHasError = errorForIndex?.field?.name === "category";
+          const amountHasError = errorForIndex?.field?.name === "amount";
+
+          return (
+            <div
+              className="transaction-allocation-row"
+              key={`${transaction.id}-${index}`}
+              role="group"
+              aria-label={`Allocation ${index + 1}`}
+            >
+              <label>
+                Allocation category {index + 1}
+                <select
+                  ref={index === 0 ? firstCategoryRef : undefined}
+                  aria-label={`Allocation category ${index + 1}`}
+                  aria-invalid={categoryHasError || undefined}
+                  aria-describedby={categoryHasError ? "transaction-allocation-error" : undefined}
+                  disabled={isSaving}
+                  value={allocation.categoryId}
+                  onChange={(event) => onUpdate(index, { categoryId: event.target.value })}
+                  onBlur={onBalanceBlur}
+                >
+                  <option value="">Choose a category</option>
+                  {CATEGORY_OPTIONS.map((category) => (
+                    <option key={category.id} value={category.id}>{category.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Allocation amount {index + 1}
+                <input
+                  aria-label={`Allocation amount ${index + 1}`}
+                  aria-invalid={amountHasError || undefined}
+                  aria-describedby={amountHasError ? "transaction-allocation-error" : undefined}
+                  disabled={isSaving}
+                  inputMode="decimal"
+                  value={allocation.amountText}
+                  onChange={(event) => onUpdate(index, { amountText: event.target.value })}
+                  onBlur={onBalanceBlur}
+                />
+              </label>
+              <div className="transaction-allocation-row-actions">
                 <button
                   type="button"
                   className="action-secondary"
-                  aria-label={`Remove allocation ${index + 1}`}
-                  onClick={() => onRemove(index)}
+                  aria-label={`Move allocation ${index + 1} up`}
+                  disabled={isSaving || !canReorder || index === 0}
+                  onClick={() => onMove(index, -1)}
                 >
-                  Remove
+                  Move up
                 </button>
-              )}
+                <button
+                  type="button"
+                  className="action-secondary"
+                  aria-label={`Move allocation ${index + 1} down`}
+                  disabled={isSaving || !canReorder || index === allocations.length - 1}
+                  onClick={() => onMove(index, 1)}
+                >
+                  Move down
+                </button>
+                {allocations.length > 2 && (
+                  <button
+                    type="button"
+                    className="action-secondary"
+                    aria-label={`Remove allocation ${index + 1}`}
+                    disabled={isSaving}
+                    onClick={() => onRemove(index)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div className="transaction-allocation-actions">
-        <button className="action-secondary" type="button" onClick={onAdd}>Add allocation</button>
-        {error !== null && <p id="transaction-allocation-error" role="alert">{error}</p>}
-        <button type="button" onClick={onSave}>
-          Save allocations for {transaction.merchantRaw}
+        {isSaving && <p className="transaction-allocation-saving">Saving allocation changes.</p>}
+        <button className="action-secondary" type="button" disabled={isSaving} onClick={onAdd}>
+          Add allocation
         </button>
-        <button className="action-secondary" type="button" onClick={onCancel}>
+        {transaction.categoryAllocations?.length ? (
+          <button className="action-secondary" type="button" disabled={isSaving} onClick={onClear}>
+            Remove split for {transaction.merchantRaw}
+          </button>
+        ) : null}
+        {error !== null && <p id="transaction-allocation-error" role="alert">{error.message}</p>}
+        <button type="button" disabled={isSaving} onClick={onSave}>
+          {isSaving ? "Saving allocations" : `Save allocations for ${transaction.merchantRaw}`}
+        </button>
+        <button className="action-secondary" type="button" disabled={isSaving} onClick={onCancel}>
           Cancel allocation editing
         </button>
       </div>
