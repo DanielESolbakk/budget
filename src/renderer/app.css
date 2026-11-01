@@ -631,12 +631,6 @@ section[aria-label].destination-workspace {
   display: none;
 }
 
-.review-overview {
-  display: grid;
-  gap: 1.25rem;
-  margin-top: 1.5rem;
-}
-
 .monthly-attention {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2578,9 +2572,38 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
 .review-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr);
+  grid-template-areas:
+    "totals totals"
+    "attention attention"
+    "target category"
+    "target-entry forecast";
   gap: 1.25rem;
   align-items: start;
-  margin-top: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.review-overview-totals {
+  grid-area: totals;
+}
+
+.review-overview-attention {
+  grid-area: attention;
+}
+
+.review-target-vs-actual {
+  grid-area: target;
+}
+
+.review-category-breakdown {
+  grid-area: category;
+}
+
+.review-category-target {
+  grid-area: target-entry;
+}
+
+.review-forecast {
+  grid-area: forecast;
 }
 
 .review-primary,
@@ -3243,6 +3266,42 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
 
 .review-primary {
   container-type: inline-size;
+}
+
+.category-breakdown-groups {
+  display: grid;
+  gap: 1rem;
+}
+
+.category-breakdown-group h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.category-breakdown-group > p {
+  margin: 0;
+}
+
+.monthly-comparison {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.monthly-comparison h3 {
+  margin: 0 0 0.35rem;
+  color: var(--paper);
+  font-size: 1.05rem;
+}
+
+.monthly-comparison p {
+  margin: 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.monthly-comparison button {
+  margin-top: 0.5rem;
 }
 
 section[aria-label] {
@@ -4131,7 +4190,13 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   }
 
   .review-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "totals totals"
+      "attention attention"
+      "category forecast"
+      "target target"
+      "target-entry target-entry";
   }
 
   .account-coverage-forms,
@@ -4566,6 +4631,17 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   .workflow-recovery-grid,
   .workflow-steps {
     grid-template-columns: 1fr;
+  }
+
+  .review-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "totals"
+      "attention"
+      "category"
+      "target"
+      "target-entry"
+      "forecast";
   }
 
   .import-stage-progress ol {

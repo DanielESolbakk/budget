@@ -55,9 +55,25 @@ export class DashboardPage {
     return this.page.getByRole("heading", { name: "Category Breakdown", level: 2 });
   }
 
+  get inflowCategories() {
+    return this.categoryBreakdownSection.getByRole("group", { name: "Money in by category" });
+  }
+
+  get spendingCategories() {
+    return this.categoryBreakdownSection.getByRole("group", { name: "Spending by category" });
+  }
+
   /** All category entry list items inside the category breakdown section. */
   get categoryEntries() {
     return this.categoryBreakdownSection.getByRole("listitem");
+  }
+
+  get monthlyComparison() {
+    return this.monthlyTotalsSection.getByRole("group", { name: "Monthly comparison" });
+  }
+
+  get categoryTargetEntrySection() {
+    return this.page.getByRole("region", { name: "Category Target Entry" });
   }
 
   /** The month selector combobox. */

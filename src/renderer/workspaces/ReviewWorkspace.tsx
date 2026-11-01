@@ -131,9 +131,11 @@ export function ReviewWorkspace({
             </p>
           )}
 
-          <div className="review-overview">
-              <MonthlyTotalsSection viewContract={state.viewContract} />
-              <aside className="monthly-attention" aria-label="Monthly attention">
+          <div className="review-grid">
+            <div className="review-overview-totals">
+            <MonthlyTotalsSection viewContract={state.viewContract} refreshKey={refreshKey} />
+            </div>
+            <aside className="monthly-attention review-overview-attention" aria-label="Monthly attention">
                 <h3>Monthly checks</h3>
                 {monthlyAttention === null ? (
                   <p role="status">Calculating monthly exceptions...</p>
@@ -173,19 +175,21 @@ export function ReviewWorkspace({
                   </div>
                 )}
               </aside>
-          </div>
-          <div className="review-grid">
-            <div className="review-primary">
+            <div className="review-support review-category-breakdown">
+              <CategoryBreakdownSection viewContract={state.viewContract} />
+            </div>
+            <div className="review-primary review-target-vs-actual">
               <TargetVsActualSection viewContract={state.viewContract} />
+            </div>
+            <div className="review-primary review-category-target">
               <CategoryTargetEntrySection
                 selectedYearMonth={state.selectedYearMonth}
                 onTargetSaved={onTargetSaved}
               />
             </div>
-            <aside className="review-support" aria-label="Monthly context">
-              <CategoryBreakdownSection viewContract={state.viewContract} />
+            <div className="review-support review-forecast">
               <ForecastSection dashboardData={state.dashboardData} />
-            </aside>
+            </div>
           </div>
         </>
       )}

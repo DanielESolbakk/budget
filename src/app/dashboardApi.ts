@@ -1,4 +1,7 @@
-import { computeCategoryBreakdown } from "../domain/aggregation/computeCategoryBreakdown.js";
+import {
+  computeCategoryBreakdown,
+  type CategoryBreakdownFlow,
+} from "../domain/aggregation/computeCategoryBreakdown.js";
 import { computeMonthlyTotals } from "../domain/aggregation/computeMonthlyTotals.js";
 import { needsCategorizationReview } from "../domain/categorization/reviewQueue.js";
 import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
@@ -49,6 +52,10 @@ export interface MonthlyDashboardSnapshot {
   hasUncategorizedTransactions?: boolean;
   monthlyTotals: MonthlyBreakdown;
   categoryBreakdown: CategoryBreakdown;
+  categoryBreakdownByFlow: {
+    inflows: CategoryBreakdown;
+    spending: CategoryBreakdown;
+  };
   targetVsActualCategoryRows: TargetVsActualCategoryRows;
   currencyReport?: NokMonthlyReport;
 }
@@ -462,9 +469,10 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
 
 export function queryCategoryBreakdown(
   transactions: Transaction[],
-  yearMonth: string
+  yearMonth: string,
+  flow: CategoryBreakdownFlow = "all"
 ): CategoryBreakdown {
-  return computeCategoryBreakdown(transactions, yearMonth);
+  return computeCategoryBreakdown(transactions, yearMonth, flow);
 }
 
 export function queryMonthlyDashboardSnapshot(
@@ -521,6 +529,10 @@ export function queryMonthlyDashboardSnapshot(
     ).length,
     monthlyTotals: queryMonthlyTotals(nokTransactions, selectedYearMonth),
     categoryBreakdown: queryCategoryBreakdown(nokTransactions, selectedYearMonth),
+    categoryBreakdownByFlow: {
+      inflows: queryCategoryBreakdown(nokTransactions, selectedYearMonth, "inflows"),
+      spending: queryCategoryBreakdown(nokTransactions, selectedYearMonth, "spending"),
+    },
     targetVsActualCategoryRows: queryTargetVsActualCategoryRows(
       nokTransactions,
       monthlyCategoryTargetStore,

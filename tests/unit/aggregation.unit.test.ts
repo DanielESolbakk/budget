@@ -15,6 +15,7 @@ function tx(input: Partial<Transaction> & { id: string; bookedAtIso: string; amo
     amountMinor: input.amountMinor,
     merchantRaw: input.merchantRaw ?? "Merchant",
     ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
+    ...(input.categoryAllocations !== undefined ? { categoryAllocations: input.categoryAllocations } : {}),
   };
 }
 
@@ -90,5 +91,40 @@ describe("computeCategoryBreakdown", () => {
 
     const breakdown = computeCategoryBreakdown(transactions, "2026-05");
     expect(breakdown.entries.map((entry) => entry.categoryId)).toEqual(["a", "b"]);
+  });
+
+  it("separates inflows from spending while preserving the all-flow breakdown", () => {
+    const transactions: Transaction[] = [
+      tx({ id: "salary", bookedAtIso: "2026-05-01T00:00:00Z", amountMinor: 54_000, categoryId: "salary" }),
+      tx({ id: "groceries", bookedAtIso: "2026-05-02T00:00:00Z", amountMinor: -8_500, categoryId: "groceries" }),
+      tx({ id: "refund", bookedAtIso: "2026-05-03T00:00:00Z", amountMinor: 500, categoryId: "groceries" }),
+      tx({
+        id: "split-expense",
+        bookedAtIso: "2026-05-04T00:00:00Z",
+        amountMinor: -2_000,
+        categoryAllocations: [
+          { categoryId: "groceries", amountMinor: -1_500 },
+          { categoryId: "transport", amountMinor: -500 },
+        ],
+      }),
+      tx({ id: "uncategorized", bookedAtIso: "2026-05-05T00:00:00Z", amountMinor: -2_000 }),
+      tx({ id: "next-month", bookedAtIso: "2026-06-01T00:00:00Z", amountMinor: 99_000, categoryId: "salary" }),
+    ];
+
+    expect(computeCategoryBreakdown(transactions, "2026-05", "inflows").entries).toEqual([
+      { categoryId: "salary", label: "salary", totalMinor: 54_000, transactionCount: 1 },
+      { categoryId: "groceries", label: "groceries", totalMinor: 500, transactionCount: 1 },
+    ]);
+    expect(computeCategoryBreakdown(transactions, "2026-05", "spending").entries).toEqual([
+      { categoryId: "groceries", label: "groceries", totalMinor: 10_000, transactionCount: 2 },
+      { categoryId: "transport", label: "transport", totalMinor: 500, transactionCount: 1 },
+      { categoryId: null, label: UNCATEGORIZED_LABEL, totalMinor: 2_000, transactionCount: 1 },
+    ]);
+    expect(computeCategoryBreakdown(transactions, "2026-05").entries).toEqual([
+      { categoryId: "salary", label: "salary", totalMinor: 54_000, transactionCount: 1 },
+      { categoryId: "groceries", label: "groceries", totalMinor: 10_500, transactionCount: 3 },
+      { categoryId: "transport", label: "transport", totalMinor: 500, transactionCount: 1 },
+      { categoryId: null, label: UNCATEGORIZED_LABEL, totalMinor: 2_000, transactionCount: 1 },
+    ]);
   });
 });

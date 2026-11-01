@@ -1,5 +1,6 @@
 import React from "react";
 import type { MonthlyCategoryTarget } from "../../domain/types.js";
+import { categoryDisplayName } from "./categoryDisplayName.js";
 
 const MINOR_UNITS_PER_NOK = 100;
 
@@ -41,6 +42,7 @@ export function CategoryTargetEntrySection({
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [editingCategoryId, setEditingCategoryId] = React.useState<string | null>(null);
   const categoryInputRef = React.useRef<HTMLInputElement>(null);
+  const editingCategoryLabel = editingCategoryId === null ? null : categoryDisplayName(editingCategoryId);
 
   React.useEffect(() => {
     let isActive = true;
@@ -161,20 +163,23 @@ export function CategoryTargetEntrySection({
           <p>No targets set for {selectedYearMonth}.</p>
         ) : (
           <ul aria-label="Saved category targets">
-            {targets.map((t) => (
-              <li key={t.categoryId}>
-                <span>{t.categoryId}: {formatMinor(t.targetMinor)}</span>
-                <button
-                  type="button"
-                  className="target-edit-button"
-                  aria-label={`Edit target ${t.categoryId}`}
-                  disabled={formState.status === "saving"}
-                  onClick={() => openEditTarget(t)}
-                >
-                  Edit
-                </button>
-              </li>
-            ))}
+            {targets.map((t) => {
+              const label = categoryDisplayName(t.categoryId);
+              return (
+                <li key={t.categoryId}>
+                  <span>{label}: {formatMinor(t.targetMinor)}</span>
+                  <button
+                    type="button"
+                    className="target-edit-button"
+                    aria-label={`Edit target ${label}`}
+                    disabled={formState.status === "saving"}
+                    onClick={() => openEditTarget(t)}
+                  >
+                    Edit
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )
       )}
@@ -183,7 +188,7 @@ export function CategoryTargetEntrySection({
       </button>
       {isFormOpen && (
         <form aria-label="Category target entry form" onSubmit={handleSubmit}>
-          <h3>{editingCategoryId === null ? "Add target" : `Edit target: ${editingCategoryId}`}</h3>
+          <h3>{editingCategoryLabel === null ? "Add target" : `Edit target: ${editingCategoryLabel}`}</h3>
           <label htmlFor="target-category-id">Category</label>
           <input
             id="target-category-id"

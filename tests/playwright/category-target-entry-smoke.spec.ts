@@ -130,7 +130,7 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     categoryTarget,
     dashboard,
   }) => {
-    const groceries = dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "groceries" });
+    const groceries = dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "Groceries & food" });
     await categoryTarget.editTargetButton("groceries").click();
     await categoryTarget.targetAmountInput.fill("10");
     await categoryTarget.saveButton.click();
@@ -167,14 +167,14 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     await expect(categoryTarget.savedTargetItem("groceries")).toContainText("10,00");
     const failure = window.getByRole("alert").filter({ hasText: "Review refresh failed" });
     await expect(failure).toBeVisible();
-    await expect(dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "groceries" }))
+    await expect(dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "Groceries & food" }))
       .toContainText("90,00");
     await electronApp.evaluate(() => {
       delete process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"];
     });
     await failure.getByRole("button", { name: "Try again" }).click();
     await expect(failure).not.toBeVisible();
-    await expect(dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "groceries" })
+    await expect(dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "Groceries & food" })
       .getByRole("cell").nth(3)).toContainText("75,00");
     await expect(dashboard.monthSelector).toHaveValue("2026-05");
   });
