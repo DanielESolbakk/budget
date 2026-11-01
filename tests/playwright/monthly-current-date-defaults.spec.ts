@@ -14,14 +14,29 @@ async function reloadAtFrozenLocalDate(window: Page): Promise<void> {
 }
 
 test.describe("Current local date defaults", () => {
-  test("selects the empty current month and announces zero activity at desktop and compact widths", async ({
+  test("selects the empty current month when only prior months have transactions", async ({
     dashboard,
+    databasePath,
     electronApp,
     window,
   }) => {
     await reloadAtFrozenLocalDate(window);
 
+    const database = new DatabaseSync(databasePath);
+    try {
+      const historicalMonths = database.prepare(`
+        SELECT DISTINCT substr(booked_at_iso, 1, 7) AS year_month
+        FROM transactions
+        ORDER BY year_month
+      `).all() as Array<{ year_month: string }>;
+      expect(historicalMonths.map(({ year_month }) => year_month)).toEqual(["2026-04", "2026-05"]);
+    } finally {
+      database.close();
+    }
+
     await expect(dashboard.monthSelector).toHaveValue(CURRENT_LOCAL_MONTH);
+    await expect(dashboard.monthSelector.locator('option[value="2026-04"]')).toHaveCount(1);
+    await expect(dashboard.monthSelector.locator('option[value="2026-05"]')).toHaveCount(1);
     await expect(dashboard.monthSelector.locator(`option[value="${CURRENT_LOCAL_MONTH}"]`)).toHaveCount(1);
     await expect(dashboard.zeroActivityStatus).toContainText("No activity has been recorded for this month.");
 
@@ -74,6 +89,8 @@ test.describe("Current local date defaults", () => {
     await appShell.openWorkspace("Review");
     await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthSelector).toHaveValue("2026-05");
+    await expect(dashboard.monthlyTotalsSection).not.toContainText("No transactions for this month.");
+    await expect(dashboard.incomeValue).toBeVisible();
 
     await appShell.openWorkspace("Import");
     await expect(manualEntry.bookedDateInput).toHaveValue(CURRENT_LOCAL_DATE);
