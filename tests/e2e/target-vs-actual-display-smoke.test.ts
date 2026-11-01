@@ -47,7 +47,7 @@ describe("target-vs-actual display smoke", () => {
     expect(markup).toContain('<th scope="col">Target</th>');
     expect(markup).toContain('<th scope="col">Actual</th>');
     expect(markup).toContain('<th scope="col">Delta</th>');
-    expect(markup).toContain("groceries");
+    expect(markup).toContain("Groceries &amp; food");
   });
 
   it("AC-3: explicitly renders no-target rows using the null contract policy", () => {
@@ -63,7 +63,7 @@ describe("target-vs-actual display smoke", () => {
       React.createElement(TargetVsActualSection, { viewContract })
     );
 
-    expect(markup).toContain("transport");
+    expect(markup).toContain("Transport");
     expect(markup).toContain("No target");
   });
 });

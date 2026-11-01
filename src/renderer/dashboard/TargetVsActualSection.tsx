@@ -1,5 +1,6 @@
 import React from "react";
 import type { DashboardViewContract } from "../../app/dashboardApi.js";
+import { categoryDisplayName } from "./categoryDisplayName.js";
 
 const MINOR_UNITS_PER_NOK = 100;
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
@@ -19,14 +20,6 @@ function renderTargetOrDelta(minor: number | null): string {
   }
 
   return formatMinor(minor);
-}
-
-function renderCategoryLabel(categoryId: string | null): string {
-  if (categoryId === null) {
-    return "Uncategorized";
-  }
-
-  return categoryId;
 }
 
 export interface TargetVsActualSectionProps {
@@ -75,7 +68,7 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
         <tbody>
           {rows.map((row) => (
             <tr key={row.categoryId ?? "uncategorized"}>
-              <td data-label="Category">{renderCategoryLabel(row.categoryId)}</td>
+              <td data-label="Category">{categoryDisplayName(row.categoryId)}</td>
               <td data-label="Target">{renderTargetOrDelta(row.targetMinor)}</td>
               <td data-label="Actual">{formatMinor(row.actualMinor)}</td>
               <td data-label="Delta">{isIncomplete && row.targetMinor !== null ? "Incomplete" : renderTargetOrDelta(row.deltaMinor)}</td>

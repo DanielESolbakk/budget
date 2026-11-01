@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { CategoryTargetPage } from "./pom/CategoryTargetPage.js";
 import { DashboardTargetPage } from "./pom/DashboardTargetPage.js";
+import { categoryDisplayName } from "../../src/renderer/dashboard/categoryDisplayName.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 const RESTART_TARGET_CATEGORY_ID = "restart-target";
@@ -10,7 +11,7 @@ const INITIAL_TARGET_NOK = "725";
 const UPDATED_TARGET_NOK = "900";
 
 function persistedTargetRow(categoryId: string, targetNok: string): RegExp {
-  return new RegExp(`${categoryId}:\\s*${targetNok},00\\s*kr`);
+  return new RegExp(`${categoryDisplayName(categoryId)}:\\s*${targetNok},00\\s*kr`);
 }
 
 test.describe("Category target persistence across application restart", () => {

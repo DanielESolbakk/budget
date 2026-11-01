@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { categoryDisplayName } from "../../../src/renderer/dashboard/categoryDisplayName.js";
 
 /**
  * Page Object Model for the category target entry section of the Budget Planner.
@@ -30,7 +31,10 @@ export class CategoryTargetPage {
   }
 
   editTargetButton(categoryId: string) {
-    return this.section.getByRole("button", { name: `Edit target ${categoryId}`, exact: true });
+    return this.section.getByRole("button", {
+      name: `Edit target ${categoryDisplayName(categoryId)}`,
+      exact: true,
+    });
   }
 
   /** The category ID text input field. */
@@ -55,7 +59,7 @@ export class CategoryTargetPage {
 
   /** Returns a locator for the saved target list item matching the given category ID. */
   savedTargetItem(categoryId: string): Locator {
-    return this.savedTargetsList.getByRole("listitem").filter({ hasText: categoryId });
+    return this.savedTargetsList.getByRole("listitem").filter({ hasText: categoryDisplayName(categoryId) });
   }
 
   /** Validation error alert shown when input is rejected. */

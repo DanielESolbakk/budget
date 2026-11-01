@@ -72,6 +72,25 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyTotal("Net").getByLabel("Net", { exact: true })).toBeVisible();
   });
 
+  test("category breakdown uses registered category display names", async ({ dashboard }) => {
+    await expect(dashboard.categoryBreakdownSection).toContainText("Salary / wages");
+    await expect(dashboard.categoryBreakdownSection).toContainText("Groceries & food");
+    await expect(dashboard.categoryBreakdownSection).not.toContainText("salary");
+    await expect(dashboard.targetVsActualSection).toContainText("Salary / wages");
+    await expect(dashboard.targetVsActualSection).toContainText("Groceries & food");
+    await expect(dashboard.categoryTargetEntrySection).toContainText("Groceries & food");
+  });
+
+  test("category breakdown separates spending from money-in categories", async ({ dashboard }) => {
+    await expect(dashboard.inflowCategories).toContainText("Salary / wages");
+    await expect(dashboard.spendingCategories).toContainText("Groceries & food");
+    await expect(dashboard.spendingCategories).not.toContainText("Salary / wages");
+  });
+
+  test("monthly totals explain expense change from the previous month", async ({ dashboard }) => {
+    await expect(dashboard.monthlyComparison).toContainText(/spending increased by 13,00.*apr\.? 2026/i);
+  });
+
   test("Scenario 5: monthly attention status and totals fit the review viewport", async ({
     dashboard,
     electronApp,
@@ -270,6 +289,30 @@ test.describe("Dashboard renderer smoke", () => {
       throw new Error("A compact target-versus-actual delta must remain measurable.");
     }
     expect(deltaBounds.x + deltaBounds.width).toBeLessThanOrEqual(390);
+  });
+
+  test("compact review presents category spending before budget details", async ({ dashboard, electronApp }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    await expect(dashboard.spendingCategories).toBeVisible();
+    const attentionBounds = await dashboard.monthlyAttention.boundingBox();
+    const categoryBounds = await dashboard.spendingCategories.boundingBox();
+    const targetVsActualBounds = await dashboard.targetVsActualSection.boundingBox();
+    const targetBounds = await dashboard.categoryTargetEntrySection.boundingBox();
+    if (
+      attentionBounds === null ||
+      categoryBounds === null ||
+      targetVsActualBounds === null ||
+      targetBounds === null
+    ) {
+      throw new Error("Monthly checks, category spending and budget details must be measurable.");
+    }
+
+    expect(attentionBounds.y).toBeLessThan(categoryBounds.y);
+    expect(categoryBounds.y).toBeLessThan(targetVsActualBounds.y);
+    expect(categoryBounds.y).toBeLessThan(targetBounds.y);
   });
 
   test("monthly review signals follow a single attention reading path", async ({ window }) => {

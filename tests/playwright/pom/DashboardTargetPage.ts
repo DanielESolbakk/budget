@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { categoryDisplayName } from "../../../src/renderer/dashboard/categoryDisplayName.js";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -41,11 +42,16 @@ export class DashboardTargetPage {
   }
 
   categoryRow(category: string): Locator {
-    return this.table.getByRole("row").filter({ hasText: new RegExp(`^${escapeRegExp(category)}`) });
+    return this.table.getByRole("row").filter({
+      hasText: new RegExp(`^${escapeRegExp(categoryDisplayName(category))}`),
+    });
   }
 
   categoryCell(category: string): Locator {
-    return this.categoryRow(category).getByRole("cell", { name: category, exact: true });
+    return this.categoryRow(category).getByRole("cell", {
+      name: categoryDisplayName(category),
+      exact: true,
+    });
   }
 
   targetCell(category: string): Locator {

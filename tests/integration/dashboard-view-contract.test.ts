@@ -73,6 +73,35 @@ describe("dashboard view contract", () => {
     expect(view.snapshot.categoryBreakdown.entries.length).toBeGreaterThan(0);
   });
 
+  it("exposes income and spending categories separately while retaining the all-flow contract", () => {
+    const view = buildDashboardViewContract({
+      transactions,
+      selectedYearMonth: "2026-05",
+    });
+
+    expect(view.state).toBe("ready");
+    if (view.state !== "ready") {
+      return;
+    }
+
+    expect(view.snapshot.categoryBreakdownByFlow).toEqual({
+      inflows: {
+        yearMonth: "2026-05",
+        entries: [
+          { categoryId: "salary", label: "salary", totalMinor: 80_000, transactionCount: 1 },
+        ],
+      },
+      spending: {
+        yearMonth: "2026-05",
+        entries: [
+          { categoryId: "groceries", label: "groceries", totalMinor: 20_000, transactionCount: 1 },
+        ],
+      },
+    });
+    expect(view.snapshot.categoryBreakdown.entries.map((entry) => entry.categoryId))
+      .toEqual(["salary", "groceries"]);
+  });
+
   it("AC-2: month refresh returns deterministic updated values", () => {
     const mayView = refreshDashboardViewContractMonth(transactions, "2026-05");
     const juneView = refreshDashboardViewContractMonth(transactions, "2026-06");

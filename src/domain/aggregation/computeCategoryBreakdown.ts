@@ -2,6 +2,8 @@ import type { CategoryBreakdown, CategoryBreakdownEntry, Transaction } from "../
 
 export const UNCATEGORIZED_LABEL = "Uncategorized";
 
+export type CategoryBreakdownFlow = "all" | "inflows" | "spending";
+
 /**
  * Computes a deterministic category breakdown for transactions within a given calendar month.
  *
@@ -13,7 +15,8 @@ export const UNCATEGORIZED_LABEL = "Uncategorized";
  */
 export function computeCategoryBreakdown(
   transactions: Transaction[],
-  yearMonth: string
+  yearMonth: string,
+  flow: CategoryBreakdownFlow = "all"
 ): CategoryBreakdown {
   const monthTxs = transactions.filter(tx => tx.bookedAtIso.startsWith(yearMonth));
 
@@ -21,8 +24,10 @@ export function computeCategoryBreakdown(
 
   for (const tx of monthTxs) {
     const categoryAmounts = tx.categoryAllocations?.length
-      ? tx.categoryAllocations
-      : [{ categoryId: tx.categoryId ?? null, amountMinor: tx.amountMinor }];
+      ? tx.categoryAllocations.filter((allocation) => includesFlow(allocation.amountMinor, flow))
+      : includesFlow(tx.amountMinor, flow)
+        ? [{ categoryId: tx.categoryId ?? null, amountMinor: tx.amountMinor }]
+        : [];
 
     for (const allocation of categoryAmounts) {
       const acc = byCategory.get(allocation.categoryId) ?? {
@@ -60,4 +65,9 @@ export function computeCategoryBreakdown(
     : categorized;
 
   return { yearMonth, entries };
+}
+
+function includesFlow(amountMinor: number, flow: CategoryBreakdownFlow): boolean {
+  if (flow === "all") return true;
+  return flow === "inflows" ? amountMinor > 0 : amountMinor < 0;
 }

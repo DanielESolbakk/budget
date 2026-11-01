@@ -409,7 +409,7 @@ test.describe("Categorization review workflow", () => {
 
     await expect(reviewQueue.reviewItem("MERCHANT-005")).not.toBeVisible();
     await appShell.openWorkspace("Review");
-    await expect(dashboard.categoryBreakdownSection).toContainText("groceries");
+    await expect(dashboard.categoryBreakdownSection).toContainText("Groceries & food");
 
     await electronApp.close();
 
