@@ -15,12 +15,18 @@ import type {
   CategoryBreakdown,
   CurrencyCode,
   ExchangeRate,
+  HoldingRecord,
+  HoldingValuationSnapshot,
+  LoanBalanceSnapshot,
+  LoanRecord,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
   MonthlyCategoryTargetQuery,
   MonthlyBreakdown,
   MonthlyTotal,
   MonthSeries,
+  PropertyRecord,
+  PropertyValuationSnapshot,
   TargetVsActualCategoryRow,
   TargetVsActualCategoryRows,
   Transaction,
@@ -114,6 +120,36 @@ export interface NokMonthlyReport {
   partialNokSubtotalMinor: number;
   incompleteCurrencies: CurrencyCode[];
   transactions: NokMonthlyReportTransaction[];
+}
+
+export interface NokValuationReportInput {
+  valuationDateIso: string;
+  properties: readonly PropertyRecord[];
+  propertyValuations: readonly PropertyValuationSnapshot[];
+  holdings: readonly HoldingRecord[];
+  holdingValuations: readonly HoldingValuationSnapshot[];
+  loans: readonly LoanRecord[];
+  loanBalanceSnapshots: readonly LoanBalanceSnapshot[];
+  rates: readonly ExchangeRate[];
+  monthlyReferenceRateIds?: Readonly<Record<string, string>>;
+}
+
+export interface NokValuationReportEntry {
+  id: string;
+  label: string;
+  valuationDateIso: string;
+  nativeAmountMinor: number;
+  nativeCurrencyCode: CurrencyCode;
+  nokAmountMinor: number | null;
+  exchangeRate: ExchangeRate | null;
+  isEstimate: boolean;
+}
+
+export interface NokValuationReport {
+  valuationDateIso: string;
+  properties: NokValuationReportEntry[];
+  holdings: NokValuationReportEntry[];
+  liabilities: NokValuationReportEntry[];
 }
 
 type AccountCoverageQuerySource = Pick<
@@ -564,6 +600,159 @@ export function getMonthlyAttentionSummary(
       (row) => row.categoryId !== null && row.targetMinor !== null && row.deltaMinor !== null && row.deltaMinor > 0
     ).length,
   };
+}
+
+interface CorrectableValuationSnapshot {
+  id: string;
+  effectiveDateIso: string;
+  recordedAtIso: string;
+  correction?: { targetValuationId: string; action?: "supersede" | "void" };
+}
+
+function isIsoCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function latestValuationAtDate<T extends CorrectableValuationSnapshot>(
+  valuations: readonly T[],
+  valuationDateIso: string
+): T | undefined {
+  const correctedValuationIds = new Set(
+    valuations
+      .filter((valuation) => valuation.effectiveDateIso <= valuationDateIso)
+      .flatMap((valuation) =>
+      valuation.correction === undefined ? [] : [valuation.correction.targetValuationId]
+      )
+  );
+  return valuations
+    .filter((valuation) =>
+      valuation.effectiveDateIso <= valuationDateIso &&
+      valuation.correction?.action !== "void" &&
+      !correctedValuationIds.has(valuation.id)
+    )
+    .sort((left, right) =>
+      right.effectiveDateIso.localeCompare(left.effectiveDateIso) ||
+      right.recordedAtIso.localeCompare(left.recordedAtIso) ||
+      left.id.localeCompare(right.id)
+    )[0];
+}
+
+function buildNokValuationReportEntry(
+  input: {
+    id: string;
+    label: string;
+    valuationDateIso: string;
+    amountMinor: number;
+    currencyCode: CurrencyCode;
+  },
+  rates: readonly ExchangeRate[],
+  monthlyReferenceRateIds: Readonly<Record<string, string>> = {}
+): NokValuationReportEntry {
+  const conversion = convertCurrencyAmount({
+    amountMinor: input.amountMinor,
+    currencyCode: input.currencyCode,
+    asOfDateIso: input.valuationDateIso,
+    rates,
+    ...(monthlyReferenceRateIds[input.currencyCode] === undefined
+      ? {}
+      : { monthlyReferenceRateId: monthlyReferenceRateIds[input.currencyCode] }),
+  });
+  return {
+    id: input.id,
+    label: input.label,
+    valuationDateIso: input.valuationDateIso,
+    nativeAmountMinor: input.amountMinor,
+    nativeCurrencyCode: input.currencyCode,
+    nokAmountMinor: conversion.nokAmountMinor,
+    exchangeRate: conversion.exchangeRate,
+    isEstimate: conversion.isEstimate,
+  };
+}
+
+export function buildNokValuationReport(input: NokValuationReportInput): NokValuationReport {
+  if (!isIsoCalendarDate(input.valuationDateIso)) {
+    throw new Error(`Invalid NOK valuation report date: ${input.valuationDateIso}`);
+  }
+
+  const properties = input.properties
+    .flatMap((property) => {
+      const valuation = latestValuationAtDate(
+        input.propertyValuations.filter((candidate) => candidate.propertyId === property.id),
+        input.valuationDateIso
+      );
+      return valuation === undefined
+        ? []
+        : [buildNokValuationReportEntry({
+            id: property.id,
+            label: property.label,
+            valuationDateIso: valuation.effectiveDateIso,
+            amountMinor: valuation.amountMinor,
+            currencyCode: valuation.currencyCode,
+          }, input.rates, input.monthlyReferenceRateIds)];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const holdings = input.holdings
+    .flatMap((holding) => {
+      const valuation = latestValuationAtDate(
+        input.holdingValuations.filter((candidate) => candidate.holdingId === holding.id),
+        input.valuationDateIso
+      );
+      return valuation === undefined
+        ? []
+        : [buildNokValuationReportEntry({
+            id: holding.id,
+            label: holding.label,
+            valuationDateIso: valuation.effectiveDateIso,
+            amountMinor: valuation.amountMinor,
+            currencyCode: valuation.currencyCode,
+          }, input.rates, input.monthlyReferenceRateIds)];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const liabilities = input.loans
+    .flatMap((loan) => {
+      const balance = latestValuationAtDate(
+        input.loanBalanceSnapshots.filter((candidate) => candidate.loanId === loan.id),
+        input.valuationDateIso
+      );
+      return balance === undefined
+        ? []
+        : [buildNokValuationReportEntry({
+            id: loan.id,
+            label: loan.label,
+            valuationDateIso: balance.effectiveDateIso,
+            amountMinor: balance.amountMinor,
+            currencyCode: balance.currencyCode,
+          }, input.rates, input.monthlyReferenceRateIds)];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  return {
+    valuationDateIso: input.valuationDateIso,
+    properties,
+    holdings,
+    liabilities,
+  };
+}
+
+export function queryNokValuationReport(
+  database: Pick<LocalLedgerDatabase, "loadLedgerSnapshotData" | "listExchangeRates">,
+  valuationDateIso: string,
+  monthlyReferenceRateIds?: Readonly<Record<string, string>>
+): NokValuationReport {
+  const snapshot = database.loadLedgerSnapshotData();
+  return buildNokValuationReport({
+    valuationDateIso,
+    properties: snapshot.properties ?? [],
+    propertyValuations: snapshot.propertyValuations ?? [],
+    holdings: snapshot.holdings ?? [],
+    holdingValuations: snapshot.holdingValuations ?? [],
+    loans: snapshot.loanRecords ?? [],
+    loanBalanceSnapshots: snapshot.loanBalanceSnapshots ?? [],
+    rates: database.listExchangeRates(),
+    ...(monthlyReferenceRateIds === undefined ? {} : { monthlyReferenceRateIds }),
+  });
 }
 
 export function buildDashboardViewContract(input: DashboardViewContractInput): DashboardViewContract {

@@ -97,12 +97,108 @@ function addSyntheticForeignCurrencyActivity(databasePath: string): void {
   }
 }
 
+function addSyntheticValuations(databasePath: string): void {
+  const database = new DatabaseSync(databasePath);
+  try {
+    database.prepare(`
+      INSERT INTO properties (id, household_id, label, created_at_iso)
+      VALUES (?, ?, ?, ?)
+    `).run("valuation-home", "sample-hh", "Synthetic home", "2026-01-01T00:00:00Z");
+    database.prepare(`
+      INSERT INTO properties (id, household_id, label, created_at_iso)
+      VALUES (?, ?, ?, ?)
+    `).run("valuation-nok-home", "sample-hh", "Synthetic NOK home", "2026-01-01T00:00:00Z");
+    database.prepare(`
+      INSERT INTO property_valuation_snapshots (
+        id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "valuation-home-april",
+      "valuation-home",
+      "2026-04-15",
+      100_000,
+      "EUR",
+      "2026-04-15T12:00:00Z"
+    );
+    database.prepare(`
+      INSERT INTO property_valuation_snapshots (
+        id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "valuation-nok-home-may",
+      "valuation-nok-home",
+      "2026-05-15",
+      500_000,
+      "NOK",
+      "2026-05-15T12:00:00Z"
+    );
+    database.prepare(`
+      INSERT INTO investment_holdings (
+        id, household_id, label, quantity, cost_basis_minor, currency_code, created_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      "valuation-fund",
+      "sample-hh",
+      "Synthetic fund",
+      1,
+      40_000,
+      "USD",
+      "2026-01-01T00:00:00Z"
+    );
+    database.prepare(`
+      INSERT INTO holding_valuation_snapshots (
+        id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "valuation-fund-may",
+      "valuation-fund",
+      "2026-05-20",
+      50_000,
+      "USD",
+      "2026-05-20T12:00:00Z"
+    );
+    database.prepare(`
+      INSERT INTO loan_records (
+        id, household_id, label, principal_minor, annual_interest_rate_basis_points,
+        term_months, payment_amount_minor, payment_frequency, currency_code, created_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      "valuation-mortgage",
+      "sample-hh",
+      "Synthetic mortgage",
+      100_000,
+      400,
+      240,
+      5_000,
+      "monthly",
+      "SEK",
+      "2026-01-01T00:00:00Z"
+    );
+    database.prepare(`
+      INSERT INTO loan_balance_snapshots (
+        id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "valuation-mortgage-may",
+      "valuation-mortgage",
+      "2026-05-31",
+      30_000,
+      "SEK",
+      "2026-05-31T12:00:00Z"
+    );
+  } finally {
+    database.close();
+  }
+}
+
 async function openRatesWorkspace(
   databasePath: string,
-  electronApp: ElectronApplication
+  electronApp: ElectronApplication,
+  includeValuations = false
 ): Promise<RatesWorkspace> {
   await electronApp.close();
   addSyntheticForeignCurrencyActivity(databasePath);
+  if (includeValuations) addSyntheticValuations(databasePath);
   const rateImportPath = join(dirname(databasePath), "exchange-rates.csv");
   writeFileSync(
     rateImportPath,
@@ -177,6 +273,95 @@ async function openRatesWorkspace(
 }
 
 test.describe("local dated exchange-rate workflow", () => {
+  test("reports property, investment, and liability amounts using their valuation-date rates", async ({
+    databasePath,
+    electronApp,
+  }) => {
+    const {
+      ratesApp,
+      window,
+      rates,
+      rateCurrency,
+      rateAmount,
+      rateDate,
+      rateType,
+      rateSource,
+      saveRateButton,
+      rendererRequests,
+    } = await openRatesWorkspace(databasePath, electronApp, true);
+
+    try {
+      const valuationReportTab = rates.getByRole("button", {
+        name: "Valuation report",
+        exact: true,
+      });
+      await expect(valuationReportTab).toBeVisible();
+      await valuationReportTab.click();
+
+      const rateEntries = [
+        { currency: "EUR", amount: "11.25", date: "2026-04-01", source: "Synthetic EUR April" },
+        { currency: "EUR", amount: "12.50", date: "2026-05-01", source: "Synthetic EUR May" },
+        { currency: "USD", amount: "11.00", date: "2026-05-01", source: "Synthetic USD May" },
+        { currency: "SEK", amount: "1.05", date: "2026-05-01", source: "Synthetic SEK May" },
+      ];
+      for (const entry of rateEntries) {
+        await rates.getByRole("button", { name: "Rate book", exact: true }).click();
+        await rateCurrency.selectOption(entry.currency);
+        await rateAmount.fill(entry.amount);
+        await rateDate.fill(entry.date);
+        await rateType.selectOption("dated");
+        await rateSource.fill(entry.source);
+        await saveRateButton.click();
+        await expect(rates.getByText(entry.source, { exact: true })).toBeVisible();
+      }
+
+      await valuationReportTab.click();
+      const reportForm = rates.getByRole("form", { name: "Valuation report request" });
+      await reportForm.getByLabel("Valuation date").fill("2026-05-31");
+      await reportForm.getByRole("button", { name: "Load valuation report" }).click();
+      const report = rates.getByRole("region", { name: "Converted valuation report" });
+      await expect(report).toContainText("Valuations as of 2026-05-31");
+
+      const home = report.getByRole("group", { name: "Synthetic home" });
+      await expect(home).toContainText("EUR 1 000,00");
+      await expect(home).toContainText("NOK 11 250,00");
+      await expect(home).toContainText("Rate 11.25 NOK per EUR — 2026-04-01, Synthetic EUR April");
+
+      const nokHome = report.getByRole("group", { name: "Synthetic NOK home" });
+      await expect(nokHome).toContainText("NOK 5 000,00");
+      await expect(nokHome).toContainText("NOK base currency — rate 1.00");
+
+      const fund = report.getByRole("group", { name: "Synthetic fund" });
+      await expect(fund).toContainText("USD 500,00");
+      await expect(fund).toContainText("NOK 5 500,00");
+      await expect(fund).toContainText("Rate 11.00 NOK per USD — 2026-05-01, Synthetic USD May");
+
+      const mortgage = report.getByRole("group", { name: "Synthetic mortgage" });
+      await expect(mortgage).toContainText("SEK 300,00");
+      await expect(mortgage).toContainText("NOK 315,00");
+      await expect(mortgage).toContainText("Rate 1.05 NOK per SEK — 2026-05-01, Synthetic SEK May");
+      await expect(report).toHaveScreenshot("valuation-report-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
+
+      await window.setViewportSize({ width: 390, height: 844 });
+      await expect(report).toBeVisible();
+      await expect(report).toHaveScreenshot("valuation-report-mobile.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      });
+      const horizontalOverflow = await window.evaluate(() =>
+        document.documentElement.scrollWidth > document.documentElement.clientWidth
+      );
+      expect(horizontalOverflow).toBe(false);
+      expect(rendererRequests).toEqual([]);
+      expect(await mainProcessNetworkRequests(ratesApp)).toEqual([]);
+    } finally {
+      await ratesApp.close();
+    }
+  });
+
   test("reports local rate provenance and supports keyboard entry at desktop and compact widths", async ({
     databasePath,
     electronApp,

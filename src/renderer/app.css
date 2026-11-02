@@ -2820,6 +2820,17 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   font-size: 0.85rem;
 }
 
+.account-coverage-next-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.account-coverage-next-action p {
+  color: var(--paper-muted);
+}
+
 .account-coverage-difference strong {
   color: var(--paper);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -3150,6 +3161,64 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
 
 .converted-monthly-report .scenario-amount {
   color: var(--info);
+}
+
+.converted-valuation-report {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 1rem;
+}
+
+.converted-valuation-report .converted-report-heading h3,
+.converted-valuation-report .converted-report-heading p,
+.converted-valuation-section h4,
+.converted-valuation-report [role="group"] h5,
+.converted-valuation-report [role="group"] p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.converted-valuation-report .converted-report-heading p {
+  margin-top: 0.25rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+}
+
+.converted-valuation-section {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.converted-valuation-section h4 {
+  color: var(--paper);
+  font-size: 0.95rem;
+}
+
+.converted-valuation-section ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.converted-valuation-report [role="group"] {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 0.65rem 0;
+}
+
+.converted-valuation-report [role="group"] h5 {
+  color: var(--paper);
+  font-size: 0.9rem;
+}
+
+.converted-valuation-report [role="group"] p {
+  line-height: 1.45;
 }
 
 .ledger-allocation-panel {

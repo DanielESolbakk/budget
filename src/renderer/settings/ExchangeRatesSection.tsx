@@ -1,7 +1,7 @@
 import React from "react";
-import type { NokMonthlyReport } from "../../app/dashboardApi.js";
+import type { NokMonthlyReport, NokValuationReport } from "../../app/dashboardApi.js";
 import type { ExchangeRate } from "../../domain/types.js";
-import { toLocalYearMonth } from "../../domain/date/localDateDefaults.js";
+import { toLocalIsoDate, toLocalYearMonth } from "../../domain/date/localDateDefaults.js";
 
 const amountFormatter = new Intl.NumberFormat("nb-NO", {
   minimumFractionDigits: 2,
@@ -20,25 +20,30 @@ export function ExchangeRatesSection({
   onRatesChanged,
 }: { onRatesChanged?: () => void }): React.JSX.Element {
   const [rates, setRates] = React.useState<ExchangeRate[]>([]);
-  const [activeView, setActiveView] = React.useState<"rate-book" | "monthly-report">("rate-book");
+  const [activeView, setActiveView] = React.useState<
+    "rate-book" | "monthly-report" | "valuation-report"
+  >("rate-book");
   const [currencyCode, setCurrencyCode] = React.useState("EUR");
   const [rateNokPerUnit, setRateNokPerUnit] = React.useState("");
   const [effectiveDate, setEffectiveDate] = React.useState("");
   const [kind, setKind] = React.useState<ExchangeRate["kind"]>("dated");
   const [source, setSource] = React.useState("");
   const [reportMonth, setReportMonth] = React.useState(() => toLocalYearMonth(new Date()));
+  const [valuationDateIso, setValuationDateIso] = React.useState(() => toLocalIsoDate(new Date()));
   const [selectedMonthlyReferenceRateIds, setSelectedMonthlyReferenceRateIds] =
     React.useState<Record<string, string>>({});
   const [report, setReport] = React.useState<NokMonthlyReport | null>(null);
   const [scenarioReport, setScenarioReport] = React.useState<NokMonthlyReport | null>(null);
+  const [valuationReport, setValuationReport] = React.useState<NokValuationReport | null>(null);
   const [useLatestRateScenario, setUseLatestRateScenario] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [isBuildingReport, setIsBuildingReport] = React.useState(false);
+  const [isBuildingValuationReport, setIsBuildingValuationReport] = React.useState(false);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  function selectView(view: "rate-book" | "monthly-report"): void {
+  function selectView(view: "rate-book" | "monthly-report" | "valuation-report"): void {
     if (view === activeView) return;
     setActiveView(view);
     setStatusMessage(null);
@@ -94,6 +99,7 @@ export function ExchangeRatesSection({
       setStatusMessage("Local exchange rate saved.");
       setReport(null);
       setScenarioReport(null);
+      setValuationReport(null);
       setRateNokPerUnit("");
       setSource("");
       onRatesChanged?.();
@@ -130,6 +136,7 @@ export function ExchangeRatesSection({
       setStatusMessage(`${imported.length} local exchange rate${imported.length === 1 ? "" : "s"} imported.`);
       setReport(null);
       setScenarioReport(null);
+      setValuationReport(null);
       onRatesChanged?.();
     } catch (importError: unknown) {
       setError(errorMessage(importError, "Unable to import local exchange rates."));
@@ -165,14 +172,44 @@ export function ExchangeRatesSection({
     }
   }
 
+  async function loadValuationReport(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setError(null);
+    setStatusMessage(null);
+    setIsBuildingValuationReport(true);
+    try {
+      const request = {
+        valuationDateIso,
+        ...(Object.keys(selectedMonthlyReferenceRateIds).length === 0
+          ? {}
+          : { monthlyReferenceRateIds: selectedMonthlyReferenceRateIds }),
+      };
+      setValuationReport(await window.budgetApi.exchangeRates.getValuationReport(request));
+    } catch (reportError: unknown) {
+      setError(errorMessage(reportError, "Unable to build the converted valuation report."));
+    } finally {
+      setIsBuildingValuationReport(false);
+    }
+  }
+
   const monthlyReferenceRates = rates.filter((rate) => rate.kind === "monthly-reference");
   const reportCurrencies = report?.nativeSubtotals.map((subtotal) => subtotal.currencyCode) ?? [];
+  const valuationSections = valuationReport === null
+    ? []
+    : [
+        { heading: "Properties", entries: valuationReport.properties },
+        { heading: "Investments", entries: valuationReport.holdings },
+        { heading: "Liabilities", entries: valuationReport.liabilities },
+      ].filter((section) => section.entries.length > 0);
+  const hasIncompleteValuations = valuationSections.some((section) =>
+    section.entries.some((entry) => entry.nokAmountMinor === null)
+  );
 
   return (
     <section
       className="exchange-rates-section"
       aria-label="Exchange rates"
-      aria-busy={isLoading || isSaving || isBuildingReport}
+      aria-busy={isLoading || isSaving || isBuildingReport || isBuildingValuationReport}
     >
       <div className="section-heading">
         <h2>Local exchange rates</h2>
@@ -197,6 +234,13 @@ export function ExchangeRatesSection({
           onClick={() => selectView("monthly-report")}
         >
           Monthly report
+        </button>
+        <button
+          type="button"
+          aria-pressed={activeView === "valuation-report"}
+          onClick={() => selectView("valuation-report")}
+        >
+          Valuation report
         </button>
       </div>
 
@@ -429,6 +473,90 @@ export function ExchangeRatesSection({
 
           {report !== null && useLatestRateScenario && scenarioReport === null && reportCurrencies.length > 0 && (
             <p role="status">Latest-rate scenario has no complete rate set for this report.</p>
+          )}
+        </div>
+      )}
+
+      {activeView === "valuation-report" && (
+        <div className="converted-report-content">
+          <div className="exchange-rate-subheading">
+            <h3>Convert property, investment, and loan values</h3>
+            <p>
+              Each value uses its latest recorded valuation date on or before the selected date.
+              Native amounts stay unchanged; NOK uses the base rate of 1.
+            </p>
+          </div>
+          <form
+            className="converted-report-form"
+            aria-label="Valuation report request"
+            onSubmit={(event) => void loadValuationReport(event)}
+          >
+            <label>
+              Valuation date
+              <input
+                type="date"
+                value={valuationDateIso}
+                onChange={(event) => setValuationDateIso(event.target.value)}
+              />
+            </label>
+            <button type="submit" disabled={isBuildingValuationReport}>
+              {isBuildingValuationReport ? "Building report..." : "Load valuation report"}
+            </button>
+          </form>
+          {isBuildingValuationReport && (
+            <p className="exchange-rate-message" role="status">Building the converted valuation report...</p>
+          )}
+          {valuationReport !== null && (
+            <section className="converted-valuation-report" aria-label="Converted valuation report">
+              <div className="converted-report-heading">
+                <h3>Valuations as of {valuationReport.valuationDateIso}</h3>
+                <p>Each NOK equivalent uses the effective date shown for that recorded value.</p>
+              </div>
+              {hasIncompleteValuations && (
+                <p className="converted-report-status is-incomplete" role="status">
+                  Some NOK conversions are incomplete. Add a dated local rate before relying on those values.
+                </p>
+              )}
+              {valuationSections.length === 0 ? (
+                <div className="empty-state">
+                  <strong>No valuations recorded on or before this date.</strong>
+                  <p>Record a property or investment valuation, or a loan balance, to build this report.</p>
+                </div>
+              ) : (
+                valuationSections.map((section) => (
+                  <section className="converted-valuation-section" key={section.heading}>
+                    <h4>{section.heading}</h4>
+                    <ul aria-label={`${section.heading} valuation details`}>
+                      {section.entries.map((entry) => (
+                        <li key={entry.id}>
+                          <section role="group" aria-label={entry.label}>
+                            <h5>{entry.label}</h5>
+                            <p>
+                              Valued {entry.valuationDateIso}
+                              {" — "}
+                              {formatMinor(entry.nativeAmountMinor, entry.nativeCurrencyCode)}
+                              {" — "}
+                              {entry.nokAmountMinor === null
+                                ? "NOK conversion incomplete"
+                                : formatMinor(entry.nokAmountMinor, "NOK")}
+                            </p>
+                            {entry.exchangeRate !== null ? (
+                              <p>
+                                Rate {entry.exchangeRate.rateNokPerUnit} NOK per {entry.nativeCurrencyCode}
+                                {" — "}{entry.exchangeRate.effectiveDate}, {entry.exchangeRate.source}
+                                {entry.isEstimate ? " — estimate" : ""}
+                              </p>
+                            ) : entry.nativeCurrencyCode === "NOK" ? (
+                              <p>NOK base currency — rate 1.00 on {entry.valuationDateIso}</p>
+                            ) : null}
+                          </section>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))
+              )}
+            </section>
           )}
         </div>
       )}

@@ -6,6 +6,7 @@ import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { parseExchangeRateCsv } from "../../src/app/exchangeRateImport.js";
 import * as dashboardApi from "../../src/app/dashboardApi.js";
+import { queryNokValuationReport } from "../../src/app/dashboardApi.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import type { Account, ExchangeRate, Transaction } from "../../src/domain/types.js";
 
@@ -214,6 +215,149 @@ describe("exchange-rate local persistence and reports", () => {
       expect(networkFetch).not.toHaveBeenCalled();
     } finally {
       if (!isClosed) ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("queries persisted property, holding, and loan valuations using each valuation date", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-valuation-report-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const ledger = createLedger(databasePath);
+    let activeLedger: ReturnType<typeof createLedger> | undefined = ledger;
+
+    try {
+      ledger.createPropertyRecord({
+        id: "property-home",
+        householdId: "hh-rates",
+        label: "Synthetic home",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      });
+      ledger.appendPropertyValuationSnapshot({
+        id: "property-home-april",
+        propertyId: "property-home",
+        effectiveDateIso: "2026-04-15",
+        amountMinor: 100_000,
+        currencyCode: "EUR",
+        recordedAtIso: "2026-04-15T12:00:00Z",
+      });
+      ledger.createHoldingRecord({
+        id: "holding-fund",
+        householdId: "hh-rates",
+        label: "Synthetic fund",
+        quantity: 1,
+        costBasisMinor: 40_000,
+        currencyCode: "USD",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      });
+      ledger.appendHoldingValuationSnapshot({
+        id: "holding-fund-may",
+        holdingId: "holding-fund",
+        effectiveDateIso: "2026-05-20",
+        amountMinor: 50_000,
+        currencyCode: "USD",
+        recordedAtIso: "2026-05-20T12:00:00Z",
+      });
+      ledger.createLoanRecord({
+        id: "loan-mortgage",
+        householdId: "hh-rates",
+        label: "Synthetic mortgage",
+        principalMinor: 100_000,
+        annualInterestRateBasisPoints: 400,
+        termMonths: 240,
+        paymentAmountMinor: 5_000,
+        paymentFrequency: "monthly",
+        currencyCode: "SEK",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      });
+      ledger.appendLoanBalanceSnapshot({
+        id: "loan-mortgage-may",
+        loanId: "loan-mortgage",
+        effectiveDateIso: "2026-05-31",
+        amountMinor: 30_000,
+        currencyCode: "SEK",
+        recordedAtIso: "2026-05-31T12:00:00Z",
+      });
+      exchangeRateLedger(ledger).upsertExchangeRates([
+        {
+          id: "eur-april",
+          currencyCode: "EUR",
+          rateNokPerUnit: "11.25",
+          effectiveDate: "2026-04-01",
+          kind: "dated",
+          source: "Synthetic April rate",
+          provenance: "manual",
+        },
+        {
+          id: "eur-may",
+          currencyCode: "EUR",
+          rateNokPerUnit: "12.50",
+          effectiveDate: "2026-05-01",
+          kind: "dated",
+          source: "Synthetic May rate",
+          provenance: "manual",
+        },
+        {
+          id: "usd-may",
+          currencyCode: "USD",
+          rateNokPerUnit: "11.00",
+          effectiveDate: "2026-05-01",
+          kind: "dated",
+          source: "Synthetic May USD rate",
+          provenance: "manual",
+        },
+        {
+          id: "sek-may",
+          currencyCode: "SEK",
+          rateNokPerUnit: "1.05",
+          effectiveDate: "2026-05-01",
+          kind: "dated",
+          source: "Synthetic May SEK rate",
+          provenance: "manual",
+        },
+      ]);
+      ledger.close();
+      activeLedger = undefined;
+      activeLedger = createLedger(databasePath);
+
+      const report = queryNokValuationReport(activeLedger, "2026-05-31");
+
+      expect(report.properties[0]).toMatchObject({
+        id: "property-home",
+        valuationDateIso: "2026-04-15",
+        nativeAmountMinor: 100_000,
+        nativeCurrencyCode: "EUR",
+        nokAmountMinor: 1_125_000,
+        exchangeRate: {
+          id: "eur-april",
+          effectiveDate: "2026-04-01",
+          source: "Synthetic April rate",
+        },
+      });
+      expect(report.holdings[0]).toMatchObject({
+        id: "holding-fund",
+        valuationDateIso: "2026-05-20",
+        nativeAmountMinor: 50_000,
+        nativeCurrencyCode: "USD",
+        nokAmountMinor: 550_000,
+        exchangeRate: {
+          id: "usd-may",
+          effectiveDate: "2026-05-01",
+        },
+      });
+      expect(report.liabilities[0]).toMatchObject({
+        id: "loan-mortgage",
+        valuationDateIso: "2026-05-31",
+        nativeAmountMinor: 30_000,
+        nativeCurrencyCode: "SEK",
+        nokAmountMinor: 31_500,
+        exchangeRate: {
+          id: "sek-may",
+          effectiveDate: "2026-05-01",
+        },
+      });
+      expect(networkFetch).not.toHaveBeenCalled();
+    } finally {
+      activeLedger?.close();
       rmSync(directory, { recursive: true, force: true });
     }
   });

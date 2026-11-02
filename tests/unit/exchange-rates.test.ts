@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNokMonthlyReport } from "../../src/app/dashboardApi.js";
+import { buildNokMonthlyReport, buildNokValuationReport } from "../../src/app/dashboardApi.js";
 import { parseExchangeRateCsv } from "../../src/app/exchangeRateImport.js";
 import { convertCurrencyAmount } from "../../src/domain/money/convertCurrencyAmount.js";
 import { selectExchangeRate, validateExchangeRate } from "../../src/domain/money/exchangeRates.js";
@@ -173,6 +173,182 @@ describe("dated local exchange rates", () => {
     expect(report.transactions.map(({ transactionId }) => transactionId)).toEqual(["tx-may"]);
     expect(report.nativeSubtotals).toEqual([{ currencyCode: "EUR", totalMinor: 10_000 }]);
     expect(report.nokSubtotalMinor).toBe(115_000);
+  });
+
+  it("uses each asset and liability valuation date while preserving native values and rate provenance", () => {
+    const eurAprilRate = {
+      ...datedRate,
+      id: "eur-april-rate",
+      effectiveDate: "2026-04-01",
+      rateNokPerUnit: "11.25",
+    };
+    const eurMayRate = {
+      ...datedRate,
+      id: "eur-may-rate",
+      effectiveDate: "2026-05-01",
+      rateNokPerUnit: "12.50",
+    };
+    const usdAprilRate = {
+      ...datedRate,
+      id: "usd-april-rate",
+      currencyCode: "USD",
+      effectiveDate: "2026-04-01",
+      rateNokPerUnit: "10.00",
+    };
+    const usdMayRate = {
+      ...datedRate,
+      id: "usd-may-rate",
+      currencyCode: "USD",
+      effectiveDate: "2026-05-01",
+      rateNokPerUnit: "11.00",
+    };
+    const sekMayRate = {
+      ...datedRate,
+      id: "sek-may-rate",
+      currencyCode: "SEK",
+      effectiveDate: "2026-05-01",
+      rateNokPerUnit: "1.05",
+    };
+    const report = buildNokValuationReport({
+      valuationDateIso: "2026-05-31",
+      rates: [eurAprilRate, eurMayRate, usdAprilRate, usdMayRate, sekMayRate],
+      properties: [{
+        id: "property-home",
+        householdId: "hh-rates",
+        label: "Home",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      }],
+      propertyValuations: [{
+        id: "property-home-april",
+        propertyId: "property-home",
+        effectiveDateIso: "2026-04-15",
+        amountMinor: 100_000,
+        currencyCode: "EUR",
+        recordedAtIso: "2026-04-15T12:00:00Z",
+      }],
+      holdings: [{
+        id: "holding-fund",
+        householdId: "hh-rates",
+        label: "Index fund",
+        quantity: 1,
+        costBasisMinor: 40_000,
+        currencyCode: "USD",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      }],
+      holdingValuations: [{
+        id: "holding-fund-may",
+        holdingId: "holding-fund",
+        effectiveDateIso: "2026-05-20",
+        amountMinor: 50_000,
+        currencyCode: "USD",
+        recordedAtIso: "2026-05-20T12:00:00Z",
+      }],
+      loans: [{
+        id: "loan-mortgage",
+        householdId: "hh-rates",
+        label: "Mortgage",
+        principalMinor: 100_000,
+        annualInterestRateBasisPoints: 400,
+        termMonths: 240,
+        paymentAmountMinor: 5_000,
+        paymentFrequency: "monthly",
+        currencyCode: "SEK",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      }],
+      loanBalanceSnapshots: [{
+        id: "loan-mortgage-may",
+        loanId: "loan-mortgage",
+        effectiveDateIso: "2026-05-31",
+        amountMinor: 30_000,
+        currencyCode: "SEK",
+        recordedAtIso: "2026-05-31T12:00:00Z",
+      }],
+    });
+
+    expect(report).toEqual({
+      valuationDateIso: "2026-05-31",
+      properties: [{
+        id: "property-home",
+        label: "Home",
+        valuationDateIso: "2026-04-15",
+        nativeAmountMinor: 100_000,
+        nativeCurrencyCode: "EUR",
+        nokAmountMinor: 1_125_000,
+        exchangeRate: eurAprilRate,
+        isEstimate: false,
+      }],
+      holdings: [{
+        id: "holding-fund",
+        label: "Index fund",
+        valuationDateIso: "2026-05-20",
+        nativeAmountMinor: 50_000,
+        nativeCurrencyCode: "USD",
+        nokAmountMinor: 550_000,
+        exchangeRate: usdMayRate,
+        isEstimate: false,
+      }],
+      liabilities: [{
+        id: "loan-mortgage",
+        label: "Mortgage",
+        valuationDateIso: "2026-05-31",
+        nativeAmountMinor: 30_000,
+        nativeCurrencyCode: "SEK",
+        nokAmountMinor: 31_500,
+        exchangeRate: sekMayRate,
+        isEstimate: false,
+      }],
+    });
+  });
+
+  it("does not apply a future valuation correction to an earlier report date", () => {
+    const earlyRate = { ...datedRate, effectiveDate: "2026-04-01" };
+    const originalValuation = {
+      id: "property-home-april",
+      propertyId: "property-home",
+      effectiveDateIso: "2026-04-15",
+      amountMinor: 100_000,
+      currencyCode: "EUR",
+      recordedAtIso: "2026-04-15T12:00:00Z",
+    };
+    const report = buildNokValuationReport({
+      valuationDateIso: "2026-05-31",
+      properties: [{
+        id: "property-home",
+        householdId: "hh-rates",
+        label: "Home",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      }],
+      propertyValuations: [
+        originalValuation,
+        {
+          ...originalValuation,
+          id: "property-home-june-correction",
+          effectiveDateIso: "2026-06-15",
+          amountMinor: 120_000,
+          recordedAtIso: "2026-06-15T12:00:00Z",
+          correction: {
+            action: "supersede" as const,
+            targetValuationId: originalValuation.id,
+          },
+        },
+      ],
+      holdings: [],
+      holdingValuations: [],
+      loans: [],
+      loanBalanceSnapshots: [],
+      rates: [earlyRate],
+    });
+
+    expect(report.properties).toEqual([{
+      id: "property-home",
+      label: "Home",
+      valuationDateIso: "2026-04-15",
+      nativeAmountMinor: 100_000,
+      nativeCurrencyCode: "EUR",
+      nokAmountMinor: 1_150_000,
+      exchangeRate: earlyRate,
+      isEstimate: false,
+    }]);
   });
 
   it("rounds positive and negative NOK minor units symmetrically at half-unit boundaries", () => {

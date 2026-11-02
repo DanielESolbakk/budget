@@ -78,6 +78,8 @@ export function AccountCoverageSection(): React.JSX.Element {
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const checkpointFormRef = React.useRef<HTMLFormElement>(null);
+  const checkpointDateInputRef = React.useRef<HTMLInputElement>(null);
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
   const accountImportJobs = importJobs.filter((job) => job.accountId === selectedAccountId);
 
@@ -130,6 +132,11 @@ export function AccountCoverageSection(): React.JSX.Element {
   async function refresh(): Promise<void> {
     if (selectedAccountId === "") return;
     setRevision((current) => current + 1);
+  }
+
+  function focusCheckpointEntry(): void {
+    checkpointFormRef.current?.scrollIntoView({ block: "center" });
+    checkpointDateInputRef.current?.focus();
   }
 
   async function saveCoveragePeriod(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -307,14 +314,24 @@ export function AccountCoverageSection(): React.JSX.Element {
           </button>
         </form>
 
-        <form className="account-coverage-form" aria-label="Add balance checkpoint" onSubmit={(event) => void saveCheckpoint(event)}>
+        <form
+          ref={checkpointFormRef}
+          className="account-coverage-form"
+          aria-label="Add balance checkpoint"
+          onSubmit={(event) => void saveCheckpoint(event)}
+        >
           <div className="account-coverage-form-heading">
             <h3>Balance checkpoints</h3>
-            <p>Then add dated opening and closing observations for this account.</p>
+            <p>After confirming a statement period, add or review its opening and closing balances here.</p>
           </div>
           <label>
             Checkpoint date
-            <input type="date" value={checkpointDateIso} onChange={(event) => setCheckpointDateIso(event.target.value)} />
+            <input
+              ref={checkpointDateInputRef}
+              type="date"
+              value={checkpointDateIso}
+              onChange={(event) => setCheckpointDateIso(event.target.value)}
+            />
           </label>
           <label>
             Checkpoint balance
@@ -360,6 +377,9 @@ export function AccountCoverageSection(): React.JSX.Element {
             checkpoint.dateIso >= period.startDateIso &&
             checkpoint.dateIso <= period.endDateIso
           );
+          const checkpointsAreReconciled =
+            assessment?.checkpointStatus === "available" &&
+            assessment.reconciliationStatus === "matched";
           return (
             <fieldset
               className="account-coverage-period"
@@ -396,9 +416,26 @@ export function AccountCoverageSection(): React.JSX.Element {
                 {period.importJobId !== undefined && <p>Import job: <code>{period.importJobId}</code></p>}
               </div>
               {!period.confirmed && (
-                <button className="action-secondary" type="button" onClick={() => void confirmPeriod(period)}>
-                  Confirm coverage
-                </button>
+                <>
+                  <p className="account-coverage-period-description">
+                    This period is saved but unconfirmed. Confirm it only after checking the statement dates and source.
+                  </p>
+                  <button className="action-secondary" type="button" onClick={() => void confirmPeriod(period)}>
+                    Confirm coverage
+                  </button>
+                </>
+              )}
+              {period.confirmed && !checkpointsAreReconciled && (
+                <div className="account-coverage-next-action">
+                  <p role="status">Next: add or review balance checkpoints.</p>
+                  <button
+                    className="action-secondary"
+                    type="button"
+                    onClick={focusCheckpointEntry}
+                  >
+                    Add or review balance checkpoints
+                  </button>
+                </div>
               )}
               <ul aria-label="Balance checkpoint history">
                 {periodCheckpoints.map((checkpoint) => (
