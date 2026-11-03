@@ -105,6 +105,23 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
       left.recordedAtIso.localeCompare(right.recordedAtIso) ||
       left.id.localeCompare(right.id)
   );
+  const recurringCommitments = [...(input.recurringCommitments ?? [])].sort(
+    (left, right) => left.id.localeCompare(right.id)
+  );
+  const recurringCommitmentPaymentLinks = [
+    ...(input.recurringCommitmentPaymentLinks ?? []),
+  ].sort((left, right) =>
+    left.commitmentId.localeCompare(right.commitmentId) ||
+    left.occurrenceDateIso.localeCompare(right.occurrenceDateIso) ||
+    left.id.localeCompare(right.id)
+  );
+  const recurringCommitmentDecisions = [
+    ...(input.recurringCommitmentDecisions ?? []),
+  ].sort((left, right) =>
+    left.commitmentId.localeCompare(right.commitmentId) ||
+    left.decidedAtIso.localeCompare(right.decidedAtIso) ||
+    left.id.localeCompare(right.id)
+  );
   return {
     metadata: {
       version: SNAPSHOT_VERSION,
@@ -128,6 +145,9 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     holdingValuations,
     loanRecords,
     loanBalanceSnapshots,
+    recurringCommitments,
+    recurringCommitmentPaymentLinks,
+    recurringCommitmentDecisions,
   };
 }
 

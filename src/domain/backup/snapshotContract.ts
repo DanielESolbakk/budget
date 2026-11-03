@@ -14,13 +14,17 @@ import type {
   PendingTransactionObservation,
   PropertyRecord,
   PropertyValuationSnapshot,
+  RecurringCommitment,
+  RecurringCommitmentDecision,
+  RecurringCommitmentPaymentLink,
   Transaction,
 } from "../types.js";
 
 /** Snapshot format version – increment when the serialized recovery contract changes. */
-export const SNAPSHOT_VERSION = "9" as const;
+export const SNAPSHOT_VERSION = "10" as const;
 
-export type SnapshotVersion = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | typeof SNAPSHOT_VERSION;
+export type SnapshotVersion =
+  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | typeof SNAPSHOT_VERSION;
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {
@@ -59,6 +63,9 @@ export interface BackupSnapshot {
   holdingValuations: HoldingValuationSnapshot[];
   loanRecords: LoanRecord[];
   loanBalanceSnapshots: LoanBalanceSnapshot[];
+  recurringCommitments: RecurringCommitment[];
+  recurringCommitmentPaymentLinks: RecurringCommitmentPaymentLink[];
+  recurringCommitmentDecisions: RecurringCommitmentDecision[];
 }
 
 /**
@@ -84,6 +91,9 @@ export interface LedgerSnapshotData {
   holdingValuations?: HoldingValuationSnapshot[];
   loanRecords?: LoanRecord[];
   loanBalanceSnapshots?: LoanBalanceSnapshot[];
+  recurringCommitments?: RecurringCommitment[];
+  recurringCommitmentPaymentLinks?: RecurringCommitmentPaymentLink[];
+  recurringCommitmentDecisions?: RecurringCommitmentDecision[];
   /** Override the creation timestamp (ISO 8601). Defaults to current UTC time. */
   createdAtIso?: string;
 }
@@ -162,6 +172,9 @@ export interface RestoreSnapshotOutput {
   holdingValuations: HoldingValuationSnapshot[];
   loanRecords: LoanRecord[];
   loanBalanceSnapshots: LoanBalanceSnapshot[];
+  recurringCommitments: RecurringCommitment[];
+  recurringCommitmentPaymentLinks: RecurringCommitmentPaymentLink[];
+  recurringCommitmentDecisions: RecurringCommitmentDecision[];
   /** Number of transactions that were restored. */
   transactionCount: number;
 }

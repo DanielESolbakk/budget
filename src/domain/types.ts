@@ -864,3 +864,115 @@ export interface MonthSeries {
   /** Near-term forecast derived from monthlyTotals. */
   forecast: ForecastResult;
 }
+
+export type RecurringCommitmentCadence = "monthly" | "annual";
+export type RecurringCommitmentStatus = "suggested" | "active" | "paused" | "ended";
+
+export interface RecurringCommitmentInput {
+  description: string;
+  currencyCode: CurrencyCode;
+  amountMinor: number | null;
+  isVariable: boolean;
+  cadence: RecurringCommitmentCadence;
+  firstDueDateIso: string;
+  activeFromIso: string;
+  activeUntilIso?: string;
+}
+
+export interface RecurringCommitment extends RecurringCommitmentInput {
+  id: string;
+  householdId: string;
+  status: RecurringCommitmentStatus;
+  createdAtIso: string;
+  updatedAtIso: string;
+}
+
+export type RecurringCommitmentDecisionType =
+  | "edited"
+  | "confirmed"
+  | "paused"
+  | "resumed"
+  | "ended"
+  | "amount-change-confirmed";
+
+export interface RecurringCommitmentDecision {
+  id: string;
+  commitmentId: string;
+  decisionType: RecurringCommitmentDecisionType;
+  decidedAtIso: string;
+  previousAmountMinor?: number | null;
+  newAmountMinor?: number | null;
+}
+
+export interface RecurringCommitmentPaymentLink {
+  id: string;
+  commitmentId: string;
+  occurrenceDateIso: string;
+  transactionId?: string;
+  pendingObservationId?: string;
+  linkedAtIso: string;
+}
+
+export interface RecurringCommitmentPaymentLinkInput {
+  commitmentId: string;
+  occurrenceDateIso: string;
+  transactionId?: string;
+  pendingObservationId?: string;
+}
+
+export interface RecurringCommitmentPaymentObservation {
+  id: string;
+  occurrenceDateIso: string;
+  amountMinor: number;
+  currencyCode: CurrencyCode;
+  status: "pending" | "confirmed";
+}
+
+export interface RecurringCommitmentPriceChange {
+  previousAmountMinor: number;
+  observedAmountMinor: number;
+  differenceMinor: number;
+  currencyCode: CurrencyCode;
+}
+
+export interface RecurringCommitmentOccurrence {
+  commitmentId: string;
+  dueDateIso: string;
+  amountMinor: number | null;
+  currencyCode: CurrencyCode;
+  isEstimate: boolean;
+}
+
+export interface RecurringCommitmentPaymentCandidate {
+  id: string;
+  sourceType: "transaction" | "pending";
+  dateIso: string;
+  amountMinor: number;
+  currencyCode: CurrencyCode;
+  description: string;
+}
+
+export interface RecurringCommitmentScheduleOccurrence extends RecurringCommitmentOccurrence {
+  description: string;
+  dueStatus: "upcoming" | "due" | "past-due";
+  paymentStatus: "matched" | "unmatched";
+  nativeAmountMinor: number | null;
+  nativeCurrencyCode: CurrencyCode;
+  nokAmountMinor: number | null;
+  exchangeRate: ExchangeRate | null;
+  conversionStatus: "converted" | "incomplete";
+  linkedTransactionId?: string;
+  linkedPendingObservationId?: string;
+  observedPaymentAmountMinor?: number;
+}
+
+export interface RecurringCommitmentSchedule {
+  evaluatedAtIso: string;
+  commitments: RecurringCommitment[];
+  occurrences: RecurringCommitmentScheduleOccurrence[];
+  paymentCandidates: RecurringCommitmentPaymentCandidate[];
+  priceChanges: Array<RecurringCommitmentPriceChange & {
+    commitmentId: string;
+    description: string;
+  }>;
+}

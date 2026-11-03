@@ -28,6 +28,9 @@ import {
   type PropertyRecord,
   type PropertyValuationCorrection,
   type PropertyValuationSnapshot,
+  type RecurringCommitment,
+  type RecurringCommitmentDecision,
+  type RecurringCommitmentPaymentLink,
   type Transaction,
   type TransactionCategoryAllocation,
 } from "../../domain/types.js";
@@ -616,6 +619,180 @@ function validateLoanBalanceSnapshots(
   }
 }
 
+function validateRecurringCommitments(
+  value: unknown[],
+  householdId: string,
+  snapshotPath: string
+): asserts value is RecurringCommitment[] {
+  const commitmentIds = new Set<string>();
+  for (const rawCommitment of value) {
+    if (!isRecord(rawCommitment)) invalidSnapshot(snapshotPath, "recurring commitments");
+    const commitment = rawCommitment;
+    if (
+      !isNonEmptyString(commitment.id) ||
+      commitmentIds.has(commitment.id) ||
+      commitment.householdId !== householdId ||
+      !isNonEmptyString(commitment.description) ||
+      !isCurrencyCode(commitment.currencyCode) ||
+      (commitment.amountMinor !== null &&
+        (typeof commitment.amountMinor !== "number" ||
+          !Number.isSafeInteger(commitment.amountMinor) ||
+          commitment.amountMinor <= 0)) ||
+      typeof commitment.isVariable !== "boolean" ||
+      (!commitment.isVariable && commitment.amountMinor === null) ||
+      (commitment.cadence !== "monthly" && commitment.cadence !== "annual") ||
+      !isIsoCalendarDate(commitment.firstDueDateIso) ||
+      !isIsoCalendarDate(commitment.activeFromIso) ||
+      (commitment.activeUntilIso !== undefined && !isIsoCalendarDate(commitment.activeUntilIso)) ||
+      commitment.firstDueDateIso < commitment.activeFromIso ||
+      (commitment.activeUntilIso !== undefined &&
+        (commitment.activeUntilIso < commitment.activeFromIso ||
+          commitment.firstDueDateIso > commitment.activeUntilIso)) ||
+      (commitment.status !== "suggested" &&
+        commitment.status !== "active" &&
+        commitment.status !== "paused" &&
+        commitment.status !== "ended") ||
+      !isNonEmptyString(commitment.createdAtIso) ||
+      !commitment.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(commitment.createdAtIso)) ||
+      !isNonEmptyString(commitment.updatedAtIso) ||
+      !commitment.updatedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(commitment.updatedAtIso))
+    ) {
+      invalidSnapshot(snapshotPath, "recurring commitments");
+    }
+    commitmentIds.add(commitment.id);
+  }
+}
+
+function validateRecurringCommitmentPaymentLinks(
+  value: unknown[],
+  commitments: RecurringCommitment[],
+  transactions: Transaction[],
+  pendingObservations: PendingTransactionObservation[],
+  accounts: Account[],
+  snapshotPath: string
+): asserts value is RecurringCommitmentPaymentLink[] {
+  const commitmentsById = new Map(commitments.map((commitment) => [commitment.id, commitment]));
+  const transactionsById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
+  const pendingById = new Map(pendingObservations.map((observation) => [observation.id, observation]));
+  const accountCurrencies = new Map(accounts.map((account) => [account.id, account.currencyCode]));
+  const linkIds = new Set<string>();
+  const linkedOccurrences = new Set<string>();
+  const linkedPayments = new Set<string>();
+
+  for (const rawLink of value) {
+    if (!isRecord(rawLink)) invalidSnapshot(snapshotPath, "recurring commitment payment links");
+    const link = rawLink;
+    const transactionId = isNonEmptyString(link.transactionId) ? link.transactionId : undefined;
+    const pendingObservationId = isNonEmptyString(link.pendingObservationId)
+      ? link.pendingObservationId
+      : undefined;
+    const commitment = isNonEmptyString(link.commitmentId)
+      ? commitmentsById.get(link.commitmentId)
+      : undefined;
+    if (
+      !isNonEmptyString(link.id) ||
+      linkIds.has(link.id) ||
+      commitment === undefined ||
+      !isIsoCalendarDate(link.occurrenceDateIso) ||
+      (transactionId === undefined) === (pendingObservationId === undefined) ||
+      !isNonEmptyString(link.linkedAtIso) ||
+      !link.linkedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(link.linkedAtIso))
+    ) {
+      invalidSnapshot(snapshotPath, "recurring commitment payment links");
+    }
+
+    let resolvedPaymentId: string;
+    let paymentCurrencyCode: string | undefined;
+    if (transactionId !== undefined) {
+      const transaction = transactionsById.get(transactionId);
+      if (
+        transaction === undefined ||
+        transaction.householdId !== commitment.householdId ||
+        transaction.amountMinor >= 0
+      ) {
+        invalidSnapshot(snapshotPath, "recurring commitment transaction links");
+      }
+      resolvedPaymentId = transaction.id;
+      paymentCurrencyCode = transaction.currencyCode ?? accountCurrencies.get(transaction.accountId);
+    } else {
+      const observation = pendingById.get(pendingObservationId!);
+      if (
+        observation === undefined ||
+        observation.householdId !== commitment.householdId ||
+        observation.amountMinor >= 0
+      ) {
+        invalidSnapshot(snapshotPath, "recurring commitment pending payment links");
+      }
+      resolvedPaymentId = observation.reconciledTransactionId ?? observation.id;
+      paymentCurrencyCode = observation.currencyCode ?? accountCurrencies.get(observation.accountId);
+      if (observation.reconciledTransactionId !== undefined) {
+        const transaction = transactionsById.get(observation.reconciledTransactionId);
+        if (
+          transaction === undefined ||
+          transaction.householdId !== commitment.householdId ||
+          transaction.amountMinor >= 0
+        ) {
+          invalidSnapshot(snapshotPath, "recurring commitment reconciled payment links");
+        }
+      }
+    }
+
+    const occurrenceKey = `${commitment.id}::${link.occurrenceDateIso}`;
+    if (paymentCurrencyCode !== commitment.currencyCode ||
+        linkedOccurrences.has(occurrenceKey) ||
+        linkedPayments.has(resolvedPaymentId)) {
+      invalidSnapshot(snapshotPath, "duplicate or mismatched recurring commitment payments");
+    }
+    linkIds.add(link.id);
+    linkedOccurrences.add(occurrenceKey);
+    linkedPayments.add(resolvedPaymentId);
+  }
+}
+
+function validateRecurringCommitmentDecisions(
+  value: unknown[],
+  commitments: RecurringCommitment[],
+  snapshotPath: string
+): asserts value is RecurringCommitmentDecision[] {
+  const commitmentIds = new Set(commitments.map((commitment) => commitment.id));
+  const decisionIds = new Set<string>();
+  for (const rawDecision of value) {
+    if (!isRecord(rawDecision)) invalidSnapshot(snapshotPath, "recurring commitment decisions");
+    const decision = rawDecision;
+    const validDecisionType =
+      decision.decisionType === "edited" ||
+      decision.decisionType === "confirmed" ||
+      decision.decisionType === "paused" ||
+      decision.decisionType === "resumed" ||
+      decision.decisionType === "ended" ||
+      decision.decisionType === "amount-change-confirmed";
+    const validAmount = (amount: unknown): boolean =>
+      amount === undefined ||
+      amount === null ||
+      (typeof amount === "number" && Number.isSafeInteger(amount) && amount > 0);
+    if (
+      !isNonEmptyString(decision.id) ||
+      decisionIds.has(decision.id) ||
+      !isNonEmptyString(decision.commitmentId) ||
+      !commitmentIds.has(decision.commitmentId) ||
+      !validDecisionType ||
+      !isNonEmptyString(decision.decidedAtIso) ||
+      !decision.decidedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(decision.decidedAtIso)) ||
+      !validAmount(decision.previousAmountMinor) ||
+      !validAmount(decision.newAmountMinor) ||
+      (decision.decisionType === "amount-change-confirmed" &&
+        (decision.previousAmountMinor === undefined || decision.newAmountMinor === undefined))
+    ) {
+      invalidSnapshot(snapshotPath, "recurring commitment decisions");
+    }
+    decisionIds.add(decision.id);
+  }
+}
+
 function validateMerchantCategoryRules(
   value: unknown,
   snapshotPath: string
@@ -653,6 +830,7 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version !== "6" &&
     metadata.version !== "7" &&
     metadata.version !== "8" &&
+    metadata.version !== "9" &&
     metadata.version !== SNAPSHOT_VERSION
   ) {
     throw new Error(
@@ -703,6 +881,15 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
   const loanBalanceSnapshots = value.loanBalanceSnapshots === undefined
     ? []
     : value.loanBalanceSnapshots;
+  const recurringCommitments = value.recurringCommitments === undefined
+    ? []
+    : value.recurringCommitments;
+  const recurringCommitmentPaymentLinks = value.recurringCommitmentPaymentLinks === undefined
+    ? []
+    : value.recurringCommitmentPaymentLinks;
+  const recurringCommitmentDecisions = value.recurringCommitmentDecisions === undefined
+    ? []
+    : value.recurringCommitmentDecisions;
   const hasCoverageCollections =
     metadata.version === "3" ||
     metadata.version === "4" ||
@@ -710,6 +897,7 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version === "6" ||
     metadata.version === "7" ||
     metadata.version === "8" ||
+    metadata.version === "9" ||
     metadata.version === SNAPSHOT_VERSION;
   const hasPropertyCollections =
     metadata.version === "4" ||
@@ -717,14 +905,18 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     metadata.version === "6" ||
     metadata.version === "7" ||
     metadata.version === "8" ||
+    metadata.version === "9" ||
     metadata.version === SNAPSHOT_VERSION;
   const hasLoanCollections =
     metadata.version === "6" ||
     metadata.version === "7" ||
     metadata.version === "8" ||
+    metadata.version === "9" ||
     metadata.version === SNAPSHOT_VERSION;
   const hasHoldingCollections = metadata.version === "7" || metadata.version === "8" ||
+    metadata.version === "9" ||
     metadata.version === SNAPSHOT_VERSION;
+  const hasRecurringCommitmentCollections = metadata.version === SNAPSHOT_VERSION;
   if (
     !Array.isArray(accountStatementCoveragePeriods) ||
     !Array.isArray(accountBalanceCheckpoints) ||
@@ -735,6 +927,9 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     !Array.isArray(holdingValuations) ||
     !Array.isArray(loanRecords) ||
     !Array.isArray(loanBalanceSnapshots) ||
+    !Array.isArray(recurringCommitments) ||
+    !Array.isArray(recurringCommitmentPaymentLinks) ||
+    !Array.isArray(recurringCommitmentDecisions) ||
     (hasCoverageCollections &&
       (value.accountStatementCoveragePeriods === undefined ||
         value.accountBalanceCheckpoints === undefined ||
@@ -744,7 +939,11 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     (hasLoanCollections &&
       (value.loanRecords === undefined || value.loanBalanceSnapshots === undefined)) ||
     (hasHoldingCollections &&
-      (value.holdings === undefined || value.holdingValuations === undefined))
+      (value.holdings === undefined || value.holdingValuations === undefined)) ||
+    (hasRecurringCommitmentCollections &&
+      (value.recurringCommitments === undefined ||
+        value.recurringCommitmentPaymentLinks === undefined ||
+        value.recurringCommitmentDecisions === undefined))
   ) {
     throw new Error(
       `Invalid snapshot registry, account coverage, exchange-rate, or holding collections: ${snapshotPath}`
@@ -809,6 +1008,20 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
     new Set(transactions.map((transaction) => transaction.id)),
     snapshotPath
   );
+  validateRecurringCommitments(recurringCommitments, value.household.id, snapshotPath);
+  validateRecurringCommitmentPaymentLinks(
+    recurringCommitmentPaymentLinks,
+    recurringCommitments,
+    transactions,
+    pendingObservations,
+    accounts,
+    snapshotPath
+  );
+  validateRecurringCommitmentDecisions(
+    recurringCommitmentDecisions,
+    recurringCommitments,
+    snapshotPath
+  );
   validateAccountStatementCoveragePeriods(
     accountStatementCoveragePeriods,
     accountCurrencies,
@@ -839,6 +1052,9 @@ function validateBackupSnapshot(value: unknown, snapshotPath: string): BackupSna
       responsibilityShareBasisPoints: defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share"),
     })),
     loanBalanceSnapshots,
+    recurringCommitments,
+    recurringCommitmentPaymentLinks,
+    recurringCommitmentDecisions,
   };
 }
 
@@ -913,6 +1129,9 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     holdingValuations: snapshot.holdingValuations,
     loanRecords: snapshot.loanRecords,
     loanBalanceSnapshots: snapshot.loanBalanceSnapshots,
+    recurringCommitments: snapshot.recurringCommitments,
+    recurringCommitmentPaymentLinks: snapshot.recurringCommitmentPaymentLinks,
+    recurringCommitmentDecisions: snapshot.recurringCommitmentDecisions,
     transactionCount: snapshot.transactions.length,
   };
 }
