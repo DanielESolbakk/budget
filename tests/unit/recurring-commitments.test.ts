@@ -148,6 +148,7 @@ describe("recurring commitment schedule", () => {
           occurrenceDateIso: "2026-03-31",
           amountMinor: 12_900,
           currencyCode: "NOK",
+          description: "Synthetic previous payment",
           status: "confirmed",
         },
         {
@@ -155,6 +156,7 @@ describe("recurring commitment schedule", () => {
           occurrenceDateIso: "2026-04-30",
           amountMinor: 17_900,
           currencyCode: "NOK",
+          description: "Synthetic latest payment",
           status: "confirmed",
         },
       ],
@@ -166,6 +168,10 @@ describe("recurring commitment schedule", () => {
       observedAmountMinor: 17_900,
       differenceMinor: 5_000,
       currencyCode: "NOK",
+      previousPaymentDateIso: "2026-03-31",
+      previousPaymentDescription: "Synthetic previous payment",
+      observedPaymentDateIso: "2026-04-30",
+      observedPaymentDescription: "Synthetic latest payment",
     });
     expect(commitment.amountMinor).toBe(12_900);
   });

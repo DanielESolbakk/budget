@@ -111,6 +111,7 @@ function resolvePayment(
         occurrenceDateIso: transaction.bookedAtIso.slice(0, 10),
         amountMinor: Math.abs(transaction.amountMinor),
         currencyCode,
+        description: transaction.merchantRaw,
         status: "confirmed",
       },
       transactionId: transaction.id,
@@ -138,9 +139,10 @@ function resolvePayment(
       },
       observation: {
         id: pending.id,
-        occurrenceDateIso: pending.transactionDateIso,
+        occurrenceDateIso: transaction.bookedAtIso.slice(0, 10),
         amountMinor: Math.abs(transaction.amountMinor),
         currencyCode,
+        description: transaction.merchantRaw,
         status: "confirmed",
       },
       transactionId: transaction.id,
@@ -161,6 +163,7 @@ function resolvePayment(
       occurrenceDateIso: pending.transactionDateIso,
       amountMinor: Math.abs(pending.amountMinor),
       currencyCode,
+      description: pending.merchantRaw,
       status: "pending",
     },
     pendingObservationId: pending.id,
@@ -200,6 +203,9 @@ function convertOccurrence(
     ...(resolvedPayment?.pendingObservationId === undefined
       ? {}
       : { linkedPendingObservationId: resolvedPayment.pendingObservationId }),
+    ...(resolvedPayment === undefined
+      ? {}
+      : { linkedPaymentDateIso: resolvedPayment.observation.occurrenceDateIso }),
     ...(resolvedPayment === undefined
       ? {}
       : { observedPaymentAmountMinor: resolvedPayment.observation.amountMinor }),

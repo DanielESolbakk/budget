@@ -155,5 +155,9 @@ export function getRecurringCommitmentPriceChange(
     observedAmountMinor: current.amountMinor,
     differenceMinor: current.amountMinor - previous.amountMinor,
     currencyCode: current.currencyCode,
+    previousPaymentDateIso: previous.occurrenceDateIso,
+    previousPaymentDescription: previous.description,
+    observedPaymentDateIso: current.occurrenceDateIso,
+    observedPaymentDescription: current.description,
   };
 }

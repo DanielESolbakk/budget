@@ -319,6 +319,7 @@ describe("recurring commitments in backup snapshots", () => {
       expect(marchOccurrences[0]).toMatchObject({
         paymentStatus: "matched",
         linkedTransactionId: transaction.id,
+        linkedPaymentDateIso: "2026-03-31",
       });
       expect(ledger.loadLedgerSnapshotData().pendingObservations?.[0]?.reconciledTransactionId)
         .toBe(transaction.id);
@@ -621,6 +622,10 @@ describe("recurring commitments in backup snapshots", () => {
         observedAmountMinor: 17_900,
         differenceMinor: 5_000,
         currencyCode: "NOK",
+        previousPaymentDateIso: "2026-03-31",
+        previousPaymentDescription: "Synthetic bill",
+        observedPaymentDateIso: "2026-04-30",
+        observedPaymentDescription: "Synthetic bill",
       });
       expect(service.list()[0]?.amountMinor).toBe(12_900);
 

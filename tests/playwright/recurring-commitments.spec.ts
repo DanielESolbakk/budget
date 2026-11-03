@@ -13,6 +13,10 @@ test.describe("local recurring commitment workflow", () => {
     await createLocalHousehold(window, "2026-03-01T08:00:00.000Z");
     const recurring = new RecurringCommitmentsPage(window);
     await expect(recurring.section).toBeVisible();
+    await expect(recurring.section).toContainText("Track bills and subscriptions that repeat.");
+    await expect(recurring.section).toContainText(
+      "Date the first bill is expected. It can differ from when the commitment becomes active."
+    );
 
     await recurring.createSuggestion({
       description: "Synthetic monthly bill",
@@ -88,6 +92,19 @@ test.describe("local recurring commitment workflow", () => {
     await recurring.pauseWithKeyboard("Synthetic home insurance");
     await expect(commitment).toContainText("Paused");
     await recurring.endWithKeyboard("Synthetic home insurance");
+    const endConfirmation = window.getByRole("alertdialog", {
+      name: "End Synthetic home insurance?",
+      exact: true,
+    });
+    await expect(endConfirmation).toBeVisible();
+    await expect(endConfirmation).toContainText("Future scheduled occurrences will stop.");
+    await expect(endConfirmation).toContainText("Payment history will remain.");
+    await recurring.keepCommitment("Synthetic home insurance");
+    await expect(commitment).toContainText("Paused");
+
+    await recurring.endWithKeyboard("Synthetic home insurance");
+    await expect(endConfirmation).toBeVisible();
+    await recurring.confirmEndCommitment("Synthetic home insurance");
     await expect(commitment).toContainText("Ended");
 
     await window.reload();
@@ -160,6 +177,7 @@ test.describe("local recurring commitment workflow", () => {
       exact: true,
     });
     await expect(occurrence).toContainText("Matched");
+    await expect(occurrence).toContainText("Past due · payment pending");
 
     bookPendingPayment(databasePath);
     await recurring.refresh();
@@ -173,6 +191,8 @@ test.describe("local recurring commitment workflow", () => {
       name: "Occurrence Synthetic electricity due 2026-03-31",
       exact: true,
     })).toHaveCount(1);
+    await expect(occurrence).toContainText("Paid on time");
+    await expect(occurrence).not.toContainText("Past due");
     await window.setViewportSize({ width: 1280, height: 800 });
     await expect(recurring.section).toHaveScreenshot("recurring-payment-matched-desktop.png", {
       animations: "disabled",
@@ -210,13 +230,13 @@ test.describe("local recurring commitment workflow", () => {
     await recurring.linkPayment(
       "Synthetic subscription",
       "2026-03-31",
-      "Synthetic subscription",
+      "Synthetic Stream Provider",
       "transaction:transaction-march"
     );
     await recurring.linkPayment(
       "Synthetic subscription",
       "2026-04-30",
-      "Synthetic subscription",
+      "Synthetic Stream Provider",
       "transaction:transaction-april"
     );
     const review = window.getByRole("region", {
@@ -226,12 +246,35 @@ test.describe("local recurring commitment workflow", () => {
     await expect(review).toContainText(/129,00\s*kr/);
     await expect(review).toContainText(/179,00\s*kr/);
     await expect(review).toContainText(/50,00\s*kr/);
+    await expect(review).toContainText("Previous payment");
+    await expect(review).toContainText("Latest payment");
+    await expect(review).toContainText(/31\.\s*mars\s*2026/);
+    await expect(review).toContainText(/30\.\s*apr\.\s*2026/);
+    await expect(review).toContainText("Synthetic Stream Provider");
+    const schedule = recurring.section.getByRole("region", {
+      name: "Recurring schedule",
+      exact: true,
+    });
     await window.setViewportSize({ width: 1280, height: 800 });
+    const desktopReviewTop = await review.evaluate((element) =>
+      element.getBoundingClientRect().top
+    );
+    const desktopScheduleTop = await schedule.evaluate((element) =>
+      element.getBoundingClientRect().top
+    );
+    expect(desktopReviewTop).toBeLessThan(desktopScheduleTop);
     await expect(recurring.section).toHaveScreenshot("recurring-price-change-desktop.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.01,
     });
     await window.setViewportSize({ width: 390, height: 844 });
+    const compactReviewTop = await review.evaluate((element) =>
+      element.getBoundingClientRect().top
+    );
+    const compactScheduleTop = await schedule.evaluate((element) =>
+      element.getBoundingClientRect().top
+    );
+    expect(compactReviewTop).toBeLessThan(compactScheduleTop);
     await expect(recurring.section).toHaveScreenshot("recurring-price-change-compact.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.01,
@@ -263,6 +306,16 @@ test.describe("local recurring commitment workflow", () => {
     });
     await recurring.confirm("Synthetic variable electricity");
     await recurring.createSuggestion({
+      description: "Synthetic missing-rate bill",
+      currencyCode: "EUR",
+      amount: "54.00",
+      isVariable: false,
+      cadence: "monthly",
+      firstDueDateIso: "2026-05-30",
+      activeFromIso: "2026-05-01",
+    });
+    await recurring.confirm("Synthetic missing-rate bill");
+    await recurring.createSuggestion({
       description: "Synthetic overdue insurance",
       currencyCode: "NOK",
       amount: "54.00",
@@ -280,7 +333,18 @@ test.describe("local recurring commitment workflow", () => {
     });
     await expect(variableOccurrence).toContainText("Estimate");
     await expect(variableOccurrence).toContainText("Amount unknown");
-    await expect(variableOccurrence).toContainText("NOK conversion incomplete");
+    await expect(variableOccurrence).toContainText("Original amount (EUR)");
+    await expect(variableOccurrence).toContainText(
+      "NOK equivalent unavailable until an amount is known"
+    );
+    const missingRateOccurrence = window.getByRole("group", {
+      name: "Occurrence Synthetic missing-rate bill due 2026-05-30",
+      exact: true,
+    });
+    await expect(missingRateOccurrence).toContainText("Original amount (EUR)");
+    await expect(missingRateOccurrence).toContainText(
+      "NOK conversion incomplete — no local rate is available for this due date."
+    );
     const overdueOccurrence = window.getByRole("group", {
       name: "Occurrence Synthetic overdue insurance due 2026-04-15",
       exact: true,
@@ -336,6 +400,8 @@ test.describe("local recurring commitment workflow", () => {
       "Synthetic historical bill",
       "transaction:transaction-old-recurring-payment"
     );
+    await expect(occurrence).toContainText("Paid late");
+    await expect(occurrence).not.toContainText("Past due");
     await expect(occurrence).toContainText("Matched to booked transaction");
     await expect(occurrence).toHaveCount(1);
   });
@@ -435,7 +501,7 @@ function seedBookedPayments(databasePath: string): void {
       accountId: account.id,
       bookedAtIso: "2026-03-31T12:00:00.000Z",
       amountMinor: -12_900,
-      merchantRaw: "Synthetic subscription",
+      merchantRaw: "Synthetic Stream Provider",
       currencyCode: "NOK",
       sourceType: "manual",
     },
@@ -445,7 +511,7 @@ function seedBookedPayments(databasePath: string): void {
       accountId: account.id,
       bookedAtIso: "2026-04-30T12:00:00.000Z",
       amountMinor: -17_900,
-      merchantRaw: "Synthetic subscription",
+      merchantRaw: "Synthetic Stream Provider",
       currencyCode: "NOK",
       sourceType: "manual",
     },
@@ -467,7 +533,7 @@ function seedOldRecurringPayment(databasePath: string): void {
     id: "transaction-old-recurring-payment",
     householdId: metadata.household.id,
     accountId: account.id,
-    bookedAtIso: "2024-01-31T12:00:00.000Z",
+    bookedAtIso: "2024-02-02T12:00:00.000Z",
     amountMinor: -12_900,
     merchantRaw: "Synthetic historical bill",
     currencyCode: "NOK",

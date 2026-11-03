@@ -107,6 +107,18 @@ export class RecurringCommitmentsPage {
     await this.page.keyboard.press("Enter");
   }
 
+  async keepCommitment(description: string): Promise<void> {
+    await this.endConfirmation(description)
+      .getByRole("button", { name: "Keep commitment", exact: true })
+      .click();
+  }
+
+  async confirmEndCommitment(description: string): Promise<void> {
+    await this.endConfirmation(description)
+      .getByRole("button", { name: "End commitment", exact: true })
+      .click();
+  }
+
   async linkPayment(
     description: string,
     dueDateIso: string,
@@ -126,5 +138,12 @@ export class RecurringCommitmentsPage {
     }).getByRole("button", { name: "Confirm new amount", exact: true });
     await button.focus();
     await this.page.keyboard.press("Enter");
+  }
+
+  private endConfirmation(description: string): Locator {
+    return this.page.getByRole("alertdialog", {
+      name: `End ${description}?`,
+      exact: true,
+    });
   }
 }

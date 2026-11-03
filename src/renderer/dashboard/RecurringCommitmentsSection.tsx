@@ -84,6 +84,12 @@ function commitmentStatusLabel(status: RecurringCommitment["status"]): string {
 }
 
 function dueStatusLabel(occurrence: RecurringCommitmentScheduleOccurrence): string {
+  const paymentTiming = bookedPaymentTimingLabel(occurrence);
+  if (paymentTiming !== null) return paymentTiming;
+  if (occurrence.dueStatus === "past-due" && occurrence.paymentStatus === "matched") {
+    return "Past due · payment pending";
+  }
+
   switch (occurrence.dueStatus) {
     case "upcoming":
       return "Upcoming";
@@ -94,11 +100,42 @@ function dueStatusLabel(occurrence: RecurringCommitmentScheduleOccurrence): stri
   }
 }
 
+function bookedPaymentTimingLabel(
+  occurrence: RecurringCommitmentScheduleOccurrence
+): "Paid early" | "Paid on time" | "Paid late" | null {
+  if (
+    occurrence.paymentStatus !== "matched" ||
+    occurrence.linkedTransactionId === undefined ||
+    occurrence.linkedPaymentDateIso === undefined
+  ) {
+    return null;
+  }
+  if (occurrence.linkedPaymentDateIso < occurrence.dueDateIso) return "Paid early";
+  if (occurrence.linkedPaymentDateIso === occurrence.dueDateIso) return "Paid on time";
+  return "Paid late";
+}
+
+function dueStatusClass(occurrence: RecurringCommitmentScheduleOccurrence): string {
+  const paymentTiming = bookedPaymentTimingLabel(occurrence);
+  if (paymentTiming === "Paid early" || paymentTiming === "Paid on time") return "matched";
+  return occurrence.dueStatus;
+}
+
 function paymentStatusLabel(occurrence: RecurringCommitmentScheduleOccurrence): string {
   if (occurrence.paymentStatus === "unmatched") return "Unmatched";
   return occurrence.linkedTransactionId === undefined
     ? "Matched to pending payment"
     : "Matched to booked transaction";
+}
+
+function linkedPaymentHint(occurrence: RecurringCommitmentScheduleOccurrence): string {
+  if (occurrence.linkedTransactionId === undefined) {
+    return "A pending payment is linked; it is not booked yet.";
+  }
+  if (occurrence.linkedPaymentDateIso === undefined) {
+    return "A booked payment is linked once to this scheduled obligation.";
+  }
+  return `Booked payment from ${formatDate(occurrence.linkedPaymentDateIso)} is linked once to this scheduled obligation.`;
 }
 
 function occurrenceKey(occurrence: RecurringCommitmentScheduleOccurrence): string {
@@ -118,10 +155,12 @@ export function RecurringCommitmentsSection({
   const [editingCommitment, setEditingCommitment] = React.useState<RecurringCommitment | null>(null);
   const [selectedPayments, setSelectedPayments] = React.useState<Record<string, string>>({});
   const [paymentSearches, setPaymentSearches] = React.useState<Record<string, string>>({});
+  const [endingCommitment, setEndingCommitment] = React.useState<RecurringCommitment | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
+  const endingDialogRef = React.useRef<HTMLDialogElement>(null);
   const scheduleRequestId = React.useRef(0);
 
   const loadSchedule = React.useCallback(async (): Promise<void> => {
@@ -147,6 +186,13 @@ export function RecurringCommitmentsSection({
   React.useEffect(() => {
     if (isActive) void refreshSchedule();
   }, [isActive, refreshKey, refreshSchedule]);
+
+  React.useEffect(() => {
+    const dialog = endingDialogRef.current;
+    if (dialog === null) return;
+    if (endingCommitment === null && dialog.open) dialog.close();
+    else if (endingCommitment !== null && !dialog.open) dialog.showModal();
+  }, [endingCommitment]);
 
   async function runMutation(
     mutation: () => Promise<unknown>,
@@ -272,6 +318,13 @@ export function RecurringCommitmentsSection({
     );
   }
 
+  async function confirmEndCommitment(): Promise<void> {
+    if (endingCommitment === null) return;
+    const commitment = endingCommitment;
+    setEndingCommitment(null);
+    await endCommitment(commitment);
+  }
+
   async function linkPayment(occurrence: RecurringCommitmentScheduleOccurrence): Promise<void> {
     const selected = selectedPayments[occurrenceKey(occurrence)];
     if (selected === undefined) {
@@ -341,7 +394,9 @@ export function RecurringCommitmentsSection({
       <header className="recurring-commitments-heading">
         <div>
           <h2>Recurring commitments</h2>
-          <p>Confirmed bills stay separate from booked transactions; variable amounts and missing NOK rates remain explicit.</p>
+          <p>
+            Track bills and subscriptions that repeat. Confirm them before they appear in your schedule.
+          </p>
         </div>
         <button
           type="button"
@@ -444,8 +499,12 @@ export function RecurringCommitmentsSection({
                 type="date"
                 value={draft.firstDueDateIso}
                 onChange={(event) => setDraft({ ...draft, firstDueDateIso: event.target.value })}
+                aria-describedby="recurring-first-due-help"
                 required
               />
+              <span id="recurring-first-due-help" className="field-help">
+                Date the first bill is expected. It can differ from when the commitment becomes active.
+              </span>
             </label>
             <label className="recurring-field">
               <span>Active from</span>
@@ -483,6 +542,64 @@ export function RecurringCommitmentsSection({
         </form>
 
         <div className="recurring-commitment-results">
+          {schedule !== null && schedule.priceChanges.length > 0 && (
+            <div className="recurring-price-reviews">
+              <h3>Price changes to review</h3>
+              {schedule.priceChanges.map((priceChange) => (
+                <section
+                  key={priceChange.commitmentId}
+                  className="recurring-price-review"
+                  aria-label={`Price change review ${priceChange.description}`}
+                >
+                  <h3>Price change review: {priceChange.description}</h3>
+                  <dl className="recurring-price-details">
+                    <div>
+                      <dt>Previous confirmed amount</dt>
+                      <dd>{formatCurrencyAmount(priceChange.previousAmountMinor, priceChange.currencyCode)}</dd>
+                    </div>
+                    <div>
+                      <dt>Latest confirmed amount</dt>
+                      <dd>{formatCurrencyAmount(priceChange.observedAmountMinor, priceChange.currencyCode)}</dd>
+                    </div>
+                    <div>
+                      <dt>Difference</dt>
+                      <dd>
+                        {priceChange.differenceMinor > 0 ? "+" : ""}
+                        {formatCurrencyAmount(priceChange.differenceMinor, priceChange.currencyCode)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Previous payment</dt>
+                      <dd>
+                        {formatDate(priceChange.previousPaymentDateIso)} ·{" "}
+                        {priceChange.previousPaymentDescription}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Latest payment</dt>
+                      <dd>
+                        {formatDate(priceChange.observedPaymentDateIso)} ·{" "}
+                        {priceChange.observedPaymentDescription}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p>
+                    Check the payment date and source before confirming. The scheduled amount changes only after you confirm.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void confirmPriceChange(
+                      priceChange.commitmentId,
+                      priceChange.observedAmountMinor
+                    )}
+                    disabled={isSaving}
+                  >
+                    Confirm new amount
+                  </button>
+                </section>
+              ))}
+            </div>
+          )}
           <section aria-label="Commitment records">
             <h3>Commitment records</h3>
             {commitments.length === 0 ? (
@@ -573,7 +690,7 @@ export function RecurringCommitmentsSection({
                           <button
                             type="button"
                             className="action-secondary"
-                            onClick={() => void endCommitment(commitment)}
+                            onClick={() => setEndingCommitment(commitment)}
                             disabled={isSaving}
                           >
                             End commitment
@@ -620,7 +737,7 @@ export function RecurringCommitmentsSection({
                             <dt>
                               {occurrence.nativeCurrencyCode === "NOK"
                                 ? "Amount (NOK)"
-                                : "Native amount"}
+                                : `Original amount (${occurrence.nativeCurrencyCode})`}
                             </dt>
                             <dd>
                               {occurrence.nativeAmountMinor === null
@@ -635,17 +752,19 @@ export function RecurringCommitmentsSection({
                             <div>
                               <dt>NOK equivalent</dt>
                               <dd>
-                                {occurrence.conversionStatus === "incomplete" ||
-                                  occurrence.nokAmountMinor === null
-                                  ? "NOK conversion incomplete"
-                                  : formatCurrencyAmount(occurrence.nokAmountMinor, "NOK")}
+                                {occurrence.nativeAmountMinor === null
+                                  ? "NOK equivalent unavailable until an amount is known"
+                                  : occurrence.conversionStatus === "incomplete" ||
+                                      occurrence.nokAmountMinor === null
+                                    ? "NOK conversion incomplete — no local rate is available for this due date."
+                                    : formatCurrencyAmount(occurrence.nokAmountMinor, "NOK")}
                               </dd>
                             </div>
                           )}
                           <div>
                             <dt>Due status</dt>
                             <dd>
-                              <span className={`recurring-state recurring-state--${occurrence.dueStatus}`}>
+                              <span className={`recurring-state recurring-state--${dueStatusClass(occurrence)}`}>
                                 {dueStatusLabel(occurrence)}
                               </span>
                             </dd>
@@ -741,7 +860,7 @@ export function RecurringCommitmentsSection({
                             ) : null}
                           </div>
                         ) : (
-                          <p className="field-help">{paymentStatusLabel(occurrence)} is linked once to this scheduled obligation.</p>
+                          <p className="field-help">{linkedPaymentHint(occurrence)}</p>
                         )}
                       </fieldset>
                     </li>
@@ -751,45 +870,42 @@ export function RecurringCommitmentsSection({
             )}
           </section>
 
-          {schedule?.priceChanges.map((priceChange) => (
-            <section
-              key={priceChange.commitmentId}
-              className="recurring-price-review"
-              aria-label={`Price change review ${priceChange.description}`}
-            >
-              <h3>Price change review: {priceChange.description}</h3>
-              <dl className="recurring-price-details">
-                <div>
-                  <dt>Previous confirmed amount</dt>
-                  <dd>{formatCurrencyAmount(priceChange.previousAmountMinor, priceChange.currencyCode)}</dd>
-                </div>
-                <div>
-                  <dt>Latest confirmed amount</dt>
-                  <dd>{formatCurrencyAmount(priceChange.observedAmountMinor, priceChange.currencyCode)}</dd>
-                </div>
-                <div>
-                  <dt>Difference</dt>
-                  <dd>
-                    {priceChange.differenceMinor > 0 ? "+" : ""}
-                    {formatCurrencyAmount(priceChange.differenceMinor, priceChange.currencyCode)}
-                  </dd>
-                </div>
-              </dl>
-              <p>Commitment amounts change only after you confirm this observed price.</p>
-              <button
-                type="button"
-                onClick={() => void confirmPriceChange(
-                  priceChange.commitmentId,
-                  priceChange.observedAmountMinor
-                )}
-                disabled={isSaving}
-              >
-                Confirm new amount
-              </button>
-            </section>
-          ))}
         </div>
       </div>
+      <dialog
+        ref={endingDialogRef}
+        className="recurring-end-dialog"
+        role="alertdialog"
+        aria-labelledby="recurring-end-dialog-title"
+        aria-describedby="recurring-end-dialog-description"
+        onCancel={(event) => {
+          event.preventDefault();
+          setEndingCommitment(null);
+        }}
+        onClose={() => setEndingCommitment(null)}
+      >
+        {endingCommitment !== null && (
+          <>
+            <h3 id="recurring-end-dialog-title">End {endingCommitment.description}?</h3>
+            <p id="recurring-end-dialog-description">
+              Future scheduled occurrences will stop. Payment history will remain.
+            </p>
+            <div className="recurring-end-dialog-actions">
+              <button
+                type="button"
+                className="action-secondary"
+                autoFocus
+                onClick={() => setEndingCommitment(null)}
+              >
+                Keep commitment
+              </button>
+              <button type="button" onClick={() => void confirmEndCommitment()}>
+                End commitment
+              </button>
+            </div>
+          </>
+        )}
+      </dialog>
     </section>
   );
 }

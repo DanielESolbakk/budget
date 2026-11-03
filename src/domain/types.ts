@@ -925,6 +925,7 @@ export interface RecurringCommitmentPaymentObservation {
   occurrenceDateIso: string;
   amountMinor: number;
   currencyCode: CurrencyCode;
+  description: string;
   status: "pending" | "confirmed";
 }
 
@@ -933,6 +934,10 @@ export interface RecurringCommitmentPriceChange {
   observedAmountMinor: number;
   differenceMinor: number;
   currencyCode: CurrencyCode;
+  previousPaymentDateIso: string;
+  previousPaymentDescription: string;
+  observedPaymentDateIso: string;
+  observedPaymentDescription: string;
 }
 
 export interface RecurringCommitmentOccurrence {
@@ -963,6 +968,7 @@ export interface RecurringCommitmentScheduleOccurrence extends RecurringCommitme
   conversionStatus: "converted" | "incomplete";
   linkedTransactionId?: string;
   linkedPendingObservationId?: string;
+  linkedPaymentDateIso?: string;
   observedPaymentAmountMinor?: number;
 }
 

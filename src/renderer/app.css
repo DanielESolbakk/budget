@@ -6453,10 +6453,53 @@ section[aria-label].destination-workspace.household-workspace {
   padding-top: 1rem;
 }
 
+.recurring-price-reviews {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
 .recurring-price-review p {
   margin: 0;
   color: var(--paper-muted);
   line-height: 1.5;
+}
+
+.recurring-end-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  max-height: min(80vh, 30rem);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 1.25rem;
+  color: var(--paper);
+  background: var(--panel);
+}
+
+.recurring-end-dialog::backdrop {
+  background: rgb(0 0 0 / 68%);
+}
+
+.recurring-end-dialog h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.4rem;
+}
+
+.recurring-end-dialog p {
+  margin: 0.75rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.recurring-end-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
 }
 
 @media (max-width: 680px) {
@@ -6492,6 +6535,17 @@ section[aria-label].destination-workspace.household-workspace {
   .recurring-payment-controls button,
   .recurring-commitments-heading > button {
     width: 100%;
+  }
+
+  .recurring-end-dialog {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    padding: 0.9rem;
+  }
+
+  .recurring-end-dialog-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
