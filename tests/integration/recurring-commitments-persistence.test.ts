@@ -506,7 +506,9 @@ describe("recurring commitments in backup snapshots", () => {
 
   it("keeps a suggested price change separate until the user confirms it", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-recurring-price-change-"));
-    const ledger = openLedger(join(directory, "ledger.sqlite"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const snapshotPath = join(directory, "price-change-backup.json");
+    let ledger = openLedger(databasePath);
 
     try {
       const service = createService(ledger);
@@ -560,6 +562,33 @@ describe("recurring commitments in backup snapshots", () => {
 
       expect(service.list()[0]?.amountMinor).toBe(17_900);
       expect(ledger.loadLedgerSnapshotData().recurringCommitmentDecisions)
+        .toContainEqual(expect.objectContaining({
+          commitmentId: commitment.id,
+          decisionType: "amount-change-confirmed",
+          previousAmountMinor: 12_900,
+          newAmountMinor: 17_900,
+        }));
+
+      ledger.close();
+      ledger = openLedger(databasePath);
+      expect(createService(ledger).list()[0]?.amountMinor).toBe(17_900);
+      expect(ledger.loadLedgerSnapshotData().recurringCommitmentDecisions)
+        .toContainEqual(expect.objectContaining({
+          commitmentId: commitment.id,
+          decisionType: "amount-change-confirmed",
+          previousAmountMinor: 12_900,
+          newAmountMinor: 17_900,
+        }));
+
+      createBackupSnapshot({
+        ...ledger.loadLedgerSnapshotData(),
+        outputPath: snapshotPath,
+        createdAtIso: "2026-05-02T08:00:00.000Z",
+      });
+      const restored = restoreBackupSnapshot({ snapshotPath });
+      expect(restored.recurringCommitments[0]?.amountMinor).toBe(17_900);
+      expect(restored.recurringCommitmentPaymentLinks).toHaveLength(2);
+      expect(restored.recurringCommitmentDecisions)
         .toContainEqual(expect.objectContaining({
           commitmentId: commitment.id,
           decisionType: "amount-change-confirmed",

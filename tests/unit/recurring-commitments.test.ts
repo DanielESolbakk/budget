@@ -80,6 +80,24 @@ describe("recurring commitment schedule", () => {
     ]);
   });
 
+  it("returns a January 31 anchor to March 31 after leap-year February", () => {
+    const occurrences = scheduleGenerator()(
+      {
+        ...commitment,
+        firstDueDateIso: "2024-01-31",
+        activeFromIso: "2024-01-01",
+      },
+      "2024-01-01",
+      "2024-03-31"
+    );
+
+    expect(occurrences.map(({ dueDateIso }) => dueDateIso)).toEqual([
+      "2024-01-31",
+      "2024-02-29",
+      "2024-03-31",
+    ]);
+  });
+
   it("uses the original annual anchor when a scheduled year has no payment", () => {
     const occurrences = scheduleGenerator()(
       {
