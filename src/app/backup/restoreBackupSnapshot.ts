@@ -35,6 +35,7 @@ import {
   type TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import { generateRecurringCommitmentOccurrences } from "../../domain/forecast/recurringCommitments.js";
 import { defaultHouseholdShare, isHouseholdShare } from "../../domain/householdShareValidation.js";
 import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
 import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
@@ -701,6 +702,14 @@ function validateRecurringCommitmentPaymentLinks(
       !link.linkedAtIso.includes("T") ||
       Number.isNaN(Date.parse(link.linkedAtIso))
     ) {
+      invalidSnapshot(snapshotPath, "recurring commitment payment links");
+    }
+    const [scheduledOccurrence] = generateRecurringCommitmentOccurrences(
+      { ...commitment, status: "active" },
+      link.occurrenceDateIso,
+      link.occurrenceDateIso
+    );
+    if (scheduledOccurrence === undefined) {
       invalidSnapshot(snapshotPath, "recurring commitment payment links");
     }
 

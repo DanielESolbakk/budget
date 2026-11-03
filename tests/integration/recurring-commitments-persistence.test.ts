@@ -158,6 +158,7 @@ interface RecurringCommitmentServiceTestApi {
   getSchedule: (evaluatedAtIso: string) => RecurringCommitmentSchedule;
   confirmPriceChange: (commitmentId: string, newAmountMinor: number) => RecurringCommitment;
   pause: (commitmentId: string) => RecurringCommitment;
+  resume: (commitmentId: string) => RecurringCommitment;
   end: (commitmentId: string) => RecurringCommitment;
 }
 
@@ -172,6 +173,7 @@ function isRecurringCommitmentService(
     typeof Reflect.get(value, "getSchedule") === "function" &&
     typeof Reflect.get(value, "confirmPriceChange") === "function" &&
     typeof Reflect.get(value, "pause") === "function" &&
+    typeof Reflect.get(value, "resume") === "function" &&
     typeof Reflect.get(value, "end") === "function";
 }
 
@@ -233,6 +235,39 @@ describe("recurring commitments in backup snapshots", () => {
       } finally {
         restoredLedger.close();
       }
+      expect(networkFetch).not.toHaveBeenCalled();
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resumes a paused commitment and persists the resumed decision", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-recurring-resume-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    let ledger = openLedger(databasePath);
+
+    try {
+      const service = createService(ledger);
+      const active = service.confirm(service.create(commitmentInput).id);
+      const paused = service.pause(active.id);
+
+      expect(paused.status).toBe("paused");
+      const resumed = service.resume(paused.id);
+
+      expect(resumed.status).toBe("active");
+      expect(ledger.loadLedgerSnapshotData().recurringCommitmentDecisions?.map(
+        (entry) => entry.decisionType
+      )).toEqual(["confirmed", "paused", "resumed"]);
+
+      ledger.close();
+      ledger = openLedger(databasePath);
+      expect(createService(ledger).list()).toMatchObject([
+        { id: active.id, status: "active" },
+      ]);
+      expect(ledger.loadLedgerSnapshotData().recurringCommitmentDecisions?.map(
+        (entry) => entry.decisionType
+      )).toEqual(["confirmed", "paused", "resumed"]);
       expect(networkFetch).not.toHaveBeenCalled();
     } finally {
       ledger.close();
@@ -497,6 +532,37 @@ describe("recurring commitments in backup snapshots", () => {
 
       expect(() => restoreBackupSnapshot({ snapshotPath }))
         .toThrow(/recurring commitment transaction links/i);
+      expect(networkFetch).not.toHaveBeenCalled();
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects backup payment links whose dates are not commitment due dates", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-recurring-off-schedule-backup-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const snapshotPath = join(directory, "off-schedule-backup.json");
+    const ledger = openLedger(databasePath, [pendingElectricity]);
+
+    try {
+      const service = createService(ledger);
+      const confirmed = service.confirm(service.create(commitmentInput).id);
+      const snapshot = buildBackupSnapshot({
+        ...ledger.loadLedgerSnapshotData(),
+        recurringCommitmentPaymentLinks: [{
+          id: "payment-link-off-schedule",
+          commitmentId: confirmed.id,
+          occurrenceDateIso: "2026-03-30",
+          pendingObservationId: pendingElectricity.id,
+          linkedAtIso: "2026-03-30T08:00:00.000Z",
+        }],
+        createdAtIso: "2026-04-01T08:00:00.000Z",
+      });
+      writeFileSync(snapshotPath, `${JSON.stringify(snapshot)}\n`, "utf8");
+
+      expect(() => restoreBackupSnapshot({ snapshotPath }))
+        .toThrow(/recurring commitment payment links/i);
       expect(networkFetch).not.toHaveBeenCalled();
     } finally {
       ledger.close();

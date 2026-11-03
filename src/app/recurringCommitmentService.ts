@@ -32,6 +32,7 @@ export interface RecurringCommitmentService {
   update: (commitmentId: string, input: RecurringCommitmentInput) => RecurringCommitment;
   confirm: (commitmentId: string) => RecurringCommitment;
   pause: (commitmentId: string) => RecurringCommitment;
+  resume: (commitmentId: string) => RecurringCommitment;
   end: (commitmentId: string) => RecurringCommitment;
   linkPayment: (input: RecurringCommitmentPaymentLinkInput) => void;
   getSchedule: (evaluatedAtIso?: string) => RecurringCommitmentSchedule;
@@ -321,6 +322,10 @@ export function createRecurringCommitmentService(
     return transition(commitmentId, "active", "paused", "paused");
   }
 
+  function resume(commitmentId: string): RecurringCommitment {
+    return transition(commitmentId, "paused", "active", "resumed");
+  }
+
   function end(commitmentId: string): RecurringCommitment {
     const commitment = findCommitment(commitmentId);
     if (commitment.status === "ended") {
@@ -565,6 +570,7 @@ export function createRecurringCommitmentService(
     update,
     confirm,
     pause,
+    resume,
     end,
     linkPayment,
     getSchedule,

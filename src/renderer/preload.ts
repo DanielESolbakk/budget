@@ -199,6 +199,7 @@ export interface RecurringCommitmentsApi {
   update: (commitmentId: string, input: RecurringCommitmentInput) => Promise<RecurringCommitment>;
   confirm: (commitmentId: string) => Promise<RecurringCommitment>;
   pause: (commitmentId: string) => Promise<RecurringCommitment>;
+  resume: (commitmentId: string) => Promise<RecurringCommitment>;
   end: (commitmentId: string) => Promise<RecurringCommitment>;
   linkPayment: (input: RecurringCommitmentPaymentLinkInput) => Promise<void>;
   confirmPriceChange: (commitmentId: string, newAmountMinor: number) => Promise<RecurringCommitment>;
@@ -372,6 +373,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("recurringCommitment:confirm", commitmentId),
     pause: (commitmentId: string): Promise<RecurringCommitment> =>
       ipcRenderer.invoke("recurringCommitment:pause", commitmentId),
+    resume: (commitmentId: string): Promise<RecurringCommitment> =>
+      ipcRenderer.invoke("recurringCommitment:resume", commitmentId),
     end: (commitmentId: string): Promise<RecurringCommitment> =>
       ipcRenderer.invoke("recurringCommitment:end", commitmentId),
     linkPayment: (input: RecurringCommitmentPaymentLinkInput): Promise<void> =>

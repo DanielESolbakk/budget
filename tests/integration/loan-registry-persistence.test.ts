@@ -10,6 +10,7 @@ import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlit
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { createLoanRegistry } from "../../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../../src/app/propertyRegistry.js";
+import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
 
 const HOUSEHOLD = {
   id: "household-loan-test",
@@ -69,7 +70,7 @@ describe("loan registry persistence and backup", () => {
     expect(snapshot).toMatchObject({
       loanRecords: [loan],
       loanBalanceSnapshots: [balance],
-      metadata: { version: "9" },
+      metadata: { version: SNAPSHOT_VERSION },
     });
   });
 

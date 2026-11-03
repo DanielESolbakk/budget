@@ -91,6 +91,38 @@ test.describe("local recurring commitment workflow", () => {
     })).toContainText("Ended");
   });
 
+  test("resumes a paused commitment and keeps it active after reload", async ({ window }) => {
+    await createLocalHousehold(window, "2026-03-01T08:00:00.000Z");
+    const recurring = new RecurringCommitmentsPage(window);
+    await expect(recurring.section).toBeVisible();
+    await recurring.createSuggestion({
+      description: "Synthetic resumable bill",
+      currencyCode: "NOK",
+      amount: "129.00",
+      isVariable: false,
+      cadence: "monthly",
+      firstDueDateIso: "2026-03-31",
+      activeFromIso: "2026-03-01",
+    });
+    await recurring.confirm("Synthetic resumable bill");
+
+    const commitment = window.getByRole("group", {
+      name: "Commitment Synthetic resumable bill",
+      exact: true,
+    });
+    await recurring.pauseWithKeyboard("Synthetic resumable bill");
+    await expect(commitment).toContainText("Paused");
+
+    await recurring.resumeWithKeyboard("Synthetic resumable bill");
+    await expect(commitment).toContainText("Active");
+
+    await window.reload();
+    await expect(window.getByRole("group", {
+      name: "Commitment Synthetic resumable bill",
+      exact: true,
+    })).toContainText("Active");
+  });
+
   test("links a pending payment to one occurrence when it becomes booked", async ({
     databasePath,
     window,

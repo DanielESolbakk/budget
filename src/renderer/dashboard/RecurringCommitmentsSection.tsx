@@ -256,6 +256,14 @@ export function RecurringCommitmentsSection({
     );
   }
 
+  async function resumeCommitment(commitment: RecurringCommitment): Promise<void> {
+    await runMutation(
+      () => window.budgetApi.recurringCommitments.resume(commitment.id),
+      "Commitment resumed.",
+      "Unable to resume the recurring commitment."
+    );
+  }
+
   async function endCommitment(commitment: RecurringCommitment): Promise<void> {
     await runMutation(
       () => window.budgetApi.recurringCommitments.end(commitment.id),
@@ -546,6 +554,16 @@ export function RecurringCommitmentsSection({
                             disabled={isSaving}
                           >
                             Pause commitment
+                          </button>
+                        )}
+                        {commitment.status === "paused" && (
+                          <button
+                            type="button"
+                            className="action-secondary"
+                            onClick={() => void resumeCommitment(commitment)}
+                            disabled={isSaving}
+                          >
+                            Resume commitment
                           </button>
                         )}
                         {commitment.status !== "ended" && (

@@ -93,6 +93,13 @@ export class RecurringCommitmentsPage {
     await this.page.keyboard.press("Enter");
   }
 
+  async resumeWithKeyboard(description: string): Promise<void> {
+    const button = this.commitment(description)
+      .getByRole("button", { name: "Resume commitment", exact: true });
+    await button.focus();
+    await this.page.keyboard.press("Enter");
+  }
+
   async endWithKeyboard(description: string): Promise<void> {
     const button = this.commitment(description)
       .getByRole("button", { name: "End commitment", exact: true });

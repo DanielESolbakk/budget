@@ -1266,6 +1266,12 @@ app.whenReady().then(async () => {
     return ledgerOperationCoordinator.runExclusive(() => recurringCommitmentService.pause(id));
   });
 
+  ipcMain.handle("recurringCommitment:resume", (event, commitmentId: unknown): Promise<RecurringCommitment> => {
+    assertTrustedRenderer(event);
+    const id = parseNonEmptyString(commitmentId, "commitmentId");
+    return ledgerOperationCoordinator.runExclusive(() => recurringCommitmentService.resume(id));
+  });
+
   ipcMain.handle("recurringCommitment:end", (event, commitmentId: unknown): Promise<RecurringCommitment> => {
     assertTrustedRenderer(event);
     const id = parseNonEmptyString(commitmentId, "commitmentId");
