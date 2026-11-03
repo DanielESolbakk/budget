@@ -6441,9 +6441,8 @@ section[aria-label].destination-workspace.household-workspace {
   grid-column: 1 / -1;
 }
 
-.recurring-commitment-actions button,
-.recurring-payment-controls button {
-  min-height: 40px;
+.recurring-commitments-section button {
+  min-height: 44px;
 }
 
 .recurring-price-review {

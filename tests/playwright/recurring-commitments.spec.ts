@@ -52,6 +52,12 @@ test.describe("local recurring commitment workflow", () => {
     await window.setViewportSize({ width: 390, height: 844 });
     await expect(occurrence).toBeVisible();
     await expectNoHorizontalOverflow(window);
+    const pauseButton = commitment.getByRole("button", { name: "Pause commitment" });
+    await expect(pauseButton).toBeVisible();
+    const pauseButtonHeight = await pauseButton.evaluate((button) =>
+      button.getBoundingClientRect().height
+    );
+    expect(pauseButtonHeight).toBeGreaterThanOrEqual(44);
     await expect(recurring.section).toHaveScreenshot("recurring-upcoming-compact.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.01,

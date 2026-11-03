@@ -1,9 +1,9 @@
 import React from "react";
 import { parseCurrencyAmountMinor } from "../workspaces/parseCurrencyAmountMinor.js";
+import { createRecurringCommitmentPaymentSearchIndex } from "./recurringCommitmentSearch.js";
 import type {
   RecurringCommitment,
   RecurringCommitmentInput,
-  RecurringCommitmentPaymentCandidate,
   RecurringCommitmentPaymentLinkInput,
   RecurringCommitmentSchedule,
   RecurringCommitmentScheduleOccurrence,
@@ -319,15 +319,18 @@ export function RecurringCommitmentsSection({
 
   const commitments = schedule?.commitments ?? [];
   const occurrences = schedule?.occurrences ?? [];
-  const paymentCandidatesByCurrency = React.useMemo(() => {
-    const candidatesByCurrency = new Map<string, RecurringCommitmentPaymentCandidate[]>();
-    for (const candidate of schedule?.paymentCandidates ?? []) {
-      const candidates = candidatesByCurrency.get(candidate.currencyCode) ?? [];
-      candidates.push(candidate);
-      candidatesByCurrency.set(candidate.currencyCode, candidates);
-    }
-    return candidatesByCurrency;
-  }, [schedule]);
+  const paymentCandidateSearchIndex = React.useMemo(
+    () =>
+      createRecurringCommitmentPaymentSearchIndex(
+        (schedule?.paymentCandidates ?? []).map((candidate) => ({
+          candidate,
+          searchText: `${candidate.description} ${candidate.dateIso} ${
+            formatCurrencyAmount(Math.abs(candidate.amountMinor), candidate.currencyCode)
+          } ${candidate.sourceType}`,
+        }))
+      ),
+    [schedule]
+  );
 
   return (
     <section
@@ -592,16 +595,11 @@ export function RecurringCommitmentsSection({
               <ul className="recurring-occurrence-list">
                 {occurrences.map((occurrence) => {
                   const key = occurrenceKey(occurrence);
-                  const candidates =
-                    paymentCandidatesByCurrency.get(occurrence.nativeCurrencyCode) ?? [];
                   const searchText = (paymentSearches[key] ?? "").trim().toLowerCase();
-                  const matchingCandidates = searchText.length < 2
-                    ? []
-                    : candidates.filter((candidate) =>
-                        `${candidate.description} ${candidate.dateIso} ${
-                          formatCurrencyAmount(Math.abs(candidate.amountMinor), candidate.currencyCode)
-                        } ${candidate.sourceType}`.toLowerCase().includes(searchText)
-                      );
+                  const matchingCandidates = paymentCandidateSearchIndex.search(
+                    occurrence.nativeCurrencyCode,
+                    searchText
+                  );
                   const visibleCandidates = matchingCandidates.slice(0, 50);
                   return (
                     <li key={key}>
@@ -724,7 +722,9 @@ export function RecurringCommitmentsSection({
                             >
                               Link payment
                             </button>
-                            {candidates.length === 0 ? (
+                            {!paymentCandidateSearchIndex.hasCandidates(
+                              occurrence.nativeCurrencyCode
+                            ) ? (
                               <p className="field-help">
                                 No unlinked local payments in {occurrence.nativeCurrencyCode} are available.
                               </p>
