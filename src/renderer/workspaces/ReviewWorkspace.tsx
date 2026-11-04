@@ -4,6 +4,7 @@ import { CategoryBreakdownSection } from "../dashboard/CategoryBreakdownSection.
 import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySection.js";
 import { ForecastSection } from "../dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "../dashboard/MonthlyTotalsSection.js";
+import { RecurringCommitmentsSection } from "../dashboard/RecurringCommitmentsSection.js";
 import { TargetVsActualSection } from "../dashboard/TargetVsActualSection.js";
 import { AccountCoverageSummary } from "../dashboard/AccountCoverageSummary.js";
 import type { ReviewState } from "./types.js";
@@ -190,6 +191,9 @@ export function ReviewWorkspace({
             <div className="review-support review-forecast">
               <ForecastSection dashboardData={state.dashboardData} />
             </div>
+          </div>
+          <div className="review-recurring-commitments">
+            <RecurringCommitmentsSection isActive={isActive} refreshKey={refreshKey} />
           </div>
         </>
       )}

@@ -84,7 +84,7 @@ export const test = base.extend<ElectronFixtures>({
 
     try {
       app = await electron.launch({
-        args: [MAIN_ENTRY],
+        args: ["--lang=en-GB", MAIN_ENTRY],
         env: {
           ...process.env,
           BUDGET_TEST_BACKUP_OUTPUT_DIALOG: backupOutputDialogBehavior,

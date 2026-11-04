@@ -54,6 +54,10 @@ import type {
   PropertyValuationInput,
   PropertyValuationSnapshot,
   PropertyWithValuations,
+  RecurringCommitment,
+  RecurringCommitmentInput,
+  RecurringCommitmentPaymentLinkInput,
+  RecurringCommitmentSchedule,
   SameMerchantPropagationApplyRequest,
   SameMerchantPropagationPreview,
   SameMerchantPropagationPreviewRequest,
@@ -198,6 +202,18 @@ export interface PendingApi {
   list: () => Promise<PendingTransactionObservation[]>;
 }
 
+export interface RecurringCommitmentsApi {
+  getSchedule: (evaluatedAtIso?: string) => Promise<RecurringCommitmentSchedule>;
+  create: (input: RecurringCommitmentInput) => Promise<RecurringCommitment>;
+  update: (commitmentId: string, input: RecurringCommitmentInput) => Promise<RecurringCommitment>;
+  confirm: (commitmentId: string) => Promise<RecurringCommitment>;
+  pause: (commitmentId: string) => Promise<RecurringCommitment>;
+  resume: (commitmentId: string) => Promise<RecurringCommitment>;
+  end: (commitmentId: string) => Promise<RecurringCommitment>;
+  linkPayment: (input: RecurringCommitmentPaymentLinkInput) => Promise<void>;
+  confirmPriceChange: (commitmentId: string, newAmountMinor: number) => Promise<RecurringCommitment>;
+}
+
 export interface BackupApi {
   create: (outputPath: string) => Promise<BackupSnapshotFileOutput>;
   inspect: (input: RestoreSnapshotInput) => Promise<BackupSnapshotSummary>;
@@ -238,6 +254,7 @@ export interface BudgetApi {
   export: ExportApi;
   import: ImportApi;
   pending: PendingApi;
+  recurringCommitments: RecurringCommitmentsApi;
   review: ReviewApi;
   ledger: LedgerApi;
   accountCoverage: AccountCoverageApi;
@@ -353,6 +370,26 @@ const budgetApi: BudgetApi = {
   pending: {
     list: (): Promise<PendingTransactionObservation[]> =>
       ipcRenderer.invoke("pending:list"),
+  },
+  recurringCommitments: {
+    getSchedule: (evaluatedAtIso?: string): Promise<RecurringCommitmentSchedule> =>
+      ipcRenderer.invoke("recurringCommitment:schedule", evaluatedAtIso),
+    create: (input: RecurringCommitmentInput): Promise<RecurringCommitment> =>
+      ipcRenderer.invoke("recurringCommitment:create", input),
+    update: (commitmentId: string, input: RecurringCommitmentInput): Promise<RecurringCommitment> =>
+      ipcRenderer.invoke("recurringCommitment:update", { commitmentId, input }),
+    confirm: (commitmentId: string): Promise<RecurringCommitment> =>
+      ipcRenderer.invoke("recurringCommitment:confirm", commitmentId),
+    pause: (commitmentId: string): Promise<RecurringCommitment> =>
+      ipcRenderer.invoke("recurringCommitment:pause", commitmentId),
+    resume: (commitmentId: string): Promise<RecurringCommitment> =>
+      ipcRenderer.invoke("recurringCommitment:resume", commitmentId),
+    end: (commitmentId: string): Promise<RecurringCommitment> =>
+      ipcRenderer.invoke("recurringCommitment:end", commitmentId),
+    linkPayment: (input: RecurringCommitmentPaymentLinkInput): Promise<void> =>
+      ipcRenderer.invoke("recurringCommitment:linkPayment", input),
+    confirmPriceChange: (commitmentId: string, newAmountMinor: number): Promise<RecurringCommitment> =>
+      ipcRenderer.invoke("recurringCommitment:confirmPriceChange", { commitmentId, newAmountMinor }),
   },
   accountCoverage: {
     listPeriods: (accountId: string): Promise<AccountStatementCoveragePeriod[]> =>

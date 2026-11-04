@@ -7,6 +7,11 @@ import { needsCategorizationReview } from "../domain/categorization/reviewQueue.
 import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
 import { convertCurrencyAmount } from "../domain/money/convertCurrencyAmount.js";
 import { simpleForecast } from "../domain/forecast/simpleForecast.js";
+export {
+  generateRecurringCommitmentOccurrences,
+  getRecurringCommitmentPriceChange,
+  validateRecurringCommitmentInput,
+} from "../domain/forecast/recurringCommitments.js";
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import type {
   Account,
@@ -36,7 +41,6 @@ import {
   validateMonthlyCategoryTargetInput,
   validateMonthlyCategoryTargetQuery,
 } from "../domain/types.js";
-
 export type { CategoryBreakdown, MonthlyBreakdown, MonthSeries };
 export { UNCATEGORIZED_LABEL } from "../domain/aggregation/computeCategoryBreakdown.js";
 export type { TargetVsActualCategoryRows };

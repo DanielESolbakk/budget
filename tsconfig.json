@@ -23,6 +23,7 @@
     "scripts/**/*.ts",
     "tests/**/*.ts",
     "vitest.*.config.ts",
-    "electron.vite.config.ts"
+    "electron.vite.config.ts",
+    "vite.browser.config.ts"
   ]
 }

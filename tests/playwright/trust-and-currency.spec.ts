@@ -163,13 +163,9 @@ test("recorded currency survives review, ledger, allocations and pending trackin
 
 for (const width of [1440, 390]) {
   test(`populated category correction stays readable and operable at ${width}px`, async ({
-    appShell, csvImport, electronApp, reviewQueue, window,
+    appShell, csvImport, reviewQueue, window,
   }, testInfo) => {
-    await electronApp.evaluate(({ BrowserWindow }, width) => {
-      const browser = BrowserWindow.getAllWindows()[0];
-      if (browser === undefined) throw new Error("Electron window is unavailable.");
-      browser.setContentSize(width, 1000);
-    }, width);
+    await window.setViewportSize({ width, height: 1000 });
     await expect.poll(() => window.evaluate(() => globalThis.innerWidth)).toBe(width);
     await appShell.openWorkspace("Import");
     await csvImport.submitImport(writeCsvStatement());

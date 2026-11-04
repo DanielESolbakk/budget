@@ -8,7 +8,10 @@ import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlit
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { createLoanRegistry } from "../../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../../src/app/propertyRegistry.js";
-import type { BackupSnapshot } from "../../src/domain/backup/snapshotContract.js";
+import {
+  SNAPSHOT_VERSION,
+  type BackupSnapshot,
+} from "../../src/domain/backup/snapshotContract.js";
 
 describe("household share defaults", () => {
   it("defaults new property ownership and loan responsibility independently to 10000 basis points", () => {
@@ -129,7 +132,7 @@ describe("household share defaults", () => {
       expect(createPropertyRegistry(restored).list()).toEqual(expectedProperties);
       expect(createLoanRegistry(restored).list()).toEqual(expectedLoans);
       const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
-      expect(snapshot.metadata.version).toBe("9");
+      expect(snapshot.metadata.version).toBe(SNAPSHOT_VERSION);
       snapshot.properties[0].ownershipShareBasisPoints = 10_001;
       writeFileSync(snapshotPath, JSON.stringify(snapshot));
       expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow();
@@ -157,7 +160,7 @@ describe("household share defaults", () => {
   });
 
   it.each(["property", "loan"] as const)(
-    "rejects a version 9 snapshot missing its %s share without changing the ledger",
+    "rejects a current-version snapshot missing its %s share without changing the ledger",
     (missingShare) => {
       const directory = mkdtempSync(join(tmpdir(), "budget-share-incomplete-backup-"));
       const snapshotPath = join(directory, "snapshot.json");
@@ -184,7 +187,7 @@ describe("household share defaults", () => {
         loans.updateResponsibilityShare({ loanId: loan.id, responsibilityShareBasisPoints: 5_000 });
         createBackupSnapshot({ ...database.loadLedgerSnapshotData(), outputPath: snapshotPath });
         const snapshot: BackupSnapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
-        expect(snapshot.metadata.version).toBe("9");
+        expect(snapshot.metadata.version).toBe(SNAPSHOT_VERSION);
         if (missingShare === "property") {
           delete snapshot.properties[0]!.ownershipShareBasisPoints;
         } else {

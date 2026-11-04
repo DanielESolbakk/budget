@@ -49,6 +49,10 @@ const PRIMARY_WORKSPACES: Array<{ id: PrimaryWorkspaceId; label: string; descrip
   { id: "household", label: "Household", description: "Assets, rates and recovery" },
 ];
 
+interface AppProps {
+  isBrowserPreview?: boolean;
+}
+
 function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
   if (workspace === "transactions" || workspace === "pending" || workspace === "import") {
     return "activity";
@@ -66,7 +70,7 @@ function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
   return "review";
 }
 
-export function App(): React.JSX.Element {
+export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Element {
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
   const [initialYearMonth] = React.useState(getInitialYearMonth);
   const [setupRequired, setSetupRequired] = React.useState<boolean | null>(null);
@@ -259,6 +263,15 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app-shell">
+      {isBrowserPreview && (
+        <div className="browser-preview-banner" role="status">
+          <strong>Browser preview</strong>
+          <span>
+            Synthetic sandbox. Category targets are editable in this browser session; other local
+            services require the desktop app.
+          </span>
+        </div>
+      )}
       <a className="skip-link" href="#workspace">Skip to workspace</a>
       <header className="app-header">
         <div className="brand-lockup">
@@ -270,7 +283,7 @@ export function App(): React.JSX.Element {
         </div>
         <div className="header-actions">
           <div className="header-meta" aria-label="Application status" aria-live="polite">
-          <span>On device</span>
+          <span>{isBrowserPreview ? "Synthetic data" : "On device"}</span>
           <span className={headerStatusClassName}>
             <i aria-hidden="true" /> {headerStatus}
           </span>

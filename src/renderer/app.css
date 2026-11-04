@@ -317,6 +317,24 @@ li::marker {
   background: var(--ink);
 }
 
+.browser-preview-banner {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.55rem 2rem;
+  background: var(--navigation);
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+}
+
+.browser-preview-banner strong {
+  color: var(--orange);
+  font-family: var(--display);
+}
+
 .app-frame {
   display: grid;
   width: 100%;
@@ -6265,6 +6283,357 @@ section[aria-label].destination-workspace.household-workspace {
 .household-workspace .snapshot-catalog-item > code {
   border-color: var(--household-border);
   color: var(--household-muted);
+}
+
+.review-recurring-commitments {
+  margin-top: 1.5rem;
+  min-width: 0;
+}
+
+.recurring-commitments-section {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  color: var(--paper);
+  background: var(--panel);
+}
+
+.recurring-commitments-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.9rem;
+}
+
+.recurring-commitments-heading h2,
+.recurring-commitment-results h3,
+.recurring-commitment-form h3,
+.recurring-price-review h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.recurring-commitments-heading p {
+  max-width: 65ch;
+  margin: 0.4rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.recurring-commitment-message {
+  margin: 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.recurring-commitment-message.is-error {
+  color: var(--error);
+}
+
+.recurring-commitment-message.is-success {
+  color: var(--success);
+}
+
+.recurring-commitment-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.85fr) minmax(0, 1.15fr);
+  align-items: start;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.recurring-commitment-form,
+.recurring-commitment-results {
+  display: grid;
+  align-content: start;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.recurring-commitments-section[aria-label] {
+  overflow: visible;
+}
+
+.recurring-commitment-results > section[aria-label] {
+  overflow: visible;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  padding: 0.9rem 0 0;
+  background: transparent;
+}
+
+.recurring-commitments-section section[aria-label] dd,
+.recurring-commitments-section .recurring-commitment-record dd,
+.recurring-commitments-section .recurring-commitment-occurrence dd {
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.recurring-commitment-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.recurring-field,
+.recurring-variable-field {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.recurring-field--wide {
+  grid-column: 1 / -1;
+}
+
+.recurring-variable-field {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.recurring-variable-field input[type="checkbox"] {
+  width: 1rem;
+  min-height: 1rem;
+  margin: 0;
+  accent-color: var(--orange);
+}
+
+.recurring-commitment-form .field-help,
+.recurring-commitment-occurrence .field-help {
+  margin: 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.recurring-commitment-list,
+.recurring-occurrence-list {
+  display: grid;
+  gap: 0.8rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recurring-commitment-record,
+.recurring-commitment-occurrence {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 0.8rem 0 0;
+}
+
+.recurring-commitment-record legend,
+.recurring-commitment-occurrence legend {
+  max-width: 100%;
+  padding: 0 0.35rem 0 0;
+  color: var(--paper);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.recurring-record-details,
+.recurring-occurrence-details,
+.recurring-price-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+  margin: 0;
+}
+
+.recurring-record-details div,
+.recurring-occurrence-details div,
+.recurring-price-details div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.recurring-record-details dt,
+.recurring-occurrence-details dt,
+.recurring-price-details dt {
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.recurring-record-details dd,
+.recurring-occurrence-details dd,
+.recurring-price-details dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--paper);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.recurring-state {
+  display: inline-flex;
+  max-width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 0.18rem 0.45rem;
+  color: var(--paper);
+  background: var(--panel-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.recurring-state--past-due {
+  border-color: var(--error);
+  color: var(--error);
+  background: var(--error-soft);
+}
+
+.recurring-state--matched {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--panel);
+}
+
+.recurring-state--incomplete {
+  border-color: var(--info);
+  color: var(--info);
+  background: var(--panel-soft);
+}
+
+.recurring-payment-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.recurring-payment-controls > .field-help {
+  grid-column: 1 / -1;
+}
+
+.recurring-commitments-section button {
+  min-height: 44px;
+}
+
+.recurring-price-review {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 1rem;
+}
+
+.recurring-price-reviews {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.recurring-price-review p {
+  margin: 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.recurring-end-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  max-height: min(80vh, 30rem);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 1.25rem;
+  color: var(--paper);
+  background: var(--panel);
+}
+
+.recurring-end-dialog::backdrop {
+  background: rgb(0 0 0 / 68%);
+}
+
+.recurring-end-dialog h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.4rem;
+}
+
+.recurring-end-dialog p {
+  margin: 0.75rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.recurring-end-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 680px) {
+  .recurring-commitments-section {
+    padding: 0.9rem;
+  }
+
+  .recurring-commitments-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recurring-commitment-layout,
+  .recurring-commitment-fields,
+  .recurring-record-details,
+  .recurring-occurrence-details,
+  .recurring-price-details,
+  .recurring-payment-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recurring-field--wide,
+  .recurring-payment-controls > .field-help {
+    grid-column: auto;
+  }
+
+  .recurring-commitment-form .action-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recurring-commitment-form .action-row button,
+  .recurring-payment-controls button,
+  .recurring-commitments-heading > button {
+    width: 100%;
+  }
+
+  .recurring-end-dialog {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    padding: 0.9rem;
+  }
+
+  .recurring-end-dialog-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .household-workspace .workflow-recovery-grid .status,

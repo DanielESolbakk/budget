@@ -2,12 +2,8 @@ import { test, expect } from "./fixtures/electron.js";
 
 for (const width of [1440, 390]) {
   test.describe(`visual polish at ${width}px`, () => {
-    test.beforeEach(async ({ electronApp, window }) => {
-      await electronApp.evaluate(({ BrowserWindow }, width) => {
-        const browser = BrowserWindow.getAllWindows()[0];
-        if (browser === undefined) throw new Error("Electron window is unavailable.");
-        browser.setContentSize(width, 1000);
-      }, width);
+    test.beforeEach(async ({ window }) => {
+      await window.setViewportSize({ width, height: 1000 });
       await expect.poll(() => window.evaluate(() => globalThis.innerWidth)).toBe(width);
     });
 

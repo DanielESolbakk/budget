@@ -10,6 +10,7 @@ import {
 import { createPropertyRegistry } from "../../src/app/propertyRegistry.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
+import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
 import type { Transaction } from "../../src/domain/types.js";
 
 const HOUSEHOLD = {
@@ -71,7 +72,7 @@ describe("property value history persistence", () => {
       importJobs: [],
       monthlyCategoryTargets: [],
       createdAtIso: "2026-10-03T09:00:00.000Z",
-    }).metadata.version).toBe("9");
+    }).metadata.version).toBe(SNAPSHOT_VERSION);
   });
 
   it("restores property records and valuation snapshots unchanged", () => {
