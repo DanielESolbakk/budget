@@ -190,7 +190,7 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.previewRegion).toContainText("No possible duplicates found.");
   });
 
-  test("cancelling a 10,000-row preflight leaves the ledger unchanged", async ({ csvImport, databasePath }) => {
+  test("@performance cancelling a 10,000-row preflight leaves the ledger unchanged", async ({ csvImport, databasePath }) => {
     const transactionsBeforePreview = loadPersistedTransactions(databasePath);
     await csvImport.enterFilePath(writeLargeCsvFixture(10_000));
     await csvImport.importButton.click();
@@ -205,7 +205,7 @@ test.describe("CSV import renderer workflow", () => {
     expect(loadPersistedTransactions(databasePath)).toEqual(transactionsBeforePreview);
   });
 
-  test("10,000-row preview pages stay bounded and validation identifies affected rows", async ({ csvImport }) => {
+  test("@performance 10,000-row preview pages stay bounded and validation identifies affected rows", async ({ csvImport }) => {
     await csvImport.enterFilePath(writeLargeCsvFixture(10_000, 500));
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
@@ -458,6 +458,18 @@ test.describe("CSV import renderer workflow", () => {
       await csvImport.chooseFileButton.click();
       await csvImport.importButton.click();
       await expect(csvImport.previewRegion).toBeVisible();
+
+      const evidence = csvImport.previewRegion.getByRole("table", {
+        name: "CSV statement preview rows and validation states",
+      });
+      await expect(evidence).toBeVisible();
+      const evidenceBeforeConfirmation = await csvImport.previewRegion.evaluate((region) => {
+        const table = region.querySelector("table");
+        const confirmation = region.querySelector("#csv-confirm-button");
+        return table !== null && confirmation !== null &&
+          Boolean(table.compareDocumentPosition(confirmation) & Node.DOCUMENT_POSITION_FOLLOWING);
+      });
+      expect(evidenceBeforeConfirmation).toBe(true);
 
       const stages = csvImport.importSection.getByRole("list", { name: "CSV import progress" }).getByRole("listitem");
       await expect(stages).toHaveCount(4);

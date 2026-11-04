@@ -31,6 +31,7 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Unit and integration mutation signal (advisory): `npm run test:mutation:unit-integration:signal`
 - Vitest end-to-end smoke tests: `npm run test:e2e:vitest`
 - Playwright runtime tests: `npm run test:e2e:playwright`
+- Playwright high-volume performance tests (weekly/manual lane): `npm run test:e2e:playwright -- --grep "@performance"`
 - No-network verification: `npm run verify:no-network`
 - Harness eval (determinism + baseline drift): `npm run eval:skill`
 - Fixture verification: `npm run verify-fixture -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv`

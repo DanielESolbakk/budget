@@ -364,6 +364,14 @@ test.describe("Categorization review workflow", () => {
     await expect(reviewQueue.loadingStatus).toBeVisible();
     await expect(reviewQueue.emptyState).not.toBeVisible();
     await expect(reviewQueue.emptyState).toBeVisible();
+    const emptyQueueExplanation = reviewQueue.section.getByText(
+      "Uncategorized transactions and low-confidence categorizations from CSV/PDF imports or manual entry will appear here.",
+      { exact: true },
+    );
+    await expect(emptyQueueExplanation).toBeHidden();
+    await reviewQueue.section.locator("summary").focus();
+    await window.keyboard.press("Enter");
+    await expect(emptyQueueExplanation).toBeVisible();
 
     await electronApp.evaluate(() => {
       delete process.env["BUDGET_TEST_REVIEW_LIST_DELAY_MS"];

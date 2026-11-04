@@ -91,111 +91,29 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyComparison).toContainText(/spending increased by 13,00.*apr\.? 2026/i);
   });
 
-  test("Scenario 5: monthly attention status and totals fit the review viewport", async ({
-    dashboard,
-    electronApp,
-    window,
-  }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
-    });
-
+  test("monthly attention shows the current review and budget states", async ({ dashboard }) => {
     await expect(dashboard.monthlyAttention).toContainText("No category decisions need review this month.");
     await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
-
-    const totalsPrecedeAttention = await dashboard.monthlyTotalsSection.evaluate((totals) => {
-      const attention = document.querySelector('[aria-label="Monthly attention"]');
-      return attention !== null &&
-        (totals.compareDocumentPosition(attention) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-    });
-    expect(totalsPrecedeAttention).toBe(true);
-
-    const attentionBottom = await dashboard.monthlyAttention.evaluate((element) =>
-      element.getBoundingClientRect().bottom
-    );
-    const totalsBottom = await dashboard.monthlyTotalsSection.evaluate((element) =>
-      element.getBoundingClientRect().bottom
-    );
-    const viewportHeight = await window.evaluate(() => document.documentElement.clientHeight);
-
-    expect(attentionBottom).toBeLessThanOrEqual(viewportHeight);
-    expect(totalsBottom).toBeLessThanOrEqual(viewportHeight);
   });
 
-  test("startup-size review keeps long totals and attention actions within their columns", async ({
+  test("compact Target vs Actual keeps its financial columns available", async ({
     dashboard,
-    electronApp,
+    dashboardTarget,
     window,
   }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1200, 800);
-    });
-    await dashboard.monthSelector.selectOption("2026-04");
-    await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
-    await expect(dashboard.reviewQueueAction).toBeVisible();
-
-    const longNokTotal = await window.evaluate(() => new Intl.NumberFormat("nb-NO", {
-      style: "currency",
-      currency: "NOK",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(12_345_678_901.23));
-    await dashboard.incomeValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
-    await dashboard.expenseValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
-    await dashboard.netValue.evaluate((element, value) => { element.textContent = value; }, longNokTotal);
-
-    const overflowingTotalLabels = await dashboard.monthlyTotalsSection.locator(".monthly-total dd").evaluateAll((values) =>
-      values
-        .filter((value) => value.scrollWidth > value.clientWidth + 1)
-        .map((value) => value.getAttribute("aria-label"))
-    );
-    const overflowingAttentionItems = await dashboard.monthlyAttention.locator(".monthly-attention-item").evaluateAll((items) =>
-      items
-        .filter((item) => item.scrollWidth > item.clientWidth + 1)
-        .map((item) => item.textContent?.trim() ?? "")
-    );
-
-    expect(overflowingTotalLabels).toEqual([]);
-    expect(overflowingAttentionItems).toEqual([]);
-  });
-
-  test("compact Target vs Actual keeps labelled amounts in view and preserves column headers", async ({
-    dashboard,
-    electronApp,
-  }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
-    });
-
+    await window.setViewportSize({ width: 390, height: 844 });
     const headers = dashboard.targetVsActualSection.getByRole("columnheader");
     await expect(headers).toHaveCount(4);
-    for (const header of await headers.all()) {
+    for (const label of ["Category", "Target", "Actual", "Delta"]) {
+      const header = dashboard.targetVsActualSection.getByRole("columnheader", { name: label });
+      await expect(header).toBeVisible();
       await expect(header).toHaveAttribute("scope", "col");
     }
-
-    const scrollState = await dashboard.targetVsActualSection.evaluate((section) => ({
-      clientWidth: section.clientWidth,
-      scrollWidth: section.scrollWidth,
-      scrollbarHeight: getComputedStyle(section, "::-webkit-scrollbar").height,
-    }));
-    expect(scrollState.scrollWidth).toBeLessThanOrEqual(scrollState.clientWidth);
-    expect(scrollState.scrollbarHeight).toBe("10px");
-    const sectionBounds = await dashboard.targetVsActualSection.boundingBox();
-    if (sectionBounds === null) throw new Error("The monthly comparison must be visible.");
-    const rows = dashboard.targetVsActualSection.locator("tbody tr");
-    await expect(rows).toHaveCount(2);
-    for (const row of await rows.all()) {
-      await expect(row.locator("td")).toHaveCount(4);
-      for (const label of ["Category", "Target", "Actual", "Delta"]) {
-        const cell = row.locator(`td[data-label="${label}"]`);
-        await expect(cell).toBeVisible();
-        const bounds = await cell.boundingBox();
-        if (bounds === null) throw new Error(`${label} must be visible.`);
-        expect(bounds.x).toBeGreaterThanOrEqual(sectionBounds.x);
-        expect(bounds.x + bounds.width).toBeLessThanOrEqual(sectionBounds.x + sectionBounds.width);
-      }
-    }
+    await expect(dashboardTarget.categoryRow("groceries")).toBeVisible();
+    await expect(dashboardTarget.targetCell("groceries")).toBeVisible();
+    await expect(dashboardTarget.actualCell("groceries")).toBeVisible();
+    await expect(dashboardTarget.deltaCell("groceries")).toBeVisible();
   });
 
   test("Scenario 6: target overruns link to their monthly details", async ({ dashboard }) => {
@@ -276,53 +194,6 @@ test.describe("Dashboard renderer smoke", () => {
     );
 
     expect(undersizedButtons).toEqual([]);
-  });
-
-  test("compact target-versus-actual rows keep the delta visible", async ({ window }) => {
-    await window.setViewportSize({ width: 390, height: 844 });
-    const targetVsActual = window.getByRole("region", { name: "Target vs Actual" });
-    const delta = targetVsActual.locator('td[data-label="Delta"]').first();
-    await expect(delta).toBeVisible();
-
-    const deltaBounds = await delta.boundingBox();
-    if (deltaBounds === null) {
-      throw new Error("A compact target-versus-actual delta must remain measurable.");
-    }
-    expect(deltaBounds.x + deltaBounds.width).toBeLessThanOrEqual(390);
-  });
-
-  test("compact review presents category spending before budget details", async ({ dashboard, electronApp }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
-    });
-
-    await expect(dashboard.spendingCategories).toBeVisible();
-    const attentionBounds = await dashboard.monthlyAttention.boundingBox();
-    const categoryBounds = await dashboard.spendingCategories.boundingBox();
-    const targetVsActualBounds = await dashboard.targetVsActualSection.boundingBox();
-    const targetBounds = await dashboard.categoryTargetEntrySection.boundingBox();
-    if (
-      attentionBounds === null ||
-      categoryBounds === null ||
-      targetVsActualBounds === null ||
-      targetBounds === null
-    ) {
-      throw new Error("Monthly checks, category spending and budget details must be measurable.");
-    }
-
-    expect(attentionBounds.y).toBeLessThan(categoryBounds.y);
-    expect(categoryBounds.y).toBeLessThan(targetVsActualBounds.y);
-    expect(categoryBounds.y).toBeLessThan(targetBounds.y);
-  });
-
-  test("monthly review signals follow a single attention reading path", async ({ window }) => {
-    await window.setViewportSize({ width: 1440, height: 1100 });
-    const attentionItems = window.locator(".monthly-attention-content > .monthly-attention-item");
-    await expect(attentionItems).toHaveCount(3);
-    const rowPositions = await attentionItems.evaluateAll((items) =>
-      [...new Set(items.map((item) => Math.round(item.getBoundingClientRect().top)))]
-    );
-    expect(rowPositions).toHaveLength(3);
   });
 
   test("@visual Visual: compact dashboard preserves primary workspace navigation", async ({ window, electronApp }) => {

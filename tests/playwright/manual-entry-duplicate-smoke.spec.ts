@@ -82,26 +82,7 @@ test.describe("Manual entry and duplicate detection", () => {
     await expect(new LedgerPage(window).transaction(manualEntry.merchantRaw)).toHaveCount(1);
   });
 
-  test("Scenario 3: malformed optional category data is rejected by the IPC boundary", async ({ window: page }) => {
-    const response = await page.evaluate(async () =>
-      window.budgetApi.import.addManualTransaction({
-        householdId: "sample-hh",
-        accountId: "sample-acc",
-        bookedAtIso: "2026-05-23",
-        amountMinor: -1250,
-        merchantRaw: "Malformed category probe",
-        categoryId: 123 as unknown as string,
-      })
-    );
-
-    expect(response).toMatchObject({
-      ok: false,
-      reason: "validation",
-      code: "INVALID_CATEGORY_ID",
-    });
-  });
-
-  test("Scenario 4: malformed required fields return field-specific IPC errors", async ({ window: page }) => {
+  test("rejects malformed manual transaction fields at the IPC boundary", async ({ window: page }) => {
     const responses = await page.evaluate(async () => {
       const base = {
         householdId: "sample-hh",
@@ -112,6 +93,10 @@ test.describe("Manual entry and duplicate detection", () => {
       };
 
       return Promise.all([
+        window.budgetApi.import.addManualTransaction({
+          ...base,
+          categoryId: 123 as unknown as string,
+        }),
         window.budgetApi.import.addManualTransaction({ ...base, accountId: 123 as unknown as string }),
         window.budgetApi.import.addManualTransaction({ ...base, bookedAtIso: 123 as unknown as string }),
         window.budgetApi.import.addManualTransaction({ ...base, amountMinor: "-1250" as unknown as number }),
@@ -123,6 +108,7 @@ test.describe("Manual entry and duplicate detection", () => {
       if (response.ok) return "ok";
       return response.reason === "validation" ? response.code : response.reason;
     })).toEqual([
+      "INVALID_CATEGORY_ID",
       "INVALID_ACCOUNT_ID",
       "INVALID_BOOKED_AT_ISO",
       "INVALID_AMOUNT_MINOR_INTEGER",

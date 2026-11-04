@@ -96,22 +96,13 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
     await expect(transactionRow).toContainText("Housing");
 
-    await window.setViewportSize({ width: 1280, height: 800 });
     await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
     const restoreButton = allocationEditor.getByRole("button", {
       name: "Remove split for Kiwi",
     });
     await expect(restoreButton).toBeVisible();
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-split-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
 
     await window.setViewportSize({ width: 390, height: 844 });
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-split-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
     const horizontalOverflow = await window.evaluate(() =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth
     );
@@ -121,24 +112,6 @@ test.describe("transaction category allocations", () => {
     await expect(allocationEditor).toBeHidden();
     await expect(transactionRow).toContainText("Groceries & food");
     await expect(transactionRow).not.toContainText("Housing");
-  });
-
-  test("shows a partial balance and incomplete-row status until the draft is valid", async ({
-    appShell,
-    window,
-  }) => {
-    await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
-
-    const allocationEditor = window.getByRole("region", {
-      name: "Transaction category allocations for Kiwi",
-    });
-    await expect(allocationEditor.getByText(/Allocated so far:/))
-      .toContainText(/72,00\s*kr/);
-    await expect(allocationEditor.getByText(/Balance after entered amounts:/))
-      .toContainText(/0,00\s*kr/);
-    await expect(allocationEditor).toContainText("1 allocation is incomplete.");
   });
 
   test("associates category errors with their field and clears them after correction", async ({

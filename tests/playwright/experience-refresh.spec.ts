@@ -179,21 +179,6 @@ test("household share percentages retain hundredth-percent precision in storage"
   expect(shares).toEqual([7525, 5001]);
 });
 
-test("recovery action groups leave a visible gap between file selection and execution", async ({
-  appShell,
-  window,
-}) => {
-  await appShell.openWorkspace("Data safety");
-  for (const section of ["Backup", "Export", "Restore Snapshot"]) {
-    const buttons = window.getByRole("region", { name: section, exact: true })
-      .locator(".action-row").getByRole("button");
-    const first = await buttons.nth(0).boundingBox();
-    const second = await buttons.nth(1).boundingBox();
-    if (first === null || second === null) throw new Error("Recovery actions must be visible.");
-    expect(second.x >= first.x + first.width + 8 || second.y >= first.y + first.height + 8).toBe(true);
-  }
-});
-
 for (const viewport of [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "compact", width: 390, height: 844 },

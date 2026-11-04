@@ -330,7 +330,7 @@ test.describe("PDF import renderer workflow", () => {
     await window.screenshot({ path: testInfo.outputPath("statement-preview-reopened.png") });
   });
 
-  test("keeps the preview toggle visible and navigates a bounded 10,000-row text-statement preview", async ({ pdfImport, window }, testInfo) => {
+  test("@performance keeps the preview toggle visible and navigates a bounded 10,000-row text-statement preview", async ({ pdfImport, window }, testInfo) => {
     await window.setViewportSize({ width: 1280, height: 800 });
     await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
     await pdfImport.importButton.click();
@@ -700,7 +700,7 @@ test.describe("PDF import renderer workflow", () => {
     expect(loadPersistedSnapshot(databasePath).transactions).toEqual(transactionsBeforeImport);
   });
 
-  test("cancelling a 10,000-row PDF preflight leaves the ledger unchanged", async ({ pdfImport, databasePath }) => {
+  test("@performance cancelling a 10,000-row PDF preflight leaves the ledger unchanged", async ({ pdfImport, databasePath }) => {
     const transactionsBeforePreview = loadPersistedSnapshot(databasePath).transactions;
     await pdfImport.enterFilePath(writeLargePdfTextFixture(10_000));
     await pdfImport.importButton.click();

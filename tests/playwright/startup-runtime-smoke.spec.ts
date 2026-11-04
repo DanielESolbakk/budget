@@ -23,6 +23,8 @@ test.describe("Electron startup smoke", () => {
     // AC-1, AC-4: renderer reaches a loaded state with the application heading.
     await expect(appShell.heading).toBeVisible();
     await expect(appShell.banner).toBeVisible();
+    await expect(appShell.localLedgerLabel).toBeVisible();
+    await expect(appShell.onDeviceLabel).toBeVisible();
     await expect(window).toHaveTitle("Budget Planner");
   });
 

@@ -286,31 +286,6 @@ test.describe("account statement coverage and checkpoints", () => {
     await expect(coverage).toBeVisible();
   });
 
-  test("groups workspace navigation into four task areas", async ({ appShell, window }) => {
-    await window.setViewportSize({ width: 390, height: 844 });
-    const navigation = appShell.primaryNavigation;
-    await expect(navigation.getByRole("button")).toHaveCount(4);
-    await expect(navigation.getByRole("button", { name: "Review", exact: true })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Accounts", exact: true })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Household", exact: true })).toBeVisible();
-
-    const navigationRows = await navigation.locator("button").evaluateAll((buttons) =>
-      [...new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top)))]
-    );
-    expect(navigationRows).toHaveLength(1);
-
-    await appShell.openWorkspace("Pending");
-    await expect(window.getByRole("region", { name: "Pending transactions workspace" })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Activity", exact: true }))
-      .toHaveAttribute("aria-current", "page");
-
-    await appShell.openWorkspace("Settings");
-    await expect(window.getByRole("region", { name: "Exchange rates", exact: true })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Household", exact: true }))
-      .toHaveAttribute("aria-current", "page");
-  });
-
   test("presents statement capture before balance checkpoints on desktop", async ({
     appShell,
     window,

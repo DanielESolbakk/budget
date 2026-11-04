@@ -251,8 +251,8 @@ jobs:
         env:
           PLAYWRIGHT_OUTPUT_DIR: test-results/windows
           PLAYWRIGHT_REPORT_DIR: playwright-report/windows
-        # Visual snapshot checks stay out of CI while the UI is under development.
-        run: npm run test:e2e:playwright:ci -- --workers=2 --grep-invert '@visual'
+        # Keep visual snapshots out of PR CI; high-volume regressions run in the scheduled lane.
+        run: npm run test:e2e:playwright:ci -- --workers=2 --grep-invert '@visual|@performance'
 
       - name: Upload Playwright Windows artifacts
         if: always()
