@@ -29,6 +29,7 @@ import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.j
 import { createHoldingRegistry } from "../src/app/holdingRegistry.js";
 import { createLoanRegistry } from "../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../src/app/propertyRegistry.js";
+import { createRecurringCommitmentService } from "../src/app/recurringCommitmentService.js";
 import {
   catalogBackupSnapshot,
   createPreRestoreBackupSnapshot,
@@ -133,6 +134,9 @@ import {
   type LoanRecord,
   type LoanWithBalances,
   type MonthlyCategoryTargetInput,
+  type RecurringCommitment,
+  type RecurringCommitmentInput,
+  type RecurringCommitmentPaymentLinkInput,
   type SameMerchantPropagationInput,
   type SameMerchantPropagationPreviewRequest,
   type Transaction,
@@ -158,6 +162,7 @@ import {
   validatePropertyValuationCorrectionInput,
   validatePropertyValuationInput,
 } from "../src/domain/propertyRecordValidation.js";
+import { validateRecurringCommitmentInput } from "../src/domain/forecast/recurringCommitments.js";
 
 const sampleHousehold: Household = {
   id: "sample-hh",
@@ -241,6 +246,7 @@ const localLedgerDatabase = createLocalLedgerDatabase({
 const propertyRegistry = createPropertyRegistry(localLedgerDatabase);
 const holdingRegistry = createHoldingRegistry(localLedgerDatabase);
 const loanRegistry = createLoanRegistry(localLedgerDatabase);
+const recurringCommitmentService = createRecurringCommitmentService(localLedgerDatabase);
 const learnedCategoryRules = new Map(
   localLedgerDatabase.listMerchantCategoryRules().map((rule) => [rule.merchantAlias, rule.categoryId])
 );
@@ -332,6 +338,69 @@ function parseNonEmptyString(value: unknown, fieldName: string): string {
     throw new Error(`${fieldName} must be a non-empty string.`);
   }
   return value.trim();
+}
+
+function parseRecurringCommitmentInput(input: unknown): RecurringCommitmentInput {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Recurring commitment input must be an object.");
+  }
+  const record = input as Record<string, unknown>;
+  if (
+    typeof record.description !== "string" ||
+    typeof record.currencyCode !== "string" ||
+    (record.amountMinor !== null && typeof record.amountMinor !== "number") ||
+    typeof record.isVariable !== "boolean" ||
+    (record.cadence !== "monthly" && record.cadence !== "annual") ||
+    typeof record.firstDueDateIso !== "string" ||
+    typeof record.activeFromIso !== "string"
+  ) {
+    throw new Error("Recurring commitment input has invalid fields.");
+  }
+  const activeUntilIso = record.activeUntilIso === undefined
+    ? undefined
+    : parseNonEmptyString(record.activeUntilIso, "activeUntilIso");
+  return validateRecurringCommitmentInput({
+    description: record.description,
+    currencyCode: record.currencyCode.trim().toUpperCase(),
+    amountMinor: record.amountMinor,
+    isVariable: record.isVariable,
+    cadence: record.cadence,
+    firstDueDateIso: record.firstDueDateIso,
+    activeFromIso: record.activeFromIso,
+    ...(activeUntilIso === undefined ? {} : { activeUntilIso }),
+  });
+}
+
+function parseRecurringCommitmentPaymentLinkInput(
+  input: unknown
+): RecurringCommitmentPaymentLinkInput {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Recurring commitment payment link must be an object.");
+  }
+  const record = input as Record<string, unknown>;
+  const transactionId = record.transactionId === undefined
+    ? undefined
+    : parseNonEmptyString(record.transactionId, "transactionId");
+  const pendingObservationId = record.pendingObservationId === undefined
+    ? undefined
+    : parseNonEmptyString(record.pendingObservationId, "pendingObservationId");
+  if ((transactionId === undefined) === (pendingObservationId === undefined)) {
+    throw new Error("A payment link must identify exactly one booked or pending payment.");
+  }
+  const occurrenceDateIso = parseNonEmptyString(record.occurrenceDateIso, "occurrenceDateIso");
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(occurrenceDateIso) ||
+    Number.isNaN(Date.parse(`${occurrenceDateIso}T00:00:00.000Z`)) ||
+    new Date(`${occurrenceDateIso}T00:00:00.000Z`).toISOString().slice(0, 10) !== occurrenceDateIso
+  ) {
+    throw new Error("occurrenceDateIso must be a valid calendar date.");
+  }
+  return {
+    commitmentId: parseNonEmptyString(record.commitmentId, "commitmentId"),
+    occurrenceDateIso,
+    ...(transactionId === undefined ? {} : { transactionId }),
+    ...(pendingObservationId === undefined ? {} : { pendingObservationId }),
+  };
 }
 
 function parseImportReviewCorrectionRequest(input: unknown): {
@@ -1156,6 +1225,85 @@ app.whenReady().then(async () => {
     if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
     ledgerGeneration += 1;
   });
+
+  ipcMain.handle("recurringCommitment:schedule", (event, evaluatedAtIso: unknown) => {
+    assertTrustedRenderer(event);
+    return recurringCommitmentService.getSchedule(
+      evaluatedAtIso === undefined
+        ? undefined
+        : parseNonEmptyString(evaluatedAtIso, "evaluatedAtIso")
+    );
+  });
+
+  ipcMain.handle("recurringCommitment:create", (event, input: unknown): Promise<RecurringCommitment> => {
+    assertTrustedRenderer(event);
+    const validated = parseRecurringCommitmentInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => recurringCommitmentService.create(validated));
+  });
+
+  ipcMain.handle("recurringCommitment:update", (event, input: unknown): Promise<RecurringCommitment> => {
+    assertTrustedRenderer(event);
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      throw new Error("Recurring commitment update request must be an object.");
+    }
+    const record = input as Record<string, unknown>;
+    const commitmentId = parseNonEmptyString(record.commitmentId, "commitmentId");
+    const validated = parseRecurringCommitmentInput(record.input);
+    return ledgerOperationCoordinator.runExclusive(() =>
+      recurringCommitmentService.update(commitmentId, validated)
+    );
+  });
+
+  ipcMain.handle("recurringCommitment:confirm", (event, commitmentId: unknown): Promise<RecurringCommitment> => {
+    assertTrustedRenderer(event);
+    const id = parseNonEmptyString(commitmentId, "commitmentId");
+    return ledgerOperationCoordinator.runExclusive(() => recurringCommitmentService.confirm(id));
+  });
+
+  ipcMain.handle("recurringCommitment:pause", (event, commitmentId: unknown): Promise<RecurringCommitment> => {
+    assertTrustedRenderer(event);
+    const id = parseNonEmptyString(commitmentId, "commitmentId");
+    return ledgerOperationCoordinator.runExclusive(() => recurringCommitmentService.pause(id));
+  });
+
+  ipcMain.handle("recurringCommitment:resume", (event, commitmentId: unknown): Promise<RecurringCommitment> => {
+    assertTrustedRenderer(event);
+    const id = parseNonEmptyString(commitmentId, "commitmentId");
+    return ledgerOperationCoordinator.runExclusive(() => recurringCommitmentService.resume(id));
+  });
+
+  ipcMain.handle("recurringCommitment:end", (event, commitmentId: unknown): Promise<RecurringCommitment> => {
+    assertTrustedRenderer(event);
+    const id = parseNonEmptyString(commitmentId, "commitmentId");
+    return ledgerOperationCoordinator.runExclusive(() => recurringCommitmentService.end(id));
+  });
+
+  ipcMain.handle("recurringCommitment:linkPayment", (event, input: unknown): Promise<void> => {
+    assertTrustedRenderer(event);
+    const validated = parseRecurringCommitmentPaymentLinkInput(input);
+    return ledgerOperationCoordinator.runExclusive(() =>
+      recurringCommitmentService.linkPayment(validated)
+    );
+  });
+
+  ipcMain.handle(
+    "recurringCommitment:confirmPriceChange",
+    (event, input: unknown): Promise<RecurringCommitment> => {
+      assertTrustedRenderer(event);
+      if (typeof input !== "object" || input === null || Array.isArray(input)) {
+        throw new Error("Recurring commitment price confirmation must be an object.");
+      }
+      const record = input as Record<string, unknown>;
+      const newAmountMinor = record.newAmountMinor;
+      if (typeof newAmountMinor !== "number" || !Number.isSafeInteger(newAmountMinor)) {
+        throw new Error("newAmountMinor must be a safe integer.");
+      }
+      const commitmentId = parseNonEmptyString(record.commitmentId, "commitmentId");
+      return ledgerOperationCoordinator.runExclusive(() =>
+        recurringCommitmentService.confirmPriceChange(commitmentId, newAmountMinor)
+      );
+    }
+  );
 
   ipcMain.handle("propertyRegistry:list", (event): PropertyWithValuations[] => {
     assertTrustedRenderer(event);

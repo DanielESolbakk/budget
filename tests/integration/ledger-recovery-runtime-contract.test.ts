@@ -69,6 +69,9 @@ function createSnapshotData(): LedgerSnapshotData {
     holdingValuations: [],
     loanRecords: [],
     loanBalanceSnapshots: [],
+    recurringCommitments: [],
+    recurringCommitmentPaymentLinks: [],
+    recurringCommitmentDecisions: [],
   };
 }
 

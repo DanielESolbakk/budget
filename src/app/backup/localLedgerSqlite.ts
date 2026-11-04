@@ -41,6 +41,7 @@ import {
   validateHoldingValuationCorrectionMetadata,
   validateHoldingValuationInput,
 } from "../../domain/holdingRecordValidation.js";
+import { validateRecurringCommitmentInput } from "../../domain/forecast/recurringCommitments.js";
 import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
@@ -62,6 +63,9 @@ import type {
   PendingTransactionObservation,
   PropertyRecord,
   PropertyValuationSnapshot,
+  RecurringCommitment,
+  RecurringCommitmentDecision,
+  RecurringCommitmentPaymentLink,
   MonthlyTotal,
   SourceDocumentTextLineEvidence,
   SourceTextLineClassification,
@@ -92,6 +96,9 @@ interface LocalLedgerSeedData {
   holdingValuations?: HoldingValuationSnapshot[];
   loanRecords?: LoanRecord[];
   loanBalanceSnapshots?: LoanBalanceSnapshot[];
+  recurringCommitments?: RecurringCommitment[];
+  recurringCommitmentPaymentLinks?: RecurringCommitmentPaymentLink[];
+  recurringCommitmentDecisions?: RecurringCommitmentDecision[];
 }
 
 export interface LocalLedgerRuntimeMetadata {
@@ -141,6 +148,17 @@ export interface LocalLedgerDatabase {
   listLoanRecords: (householdId: string) => LoanRecord[];
   appendLoanBalanceSnapshot: (balance: LoanBalanceSnapshot) => void;
   listLoanBalanceSnapshots: (loanId: string) => LoanBalanceSnapshot[];
+  createRecurringCommitment: (commitment: RecurringCommitment) => void;
+  updateRecurringCommitment: (commitment: RecurringCommitment) => void;
+  updateRecurringCommitmentAndDecision: (
+    commitment: RecurringCommitment,
+    decision: RecurringCommitmentDecision
+  ) => void;
+  listRecurringCommitments: (householdId: string) => RecurringCommitment[];
+  createRecurringCommitmentPaymentLink: (link: RecurringCommitmentPaymentLink) => void;
+  listRecurringCommitmentPaymentLinks: (householdId: string) => RecurringCommitmentPaymentLink[];
+  createRecurringCommitmentDecision: (decision: RecurringCommitmentDecision) => void;
+  listRecurringCommitmentDecisions: (householdId: string) => RecurringCommitmentDecision[];
   loadLedgerSnapshotData: () => LedgerSnapshotData;
   replaceLedgerSnapshotData: (snapshot: LedgerSnapshotData) => void;
   saveBackupSnapshot: (entry: BackupSnapshotCatalogEntry) => void;
@@ -739,6 +757,60 @@ function ensureSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS loan_balances_by_loan_date
       ON loan_balance_snapshots (loan_id, effective_date_iso, recorded_at_iso, id);
 
+    CREATE TABLE IF NOT EXISTS recurring_commitments (
+      id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      description TEXT NOT NULL,
+      currency_code TEXT NOT NULL,
+      amount_minor INTEGER CHECK (amount_minor IS NULL OR (typeof(amount_minor) = 'integer' AND amount_minor > 0)),
+      is_variable INTEGER NOT NULL CHECK (is_variable IN (0, 1)),
+      cadence TEXT NOT NULL CHECK (cadence IN ('monthly', 'annual')),
+      first_due_date_iso TEXT NOT NULL,
+      active_from_iso TEXT NOT NULL,
+      active_until_iso TEXT,
+      status TEXT NOT NULL CHECK (status IN ('suggested', 'active', 'paused', 'ended')),
+      created_at_iso TEXT NOT NULL,
+      updated_at_iso TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS recurring_commitments_by_household_status
+      ON recurring_commitments (household_id, status, first_due_date_iso, id);
+
+    CREATE TABLE IF NOT EXISTS recurring_commitment_payment_links (
+      id TEXT PRIMARY KEY,
+      commitment_id TEXT NOT NULL,
+      occurrence_date_iso TEXT NOT NULL,
+      transaction_id TEXT,
+      pending_observation_id TEXT,
+      linked_at_iso TEXT NOT NULL,
+      CHECK (
+        (transaction_id IS NOT NULL AND pending_observation_id IS NULL) OR
+        (transaction_id IS NULL AND pending_observation_id IS NOT NULL)
+      ),
+      UNIQUE (commitment_id, occurrence_date_iso)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS recurring_payment_links_by_transaction
+      ON recurring_commitment_payment_links (transaction_id)
+      WHERE transaction_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS recurring_payment_links_by_pending
+      ON recurring_commitment_payment_links (pending_observation_id)
+      WHERE pending_observation_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS recurring_commitment_decisions (
+      id TEXT PRIMARY KEY,
+      commitment_id TEXT NOT NULL,
+      decision_type TEXT NOT NULL CHECK (
+        decision_type IN ('edited', 'confirmed', 'paused', 'resumed', 'ended', 'amount-change-confirmed')
+      ),
+      decided_at_iso TEXT NOT NULL,
+      previous_amount_minor INTEGER,
+      new_amount_minor INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS recurring_commitment_decisions_by_commitment
+      ON recurring_commitment_decisions (commitment_id, decided_at_iso, id);
+
     CREATE TABLE IF NOT EXISTS exchange_rates (
       id TEXT PRIMARY KEY,
       currency_code TEXT NOT NULL,
@@ -1160,6 +1232,62 @@ function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): v
       observation.sourceStatus,
       observation.reconciledTransactionId ?? null,
       observation.reconciledAtIso ?? null
+    );
+  }
+
+  const insertRecurringCommitment = db.prepare(`
+    INSERT INTO recurring_commitments (
+      id, household_id, description, currency_code, amount_minor, is_variable, cadence,
+      first_due_date_iso, active_from_iso, active_until_iso, status, created_at_iso, updated_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const commitment of snapshot.recurringCommitments ?? []) {
+    insertRecurringCommitment.run(
+      commitment.id,
+      commitment.householdId,
+      commitment.description,
+      commitment.currencyCode,
+      commitment.amountMinor,
+      commitment.isVariable ? 1 : 0,
+      commitment.cadence,
+      commitment.firstDueDateIso,
+      commitment.activeFromIso,
+      commitment.activeUntilIso ?? null,
+      commitment.status,
+      commitment.createdAtIso,
+      commitment.updatedAtIso
+    );
+  }
+
+  const insertRecurringCommitmentPaymentLink = db.prepare(`
+    INSERT INTO recurring_commitment_payment_links (
+      id, commitment_id, occurrence_date_iso, transaction_id, pending_observation_id, linked_at_iso
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const link of snapshot.recurringCommitmentPaymentLinks ?? []) {
+    insertRecurringCommitmentPaymentLink.run(
+      link.id,
+      link.commitmentId,
+      link.occurrenceDateIso,
+      link.transactionId ?? null,
+      link.pendingObservationId ?? null,
+      link.linkedAtIso
+    );
+  }
+
+  const insertRecurringCommitmentDecision = db.prepare(`
+    INSERT INTO recurring_commitment_decisions (
+      id, commitment_id, decision_type, decided_at_iso, previous_amount_minor, new_amount_minor
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const decision of snapshot.recurringCommitmentDecisions ?? []) {
+    insertRecurringCommitmentDecision.run(
+      decision.id,
+      decision.commitmentId,
+      decision.decisionType,
+      decision.decidedAtIso,
+      decision.previousAmountMinor ?? null,
+      decision.newAmountMinor ?? null
     );
   }
 
@@ -2227,6 +2355,356 @@ export function createLocalLedgerDatabase(
     });
   }
 
+  function createRecurringCommitment(commitment: RecurringCommitment): void {
+    const validated = validateRecurringCommitmentInput(commitment);
+    if (
+      commitment.id.trim().length === 0 ||
+      commitment.householdId.trim().length === 0 ||
+      !["suggested", "active", "paused", "ended"].includes(commitment.status) ||
+      !commitment.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(commitment.createdAtIso)) ||
+      !commitment.updatedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(commitment.updatedAtIso))
+    ) {
+      throw new Error("Recurring commitment identity or timestamps are invalid.");
+    }
+    if (db.prepare("SELECT 1 FROM households WHERE id = ?").get(commitment.householdId) === undefined) {
+      throw new Error(`Household not found for recurring commitment: ${commitment.householdId}`);
+    }
+    db.prepare(`
+      INSERT INTO recurring_commitments (
+        id, household_id, description, currency_code, amount_minor, is_variable, cadence,
+        first_due_date_iso, active_from_iso, active_until_iso, status, created_at_iso, updated_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      commitment.id,
+      commitment.householdId,
+      validated.description,
+      validated.currencyCode,
+      validated.amountMinor,
+      validated.isVariable ? 1 : 0,
+      validated.cadence,
+      validated.firstDueDateIso,
+      validated.activeFromIso,
+      validated.activeUntilIso ?? null,
+      commitment.status,
+      commitment.createdAtIso,
+      commitment.updatedAtIso
+    );
+  }
+
+  function updateRecurringCommitment(commitment: RecurringCommitment): void {
+    const validated = validateRecurringCommitmentInput(commitment);
+    if (
+      commitment.id.trim().length === 0 ||
+      commitment.householdId.trim().length === 0 ||
+      !["suggested", "active", "paused", "ended"].includes(commitment.status) ||
+      !commitment.updatedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(commitment.updatedAtIso))
+    ) {
+      throw new Error("Recurring commitment update is invalid.");
+    }
+    const result = db.prepare(`
+      UPDATE recurring_commitments
+      SET description = ?, currency_code = ?, amount_minor = ?, is_variable = ?, cadence = ?,
+        first_due_date_iso = ?, active_from_iso = ?, active_until_iso = ?, status = ?, updated_at_iso = ?
+      WHERE id = ? AND household_id = ?
+    `).run(
+      validated.description,
+      validated.currencyCode,
+      validated.amountMinor,
+      validated.isVariable ? 1 : 0,
+      validated.cadence,
+      validated.firstDueDateIso,
+      validated.activeFromIso,
+      validated.activeUntilIso ?? null,
+      commitment.status,
+      commitment.updatedAtIso,
+      commitment.id,
+      commitment.householdId
+    );
+    if (Number(result.changes) !== 1) {
+      throw new Error(`Recurring commitment not found: ${commitment.id}`);
+    }
+  }
+
+  function updateRecurringCommitmentAndDecision(
+    commitment: RecurringCommitment,
+    decision: RecurringCommitmentDecision
+  ): void {
+    if (decision.commitmentId !== commitment.id) {
+      throw new Error("Recurring commitment decision must reference the updated commitment.");
+    }
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      updateRecurringCommitment(commitment);
+      createRecurringCommitmentDecision(decision);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function listRecurringCommitments(householdId: string): RecurringCommitment[] {
+    return db.prepare(`
+      SELECT id, household_id, description, currency_code, amount_minor, is_variable, cadence,
+        first_due_date_iso, active_from_iso, active_until_iso, status, created_at_iso, updated_at_iso
+      FROM recurring_commitments
+      WHERE household_id = ?
+      ORDER BY first_due_date_iso, description COLLATE NOCASE, id
+    `).all(householdId).map((row) => {
+      const commitment = row as {
+        id: string;
+        household_id: string;
+        description: string;
+        currency_code: string;
+        amount_minor: number | null;
+        is_variable: number;
+        cadence: RecurringCommitment["cadence"];
+        first_due_date_iso: string;
+        active_from_iso: string;
+        active_until_iso: string | null;
+        status: RecurringCommitment["status"];
+        created_at_iso: string;
+        updated_at_iso: string;
+      };
+      return {
+        id: commitment.id,
+        householdId: commitment.household_id,
+        description: commitment.description,
+        currencyCode: commitment.currency_code,
+        amountMinor: commitment.amount_minor,
+        isVariable: commitment.is_variable === 1,
+        cadence: commitment.cadence,
+        firstDueDateIso: commitment.first_due_date_iso,
+        activeFromIso: commitment.active_from_iso,
+        ...(commitment.active_until_iso === null ? {} : { activeUntilIso: commitment.active_until_iso }),
+        status: commitment.status,
+        createdAtIso: commitment.created_at_iso,
+        updatedAtIso: commitment.updated_at_iso,
+      };
+    });
+  }
+
+  function createRecurringCommitmentPaymentLink(link: RecurringCommitmentPaymentLink): void {
+    if (
+      link.id.trim().length === 0 ||
+      link.commitmentId.trim().length === 0 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(link.occurrenceDateIso) ||
+      Number.isNaN(Date.parse(`${link.occurrenceDateIso}T00:00:00.000Z`)) ||
+      new Date(`${link.occurrenceDateIso}T00:00:00.000Z`).toISOString().slice(0, 10) !== link.occurrenceDateIso ||
+      !link.linkedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(link.linkedAtIso)) ||
+      (link.transactionId === undefined) === (link.pendingObservationId === undefined)
+    ) {
+      throw new Error("Recurring commitment payment link is invalid.");
+    }
+    const commitment = db.prepare(`
+      SELECT household_id, currency_code FROM recurring_commitments WHERE id = ?
+    `).get(link.commitmentId) as { household_id: string; currency_code: string } | undefined;
+    if (commitment === undefined) {
+      throw new Error(`Recurring commitment not found: ${link.commitmentId}`);
+    }
+
+    let resolvedTransactionId: string | undefined;
+    let paymentAccountId: string;
+    let paymentHouseholdId: string;
+    let paymentCurrencyCode: string | undefined;
+    if (link.transactionId !== undefined) {
+      const transaction = getTransactionById(link.transactionId);
+      if (transaction === undefined) {
+        throw new Error(`Transaction not found for recurring commitment payment: ${link.transactionId}`);
+      }
+      if (transaction.amountMinor >= 0) {
+        throw new Error("Recurring commitment must be linked to an outgoing payment.");
+      }
+      resolvedTransactionId = transaction.id;
+      paymentAccountId = transaction.accountId;
+      paymentHouseholdId = transaction.householdId;
+      paymentCurrencyCode = transaction.currencyCode;
+    } else {
+      const pendingObservationId = link.pendingObservationId;
+      if (pendingObservationId === undefined) {
+        throw new Error("A recurring commitment payment link requires a payment source.");
+      }
+      const observation = db.prepare(`
+        SELECT id, household_id, account_id, amount_minor, currency_code, reconciled_transaction_id
+        FROM pending_transaction_observations
+        WHERE id = ?
+      `).get(pendingObservationId) as {
+        id: string;
+        household_id: string;
+        account_id: string;
+        amount_minor: number;
+        currency_code: string | null;
+        reconciled_transaction_id: string | null;
+      } | undefined;
+      if (observation === undefined) {
+        throw new Error(`Pending observation not found for recurring commitment payment: ${pendingObservationId}`);
+      }
+      if (observation.amount_minor >= 0) {
+        throw new Error("Recurring commitment must be linked to an outgoing payment.");
+      }
+      paymentAccountId = observation.account_id;
+      paymentHouseholdId = observation.household_id;
+      paymentCurrencyCode = observation.currency_code ?? undefined;
+      resolvedTransactionId = observation.reconciled_transaction_id ?? undefined;
+      if (resolvedTransactionId !== undefined) {
+        const transaction = getTransactionById(resolvedTransactionId);
+        if (transaction === undefined) {
+          throw new Error(`Reconciled transaction not found: ${resolvedTransactionId}`);
+        }
+        if (transaction.amountMinor >= 0) {
+          throw new Error("Recurring commitment must be linked to an outgoing payment.");
+        }
+      }
+    }
+    const accountCurrency = getAccountsForHousehold(paymentHouseholdId)
+      .find((account) => account.id === paymentAccountId)?.currencyCode;
+    if (
+      paymentHouseholdId !== commitment.household_id ||
+      (paymentCurrencyCode ?? accountCurrency) !== commitment.currency_code
+    ) {
+      throw new Error("Recurring commitment payment must belong to the same household and currency.");
+    }
+
+    const sourceId = link.transactionId ?? link.pendingObservationId!;
+    const sourceType = link.transactionId === undefined ? "pending" : "transaction";
+    const priorLink = db.prepare(`
+      SELECT 1
+      FROM recurring_commitment_payment_links
+      WHERE (commitment_id = ? AND occurrence_date_iso = ?)
+        OR (transaction_id = ?)
+        OR (pending_observation_id = ?)
+        OR (? IS NOT NULL AND pending_observation_id IN (
+          SELECT id FROM pending_transaction_observations WHERE reconciled_transaction_id = ?
+        ))
+        OR (? IS NOT NULL AND transaction_id = ?)
+      LIMIT 1
+    `).get(
+      link.commitmentId,
+      link.occurrenceDateIso,
+      sourceType === "transaction" ? sourceId : null,
+      sourceType === "pending" ? sourceId : null,
+      sourceType === "transaction" ? sourceId : null,
+      sourceType === "transaction" ? sourceId : null,
+      resolvedTransactionId ?? null,
+      resolvedTransactionId ?? null
+    );
+    if (priorLink !== undefined) {
+      throw new Error("Recurring commitment occurrence or payment is already linked.");
+    }
+    db.prepare(`
+      INSERT INTO recurring_commitment_payment_links (
+        id, commitment_id, occurrence_date_iso, transaction_id, pending_observation_id, linked_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      link.id,
+      link.commitmentId,
+      link.occurrenceDateIso,
+      link.transactionId ?? null,
+      link.pendingObservationId ?? null,
+      link.linkedAtIso
+    );
+  }
+
+  function listRecurringCommitmentPaymentLinks(
+    householdId: string
+  ): RecurringCommitmentPaymentLink[] {
+    return db.prepare(`
+      SELECT payment_link.id, payment_link.commitment_id, payment_link.occurrence_date_iso,
+        payment_link.transaction_id, payment_link.pending_observation_id, payment_link.linked_at_iso
+      FROM recurring_commitment_payment_links AS payment_link
+      JOIN recurring_commitments AS commitment
+        ON commitment.id = payment_link.commitment_id
+      WHERE commitment.household_id = ?
+      ORDER BY payment_link.commitment_id, payment_link.occurrence_date_iso, payment_link.id
+    `).all(householdId).map((row) => {
+      const link = row as {
+        id: string;
+        commitment_id: string;
+        occurrence_date_iso: string;
+        transaction_id: string | null;
+        pending_observation_id: string | null;
+        linked_at_iso: string;
+      };
+      return {
+        id: link.id,
+        commitmentId: link.commitment_id,
+        occurrenceDateIso: link.occurrence_date_iso,
+        ...(link.transaction_id === null ? {} : { transactionId: link.transaction_id }),
+        ...(link.pending_observation_id === null ? {} : { pendingObservationId: link.pending_observation_id }),
+        linkedAtIso: link.linked_at_iso,
+      };
+    });
+  }
+
+  function createRecurringCommitmentDecision(decision: RecurringCommitmentDecision): void {
+    if (
+      decision.id.trim().length === 0 ||
+      decision.commitmentId.trim().length === 0 ||
+      !decision.decidedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(decision.decidedAtIso)) ||
+      (decision.previousAmountMinor !== undefined &&
+        decision.previousAmountMinor !== null &&
+        (!Number.isSafeInteger(decision.previousAmountMinor) || decision.previousAmountMinor <= 0)) ||
+      (decision.newAmountMinor !== undefined &&
+        decision.newAmountMinor !== null &&
+        (!Number.isSafeInteger(decision.newAmountMinor) || decision.newAmountMinor <= 0))
+    ) {
+      throw new Error("Recurring commitment decision is invalid.");
+    }
+    if (db.prepare("SELECT 1 FROM recurring_commitments WHERE id = ?").get(decision.commitmentId) === undefined) {
+      throw new Error(`Recurring commitment not found: ${decision.commitmentId}`);
+    }
+    db.prepare(`
+      INSERT INTO recurring_commitment_decisions (
+        id, commitment_id, decision_type, decided_at_iso, previous_amount_minor, new_amount_minor
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      decision.id,
+      decision.commitmentId,
+      decision.decisionType,
+      decision.decidedAtIso,
+      decision.previousAmountMinor ?? null,
+      decision.newAmountMinor ?? null
+    );
+  }
+
+  function listRecurringCommitmentDecisions(
+    householdId: string
+  ): RecurringCommitmentDecision[] {
+    return db.prepare(`
+      SELECT decision.id, decision.commitment_id, decision.decision_type, decision.decided_at_iso,
+        decision.previous_amount_minor, decision.new_amount_minor
+      FROM recurring_commitment_decisions AS decision
+      JOIN recurring_commitments AS commitment
+        ON commitment.id = decision.commitment_id
+      WHERE commitment.household_id = ?
+      ORDER BY decision.commitment_id, decision.decided_at_iso, decision.id
+    `).all(householdId).map((row) => {
+      const decision = row as {
+        id: string;
+        commitment_id: string;
+        decision_type: RecurringCommitmentDecision["decisionType"];
+        decided_at_iso: string;
+        previous_amount_minor: number | null;
+        new_amount_minor: number | null;
+      };
+      return {
+        id: decision.id,
+        commitmentId: decision.commitment_id,
+        decisionType: decision.decision_type,
+        decidedAtIso: decision.decided_at_iso,
+        ...(decision.previous_amount_minor === null
+          ? {}
+          : { previousAmountMinor: decision.previous_amount_minor }),
+        ...(decision.new_amount_minor === null ? {} : { newAmountMinor: decision.new_amount_minor }),
+      };
+    });
+  }
+
   function backfillImportJobHistory(): void {
     const legacyJobs = db.prepare(`
       SELECT job.id, job.household_id, job.source_type, job.source_name, job.adapter_id,
@@ -2526,6 +3004,101 @@ export function createLocalLedgerDatabase(
         recordedAtIso: balance.recorded_at_iso,
       };
     });
+    const recurringCommitments = db.prepare(`
+      SELECT id, household_id, description, currency_code, amount_minor, is_variable,
+        cadence, first_due_date_iso, active_from_iso, active_until_iso, status,
+        created_at_iso, updated_at_iso
+      FROM recurring_commitments
+      WHERE household_id = ?
+      ORDER BY id
+    `).all(householdRow.id).map((row) => {
+      const commitment = row as {
+        id: string;
+        household_id: string;
+        description: string;
+        currency_code: string;
+        amount_minor: number | null;
+        is_variable: number;
+        cadence: RecurringCommitment["cadence"];
+        first_due_date_iso: string;
+        active_from_iso: string;
+        active_until_iso: string | null;
+        status: RecurringCommitment["status"];
+        created_at_iso: string;
+        updated_at_iso: string;
+      };
+      return {
+        id: commitment.id,
+        householdId: commitment.household_id,
+        description: commitment.description,
+        currencyCode: commitment.currency_code,
+        amountMinor: commitment.amount_minor,
+        isVariable: commitment.is_variable === 1,
+        cadence: commitment.cadence,
+        firstDueDateIso: commitment.first_due_date_iso,
+        activeFromIso: commitment.active_from_iso,
+        ...(commitment.active_until_iso === null ? {} : { activeUntilIso: commitment.active_until_iso }),
+        status: commitment.status,
+        createdAtIso: commitment.created_at_iso,
+        updatedAtIso: commitment.updated_at_iso,
+      };
+    });
+    const recurringCommitmentPaymentLinks = db.prepare(`
+      SELECT payment_link.id, payment_link.commitment_id, payment_link.occurrence_date_iso,
+        payment_link.transaction_id, payment_link.pending_observation_id, payment_link.linked_at_iso
+      FROM recurring_commitment_payment_links AS payment_link
+      JOIN recurring_commitments AS commitment
+        ON commitment.id = payment_link.commitment_id
+      WHERE commitment.household_id = ?
+      ORDER BY payment_link.commitment_id, payment_link.occurrence_date_iso, payment_link.id
+    `).all(householdRow.id).map((row) => {
+      const link = row as {
+        id: string;
+        commitment_id: string;
+        occurrence_date_iso: string;
+        transaction_id: string | null;
+        pending_observation_id: string | null;
+        linked_at_iso: string;
+      };
+      return {
+        id: link.id,
+        commitmentId: link.commitment_id,
+        occurrenceDateIso: link.occurrence_date_iso,
+        ...(link.transaction_id === null ? {} : { transactionId: link.transaction_id }),
+        ...(link.pending_observation_id === null
+          ? {}
+          : { pendingObservationId: link.pending_observation_id }),
+        linkedAtIso: link.linked_at_iso,
+      };
+    });
+    const recurringCommitmentDecisions = db.prepare(`
+      SELECT decision.id, decision.commitment_id, decision.decision_type, decision.decided_at_iso,
+        decision.previous_amount_minor, decision.new_amount_minor
+      FROM recurring_commitment_decisions AS decision
+      JOIN recurring_commitments AS commitment
+        ON commitment.id = decision.commitment_id
+      WHERE commitment.household_id = ?
+      ORDER BY decision.commitment_id, decision.decided_at_iso, decision.id
+    `).all(householdRow.id).map((row) => {
+      const decision = row as {
+        id: string;
+        commitment_id: string;
+        decision_type: RecurringCommitmentDecision["decisionType"];
+        decided_at_iso: string;
+        previous_amount_minor: number | null;
+        new_amount_minor: number | null;
+      };
+      return {
+        id: decision.id,
+        commitmentId: decision.commitment_id,
+        decisionType: decision.decision_type,
+        decidedAtIso: decision.decided_at_iso,
+        ...(decision.previous_amount_minor === null
+          ? {}
+          : { previousAmountMinor: decision.previous_amount_minor }),
+        ...(decision.new_amount_minor === null ? {} : { newAmountMinor: decision.new_amount_minor }),
+      };
+    });
 
     const mappedTransactions: Transaction[] = transactions.map((transaction) => {
       const mapped = mapTransactionRow(transaction);
@@ -2602,6 +3175,9 @@ export function createLocalLedgerDatabase(
       holdingValuations,
       loanRecords,
       loanBalanceSnapshots,
+      recurringCommitments,
+      recurringCommitmentPaymentLinks,
+      recurringCommitmentDecisions,
     };
   }
 
@@ -2614,6 +3190,9 @@ export function createLocalLedgerDatabase(
         DELETE FROM same_merchant_propagation_changes;
         DELETE FROM same_merchant_propagation_operations;
         DELETE FROM merchant_correction_provenance;
+        DELETE FROM recurring_commitment_payment_links;
+        DELETE FROM recurring_commitment_decisions;
+        DELETE FROM recurring_commitments;
         DELETE FROM exchange_rates;
         DELETE FROM account_balance_checkpoints;
         DELETE FROM account_statement_coverage_periods;
@@ -4081,6 +4660,14 @@ export function createLocalLedgerDatabase(
     listLoanRecords,
     appendLoanBalanceSnapshot,
     listLoanBalanceSnapshots,
+    createRecurringCommitment,
+    updateRecurringCommitment,
+    updateRecurringCommitmentAndDecision,
+    listRecurringCommitments,
+    createRecurringCommitmentPaymentLink,
+    listRecurringCommitmentPaymentLinks,
+    createRecurringCommitmentDecision,
+    listRecurringCommitmentDecisions,
     loadLedgerSnapshotData,
     replaceLedgerSnapshotData,
     queryTransactions,
