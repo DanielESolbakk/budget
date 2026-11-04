@@ -19,7 +19,9 @@ test.describe("Category target persistence across application restart", () => {
     categoryTarget,
     databasePath,
     electronApp,
+    window,
   }) => {
+    await window.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
     await categoryTarget.addTargetButton.click();
     await categoryTarget.categoryIdInput.fill(RESTART_TARGET_CATEGORY_ID);
     await categoryTarget.targetAmountInput.fill(INITIAL_TARGET_NOK);
@@ -33,6 +35,20 @@ test.describe("Category target persistence across application restart", () => {
     await categoryTarget.saveButton.click();
     await expect(categoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
       persistedTargetRow(RESTART_TARGET_CATEGORY_ID, UPDATED_TARGET_NOK),
+    );
+
+    await window.reload();
+    await window.waitForLoadState("domcontentloaded");
+    await window.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
+    const refreshedDashboardTarget = new DashboardTargetPage(window);
+    await expect(refreshedDashboardTarget.targetCell(RESTART_TARGET_CATEGORY_ID)).toHaveText(
+      /900,00\s*kr/,
+    );
+    await expect(refreshedDashboardTarget.actualCell(RESTART_TARGET_CATEGORY_ID)).toHaveText(
+      /0,00\s*kr/,
+    );
+    await expect(refreshedDashboardTarget.deltaCell(RESTART_TARGET_CATEGORY_ID)).toHaveText(
+      /(?:-|\u2212)900,00\s*kr/,
     );
 
     await electronApp.close();
@@ -49,6 +65,7 @@ test.describe("Category target persistence across application restart", () => {
     try {
       const restartedWindow = await restartedApp.firstWindow();
       await restartedWindow.waitForLoadState("domcontentloaded");
+      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(

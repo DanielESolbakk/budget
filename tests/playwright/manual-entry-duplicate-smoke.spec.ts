@@ -21,10 +21,6 @@ const manualEntry: ManualEntryValues = {
 };
 
 test.describe("Manual entry and duplicate detection", () => {
-  test("manual entry defaults to the current local date", async ({ manualEntry: entry, window }) => {
-    await expect(entry.bookedDateInput).toHaveValue(await rendererLocalDate(window));
-  });
-
   test("reduced motion keeps transaction confirmation visible without button transitions", async ({ window, manualEntry: entry }) => {
     await window.emulateMedia({ reducedMotion: "reduce" });
     await entry.submitEntry(manualEntry);

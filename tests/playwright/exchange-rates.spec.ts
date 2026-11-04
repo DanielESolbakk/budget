@@ -200,6 +200,14 @@ test.describe("local dated exchange-rate workflow", () => {
       rendererRequests,
     } = await openRatesWorkspace(databasePath, electronApp);
     try {
+      await expect(rateBookTab).toHaveAttribute("aria-pressed", "true");
+      await expect(monthlyReportTab).toHaveAttribute("aria-pressed", "false");
+      await expect(reportMonth).toBeHidden();
+      await monthlyReportTab.click();
+      await expect(rateBookTab).toHaveAttribute("aria-pressed", "false");
+      await expect(reportMonth).toBeVisible();
+      await rateBookTab.click();
+
       await rateCurrency.focus();
       await window.keyboard.press("ArrowDown");
       await expect(rateCurrency).toHaveValue("SEK");
@@ -219,6 +227,18 @@ test.describe("local dated exchange-rate workflow", () => {
       await tabTo(window, saveRateButton);
       await window.keyboard.press("Enter");
       await expect(rates.getByText("Synthetic manual rate")).toBeVisible();
+      const savedRates = rates.getByRole("table", { name: "Saved local exchange rates" });
+      const manualRateRow = savedRates.getByRole("row", {
+        name: /EUR.*2026-05-01.*Synthetic manual rate/,
+      });
+      await expect(manualRateRow).toBeVisible();
+      for (const column of ["Currency", "NOK per unit", "Effective date", "Source"]) {
+        await expect(savedRates.getByRole("columnheader", { name: column })).toBeVisible();
+      }
+      const rateSavedStatus = rates.getByRole("status").filter({
+        hasText: "Local exchange rate saved.",
+      });
+      await expect(rateSavedStatus).toBeVisible();
 
       await importRateButton.focus();
       await window.keyboard.press("Enter");
@@ -231,6 +251,7 @@ test.describe("local dated exchange-rate workflow", () => {
       await expect(importedEuroRate).toContainText("Local file");
 
       await monthlyReportTab.click();
+      await expect(rateSavedStatus).toBeHidden();
       await reportMonth.fill("2026-05");
       await loadReportButton.focus();
       await window.keyboard.press("Enter");

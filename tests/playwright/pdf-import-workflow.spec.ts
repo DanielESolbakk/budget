@@ -309,6 +309,16 @@ test.describe("PDF import renderer workflow", () => {
     await skipDuplicate.check();
     await expect(pdfImport.confirmImportButton).toBeEnabled();
     await expect(pdfImport.previewRegion).toContainText("Pending rows (2)");
+    await window.setViewportSize({ width: 390, height: 844 });
+    const caption = pdfImport.previewRegion.getByRole("table", {
+      name: "PDF statement preview rows and duplicate decisions",
+    }).locator("caption");
+    const captionWidth = await caption.evaluate((element) => element.getBoundingClientRect().width);
+    const chooseFileBounds = await pdfImport.chooseFileButton.boundingBox();
+    const selectedFileBounds = await pdfImport.importSection.locator(".import-selected-file").boundingBox();
+    expect(captionWidth).toBeGreaterThan(240);
+    expect((selectedFileBounds?.y ?? Number.POSITIVE_INFINITY) + (selectedFileBounds?.height ?? 0))
+      .toBeLessThanOrEqual(chooseFileBounds?.y ?? 0);
     await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toHaveAttribute("aria-expanded", "true");
     await window.getByRole("button", { name: "Hide preview", exact: true }).scrollIntoViewIfNeeded();
     await expect(window.getByRole("button", { name: "Hide preview", exact: true })).toBeInViewport();
@@ -316,6 +326,11 @@ test.describe("PDF import renderer workflow", () => {
 
     await window.getByRole("button", { name: "Hide preview", exact: true }).click();
     await expect(pdfImport.previewRegion).not.toBeVisible();
+    const collapsedDimensions = await window.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(collapsedDimensions.documentWidth).toBeLessThanOrEqual(collapsedDimensions.viewportWidth);
     await expect(window.getByRole("button", { name: "Show preview", exact: true })).toBeFocused();
     await expect(pdfImport.importSection.getByText(basename(fixturePath), { exact: true })).toBeVisible();
     await expect(window.getByRole("button", { name: "Show preview", exact: true })).toHaveAttribute("aria-expanded", "false");

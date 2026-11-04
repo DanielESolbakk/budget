@@ -373,11 +373,35 @@ test.describe("CSV import renderer workflow", () => {
     await expect(csvImport.importSection.getByText("Norwegian bank profile", { exact: true })).not.toBeVisible();
   });
 
-  test("import workspace offers one statement picker and a separate manual entry action", async ({ appShell, window }) => {
+  test("import workspace offers one statement picker and a separate manual entry action", async ({
+    appShell,
+    electronApp,
+    window,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
     await appShell.openWorkspace("Import");
-    await expect(window.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
+    const statementChoice = window.getByRole("button", {
+      name: "Choose statement file",
+      exact: true,
+    });
+    const manualChoice = window.getByRole("button", {
+      name: "Enter transaction manually",
+      exact: true,
+    });
+    await expect(statementChoice).toBeVisible();
     await expect(window.getByText("A statement import is saved only when you confirm it.", { exact: true })).toBeVisible();
-    await expect(window.getByRole("button", { name: "Enter transaction manually", exact: true })).toBeVisible();
+    await expect(manualChoice).toBeVisible();
+    const statementBounds = await statementChoice.boundingBox();
+    const manualBounds = await manualChoice.boundingBox();
+    expect(statementBounds?.width ?? 0).toBeGreaterThan(300);
+    expect(manualBounds?.width ?? 0).toBeGreaterThan(180);
+    const dimensions = await window.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
     await expect(window.getByRole("button", { name: "CSV statement", exact: true })).toHaveCount(0);
     await expect(window.getByRole("button", { name: "Digital PDF", exact: true })).toHaveCount(0);
     await expect(window.getByRole("region", { name: "CSV Import", exact: true })).not.toBeVisible();

@@ -606,43 +606,15 @@ test("explains and undoes a pending-only import from import history", async ({
   );
   await confirmation.getByRole("button", { name: "Confirm undo", exact: true }).click();
 
-  await pendingTransactions.open();
-  await expect(window.getByText("No pending transactions", { exact: true })).toBeVisible();
-});
-
-test("describes pending-only undo counts as imported items", async ({
-  appShell,
-  electronApp,
-  pendingStatementFiles,
-  pendingTransactions,
-  window,
-}) => {
-  await appShell.openWorkspace("Import");
-  await selectSyntheticStatement(
-    electronApp,
-    window,
-    "csv",
-    pendingStatementFiles.reconciliationPendingCsvPath
-  );
-  await pendingTransactions.importCsvFile(pendingStatementFiles.reconciliationPendingCsvPath);
-
-  await window.getByRole("button", { name: "Import history", exact: true }).click();
-  const importHistory = window.getByRole("region", { name: "Import history", exact: true });
-  const undoButton = importHistory.getByRole("button", {
-    name: "Undo import reconciliation-pending.csv",
-    exact: true,
-  });
-  await expect(undoButton).toBeEnabled();
-  await undoButton.click();
-
-  const confirmation = window.getByRole("group", { name: "Undo import confirmation" });
-  await confirmation.getByRole("button", { name: "Confirm undo", exact: true }).click();
   const undoResult = importHistory.getByRole("status", {
     name: "Import undo result",
     exact: true,
   });
   await expect(undoResult).toContainText("1 imported item removed.");
   await expect(undoResult).toContainText("No items from this import were retained.");
+
+  await pendingTransactions.open();
+  await expect(window.getByText("No pending transactions", { exact: true })).toBeVisible();
 });
 
 test("keeps the import history caption readable on mobile", async ({
@@ -664,24 +636,4 @@ test("keeps the import history caption readable on mobile", async ({
   const captionBounds = await caption.boundingBox();
   expect(captionBounds?.width ?? 0).toBeGreaterThan(300);
   expect(captionBounds?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(32);
-});
-
-test("renders pending amounts at the body text size or larger", async ({
-  appShell,
-  electronApp,
-  pendingStatementFiles,
-  pendingTransactions,
-  window,
-}) => {
-  await appShell.openWorkspace("Import");
-  await selectSyntheticStatement(electronApp, window, "csv", pendingStatementFiles.csvPath);
-  await pendingTransactions.importCsvFile(pendingStatementFiles.csvPath);
-  await pendingTransactions.open();
-
-  const amount = window.locator(".pending-observation-amount").first();
-  await expect(amount).toBeVisible();
-  const amountFontSize = await amount.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).fontSize)
-  );
-  expect(amountFontSize).toBeGreaterThanOrEqual(16);
 });

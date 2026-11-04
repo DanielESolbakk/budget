@@ -3,7 +3,6 @@ import { test, expect } from "./fixtures/electron.js";
 const DEFAULT_YEAR_MONTH = "2026-05";
 const GROCERIES_ACTUAL_MINOR = 8500;
 const GROCERIES_BASELINE_TARGET_MINOR = 9000;
-const GROCERIES_UPDATED_TARGET_MINOR = 9500;
 const SALARY_ACTUAL_MINOR = 54000;
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
   style: "currency",
@@ -43,34 +42,5 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
     await expect(targetPage.targetCell("salary")).toHaveText("No target");
     await expect(targetPage.deltaCell("salary")).toHaveText("No target");
     await expect(targetPage.noTargetIndicators("salary")).toHaveCount(2);
-  });
-});
-
-test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () => {
-  test.beforeEach(async ({ dashboard }) => {
-    await dashboard.monthSelector.selectOption(DEFAULT_YEAR_MONTH);
-  });
-
-  test("reflects the latest saved target values after a refresh", async ({ window, dashboardTarget: targetPage, categoryTarget }) => {
-    await expect(targetPage.section).toBeVisible();
-    await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_BASELINE_TARGET_MINOR));
-    await expect(targetPage.deltaCell("groceries")).toHaveText(
-      formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_BASELINE_TARGET_MINOR)
-    );
-
-    await categoryTarget.editTargetButton("groceries").click();
-    await categoryTarget.targetAmountInput.fill("95");
-    await categoryTarget.saveButton.click();
-    await expect(categoryTarget.section.getByRole("status").filter({ hasText: "Target saved." })).toBeVisible();
-    await window.reload();
-    await window.waitForLoadState("domcontentloaded");
-    await window.getByRole("combobox", { name: "Select month" }).selectOption(DEFAULT_YEAR_MONTH);
-
-    await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_UPDATED_TARGET_MINOR));
-    await expect(targetPage.actualCell("groceries")).toHaveText(formatMinor(GROCERIES_ACTUAL_MINOR));
-    await expect(targetPage.deltaCell("groceries")).toHaveText(
-      formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_UPDATED_TARGET_MINOR)
-    );
-    await expect(window.getByRole("combobox", { name: "Select month" })).toHaveValue(DEFAULT_YEAR_MONTH);
   });
 });

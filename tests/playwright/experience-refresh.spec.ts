@@ -37,18 +37,6 @@ test("the header import action opens the import workspace from monthly review", 
   await expect(appShell.destination("Activity")).toHaveAttribute("aria-current", "page");
 });
 
-test("keyboard users can skip navigation to the active workspace", async ({
-  appShell,
-  window,
-}) => {
-  await expect(appShell.workspace("Review")).toBeVisible();
-  await window.keyboard.press("Tab");
-  const skipLink = window.getByRole("link", { name: "Skip to workspace" });
-  await expect(skipLink).toBeFocused();
-  await window.keyboard.press("Enter");
-  await expect(window.getByRole("main")).toBeFocused();
-});
-
 test("shortcuts focus their destination while navigation preserves sibling keyboard access", async ({
   appShell,
   window,

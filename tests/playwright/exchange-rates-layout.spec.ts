@@ -12,48 +12,6 @@ async function saveSyntheticRate(window: Page): Promise<void> {
 }
 
 test.describe("exchange-rate settings layout", () => {
-  test("separates rate entry from report controls until the report view is selected", async ({
-    appShell,
-    window,
-  }) => {
-    await appShell.openWorkspace("Settings");
-    const rates = window.getByRole("region", { name: "Exchange rates", exact: true });
-    const rateBookTab = rates.getByRole("button", { name: "Rate book", exact: true });
-    const monthlyReportTab = rates.getByRole("button", { name: "Monthly report", exact: true });
-    await expect(rateBookTab).toHaveAttribute("aria-pressed", "true");
-    await expect(monthlyReportTab).toHaveAttribute("aria-pressed", "false");
-    await expect(rates.getByLabel("Report month")).toBeHidden();
-
-    await monthlyReportTab.click();
-    await expect(rateBookTab).toHaveAttribute("aria-pressed", "false");
-    await expect(rates.getByLabel("Report month")).toBeVisible();
-  });
-
-  test("presents saved local rates in a comparison table", async ({ appShell, window }) => {
-    await appShell.openWorkspace("Settings");
-    const rates = window.getByRole("region", { name: "Exchange rates", exact: true });
-    await saveSyntheticRate(window);
-
-    const savedRates = rates.getByRole("table", { name: "Saved local exchange rates" });
-    const rateRow = savedRates.getByRole("row", { name: /EUR.*2026-05-01.*Synthetic table rate/ });
-    await expect(rateRow).toBeVisible();
-    await expect(savedRates.getByRole("columnheader", { name: "Currency" })).toBeVisible();
-    await expect(savedRates.getByRole("columnheader", { name: "NOK per unit" })).toBeVisible();
-    await expect(savedRates.getByRole("columnheader", { name: "Effective date" })).toBeVisible();
-    await expect(savedRates.getByRole("columnheader", { name: "Source" })).toBeVisible();
-
-    const savedMessage = rates.getByRole("status").filter({ hasText: "Local exchange rate saved." });
-    await expect(savedMessage).toBeVisible();
-    await rates.getByRole("button", { name: "Monthly report", exact: true }).click();
-    await expect(savedMessage).toBeHidden();
-
-    await window.setViewportSize({ width: 390, height: 844 });
-    const horizontalOverflow = await window.evaluate(() =>
-      document.documentElement.scrollWidth > document.documentElement.clientWidth
-    );
-    expect(horizontalOverflow).toBe(false);
-  });
-
   test("@visual Visual: saved local rates remain scannable at desktop and compact widths", async ({
     appShell,
     window,
