@@ -297,6 +297,98 @@ describe("dated local exchange rates", () => {
         exchangeRate: sekMayRate,
         isEstimate: false,
       }],
+      subtotals: {
+        properties: {
+          nativeSubtotals: [{ currencyCode: "EUR", totalMinor: 100_000 }],
+          nokSubtotalMinor: 1_125_000,
+          partialNokSubtotalMinor: 1_125_000,
+          incompleteCurrencies: [],
+        },
+        holdings: {
+          nativeSubtotals: [{ currencyCode: "USD", totalMinor: 50_000 }],
+          nokSubtotalMinor: 550_000,
+          partialNokSubtotalMinor: 550_000,
+          incompleteCurrencies: [],
+        },
+        liabilities: {
+          nativeSubtotals: [{ currencyCode: "SEK", totalMinor: 30_000 }],
+          nokSubtotalMinor: 31_500,
+          partialNokSubtotalMinor: 31_500,
+          incompleteCurrencies: [],
+        },
+      },
+    });
+  });
+
+  it("marks valuation subtotals incomplete without dropping native amounts when a rate is missing", () => {
+    const report = buildNokValuationReport({
+      valuationDateIso: "2026-05-31",
+      properties: [
+        {
+          id: "property-eur",
+          householdId: "hh-rates",
+          label: "Synthetic euro property",
+          createdAtIso: "2026-01-01T00:00:00Z",
+        },
+        {
+          id: "property-nok",
+          householdId: "hh-rates",
+          label: "Synthetic NOK property",
+          createdAtIso: "2026-01-01T00:00:00Z",
+        },
+        {
+          id: "property-gbp",
+          householdId: "hh-rates",
+          label: "Synthetic pound property",
+          createdAtIso: "2026-01-01T00:00:00Z",
+        },
+      ],
+      propertyValuations: [
+        {
+          id: "valuation-eur",
+          propertyId: "property-eur",
+          effectiveDateIso: "2026-04-15",
+          amountMinor: 100_000,
+          currencyCode: "EUR",
+          recordedAtIso: "2026-04-15T12:00:00Z",
+        },
+        {
+          id: "valuation-nok",
+          propertyId: "property-nok",
+          effectiveDateIso: "2026-05-15",
+          amountMinor: 500_000,
+          currencyCode: "NOK",
+          recordedAtIso: "2026-05-15T12:00:00Z",
+        },
+        {
+          id: "valuation-gbp",
+          propertyId: "property-gbp",
+          effectiveDateIso: "2026-05-20",
+          amountMinor: 20_000,
+          currencyCode: "GBP",
+          recordedAtIso: "2026-05-20T12:00:00Z",
+        },
+      ],
+      holdings: [],
+      holdingValuations: [],
+      loans: [],
+      loanBalanceSnapshots: [],
+      rates: [{
+        ...datedRate,
+        effectiveDate: "2026-04-01",
+        rateNokPerUnit: "11.25",
+      }],
+    });
+
+    expect(report).toHaveProperty("subtotals.properties", {
+      nativeSubtotals: [
+        { currencyCode: "EUR", totalMinor: 100_000 },
+        { currencyCode: "GBP", totalMinor: 20_000 },
+        { currencyCode: "NOK", totalMinor: 500_000 },
+      ],
+      nokSubtotalMinor: null,
+      partialNokSubtotalMinor: 1_625_000,
+      incompleteCurrencies: ["GBP"],
     });
   });
 

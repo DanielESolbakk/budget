@@ -240,6 +240,20 @@ describe("exchange-rate local persistence and reports", () => {
         currencyCode: "EUR",
         recordedAtIso: "2026-04-15T12:00:00Z",
       });
+      ledger.createPropertyRecord({
+        id: "property-zmissing",
+        householdId: "hh-rates",
+        label: "Synthetic missing-rate property",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      });
+      ledger.appendPropertyValuationSnapshot({
+        id: "property-zmissing-may",
+        propertyId: "property-zmissing",
+        effectiveDateIso: "2026-05-10",
+        amountMinor: 20_000,
+        currencyCode: "GBP",
+        recordedAtIso: "2026-05-10T12:00:00Z",
+      });
       ledger.createHoldingRecord({
         id: "holding-fund",
         householdId: "hh-rates",
@@ -332,6 +346,15 @@ describe("exchange-rate local persistence and reports", () => {
           effectiveDate: "2026-04-01",
           source: "Synthetic April rate",
         },
+      });
+      expect(report).toHaveProperty("subtotals.properties", {
+        nativeSubtotals: [
+          { currencyCode: "EUR", totalMinor: 100_000 },
+          { currencyCode: "GBP", totalMinor: 20_000 },
+        ],
+        nokSubtotalMinor: null,
+        partialNokSubtotalMinor: 1_125_000,
+        incompleteCurrencies: ["GBP"],
       });
       expect(report.holdings[0]).toMatchObject({
         id: "holding-fund",

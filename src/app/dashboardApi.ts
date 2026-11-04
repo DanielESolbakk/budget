@@ -117,12 +117,15 @@ export interface NokMonthlyReportTransaction {
   isScenarioRestatement: boolean;
 }
 
-export interface NokMonthlyReport {
-  yearMonth: string;
+export interface NokCurrencySubtotals {
   nativeSubtotals: Array<{ currencyCode: CurrencyCode; totalMinor: number }>;
   nokSubtotalMinor: number | null;
   partialNokSubtotalMinor: number;
   incompleteCurrencies: CurrencyCode[];
+}
+
+export interface NokMonthlyReport extends NokCurrencySubtotals {
+  yearMonth: string;
   transactions: NokMonthlyReportTransaction[];
 }
 
@@ -154,6 +157,11 @@ export interface NokValuationReport {
   properties: NokValuationReportEntry[];
   holdings: NokValuationReportEntry[];
   liabilities: NokValuationReportEntry[];
+  subtotals: {
+    properties: NokCurrencySubtotals;
+    holdings: NokCurrencySubtotals;
+    liabilities: NokCurrencySubtotals;
+  };
 }
 
 type AccountCoverageQuerySource = Pick<
@@ -420,6 +428,53 @@ export function queryMonthlyTotals(
   return computeMonthlyTotals(transactions, yearMonth);
 }
 
+interface NokSubtotalEntry {
+  nativeAmountMinor: number;
+  nativeCurrencyCode: CurrencyCode;
+  nokAmountMinor: number | null;
+}
+
+function buildNokCurrencySubtotals(entries: readonly NokSubtotalEntry[]): NokCurrencySubtotals {
+  const nativeTotals = new Map<CurrencyCode, number>();
+  const incompleteCurrencies = new Set<CurrencyCode>();
+  let partialNokSubtotalMinor = 0;
+
+  for (const entry of entries) {
+    const nativeTotal =
+      (nativeTotals.get(entry.nativeCurrencyCode) ?? 0) + entry.nativeAmountMinor;
+    if (!Number.isSafeInteger(nativeTotal)) {
+      throw new RangeError(
+        `Native ${entry.nativeCurrencyCode} subtotal exceeds the safe integer range.`
+      );
+    }
+    nativeTotals.set(entry.nativeCurrencyCode, nativeTotal);
+
+    if (entry.nokAmountMinor === null) {
+      incompleteCurrencies.add(entry.nativeCurrencyCode);
+      continue;
+    }
+
+    partialNokSubtotalMinor += entry.nokAmountMinor;
+    if (!Number.isSafeInteger(partialNokSubtotalMinor)) {
+      throw new RangeError("NOK report subtotal exceeds the safe integer range.");
+    }
+  }
+
+  const nativeSubtotals = [...nativeTotals.entries()]
+    .map(([currencyCode, totalMinor]) => ({ currencyCode, totalMinor }))
+    .sort((left, right) => left.currencyCode.localeCompare(right.currencyCode));
+  const sortedIncompleteCurrencies = [...incompleteCurrencies].sort((left, right) =>
+    left.localeCompare(right)
+  );
+
+  return {
+    nativeSubtotals,
+    nokSubtotalMinor: sortedIncompleteCurrencies.length === 0 ? partialNokSubtotalMinor : null,
+    partialNokSubtotalMinor,
+    incompleteCurrencies: sortedIncompleteCurrencies,
+  };
+}
+
 /**
  * Returns a deterministic category breakdown for a selected calendar month.
  * Entries are ordered by totalMinor descending; the uncategorized entry (if any) appears last.
@@ -436,10 +491,7 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
       left.bookedAtIso.localeCompare(right.bookedAtIso) ||
       left.id.localeCompare(right.id)
     );
-  const nativeTotals = new Map<CurrencyCode, number>();
-  const incompleteCurrencies = new Set<CurrencyCode>();
   const transactions: NokMonthlyReportTransaction[] = [];
-  let partialNokSubtotalMinor = 0;
 
   for (const transaction of monthlyTransactions) {
     const account = accountsById.get(transaction.accountId);
@@ -447,14 +499,6 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
       throw new Error(`Account not found for transaction ${transaction.id}.`);
     }
     const currencyCode = transaction.currencyCode ?? account.currencyCode;
-    const nativeTotal = (nativeTotals.get(currencyCode) ?? 0) + transaction.amountMinor;
-    if (!Number.isSafeInteger(nativeTotal)) {
-      throw new RangeError(`Native ${currencyCode} subtotal exceeds the safe integer range.`);
-    }
-    nativeTotals.set(
-      currencyCode,
-      nativeTotal
-    );
     const conversion = convertCurrencyAmount({
       amountMinor: transaction.amountMinor,
       currencyCode,
@@ -467,15 +511,6 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
         ? {}
         : { useLatestRateScenario: input.useLatestRateScenario }),
     });
-
-    if (conversion.state === "incomplete") {
-      incompleteCurrencies.add(currencyCode);
-    } else {
-      partialNokSubtotalMinor += conversion.nokAmountMinor;
-      if (!Number.isSafeInteger(partialNokSubtotalMinor)) {
-        throw new RangeError("NOK report subtotal exceeds the safe integer range.");
-      }
-    }
 
     transactions.push({
       transactionId: transaction.id,
@@ -490,19 +525,11 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
     });
   }
 
-  const nativeSubtotals = [...nativeTotals.entries()]
-    .map(([currencyCode, totalMinor]) => ({ currencyCode, totalMinor }))
-    .sort((left, right) => left.currencyCode.localeCompare(right.currencyCode));
-  const sortedIncompleteCurrencies = [...incompleteCurrencies].sort((left, right) =>
-    left.localeCompare(right)
-  );
+  const subtotals = buildNokCurrencySubtotals(transactions);
 
   return {
     yearMonth: input.yearMonth,
-    nativeSubtotals,
-    nokSubtotalMinor: sortedIncompleteCurrencies.length === 0 ? partialNokSubtotalMinor : null,
-    partialNokSubtotalMinor,
-    incompleteCurrencies: sortedIncompleteCurrencies,
+    ...subtotals,
     transactions,
   };
 }
@@ -737,6 +764,11 @@ export function buildNokValuationReport(input: NokValuationReportInput): NokValu
     properties,
     holdings,
     liabilities,
+    subtotals: {
+      properties: buildNokCurrencySubtotals(properties),
+      holdings: buildNokCurrencySubtotals(holdings),
+      liabilities: buildNokCurrencySubtotals(liabilities),
+    },
   };
 }
 

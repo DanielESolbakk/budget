@@ -197,9 +197,21 @@ export function ExchangeRatesSection({
   const valuationSections = valuationReport === null
     ? []
     : [
-        { heading: "Properties", entries: valuationReport.properties },
-        { heading: "Investments", entries: valuationReport.holdings },
-        { heading: "Liabilities", entries: valuationReport.liabilities },
+        {
+          heading: "Properties",
+          entries: valuationReport.properties,
+          subtotals: valuationReport.subtotals.properties,
+        },
+        {
+          heading: "Investments",
+          entries: valuationReport.holdings,
+          subtotals: valuationReport.subtotals.holdings,
+        },
+        {
+          heading: "Liabilities",
+          entries: valuationReport.liabilities,
+          subtotals: valuationReport.subtotals.liabilities,
+        },
       ].filter((section) => section.entries.length > 0);
   const hasIncompleteValuations = valuationSections.some((section) =>
     section.entries.some((entry) => entry.nokAmountMinor === null)
@@ -526,6 +538,31 @@ export function ExchangeRatesSection({
                 valuationSections.map((section) => (
                   <section className="converted-valuation-section" key={section.heading}>
                     <h4>{section.heading}</h4>
+                    <div
+                      className="native-currency-subtotals"
+                      role="group"
+                      aria-label={`${section.heading} subtotals`}
+                    >
+                      <h5>Native-currency subtotals</h5>
+                      <dl>
+                        {section.subtotals.nativeSubtotals.map((subtotal) => (
+                          <div key={subtotal.currencyCode}>
+                            <dt>{subtotal.currencyCode}</dt>
+                            <dd>{formatMinor(subtotal.totalMinor, subtotal.currencyCode)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                    {section.subtotals.nokSubtotalMinor === null ? (
+                      <p className="converted-report-status is-incomplete" role="status">
+                        NOK subtotal incomplete. Missing rates: {section.subtotals.incompleteCurrencies.join(", ")}.
+                        {" "}Partial converted subtotal: {formatMinor(section.subtotals.partialNokSubtotalMinor, "NOK")}.
+                      </p>
+                    ) : (
+                      <p className="converted-report-status is-complete" role="status">
+                        NOK subtotal: {formatMinor(section.subtotals.nokSubtotalMinor, "NOK")}
+                      </p>
+                    )}
                     <ul aria-label={`${section.heading} valuation details`}>
                       {section.entries.map((entry) => (
                         <li key={entry.id}>

@@ -3215,6 +3215,16 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   font-size: 0.95rem;
 }
 
+.converted-valuation-section .native-currency-subtotals h5 {
+  margin: 0;
+  color: var(--paper);
+  font-size: 0.82rem;
+}
+
+.converted-valuation-section .native-currency-subtotals dl > div {
+  padding-right: 0.75rem;
+}
+
 .converted-valuation-section ul {
   display: grid;
   gap: 0.4rem;

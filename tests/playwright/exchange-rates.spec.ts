@@ -133,6 +133,27 @@ function addSyntheticValuations(databasePath: string): void {
       "2026-05-15T12:00:00Z"
     );
     database.prepare(`
+      INSERT INTO properties (id, household_id, label, created_at_iso)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "valuation-unpriced-home",
+      "sample-hh",
+      "Synthetic missing-rate property",
+      "2026-01-01T00:00:00Z"
+    );
+    database.prepare(`
+      INSERT INTO property_valuation_snapshots (
+        id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "valuation-unpriced-home-may",
+      "valuation-unpriced-home",
+      "2026-05-10",
+      20_000,
+      "GBP",
+      "2026-05-10T12:00:00Z"
+    );
+    database.prepare(`
       INSERT INTO investment_holdings (
         id, household_id, label, quantity, cost_basis_minor, currency_code, created_at_iso
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -273,7 +294,7 @@ async function openRatesWorkspace(
 }
 
 test.describe("local dated exchange-rate workflow", () => {
-  test("reports property, investment, and liability amounts using their valuation-date rates", async ({
+  test("reports valuation subtotals and marks missing currency rates incomplete", async ({
     databasePath,
     electronApp,
   }) => {
@@ -340,6 +361,38 @@ test.describe("local dated exchange-rate workflow", () => {
       await expect(mortgage).toContainText("SEK 300,00");
       await expect(mortgage).toContainText("NOK 315,00");
       await expect(mortgage).toContainText("Rate 1.05 NOK per SEK — 2026-05-01, Synthetic SEK May");
+      const missingRateProperty = report.getByRole("group", {
+        name: "Synthetic missing-rate property",
+      });
+      await expect(missingRateProperty).toContainText("GBP 200,00");
+      await expect(missingRateProperty).toContainText("NOK conversion incomplete");
+      const propertySubtotals = report.getByRole("group", { name: "Properties subtotals" });
+      await expect(propertySubtotals).toContainText("EUR 1 000,00");
+      await expect(propertySubtotals).toContainText("GBP 200,00");
+      await expect(propertySubtotals).toContainText("NOK 5 000,00");
+      await expect(report).toContainText("NOK subtotal incomplete. Missing rates: GBP.");
+      await expect(report).toContainText("Partial converted subtotal: NOK 16 250,00.");
+      const propertySubtotalValues = propertySubtotals.getByRole("definition");
+      await expect(propertySubtotalValues).toHaveCount(3);
+      const propertySubtotalValuesFit = (): Promise<boolean> =>
+        propertySubtotalValues.evaluateAll((definitions) =>
+          definitions.every((definition) => {
+            const row = definition.parentElement;
+            if (row === null) return false;
+            return row.scrollWidth <= row.clientWidth &&
+              definition.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1;
+          })
+        );
+      expect(await propertySubtotalValuesFit()).toBe(true);
+      const propertySubtotalValuesHaveInset = (): Promise<boolean> =>
+        propertySubtotalValues.evaluateAll((definitions) =>
+          definitions.every((definition) => {
+            const row = definition.parentElement;
+            if (row === null) return false;
+            return row.getBoundingClientRect().right - definition.getBoundingClientRect().right >= 12;
+          })
+        );
+      expect(await propertySubtotalValuesHaveInset()).toBe(true);
       await expect(report).toHaveScreenshot("valuation-report-desktop.png", {
         animations: "disabled",
         maxDiffPixelRatio: 0.01,
@@ -347,6 +400,8 @@ test.describe("local dated exchange-rate workflow", () => {
 
       await window.setViewportSize({ width: 390, height: 844 });
       await expect(report).toBeVisible();
+      expect(await propertySubtotalValuesFit()).toBe(true);
+      expect(await propertySubtotalValuesHaveInset()).toBe(true);
       await expect(report).toHaveScreenshot("valuation-report-mobile.png", {
         animations: "disabled",
         maxDiffPixelRatio: 0.01,
