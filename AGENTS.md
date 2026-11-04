@@ -22,6 +22,8 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 ## Build And Test Commands
 
 - Install: `npm install`
+- Desktop application: `npm start`
+- Browser preview with synthetic data: `npm run start:browser` (open `http://127.0.0.1:5173/`)
 - Typecheck: `npm run typecheck`
 - Unit tests: `npm run test:unit`
 - Unit coverage report: `npm run test:coverage:unit`

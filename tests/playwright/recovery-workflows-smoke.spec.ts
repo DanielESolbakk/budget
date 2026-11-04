@@ -220,10 +220,8 @@ test.describe("Recovery and portability renderer workflows", () => {
     expect(target!.height).toBeGreaterThanOrEqual(44);
   });
 
-  test("@visual Recent snapshots retains its visible disclosure cue in compact view", async ({ electronApp, recovery }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
-    });
+  test("@visual Recent snapshots retains its visible disclosure cue in compact view", async ({ window, recovery }) => {
+    await window.setViewportSize({ width: 390, height: 844 });
     await expect(recovery.recentSnapshotsSummary).toBeVisible();
     await expect(recovery.recentSnapshotsSummary).toHaveScreenshot("recent-snapshots-disclosure-compact.png", {
       animations: "disabled",

@@ -317,6 +317,24 @@ li::marker {
   background: var(--ink);
 }
 
+.browser-preview-banner {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.55rem 2rem;
+  background: var(--navigation);
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+}
+
+.browser-preview-banner strong {
+  color: var(--orange);
+  font-family: var(--display);
+}
+
 .app-frame {
   display: grid;
   width: 100%;

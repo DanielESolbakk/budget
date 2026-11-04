@@ -23,6 +23,14 @@ npm start
 
 This starts Electron in development mode and opens the desktop window. The ledger is stored locally under `data/local/`; transaction content is not sent to a server.
 
+### Start the browser preview
+
+```bash
+npm run start:browser
+```
+
+Open `http://127.0.0.1:5173/` in the VS Code integrated browser. This preview uses synthetic data; category targets are kept only in the browser session, and actions that require the desktop app are unavailable. The command binds to loopback and fails clearly if port 5173 is already in use.
+
 ### Bring in transactions
 
 Use **Import statement** in the application header from any workspace, or open **Activity** > **Import**, then use **New import**. Choose **Choose statement file** to select a local `.csv`, `.txt`, or digital `.pdf`; the app routes it to the matching import flow. Check the destination account and preview the dates, merchants, amounts, and any duplicate or excluded rows before confirming. Nothing is added from a statement until confirmation. The completion receipt names the source file and account and summarizes what was added or skipped. The original statement stays in its folder; the ledger stores imported rows and a history record, not a copy of the file.
