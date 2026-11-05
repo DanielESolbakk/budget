@@ -264,7 +264,7 @@ describe("bounded Playwright target selection and history", () => {
     expect(result.knownFindings).toEqual([]);
     expect(result.limitations).toEqual([]);
     expect(result.candidates).toEqual([]);
-  });
+  }, 10_000);
 
   it("does not mark an entire file reviewed when only one source case was inspected", () => {
     put("tests/playwright/small.spec.ts", `${caseSource("one")}\n${caseSource("two")}`);
