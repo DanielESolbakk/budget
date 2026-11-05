@@ -1,8 +1,8 @@
 ---
 name: review
 description: Perform a risk-first code review for this repository.
+disable-model-invocation: true
 ---
-
 Review the current change with a risk-first mindset.
 
 Focus on:
