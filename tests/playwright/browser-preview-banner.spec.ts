@@ -17,7 +17,9 @@ function relativeLuminance(color: string): number {
     throw new Error(`Expected an RGB color, received "${color}".`);
   }
 
-  const [red, green, blue] = channels.map(linearizeColorChannel);
+  const red = linearizeColorChannel(channels[0]);
+  const green = linearizeColorChannel(channels[1]);
+  const blue = linearizeColorChannel(channels[2]);
   return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 

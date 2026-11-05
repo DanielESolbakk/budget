@@ -20,12 +20,18 @@ import type {
   CategoryBreakdown,
   CurrencyCode,
   ExchangeRate,
+  HoldingRecord,
+  HoldingValuationSnapshot,
+  LoanBalanceSnapshot,
+  LoanRecord,
   MonthlyCategoryTarget,
   MonthlyCategoryTargetInput,
   MonthlyCategoryTargetQuery,
   MonthlyBreakdown,
   MonthlyTotal,
   MonthSeries,
+  PropertyRecord,
+  PropertyValuationSnapshot,
   TargetVsActualCategoryRow,
   TargetVsActualCategoryRows,
   Transaction,
@@ -111,13 +117,51 @@ export interface NokMonthlyReportTransaction {
   isScenarioRestatement: boolean;
 }
 
-export interface NokMonthlyReport {
-  yearMonth: string;
+export interface NokCurrencySubtotals {
   nativeSubtotals: Array<{ currencyCode: CurrencyCode; totalMinor: number }>;
   nokSubtotalMinor: number | null;
   partialNokSubtotalMinor: number;
   incompleteCurrencies: CurrencyCode[];
+}
+
+export interface NokMonthlyReport extends NokCurrencySubtotals {
+  yearMonth: string;
   transactions: NokMonthlyReportTransaction[];
+}
+
+export interface NokValuationReportInput {
+  valuationDateIso: string;
+  properties: readonly PropertyRecord[];
+  propertyValuations: readonly PropertyValuationSnapshot[];
+  holdings: readonly HoldingRecord[];
+  holdingValuations: readonly HoldingValuationSnapshot[];
+  loans: readonly LoanRecord[];
+  loanBalanceSnapshots: readonly LoanBalanceSnapshot[];
+  rates: readonly ExchangeRate[];
+  monthlyReferenceRateIds?: Readonly<Record<string, string>>;
+}
+
+export interface NokValuationReportEntry {
+  id: string;
+  label: string;
+  valuationDateIso: string;
+  nativeAmountMinor: number;
+  nativeCurrencyCode: CurrencyCode;
+  nokAmountMinor: number | null;
+  exchangeRate: ExchangeRate | null;
+  isEstimate: boolean;
+}
+
+export interface NokValuationReport {
+  valuationDateIso: string;
+  properties: NokValuationReportEntry[];
+  holdings: NokValuationReportEntry[];
+  liabilities: NokValuationReportEntry[];
+  subtotals: {
+    properties: NokCurrencySubtotals;
+    holdings: NokCurrencySubtotals;
+    liabilities: NokCurrencySubtotals;
+  };
 }
 
 type AccountCoverageQuerySource = Pick<
@@ -384,6 +428,53 @@ export function queryMonthlyTotals(
   return computeMonthlyTotals(transactions, yearMonth);
 }
 
+interface NokSubtotalEntry {
+  nativeAmountMinor: number;
+  nativeCurrencyCode: CurrencyCode;
+  nokAmountMinor: number | null;
+}
+
+function buildNokCurrencySubtotals(entries: readonly NokSubtotalEntry[]): NokCurrencySubtotals {
+  const nativeTotals = new Map<CurrencyCode, number>();
+  const incompleteCurrencies = new Set<CurrencyCode>();
+  let partialNokSubtotalMinor = 0;
+
+  for (const entry of entries) {
+    const nativeTotal =
+      (nativeTotals.get(entry.nativeCurrencyCode) ?? 0) + entry.nativeAmountMinor;
+    if (!Number.isSafeInteger(nativeTotal)) {
+      throw new RangeError(
+        `Native ${entry.nativeCurrencyCode} subtotal exceeds the safe integer range.`
+      );
+    }
+    nativeTotals.set(entry.nativeCurrencyCode, nativeTotal);
+
+    if (entry.nokAmountMinor === null) {
+      incompleteCurrencies.add(entry.nativeCurrencyCode);
+      continue;
+    }
+
+    partialNokSubtotalMinor += entry.nokAmountMinor;
+    if (!Number.isSafeInteger(partialNokSubtotalMinor)) {
+      throw new RangeError("NOK report subtotal exceeds the safe integer range.");
+    }
+  }
+
+  const nativeSubtotals = [...nativeTotals.entries()]
+    .map(([currencyCode, totalMinor]) => ({ currencyCode, totalMinor }))
+    .sort((left, right) => left.currencyCode.localeCompare(right.currencyCode));
+  const sortedIncompleteCurrencies = [...incompleteCurrencies].sort((left, right) =>
+    left.localeCompare(right)
+  );
+
+  return {
+    nativeSubtotals,
+    nokSubtotalMinor: sortedIncompleteCurrencies.length === 0 ? partialNokSubtotalMinor : null,
+    partialNokSubtotalMinor,
+    incompleteCurrencies: sortedIncompleteCurrencies,
+  };
+}
+
 /**
  * Returns a deterministic category breakdown for a selected calendar month.
  * Entries are ordered by totalMinor descending; the uncategorized entry (if any) appears last.
@@ -400,10 +491,7 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
       left.bookedAtIso.localeCompare(right.bookedAtIso) ||
       left.id.localeCompare(right.id)
     );
-  const nativeTotals = new Map<CurrencyCode, number>();
-  const incompleteCurrencies = new Set<CurrencyCode>();
   const transactions: NokMonthlyReportTransaction[] = [];
-  let partialNokSubtotalMinor = 0;
 
   for (const transaction of monthlyTransactions) {
     const account = accountsById.get(transaction.accountId);
@@ -411,14 +499,6 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
       throw new Error(`Account not found for transaction ${transaction.id}.`);
     }
     const currencyCode = transaction.currencyCode ?? account.currencyCode;
-    const nativeTotal = (nativeTotals.get(currencyCode) ?? 0) + transaction.amountMinor;
-    if (!Number.isSafeInteger(nativeTotal)) {
-      throw new RangeError(`Native ${currencyCode} subtotal exceeds the safe integer range.`);
-    }
-    nativeTotals.set(
-      currencyCode,
-      nativeTotal
-    );
     const conversion = convertCurrencyAmount({
       amountMinor: transaction.amountMinor,
       currencyCode,
@@ -431,15 +511,6 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
         ? {}
         : { useLatestRateScenario: input.useLatestRateScenario }),
     });
-
-    if (conversion.state === "incomplete") {
-      incompleteCurrencies.add(currencyCode);
-    } else {
-      partialNokSubtotalMinor += conversion.nokAmountMinor;
-      if (!Number.isSafeInteger(partialNokSubtotalMinor)) {
-        throw new RangeError("NOK report subtotal exceeds the safe integer range.");
-      }
-    }
 
     transactions.push({
       transactionId: transaction.id,
@@ -454,19 +525,11 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
     });
   }
 
-  const nativeSubtotals = [...nativeTotals.entries()]
-    .map(([currencyCode, totalMinor]) => ({ currencyCode, totalMinor }))
-    .sort((left, right) => left.currencyCode.localeCompare(right.currencyCode));
-  const sortedIncompleteCurrencies = [...incompleteCurrencies].sort((left, right) =>
-    left.localeCompare(right)
-  );
+  const subtotals = buildNokCurrencySubtotals(transactions);
 
   return {
     yearMonth: input.yearMonth,
-    nativeSubtotals,
-    nokSubtotalMinor: sortedIncompleteCurrencies.length === 0 ? partialNokSubtotalMinor : null,
-    partialNokSubtotalMinor,
-    incompleteCurrencies: sortedIncompleteCurrencies,
+    ...subtotals,
     transactions,
   };
 }
@@ -568,6 +631,164 @@ export function getMonthlyAttentionSummary(
       (row) => row.categoryId !== null && row.targetMinor !== null && row.deltaMinor !== null && row.deltaMinor > 0
     ).length,
   };
+}
+
+interface CorrectableValuationSnapshot {
+  id: string;
+  effectiveDateIso: string;
+  recordedAtIso: string;
+  correction?: { targetValuationId: string; action?: "supersede" | "void" };
+}
+
+function isIsoCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function latestValuationAtDate<T extends CorrectableValuationSnapshot>(
+  valuations: readonly T[],
+  valuationDateIso: string
+): T | undefined {
+  const correctedValuationIds = new Set(
+    valuations
+      .filter((valuation) => valuation.effectiveDateIso <= valuationDateIso)
+      .flatMap((valuation) =>
+      valuation.correction === undefined ? [] : [valuation.correction.targetValuationId]
+      )
+  );
+  return valuations
+    .filter((valuation) =>
+      valuation.effectiveDateIso <= valuationDateIso &&
+      valuation.correction?.action !== "void" &&
+      !correctedValuationIds.has(valuation.id)
+    )
+    .sort((left, right) =>
+      right.effectiveDateIso.localeCompare(left.effectiveDateIso) ||
+      right.recordedAtIso.localeCompare(left.recordedAtIso) ||
+      left.id.localeCompare(right.id)
+    )[0];
+}
+
+function buildNokValuationReportEntry(
+  input: {
+    id: string;
+    label: string;
+    valuationDateIso: string;
+    amountMinor: number;
+    currencyCode: CurrencyCode;
+  },
+  rates: readonly ExchangeRate[],
+  monthlyReferenceRateIds: Readonly<Record<string, string>> = {}
+): NokValuationReportEntry {
+  const conversion = convertCurrencyAmount({
+    amountMinor: input.amountMinor,
+    currencyCode: input.currencyCode,
+    asOfDateIso: input.valuationDateIso,
+    rates,
+    ...(monthlyReferenceRateIds[input.currencyCode] === undefined
+      ? {}
+      : { monthlyReferenceRateId: monthlyReferenceRateIds[input.currencyCode] }),
+  });
+  return {
+    id: input.id,
+    label: input.label,
+    valuationDateIso: input.valuationDateIso,
+    nativeAmountMinor: input.amountMinor,
+    nativeCurrencyCode: input.currencyCode,
+    nokAmountMinor: conversion.nokAmountMinor,
+    exchangeRate: conversion.exchangeRate,
+    isEstimate: conversion.isEstimate,
+  };
+}
+
+export function buildNokValuationReport(input: NokValuationReportInput): NokValuationReport {
+  if (!isIsoCalendarDate(input.valuationDateIso)) {
+    throw new Error(`Invalid NOK valuation report date: ${input.valuationDateIso}`);
+  }
+
+  const properties = input.properties
+    .flatMap((property) => {
+      const valuation = latestValuationAtDate(
+        input.propertyValuations.filter((candidate) => candidate.propertyId === property.id),
+        input.valuationDateIso
+      );
+      return valuation === undefined
+        ? []
+        : [buildNokValuationReportEntry({
+            id: property.id,
+            label: property.label,
+            valuationDateIso: valuation.effectiveDateIso,
+            amountMinor: valuation.amountMinor,
+            currencyCode: valuation.currencyCode,
+          }, input.rates, input.monthlyReferenceRateIds)];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const holdings = input.holdings
+    .flatMap((holding) => {
+      const valuation = latestValuationAtDate(
+        input.holdingValuations.filter((candidate) => candidate.holdingId === holding.id),
+        input.valuationDateIso
+      );
+      return valuation === undefined
+        ? []
+        : [buildNokValuationReportEntry({
+            id: holding.id,
+            label: holding.label,
+            valuationDateIso: valuation.effectiveDateIso,
+            amountMinor: valuation.amountMinor,
+            currencyCode: valuation.currencyCode,
+          }, input.rates, input.monthlyReferenceRateIds)];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const liabilities = input.loans
+    .flatMap((loan) => {
+      const balance = latestValuationAtDate(
+        input.loanBalanceSnapshots.filter((candidate) => candidate.loanId === loan.id),
+        input.valuationDateIso
+      );
+      return balance === undefined
+        ? []
+        : [buildNokValuationReportEntry({
+            id: loan.id,
+            label: loan.label,
+            valuationDateIso: balance.effectiveDateIso,
+            amountMinor: balance.amountMinor,
+            currencyCode: balance.currencyCode,
+          }, input.rates, input.monthlyReferenceRateIds)];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  return {
+    valuationDateIso: input.valuationDateIso,
+    properties,
+    holdings,
+    liabilities,
+    subtotals: {
+      properties: buildNokCurrencySubtotals(properties),
+      holdings: buildNokCurrencySubtotals(holdings),
+      liabilities: buildNokCurrencySubtotals(liabilities),
+    },
+  };
+}
+
+export function queryNokValuationReport(
+  database: Pick<LocalLedgerDatabase, "loadLedgerSnapshotData" | "listExchangeRates">,
+  valuationDateIso: string,
+  monthlyReferenceRateIds?: Readonly<Record<string, string>>
+): NokValuationReport {
+  const snapshot = database.loadLedgerSnapshotData();
+  return buildNokValuationReport({
+    valuationDateIso,
+    properties: snapshot.properties ?? [],
+    propertyValuations: snapshot.propertyValuations ?? [],
+    holdings: snapshot.holdings ?? [],
+    holdingValuations: snapshot.holdingValuations ?? [],
+    loans: snapshot.loanRecords ?? [],
+    loanBalanceSnapshots: snapshot.loanBalanceSnapshots ?? [],
+    rates: database.listExchangeRates(),
+    ...(monthlyReferenceRateIds === undefined ? {} : { monthlyReferenceRateIds }),
+  });
 }
 
 export function buildDashboardViewContract(input: DashboardViewContractInput): DashboardViewContract {

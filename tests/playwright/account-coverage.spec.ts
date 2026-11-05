@@ -446,7 +446,9 @@ test.describe("account statement coverage and checkpoints", () => {
       await expect(period.getByRole("button", { name: "Confirm coverage" })).toHaveCount(0);
       const checkpointForm = coverage.getByRole("form", { name: "Add balance checkpoint" });
       await expect(checkpointForm)
-        .toContainText("Then add dated opening and closing observations for this account.");
+        .toContainText(
+          "After confirming a statement period, add or review its opening and closing balances here."
+        );
 
       await coverage.getByLabel("Checkpoint date").fill("2026-03-01");
       await coverage.getByLabel("Checkpoint balance").fill("1000.00");
@@ -463,6 +465,8 @@ test.describe("account statement coverage and checkpoints", () => {
         .toContainText("Synthetic opening balance");
       await expect(period.getByRole("list", { name: "Balance checkpoint history" }))
         .toContainText("Synthetic closing balance");
+      await expect(period.getByRole("button", { name: "Add or review balance checkpoints" }))
+        .toHaveCount(0);
     } finally {
       await coverageApp.close();
     }
@@ -482,10 +486,16 @@ test.describe("account statement coverage and checkpoints", () => {
     await expect(period).toContainText("Unknown");
     await expect(period).toContainText("No booked transactions in this period");
     await expect(period).not.toContainText("Missing statement");
+    await expect(period).toContainText(
+      "This period is saved but unconfirmed. Confirm it only after checking the statement dates and source."
+    );
 
     await period.getByRole("button", { name: "Confirm coverage" }).click();
     await expect(period.getByRole("button", { name: "Confirm coverage" })).toHaveCount(0);
     await expect(period).toContainText("Coverage confirmed");
+    await expect(period).toContainText("Next: add or review balance checkpoints.");
+    await period.getByRole("button", { name: "Add or review balance checkpoints" }).click();
+    await expect(coverage.getByLabel("Checkpoint date")).toBeFocused();
   });
 
   test("shows the exact checkpoint difference and keeps history reachable on compact windows", async ({

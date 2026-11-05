@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures/electron.js";
 import { basename, resolve } from "node:path";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 import {
+  getMainProcessEntryPoint,
   installMainProcessNetworkProbe,
   mainProcessNetworkRequests,
 } from "./helpers/networkProbe.js";
@@ -25,7 +26,8 @@ test.describe("Main-process transaction privacy", () => {
     expect(missingProbeMessage).toContain("probe was not installed");
 
     await installMainProcessNetworkProbe(electronApp);
-    const blockedMessages = await electronApp.evaluate(async () => {
+    const entryPoint = await getMainProcessEntryPoint(electronApp);
+    const blockedMessages = await electronApp.evaluate(async (_electron, entryPoint: string) => {
       const capture = async (operation: () => unknown): Promise<string> => {
         try {
           await operation();
@@ -39,14 +41,7 @@ test.describe("Main-process transaction privacy", () => {
       const https = process.getBuiltinModule("node:https");
       const net = process.getBuiltinModule("node:net");
       const moduleApi = process.getBuiltinModule("node:module");
-      const entryPoint = process.argv[1];
-      if (
-        http === undefined ||
-        https === undefined ||
-        net === undefined ||
-        moduleApi === undefined ||
-        entryPoint === undefined
-      ) {
+      if (http === undefined || https === undefined || net === undefined || moduleApi === undefined) {
         throw new Error("A Node network module is unavailable in the Electron main process.");
       }
       const httpMessage = await capture(() => http.request("http://network-probe.invalid"));
@@ -68,7 +63,7 @@ test.describe("Main-process transaction privacy", () => {
         socketMessage,
         electronNetMessage,
       ];
-    });
+    }, entryPoint);
 
     expect(blockedMessages).toEqual([
       "Main-process fetch is blocked in local-only tests.",

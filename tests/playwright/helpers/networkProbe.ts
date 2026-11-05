@@ -1,5 +1,18 @@
 import type { ElectronApplication } from "@playwright/test";
 
+export async function getMainProcessEntryPoint(
+  electronApp: ElectronApplication
+): Promise<string> {
+  const processArguments = await electronApp.evaluate(() => process.argv);
+  const entryPoint = processArguments.slice(1).find((argument) =>
+    !argument.startsWith("-") && /\.(?:c|m)?js$/i.test(argument)
+  );
+  if (entryPoint === undefined) {
+    throw new Error("Unable to resolve Node modules for the main-process network probe.");
+  }
+  return entryPoint;
+}
+
 export async function installMainProcessFetchProbe(
   electronApp: ElectronApplication
 ): Promise<void> {
@@ -33,7 +46,8 @@ export async function mainProcessFetchRequests(
 export async function installMainProcessNetworkProbe(
   electronApp: ElectronApplication
 ): Promise<void> {
-  await electronApp.evaluate(() => {
+  const entryPoint = await getMainProcessEntryPoint(electronApp);
+  await electronApp.evaluate((_, entryPoint: string) => {
     const state = globalThis as typeof globalThis & { __budgetMainNetworkRequests?: string[] };
     state.__budgetMainNetworkRequests = [];
     const recordRequest = (transport: string, target: unknown): never => {
@@ -45,8 +59,7 @@ export async function installMainProcessNetworkProbe(
       throw new Error(`Main-process ${transport} is blocked in local-only tests.`);
     };
     const nodeModule = process.getBuiltinModule("node:module");
-    const entryPoint = process.argv[1];
-    if (nodeModule === undefined || entryPoint === undefined) {
+    if (nodeModule === undefined) {
       throw new Error("Unable to resolve Node modules for the main-process network probe.");
     }
     const requireMain = nodeModule.createRequire(entryPoint);
@@ -72,7 +85,7 @@ export async function installMainProcessNetworkProbe(
     const electronNet = (requireMain("electron") as typeof import("electron")).net;
     electronNet.request = ((options: unknown) =>
       recordRequest("electron.net.request", options)) as typeof electronNet.request;
-  });
+  }, entryPoint);
 }
 
 export async function mainProcessNetworkRequests(

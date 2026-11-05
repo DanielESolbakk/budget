@@ -19,6 +19,7 @@ import {
   createMonthlyCategoryTargetStore,
   queryAccountCoverageAssessment,
   queryHouseholdDashboardData,
+  queryNokValuationReport,
   reloadMonthlyCategoryTargets,
   type DashboardData,
   type DashboardViewContract,
@@ -1151,6 +1152,21 @@ app.whenReady().then(async () => {
         ? {}
         : { useLatestRateScenario: record.useLatestRateScenario }),
     });
+  });
+
+  ipcMain.handle("exchangeRate:valuationReport", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    if (typeof input !== "object" || input === null) {
+      throw new Error("Valuation report request must be an object.");
+    }
+    const record = input as Record<string, unknown>;
+    const valuationDateIso = parseNonEmptyString(record.valuationDateIso, "valuationDateIso");
+    const monthlyReferenceRateIds = parseMonthlyReferenceRateIds(record.monthlyReferenceRateIds);
+    return queryNokValuationReport(
+      localLedgerDatabase,
+      valuationDateIso,
+      monthlyReferenceRateIds
+    );
   });
 
   ipcMain.handle("accountCoverage:periods:list", (event, accountId: unknown) => {

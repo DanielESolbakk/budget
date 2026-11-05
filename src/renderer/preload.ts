@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DashboardData, DashboardViewContract, NokMonthlyReport } from "../app/dashboardApi.js";
+import type {
+  DashboardData,
+  DashboardViewContract,
+  NokMonthlyReport,
+  NokValuationReport,
+} from "../app/dashboardApi.js";
 import type { ExportCsvSummary } from "../app/exportCsv.js";
 import type {
   CsvImportPreviewResponse,
@@ -187,6 +192,10 @@ export interface ExchangeRatesApi {
     monthlyReferenceRateIds?: Record<string, string>;
     useLatestRateScenario?: boolean;
   }) => Promise<NokMonthlyReport>;
+  getValuationReport: (input: {
+    valuationDateIso: string;
+    monthlyReferenceRateIds?: Record<string, string>;
+  }) => Promise<NokValuationReport>;
 }
 
 export interface PendingApi {
@@ -403,6 +412,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("exchangeRate:importFromFile"),
     getMonthlyReport: (input): Promise<NokMonthlyReport> =>
       ipcRenderer.invoke("exchangeRate:monthlyReport", input),
+    getValuationReport: (input): Promise<NokValuationReport> =>
+      ipcRenderer.invoke("exchangeRate:valuationReport", input),
   },
   propertyRegistry: {
     list: (): Promise<PropertyWithValuations[]> =>
