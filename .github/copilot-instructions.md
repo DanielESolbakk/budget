@@ -157,6 +157,7 @@ Avoid inventing near-duplicates for the same concept.
 ## Available Tooling
 
 - Prefer GitHub MCP for issue and pull-request operations. Check actual tool availability and authentication; do not assume Git CLI or Actions tools are unavailable. Local Git operations do not bypass server-side branch protection.
+- Before batching GitHub MCP reads, wait for one minimal read to complete successfully. If a call returns `MCP authentication required`, an OAuth redirect/callback error, or another authentication failure, stop launching calls to that server and do not retry through another GitHub MCP alias. Report the blocker once; resume only after the user confirms authentication is fixed. Treat an explicitly reported unresolved failure as still active in later sessions.
 
 ## Agent Instruction Entry Points
 

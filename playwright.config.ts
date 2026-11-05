@@ -4,11 +4,10 @@ const outputDir = process.env["PLAYWRIGHT_OUTPUT_DIR"] ?? "test-results";
 const reportDir = process.env["PLAYWRIGHT_REPORT_DIR"] ?? "playwright-report";
 
 /**
- * Playwright configuration for Electron runtime smoke tests.
+ * Playwright configuration for Electron runtime and browser preview tests.
  *
- * These tests launch the built Electron application (from `out/`) and assert
- * on window startup, root render, preload bridge availability, and forecast
- * section output.  Run `npm run build` before executing these tests.
+ * Electron tests launch the built application (from `out/`); browser preview tests
+ * use the local Vite server.
  *
  * Framework boundaries:
  *   Vitest  — unit, integration, and Vitest e2e smoke tests (no Electron binary required)
@@ -31,7 +30,13 @@ export default defineConfig({
     ...(process.env["CI"] ? [["github"] as ["github"]] : []),
   ],
   use: {
+    baseURL: "http://127.0.0.1:5173",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+  },
+  webServer: {
+    command: "npm run start:browser -- --host 127.0.0.1",
+    url: "http://127.0.0.1:5173",
+    reuseExistingServer: !process.env["CI"],
   },
 });
