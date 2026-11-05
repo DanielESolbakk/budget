@@ -326,12 +326,12 @@ li::marker {
   border-bottom: 1px solid var(--line);
   padding: 0.55rem 2rem;
   background: var(--navigation);
-  color: var(--paper-muted);
+  color: var(--navigation-text);
   font-size: 0.8rem;
 }
 
 .browser-preview-banner strong {
-  color: var(--orange);
+  color: var(--orange-soft);
   font-family: var(--display);
 }
 

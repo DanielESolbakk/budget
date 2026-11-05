@@ -417,6 +417,83 @@ test.describe("local dated exchange-rate workflow", () => {
     }
   });
 
+  test("lets users select a monthly estimate in the valuation report", async ({
+    databasePath,
+    electronApp,
+  }) => {
+    const {
+      ratesApp,
+      window,
+      rates,
+      rateCurrency,
+      rateAmount,
+      rateDate,
+      rateType,
+      rateSource,
+      saveRateButton,
+    } = await openRatesWorkspace(databasePath, electronApp, true);
+
+    try {
+      const rateEntries = [
+        { currency: "EUR", amount: "11.25", date: "2026-04-01", kind: "dated", source: "Synthetic EUR April" },
+        { currency: "USD", amount: "11.00", date: "2026-05-01", kind: "dated", source: "Synthetic USD May" },
+        { currency: "SEK", amount: "1.05", date: "2026-05-01", kind: "dated", source: "Synthetic SEK May" },
+        {
+          currency: "GBP",
+          amount: "1.25",
+          date: "2026-05-01",
+          kind: "monthly-reference",
+          source: "Synthetic GBP monthly reference",
+        },
+      ];
+      for (const entry of rateEntries) {
+        await rateCurrency.selectOption(entry.currency);
+        await rateAmount.fill(entry.amount);
+        await rateDate.fill(entry.date);
+        await rateType.selectOption(entry.kind);
+        await rateSource.fill(entry.source);
+        await saveRateButton.click();
+        await expect(rates.getByText(entry.source, { exact: true })).toBeVisible();
+      }
+
+      const valuationReportTab = rates.getByRole("button", {
+        name: "Valuation report",
+        exact: true,
+      });
+      await valuationReportTab.click();
+      const estimate = rates.getByLabel("Use monthly estimate for GBP (2026-05-01)");
+      await expect(estimate).toBeVisible();
+
+      const reportForm = rates.getByRole("form", { name: "Valuation report request" });
+      await reportForm.getByLabel("Valuation date").fill("2026-05-31");
+      await reportForm.getByRole("button", { name: "Load valuation report" }).click();
+      const report = rates.getByRole("region", { name: "Converted valuation report" });
+      await expect(report).toContainText(
+        "Some NOK conversions are incomplete. Add a dated local rate, or select a monthly reference estimate above for the affected currency."
+      );
+
+      await estimate.check();
+      await reportForm.getByRole("button", { name: "Load valuation report" }).click();
+      const property = report.getByRole("group", { name: "Synthetic missing-rate property" });
+      await expect(property).toContainText("GBP 200,00");
+      await expect(property).toContainText("NOK 250,00");
+      await expect(property)
+        .toContainText("Rate 1.25 NOK per GBP — 2026-05-01, Synthetic GBP monthly reference");
+      await expect(property).toContainText("estimate");
+      await expect(report).toContainText("NOK subtotal: NOK 16 500,00");
+      await expect(report).not.toContainText("NOK subtotal incomplete.");
+
+      await window.setViewportSize({ width: 390, height: 844 });
+      await expect(estimate).toBeVisible();
+      const horizontalOverflow = await window.evaluate(() =>
+        document.documentElement.scrollWidth > document.documentElement.clientWidth
+      );
+      expect(horizontalOverflow).toBe(false);
+    } finally {
+      await ratesApp.close();
+    }
+  });
+
   test("reports local rate provenance and supports keyboard entry at desktop and compact widths", async ({
     databasePath,
     electronApp,

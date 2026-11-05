@@ -349,7 +349,8 @@ export function ExchangeRatesSection({
       </section>
       )}
 
-      {activeView === "rate-book" && monthlyReferenceRates.length > 0 && (
+      {(activeView === "rate-book" || activeView === "valuation-report") &&
+        monthlyReferenceRates.length > 0 && (
         <section className="monthly-reference-selection" aria-label="Monthly reference rate selection">
           <div className="exchange-rate-subheading">
             <h3>Monthly reference estimates</h3>
@@ -526,7 +527,9 @@ export function ExchangeRatesSection({
               </div>
               {hasIncompleteValuations && (
                 <p className="converted-report-status is-incomplete" role="status">
-                  Some NOK conversions are incomplete. Add a dated local rate before relying on those values.
+                  {monthlyReferenceRates.length > 0
+                    ? "Some NOK conversions are incomplete. Add a dated local rate, or select a monthly reference estimate above for the affected currency."
+                    : "Some NOK conversions are incomplete. Add a dated local rate, or record a monthly reference estimate in the Rate Book for the affected currency."}
                 </p>
               )}
               {valuationSections.length === 0 ? (
