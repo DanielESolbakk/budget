@@ -882,7 +882,6 @@ export function RecurringCommitmentsSection({
           event.preventDefault();
           setEndingCommitment(null);
         }}
-        onClose={() => setEndingCommitment(null)}
       >
         {endingCommitment !== null && (
           <>
