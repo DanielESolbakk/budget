@@ -14,6 +14,16 @@ function formatMinor(minor: number): string {
   return nokCurrencyFormatter.format(minor / MINOR_UNITS_PER_NOK);
 }
 
+function CashPlanningNavigation(): React.JSX.Element {
+  return (
+    <nav className="cash-planning-shortcuts" aria-label="Cash planning">
+      <strong>Cash planning</strong>
+      <a href="#spendable-cash">Estimate spendable cash</a>
+      <a href="#cashflow-scenarios">Compare cashflow scenarios</a>
+    </nav>
+  );
+}
+
 export interface MonthlyTotalsSectionProps {
   viewContract: DashboardViewContract;
   refreshKey: number;
@@ -37,6 +47,7 @@ export function MonthlyTotalsSection({ viewContract, refreshKey }: MonthlyTotals
         <h2>Monthly Totals</h2>
         <p>No transactions for this month.</p>
         <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
+        <CashPlanningNavigation />
       </section>
     );
   }
@@ -63,11 +74,15 @@ export function MonthlyTotalsSection({ viewContract, refreshKey }: MonthlyTotals
           <dt>Expenses</dt>
           <dd aria-label="Expenses">{formatMinor(monthlyTotals.expenseMinor)}</dd>
         </div>
-        <div className="monthly-total" role="group" aria-label="Net total">
-          <dt>Net</dt>
-          <dd aria-label="Net">{formatMinor(monthlyTotals.netMinor)}</dd>
+        <div className="monthly-total" role="group" aria-label="Monthly net total">
+          <dt>Monthly net</dt>
+          <dd aria-label="Monthly net">{formatMinor(monthlyTotals.netMinor)}</dd>
         </div>
       </dl>
+      <p className="monthly-net-meaning">
+        Monthly net is this month&apos;s income minus expenses; it is not spendable cash until your next income.
+      </p>
+      <CashPlanningNavigation />
       <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
       {currencyReport?.nativeSubtotals.some((subtotal) => subtotal.currencyCode !== "NOK") && (
         <div className="native-currency-subtotals">

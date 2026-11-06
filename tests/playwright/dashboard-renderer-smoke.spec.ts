@@ -68,8 +68,154 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyTotal("Income").getByLabel("Income", { exact: true })).toBeVisible();
     await expect(dashboard.monthlyTotal("Expenses")).toContainText("Expenses");
     await expect(dashboard.monthlyTotal("Expenses").getByLabel("Expenses", { exact: true })).toBeVisible();
-    await expect(dashboard.monthlyTotal("Net")).toContainText("Net");
-    await expect(dashboard.monthlyTotal("Net").getByLabel("Net", { exact: true })).toBeVisible();
+    await expect(dashboard.monthlyTotal("Monthly net")).toContainText("Monthly net");
+    await expect(dashboard.monthlyTotal("Monthly net").getByLabel("Monthly net", { exact: true })).toBeVisible();
+  });
+
+  test("monthly net is distinct from spendable cash and links to both planning tools", async ({
+    dashboard,
+    window,
+  }) => {
+    await expect(dashboard.monthlyTotal("Monthly net")).toBeVisible();
+    await expect(dashboard.monthlyTotalsSection).toContainText(/monthly net is this month's income minus expenses/i);
+    await expect(dashboard.monthlyTotalsSection).toContainText(/not spendable cash until your next income/i);
+
+    const planningLinks = window.getByRole("navigation", { name: "Cash planning" });
+    const spendableLink = planningLinks.getByRole("link", {
+      name: "Estimate spendable cash",
+      exact: true,
+    });
+    await expect(spendableLink).toHaveAttribute("href", "#spendable-cash");
+    await expect(planningLinks.getByRole("link", {
+      name: "Compare cashflow scenarios",
+      exact: true,
+    })).toHaveAttribute("href", "#cashflow-scenarios");
+
+    await spendableLink.click();
+    await expect(window).toHaveURL(/#spendable-cash$/);
+    await expect(dashboard.spendableCashSection).toBeInViewport();
+  });
+
+  test("cash-planning inputs explain system date and decimal formats", async ({ window }) => {
+    const spendableForm = window.getByRole("form", { name: "Spendable cash estimate inputs" });
+    const nextIncomeDate = spendableForm.getByLabel("Next income date");
+    const reserve = spendableForm.getByLabel("Reserve (NOK)");
+    await expect(nextIncomeDate).toHaveAttribute("lang", "nb-NO");
+    await expect(reserve).toHaveAttribute("lang", "nb-NO");
+    await expect(spendableForm).toContainText(
+      /date field follows your system order; enter amounts using the decimal separator shown \(1 234,50 or 1234\.50\).*norwegian nok formatting/i
+    );
+
+    const scenarioForm = window.getByRole("form", { name: "Scenario assumption inputs" });
+    await expect(scenarioForm.getByLabel("Scenario amount")).toHaveAttribute("lang", "nb-NO");
+    await expect(scenarioForm.getByLabel("Scenario start date")).toHaveAttribute("lang", "nb-NO");
+    await expect(scenarioForm).toContainText(
+      /date field follows your system order; enter amounts using the decimal separator shown \(1 234,50 or 1234\.50\).*norwegian nok formatting/i
+    );
+  });
+
+  test("commitment dates explain their different schedule roles and disclose the optional end date", async ({
+    window,
+  }) => {
+    const form = window.getByRole("form", { name: "Recurring commitment form" });
+    const scheduleDates = form.getByRole("group", { name: "Schedule dates" });
+    await expect(scheduleDates).toContainText(
+      /date the first bill is expected.*it can differ from when the commitment becomes active.*date field follows your system order/i
+    );
+    await expect(scheduleDates.getByLabel("First due date")).toHaveAttribute("lang", "nb-NO");
+    await expect(scheduleDates.getByLabel("Active from")).toHaveAttribute("lang", "nb-NO");
+
+    const endDateDisclosure = form.getByText("Set an end date (optional)", { exact: true });
+    const activeUntil = form.getByLabel("Active until (optional)");
+    await expect(endDateDisclosure).toBeVisible();
+    await expect(activeUntil).toBeHidden();
+    await endDateDisclosure.click();
+    await expect(activeUntil).toBeVisible();
+  });
+
+  test("editing a commitment with an end date opens that optional field", async ({ window }) => {
+    const form = window.getByRole("form", { name: "Recurring commitment form" });
+    await form.getByLabel("Commitment description").fill("Synthetic end-dated commitment");
+    await form.getByLabel("Commitment amount or estimate").fill("129,00");
+    await form.getByText("Set an end date (optional)", { exact: true }).click();
+    await form.getByLabel("Active until (optional)").fill("2099-12-31");
+    await form.getByRole("button", { name: "Save as suggestion" }).click();
+
+    const commitment = window.getByRole("group", {
+      name: "Commitment Synthetic end-dated commitment",
+    });
+    await expect(commitment).toContainText("Suggested");
+    await commitment.getByRole("button", { name: "Edit commitment" }).click();
+
+    const activeUntil = form.getByLabel("Active until (optional)");
+    await expect(activeUntil).toBeVisible();
+    await expect(activeUntil).toHaveValue("2099-12-31");
+  });
+
+  test("cashflow baseline detail is available on demand", async ({ dashboard }) => {
+    const baselineExplanation = dashboard.cashflowScenarioSection.getByText(
+      "How the baseline is calculated",
+      { exact: true }
+    );
+    const detail = dashboard.cashflowScenarioSection.getByText(
+      /confirmed commitments with future occurrences are included in both paths/i
+    );
+    await expect(baselineExplanation).toBeVisible();
+    await expect(detail).toBeHidden();
+    await baselineExplanation.click();
+    await expect(detail).toBeVisible();
+  });
+
+  test("cash planning grid follows DOM order at desktop and intermediate widths", async ({
+    dashboard,
+    electronApp,
+    window,
+  }) => {
+    const visuallyPrecedes = (
+      first: { x: number; y: number },
+      second: { x: number; y: number }
+    ): boolean => first.y < second.y || (Math.abs(first.y - second.y) < 1 && first.x < second.x);
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
+    });
+    const categoryAtDesktop = await dashboard.categoryBreakdownSection.boundingBox();
+    const targetAtDesktop = await dashboard.targetVsActualSection.boundingBox();
+    expect(categoryAtDesktop).not.toBeNull();
+    expect(targetAtDesktop).not.toBeNull();
+    expect(visuallyPrecedes(categoryAtDesktop!, targetAtDesktop!)).toBe(true);
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(934, 768);
+    });
+    const targetEntryAtIntermediate = await dashboard.categoryTargetEntrySection.boundingBox();
+    const forecastAtIntermediate = await window.getByRole("region", { name: "Forecast" }).boundingBox();
+    expect(targetEntryAtIntermediate).not.toBeNull();
+    expect(forecastAtIntermediate).not.toBeNull();
+    expect(visuallyPrecedes(targetEntryAtIntermediate!, forecastAtIntermediate!)).toBe(true);
+  });
+
+  test("dashboard section headings remain distinct from their nested headings", async ({
+    dashboard,
+    electronApp,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(934, 768);
+    });
+
+    const categoryHeading = dashboard.categoryBreakdownHeading;
+    const spendingHeading = dashboard.categoryBreakdownSection.getByRole("heading", {
+      name: "Spending by category",
+      exact: true,
+    });
+    const categoryHeadingSize = await categoryHeading.evaluate((element) =>
+      Number.parseFloat(window.getComputedStyle(element).fontSize)
+    );
+    const spendingHeadingSize = await spendingHeading.evaluate((element) =>
+      Number.parseFloat(window.getComputedStyle(element).fontSize)
+    );
+
+    expect(categoryHeadingSize).toBeGreaterThanOrEqual(spendingHeadingSize * 1.25);
   });
 
   test("category breakdown uses registered category display names", async ({ dashboard }) => {

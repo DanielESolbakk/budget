@@ -182,9 +182,11 @@ export function SpendableCashSection({
 
   return (
     <section
+      id="spendable-cash"
       className="spendable-cash-section"
       aria-label="Spendable cash until income"
       aria-busy={isLoading || isSubmitting}
+      tabIndex={-1}
     >
       <header className="spendable-cash-heading">
         <div>
@@ -206,6 +208,9 @@ export function SpendableCashSection({
             aria-label="Spendable cash estimate inputs"
             onSubmit={(event) => void submitEstimate(event)}
           >
+            <p id="spendable-locale-entry-help" className="field-help">
+              The date field follows your system order; enter amounts using the decimal separator shown (1 234,50 or 1234.50). Results use Norwegian NOK formatting.
+            </p>
             <fieldset className="spendable-cash-account-list">
               <legend>Liquid accounts</legend>
               {accounts.length === 0 ? (
@@ -228,6 +233,8 @@ export function SpendableCashSection({
                 <span>Next income date</span>
                 <input
                   type="date"
+                  lang="nb-NO"
+                  aria-describedby="spendable-locale-entry-help"
                   value={nextIncomeDateIso}
                   onChange={(event) => {
                     setNextIncomeDateIso(event.target.value);
@@ -241,6 +248,8 @@ export function SpendableCashSection({
                 <span>Reserve (NOK)</span>
                 <input
                   type="number"
+                  lang="nb-NO"
+                  aria-describedby="spendable-locale-entry-help"
                   inputMode="decimal"
                   min="0"
                   step="0.01"

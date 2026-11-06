@@ -153,6 +153,7 @@ export function RecurringCommitmentsSection({
   const [schedule, setSchedule] = React.useState<RecurringCommitmentSchedule | null>(null);
   const [draft, setDraft] = React.useState<CommitmentDraft>(emptyDraft);
   const [editingCommitment, setEditingCommitment] = React.useState<RecurringCommitment | null>(null);
+  const [isEndDateOpen, setIsEndDateOpen] = React.useState(false);
   const [selectedPayments, setSelectedPayments] = React.useState<Record<string, string>>({});
   const [paymentSearches, setPaymentSearches] = React.useState<Record<string, string>>({});
   const [endingCommitment, setEndingCommitment] = React.useState<RecurringCommitment | null>(null);
@@ -228,6 +229,7 @@ export function RecurringCommitmentsSection({
 
   function beginEdit(commitment: RecurringCommitment): void {
     setEditingCommitment(commitment);
+    setIsEndDateOpen(Boolean(commitment.activeUntilIso));
     setDraft({
       description: commitment.description,
       currencyCode: commitment.currencyCode,
@@ -244,6 +246,7 @@ export function RecurringCommitmentsSection({
 
   function cancelEdit(): void {
     setEditingCommitment(null);
+    setIsEndDateOpen(false);
     setDraft(emptyDraft());
     setError(null);
     setStatusMessage(null);
@@ -282,6 +285,7 @@ export function RecurringCommitmentsSection({
     );
     if (saved) {
       setEditingCommitment(null);
+      setIsEndDateOpen(false);
       setDraft(emptyDraft());
     }
   }
@@ -462,13 +466,18 @@ export function RecurringCommitmentsSection({
               <span>Commitment amount or estimate</span>
               <input
                 type="text"
+                lang="nb-NO"
                 inputMode="decimal"
                 value={draft.amount}
                 onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
                 required={!draft.isVariable}
                 placeholder="129,00"
                 disabled={editingCommitment !== null && editingCommitment.status !== "suggested"}
+                aria-describedby="recurring-amount-help"
               />
+              <span id="recurring-amount-help" className="field-help">
+                Use comma decimals, for example 129,00.
+              </span>
             </label>
             <label className="recurring-variable-field">
               <input
@@ -493,36 +502,51 @@ export function RecurringCommitmentsSection({
                 <option value="annual">Annual</option>
               </select>
             </label>
-            <label className="recurring-field">
-              <span>First due date</span>
-              <input
-                type="date"
-                value={draft.firstDueDateIso}
-                onChange={(event) => setDraft({ ...draft, firstDueDateIso: event.target.value })}
-                aria-describedby="recurring-first-due-help"
-                required
-              />
-              <span id="recurring-first-due-help" className="field-help">
-                Date the first bill is expected. It can differ from when the commitment becomes active.
-              </span>
-            </label>
-            <label className="recurring-field">
-              <span>Active from</span>
-              <input
-                type="date"
-                value={draft.activeFromIso}
-                onChange={(event) => setDraft({ ...draft, activeFromIso: event.target.value })}
-                required
-              />
-            </label>
-            <label className="recurring-field">
-              <span>Active until (optional)</span>
-              <input
-                type="date"
-                value={draft.activeUntilIso}
-                onChange={(event) => setDraft({ ...draft, activeUntilIso: event.target.value })}
-              />
-            </label>
+            <fieldset className="recurring-schedule-fields">
+              <legend>Schedule dates</legend>
+              <p id="recurring-schedule-help" className="field-help">
+                Date the first bill is expected. It can differ from when the commitment becomes active. The date field follows your system order.
+              </p>
+              <label className="recurring-field">
+                <span>First due date</span>
+                <input
+                  type="date"
+                  lang="nb-NO"
+                  value={draft.firstDueDateIso}
+                  onChange={(event) => setDraft({ ...draft, firstDueDateIso: event.target.value })}
+                  aria-describedby="recurring-schedule-help"
+                  required
+                />
+              </label>
+              <label className="recurring-field">
+                <span>Active from</span>
+                <input
+                  type="date"
+                  lang="nb-NO"
+                  value={draft.activeFromIso}
+                  onChange={(event) => setDraft({ ...draft, activeFromIso: event.target.value })}
+                  aria-describedby="recurring-schedule-help"
+                  required
+                />
+              </label>
+            </fieldset>
+            <details
+              className="recurring-end-date"
+              open={isEndDateOpen}
+              onToggle={(event) => setIsEndDateOpen(event.currentTarget.open)}
+            >
+              <summary>Set an end date (optional)</summary>
+              <label className="recurring-field">
+                <span>Active until (optional)</span>
+                <input
+                  type="date"
+                  lang="nb-NO"
+                  value={draft.activeUntilIso}
+                  onChange={(event) => setDraft({ ...draft, activeUntilIso: event.target.value })}
+                  aria-describedby="recurring-schedule-help"
+                />
+              </label>
+            </details>
           </div>
           {editingCommitment !== null && editingCommitment.status !== "suggested" && (
             <p className="field-help">
