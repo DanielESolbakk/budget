@@ -323,6 +323,53 @@ describe("calculateSpendableUntilIncome", () => {
     });
   });
 
+  it("counts a matched pending debit when the booked transaction falls after the income date", () => {
+    const result = calculateSpendableUntilIncome({
+      accounts: [account],
+      selectedAccountIds: [account.id],
+      balances: [balance],
+      transactions: [{
+        id: "transaction-electricity",
+        householdId: account.householdId,
+        accountId: account.id,
+        bookedAtIso: "2026-05-21T09:00:00.000Z",
+        amountMinor: -40_000,
+        merchantRaw: "Synthetic electricity",
+        currencyCode: "NOK",
+      }],
+      pendingObservations: [{
+        id: "pending-electricity",
+        householdId: account.householdId,
+        accountId: account.id,
+        transactionDateIso: "2026-05-10",
+        amountMinor: -40_000,
+        merchantRaw: "Synthetic electricity",
+        sourceRowIndex: 1,
+        currencyCode: "NOK",
+        sourceType: "csv",
+        status: "confirmed",
+        sourceStatus: "Bekreftet",
+        reconciledTransactionId: "transaction-electricity",
+      }],
+      commitments: [],
+      rates: [],
+      evaluatedAtIso: "2026-05-05T00:00:00.000Z",
+      nextIncomeDateIso: "2026-05-20",
+      reserveMinor: 50_000,
+    });
+
+    expect(result).toMatchObject({
+      state: "complete",
+      lowestProjectedCashNokMinor: 460_000,
+      spendableCashNokMinor: 410_000,
+      lineItems: [expect.objectContaining({
+        id: "pending-electricity",
+        kind: "pending-debit",
+        amountNokMinor: -40_000,
+      })],
+    });
+  });
+
   it("does not treat an incoming transaction as a reconciled pending debit", () => {
     const result = calculateSpendableUntilIncome({
       accounts: [account],
