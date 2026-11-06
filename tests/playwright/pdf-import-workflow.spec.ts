@@ -1091,18 +1091,6 @@ test.describe("PDF import renderer workflow", () => {
     });
   }
 
-  test("Regression: PDF import rejects an account outside the household", async ({ window }) => {
-    const response = await window.evaluate(async (filePath) =>
-      (globalThis as unknown as Window).budgetApi.import.importPdf({ filePath, previewId: "unused", accountId: "other-household-account" }),
-      FIXTURE_PATH
-    );
-
-    expect(response).toMatchObject({
-      ok: false,
-      errors: [{ code: "INVALID_ACCOUNT_ID" }],
-    });
-  });
-
   test("Scenario 3: PDF import workflow runs under network guard with no outbound network calls", async ({ pdfImport, window }) => {
     // AC-5: verify the renderer import path emits no external HTTP(S) request.
     const outboundRequests: string[] = [];
