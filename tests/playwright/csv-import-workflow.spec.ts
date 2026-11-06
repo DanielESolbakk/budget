@@ -26,6 +26,7 @@ import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlit
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 
 const FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv");
+const PDF_FIXTURE_PATH = resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt");
 const temporaryDirectories = new Set<string>();
 
 function createTemporaryDirectory(): string {
@@ -866,15 +867,29 @@ test.describe("CSV import renderer workflow", () => {
     await expect(dashboard.netValue).toHaveText(beforeNetText);
   });
 
-  test("Regression: CSV import rejects an account outside the household", async ({ window }) => {
-    const response = await window.evaluate(async (filePath) =>
-      (globalThis as unknown as Window).budgetApi.import.importCsv({ filePath, previewId: "unused", accountId: "other-household-account" }),
-      FIXTURE_PATH
-    );
+  test("Regression: CSV and PDF imports reject accounts outside the household", async ({ window }) => {
+    const responses = await window.evaluate(async ({ csvFilePath, pdfFilePath }) => {
+      const budgetApi = (globalThis as unknown as Window).budgetApi;
+      const csvResponse = await budgetApi.import.importCsv({
+        filePath: csvFilePath,
+        previewId: "unused",
+        accountId: "other-household-account",
+      });
+      const pdfResponse = await budgetApi.import.importPdf({
+        filePath: pdfFilePath,
+        previewId: "unused",
+        accountId: "other-household-account",
+      });
+      return { csvResponse, pdfResponse };
+    }, { csvFilePath: FIXTURE_PATH, pdfFilePath: PDF_FIXTURE_PATH });
 
-    expect(response).toMatchObject({
+    expect(responses.csvResponse).toMatchObject({
       ok: false,
       errors: [{ codes: ["INVALID_ACCOUNT_ID"] }],
+    });
+    expect(responses.pdfResponse).toMatchObject({
+      ok: false,
+      errors: [{ code: "INVALID_ACCOUNT_ID" }],
     });
   });
 
