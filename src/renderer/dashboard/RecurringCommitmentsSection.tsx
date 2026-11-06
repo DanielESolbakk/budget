@@ -505,7 +505,7 @@ export function RecurringCommitmentsSection({
             <fieldset className="recurring-schedule-fields">
               <legend>Schedule dates</legend>
               <p id="recurring-schedule-help" className="field-help">
-                The date field follows your system order. First due is the next expected bill; Active from marks when it joins your schedule.
+                Date the first bill is expected. It can differ from when the commitment becomes active. The date field follows your system order.
               </p>
               <label className="recurring-field">
                 <span>First due date</span>

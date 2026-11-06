@@ -120,7 +120,7 @@ test.describe("Dashboard renderer smoke", () => {
     const form = window.getByRole("form", { name: "Recurring commitment form" });
     const scheduleDates = form.getByRole("group", { name: "Schedule dates" });
     await expect(scheduleDates).toContainText(
-      /date field follows your system order.*First due is the next expected bill; Active from marks when it joins your schedule/i
+      /date the first bill is expected.*it can differ from when the commitment becomes active.*date field follows your system order/i
     );
     await expect(scheduleDates.getByLabel("First due date")).toHaveAttribute("lang", "nb-NO");
     await expect(scheduleDates.getByLabel("Active from")).toHaveAttribute("lang", "nb-NO");

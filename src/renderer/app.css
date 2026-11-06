@@ -2589,7 +2589,7 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
 
 .review-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 1.5fr);
   grid-template-areas:
     "totals totals"
     "attention attention"
