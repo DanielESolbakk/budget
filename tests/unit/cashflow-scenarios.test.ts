@@ -277,6 +277,42 @@ describe("cashflow scenario calculation", () => {
     })).toThrow("durationMonths must be between 1 and 3.");
   });
 
+  it.each([
+    ["income change", {
+      id: "past-income-change",
+      kind: "income-change",
+      direction: "reduction",
+      amountMinor: 5_000,
+      currencyCode: "NOK",
+      startDateIso: "2026-06-14",
+      durationMonths: 1,
+    }],
+    ["recurring expense", {
+      id: "past-recurring-expense",
+      kind: "recurring-expense",
+      amountMinor: 5_000,
+      currencyCode: "NOK",
+      startDateIso: "2026-06-14",
+      durationMonths: 1,
+    }],
+    ["one-time expense", {
+      id: "past-one-time-expense",
+      kind: "one-time-expense",
+      amountMinor: 5_000,
+      currencyCode: "NOK",
+      occurrenceDateIso: "2026-06-14",
+    }],
+  ] as const)(
+    "rejects a past %s scenario assumption",
+    (_kind, assumption) => {
+      expect(() => calculateCashflowScenario({
+        ...baselineInput,
+        evaluatedAtIso: "2026-06-15T12:00:00.000Z",
+        assumptions: [assumption],
+      })).toThrow(`Scenario assumption ${assumption.id} is before the evaluation date.`);
+    }
+  );
+
   it("rejects duplicate assumption identifiers", () => {
     const assumption = {
       id: "duplicate",
