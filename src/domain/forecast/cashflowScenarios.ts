@@ -428,13 +428,20 @@ function buildPlan(
 
 function scenarioAssumptionDates(
   assumption: CashflowScenarioAssumption,
-  horizonMonths: ReadonlySet<string>
+  horizonMonths: ReadonlySet<string>,
+  evaluatedAtDateIso: string
 ): string[] {
   if (assumption.kind === "one-time-expense") {
+    if (assumption.occurrenceDateIso < evaluatedAtDateIso) {
+      throw new Error(`Scenario assumption ${assumption.id} is before the evaluation date.`);
+    }
     if (!horizonMonths.has(assumption.occurrenceDateIso.slice(0, 7))) {
       throw new Error(`Scenario assumption ${assumption.id} is outside the forecast horizon.`);
     }
     return [assumption.occurrenceDateIso];
+  }
+  if (assumption.startDateIso < evaluatedAtDateIso) {
+    throw new Error(`Scenario assumption ${assumption.id} is before the evaluation date.`);
   }
   if (!horizonMonths.has(assumption.startDateIso.slice(0, 7))) {
     throw new Error(`Scenario assumption ${assumption.id} is outside the forecast horizon.`);
@@ -516,7 +523,11 @@ export function calculateCashflowScenario(
   for (const assumption of request.assumptions.slice().sort((left, right) =>
     left.id.localeCompare(right.id)
   )) {
-    for (const dateIso of scenarioAssumptionDates(assumption, horizonMonths)) {
+    for (const dateIso of scenarioAssumptionDates(
+      assumption,
+      horizonMonths,
+      input.evaluatedAtIso.slice(0, 10)
+    )) {
       const conversion = convertCurrencyAmount({
         amountMinor: assumption.amountMinor,
         currencyCode: assumption.currencyCode,
