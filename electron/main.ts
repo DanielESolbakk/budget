@@ -21,9 +21,12 @@ import {
   queryHouseholdDashboardData,
   queryNokValuationReport,
   reloadMonthlyCategoryTargets,
+  type CashflowScenarioRequest,
   type DashboardData,
   type DashboardViewContract,
+  type SpendableCashEstimateRequest,
 } from "../src/app/dashboardApi.js";
+import { createCashflowScenarioService } from "../src/app/cashflowScenarioService.js";
 import { exportLedgerCsvToFile, type ExportCsvSummary } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
@@ -31,6 +34,8 @@ import { createHoldingRegistry } from "../src/app/holdingRegistry.js";
 import { createLoanRegistry } from "../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../src/app/propertyRegistry.js";
 import { createRecurringCommitmentService } from "../src/app/recurringCommitmentService.js";
+import { createSpendableCashService } from "../src/app/spendableCashService.js";
+import { validateCashflowScenarioRequest } from "../src/domain/forecast/cashflowScenarios.js";
 import {
   catalogBackupSnapshot,
   createPreRestoreBackupSnapshot,
@@ -248,6 +253,8 @@ const propertyRegistry = createPropertyRegistry(localLedgerDatabase);
 const holdingRegistry = createHoldingRegistry(localLedgerDatabase);
 const loanRegistry = createLoanRegistry(localLedgerDatabase);
 const recurringCommitmentService = createRecurringCommitmentService(localLedgerDatabase);
+const spendableCashService = createSpendableCashService(localLedgerDatabase);
+const cashflowScenarioService = createCashflowScenarioService(localLedgerDatabase);
 const learnedCategoryRules = new Map(
   localLedgerDatabase.listMerchantCategoryRules().map((rule) => [rule.merchantAlias, rule.categoryId])
 );
@@ -339,6 +346,51 @@ function parseNonEmptyString(value: unknown, fieldName: string): string {
     throw new Error(`${fieldName} must be a non-empty string.`);
   }
   return value.trim();
+}
+
+function parseSpendableCashEstimateRequest(input: unknown): SpendableCashEstimateRequest {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Spendable cash estimate request must be an object.");
+  }
+  const record = input as Record<string, unknown>;
+  if (!Array.isArray(record.selectedAccountIds)) {
+    throw new Error("selectedAccountIds must be an array.");
+  }
+  const selectedAccountIds = record.selectedAccountIds.map((value, index) =>
+    parseNonEmptyString(value, `selectedAccountIds[${index}]`)
+  );
+  const nextIncomeDateIso = parseNonEmptyString(record.nextIncomeDateIso, "nextIncomeDateIso");
+  const reserveMinor = record.reserveMinor;
+  if (
+    typeof reserveMinor !== "number" ||
+    !Number.isSafeInteger(reserveMinor) ||
+    reserveMinor < 0
+  ) {
+    throw new Error("reserveMinor must be a non-negative safe integer.");
+  }
+
+  const monthlyReferenceRateIdsValue = record.monthlyReferenceRateIds;
+  if (monthlyReferenceRateIdsValue === undefined) {
+    return { selectedAccountIds, nextIncomeDateIso, reserveMinor };
+  }
+  if (
+    typeof monthlyReferenceRateIdsValue !== "object" ||
+    monthlyReferenceRateIdsValue === null ||
+    Array.isArray(monthlyReferenceRateIdsValue)
+  ) {
+    throw new Error("monthlyReferenceRateIds must be a currency-to-rate mapping.");
+  }
+  const monthlyReferenceRateIds: Record<string, string> = {};
+  for (const [currencyCode, rateId] of Object.entries(monthlyReferenceRateIdsValue)) {
+    monthlyReferenceRateIds[parseNonEmptyString(currencyCode, "currencyCode")] =
+      parseNonEmptyString(rateId, `monthlyReferenceRateIds.${currencyCode}`);
+  }
+  return {
+    selectedAccountIds,
+    nextIncomeDateIso,
+    reserveMinor,
+    monthlyReferenceRateIds,
+  };
 }
 
 function parseRecurringCommitmentInput(input: unknown): RecurringCommitmentInput {
@@ -1028,6 +1080,17 @@ app.whenReady().then(async () => {
   ipcMain.handle("forecast:getEntries", (event) => {
     assertTrustedRenderer(event);
     return getDashboardData().forecast.entries;
+  });
+
+  ipcMain.handle("spendableCash:estimate", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    return spendableCashService.getEstimate(parseSpendableCashEstimateRequest(input));
+  });
+
+  ipcMain.handle("cashflowScenario:evaluate", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const request: CashflowScenarioRequest = validateCashflowScenarioRequest(input);
+    return cashflowScenarioService.getScenario(request);
   });
 
   ipcMain.handle("dialog:chooseCsvExportPath", async (event) => {

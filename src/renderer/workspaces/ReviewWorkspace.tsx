@@ -2,9 +2,11 @@ import React from "react";
 import { getMonthlyAttentionSummary, type DashboardViewContract } from "../../app/dashboardApi.js";
 import { CategoryBreakdownSection } from "../dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySection.js";
+import { CashflowScenarioSection } from "../dashboard/CashflowScenarioSection.js";
 import { ForecastSection } from "../dashboard/ForecastSection.js";
 import { MonthlyTotalsSection } from "../dashboard/MonthlyTotalsSection.js";
 import { RecurringCommitmentsSection } from "../dashboard/RecurringCommitmentsSection.js";
+import { SpendableCashSection } from "../dashboard/SpendableCashSection.js";
 import { TargetVsActualSection } from "../dashboard/TargetVsActualSection.js";
 import { AccountCoverageSummary } from "../dashboard/AccountCoverageSummary.js";
 import type { ReviewState } from "./types.js";
@@ -194,6 +196,10 @@ export function ReviewWorkspace({
           </div>
           <div className="review-recurring-commitments">
             <RecurringCommitmentsSection isActive={isActive} refreshKey={refreshKey} />
+          </div>
+          <div className="review-planning-sections">
+            <SpendableCashSection isActive={isActive} refreshKey={refreshKey} />
+            <CashflowScenarioSection refreshKey={refreshKey} />
           </div>
         </>
       )}

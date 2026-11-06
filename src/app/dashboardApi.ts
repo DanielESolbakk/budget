@@ -44,6 +44,14 @@ import {
 export type { CategoryBreakdown, MonthlyBreakdown, MonthSeries };
 export { UNCATEGORIZED_LABEL } from "../domain/aggregation/computeCategoryBreakdown.js";
 export type { TargetVsActualCategoryRows };
+export type { SpendableCashEstimateRequest } from "./spendableCashService.js";
+export type {
+  SpendableUntilIncomeResult as SpendableCashEstimate,
+} from "../domain/forecast/spendableUntilIncome.js";
+export type {
+  CashflowScenarioRequest,
+  CashflowScenarioResult,
+} from "../domain/forecast/cashflowScenarios.js";
 
 export interface DashboardInput {
   monthlyTotals: MonthlyTotal[];

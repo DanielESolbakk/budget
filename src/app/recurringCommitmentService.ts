@@ -35,7 +35,7 @@ export interface RecurringCommitmentService {
   resume: (commitmentId: string) => RecurringCommitment;
   end: (commitmentId: string) => RecurringCommitment;
   linkPayment: (input: RecurringCommitmentPaymentLinkInput) => void;
-  getSchedule: (evaluatedAtIso?: string) => RecurringCommitmentSchedule;
+  getSchedule: (evaluatedAtIso?: string, throughDateIso?: string) => RecurringCommitmentSchedule;
   confirmPriceChange: (commitmentId: string, newAmountMinor: number) => RecurringCommitment;
 }
 
@@ -76,12 +76,13 @@ function monthEnd(yearMonth: string): string {
 }
 
 function scheduleRange(
-  evaluatedDateIso: string
+  evaluatedDateIso: string,
+  throughDateIso?: string
 ): { recentStartDateIso: string; endDateIso: string } {
   const yearMonth = evaluatedDateIso.slice(0, 7);
   return {
     recentStartDateIso: monthStart(yearMonth, -3),
-    endDateIso: monthEnd(monthStart(yearMonth, 3).slice(0, 7)),
+    endDateIso: throughDateIso ?? monthEnd(monthStart(yearMonth, 3).slice(0, 7)),
   };
 }
 
@@ -379,9 +380,21 @@ export function createRecurringCommitmentService(
     return link;
   }
 
-  function getSchedule(evaluatedAtIso = now().toISOString()): RecurringCommitmentSchedule {
+  function getSchedule(
+    evaluatedAtIso = now().toISOString(),
+    throughDateIso?: string
+  ): RecurringCommitmentSchedule {
     const evaluatedDateIso = calendarDate(evaluatedAtIso);
-    const { recentStartDateIso, endDateIso } = scheduleRange(evaluatedDateIso);
+    if (
+      throughDateIso !== undefined &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(throughDateIso) ||
+        Number.isNaN(Date.parse(`${throughDateIso}T00:00:00.000Z`)) ||
+        new Date(`${throughDateIso}T00:00:00.000Z`).toISOString().slice(0, 10) !== throughDateIso ||
+        throughDateIso < evaluatedDateIso)
+    ) {
+      throw new Error("Recurring commitment schedule end date is invalid.");
+    }
+    const { recentStartDateIso, endDateIso } = scheduleRange(evaluatedDateIso, throughDateIso);
     const snapshot = database.loadLedgerSnapshotData();
     const householdId = currentHouseholdId();
     const commitments = database.listRecurringCommitments(householdId);
