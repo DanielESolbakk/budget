@@ -114,6 +114,50 @@ test.describe("local recurring commitment workflow", () => {
     })).toContainText("Ended");
   });
 
+  test("reopens the end confirmation after keeping a paused commitment", async ({ window }) => {
+    await createLocalHousehold(window, "2026-03-01T08:00:00.000Z");
+    const recurring = new RecurringCommitmentsPage(window);
+    await recurring.createSuggestion({
+      description: "Synthetic annual insurance",
+      currencyCode: "NOK",
+      amount: "900.00",
+      isVariable: false,
+      cadence: "annual",
+      firstDueDateIso: "2026-10-15",
+      activeFromIso: "2026-10-01",
+    });
+    await recurring.confirm("Synthetic annual insurance");
+    await recurring.pauseWithKeyboard("Synthetic annual insurance");
+
+    const commitment = window.getByRole("group", {
+      name: "Commitment Synthetic annual insurance",
+      exact: true,
+    });
+    await expect(commitment).toContainText("Paused");
+    await expect(commitment.getByRole("button", {
+      name: "End commitment",
+      exact: true,
+    })).toBeEnabled();
+
+    const endConfirmation = window.getByRole("alertdialog", {
+      name: "End Synthetic annual insurance?",
+      exact: true,
+    });
+    await recurring.endWithKeyboard("Synthetic annual insurance");
+    await expect(endConfirmation).toBeVisible();
+    await recurring.keepCommitment("Synthetic annual insurance");
+    await recurring.endWithKeyboard("Synthetic annual insurance");
+    await expect(endConfirmation.getByRole("button", {
+      name: "End commitment",
+      exact: true,
+    })).toBeVisible();
+    await recurring.confirmEndCommitment("Synthetic annual insurance");
+    await expect(window.getByRole("group", {
+      name: "Commitment Synthetic annual insurance",
+      exact: true,
+    })).toContainText("Ended");
+  });
+
   test("resumes a paused commitment and keeps it active after reload", async ({ window }) => {
     await createLocalHousehold(window, "2026-03-01T08:00:00.000Z");
     const recurring = new RecurringCommitmentsPage(window);
