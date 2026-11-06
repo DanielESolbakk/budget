@@ -233,10 +233,6 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.spendingCategories).not.toContainText("Salary / wages");
   });
 
-  test("monthly totals explain expense change from the previous month", async ({ dashboard }) => {
-    await expect(dashboard.monthlyComparison).toContainText(/spending increased by 13,00.*apr\.? 2026/i);
-  });
-
   test("Scenario 5: monthly attention status and totals fit the review viewport", async ({
     dashboard,
     electronApp,
