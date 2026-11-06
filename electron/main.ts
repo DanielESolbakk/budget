@@ -30,6 +30,7 @@ import { createCashflowScenarioService } from "../src/app/cashflowScenarioServic
 import { exportLedgerCsvToFile, type ExportCsvSummary } from "../src/app/exportCsv.js";
 import { createBackupSnapshot } from "../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
+import { normalizeHouseholdSetupInput } from "../src/app/onboarding/householdSetup.js";
 import { createHoldingRegistry } from "../src/app/holdingRegistry.js";
 import { createLoanRegistry } from "../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../src/app/propertyRegistry.js";
@@ -233,11 +234,13 @@ const sampleTargets: MonthlyCategoryTargetInput[] = [
 ];
 
 const isTestEnvironment = process.env["NODE_ENV"] === "test";
+const shouldSeedTestLedger =
+  isTestEnvironment && process.env["BUDGET_TEST_LEDGER_SEED"] !== "empty";
 const runtimeAccounts: Account[] = [];
-const sampleTargetStore = createMonthlyCategoryTargetStore(isTestEnvironment ? sampleTargets : []);
+const sampleTargetStore = createMonthlyCategoryTargetStore(shouldSeedTestLedger ? sampleTargets : []);
 
 const localLedgerDatabase = createLocalLedgerDatabase({
-  ...(isTestEnvironment
+  ...(shouldSeedTestLedger
     ? {
         seedData: {
           household: sampleHousehold,
@@ -544,27 +547,6 @@ function parseSameMerchantPropagationPreviewRequest(
   return {
     sourceTransactionId: parseNonEmptyString(record.sourceTransactionId, "sourceTransactionId"),
   };
-}
-
-function parseHouseholdSetupInput(input: unknown): {
-  householdName: string;
-  accountName: string;
-  currencyCode: string;
-} {
-  if (typeof input !== "object" || input === null) {
-    throw new Error("Household setup must be an object.");
-  }
-  const record = input as Record<string, unknown>;
-  const householdName = parseNonEmptyString(record.householdName, "householdName");
-  const accountName = parseNonEmptyString(record.accountName, "accountName");
-  const currencyCode = parseNonEmptyString(record.currencyCode, "currencyCode").toUpperCase();
-  if (householdName.length > 100 || accountName.length > 100) {
-    throw new Error("Household and account names must be 100 characters or fewer.");
-  }
-  if (!isCurrencyCode(currencyCode)) {
-    throw new Error("currencyCode must be a three-letter currency code.");
-  }
-  return { householdName, accountName, currencyCode };
 }
 
 function parseTransactionQuery(input: unknown): TransactionQuery {
@@ -1298,7 +1280,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("setup:create", (event, input: unknown): void => {
     assertTrustedRenderer(event);
-    const setupInput = parseHouseholdSetupInput(input);
+    const setupInput = normalizeHouseholdSetupInput(input);
     localLedgerDatabase.createInitialHouseholdAndAccount(setupInput);
     const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
     if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);

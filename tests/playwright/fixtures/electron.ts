@@ -21,6 +21,7 @@ const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 interface ElectronFixtures {
   backupOutputDialogBehavior: "native" | "cancel" | "selected";
   csvExportDialogBehavior: "native" | "cancel" | "selected";
+  databaseSeed: "sample" | "empty";
   importFileDialogBehavior: "native" | "cancel" | "csv-selected" | "pdf-selected" | "text-selected";
   nodeEnvironment: "test" | "production";
   restoreSnapshotDialogBehavior: "native" | "cancel" | "selected";
@@ -65,6 +66,7 @@ async function chooseStatementForFixture(
 export const test = base.extend<ElectronFixtures>({
   backupOutputDialogBehavior: ["native", { option: true }],
   csvExportDialogBehavior: ["native", { option: true }],
+  databaseSeed: ["sample", { option: true }],
   importFileDialogBehavior: ["native", { option: true }],
   nodeEnvironment: ["test", { option: true }],
   restoreSnapshotDialogBehavior: ["native", { option: true }],
@@ -79,7 +81,7 @@ export const test = base.extend<ElectronFixtures>({
       rmSync(databaseDirectory, { recursive: true, force: true });
     }
   },
-  electronApp: async ({ backupOutputDialogBehavior, csvExportDialogBehavior, databasePath, importFileDialogBehavior, nodeEnvironment, restoreSnapshotDialogBehavior }, use) => {
+  electronApp: async ({ backupOutputDialogBehavior, csvExportDialogBehavior, databasePath, databaseSeed, importFileDialogBehavior, nodeEnvironment, restoreSnapshotDialogBehavior }, use) => {
     let app: ElectronApplication | undefined;
 
     try {
@@ -92,6 +94,7 @@ export const test = base.extend<ElectronFixtures>({
           BUDGET_TEST_CSV_EXPORT_DIALOG: csvExportDialogBehavior,
           BUDGET_TEST_CSV_EXPORT_PATH: join(dirname(databasePath), "dialog-selected.csv"),
           BUDGET_TEST_IMPORT_FILE_DIALOG: importFileDialogBehavior,
+          BUDGET_TEST_LEDGER_SEED: databaseSeed,
           BUDGET_TEST_CSV_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv"),
           BUDGET_TEST_PDF_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-binary.pdf"),
           BUDGET_TEST_TEXT_IMPORT_PATH: resolve(process.cwd(), "tests/fixtures/synthetic/rogaland-2026-05-statement.txt"),
