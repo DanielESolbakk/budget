@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { normalizeHouseholdSetupInput } from "../onboarding/householdSetup.js";
 import type {
   BackupSnapshotCatalogEntry,
   LedgerSnapshotData,
@@ -1393,16 +1394,18 @@ function createInitialHouseholdAndAccount(
   db: DatabaseSync,
   input: { householdName: string; accountName: string; currencyCode: string }
 ): { household: Household; account: Account } {
+  const { householdName, accountName, currencyCode } = normalizeHouseholdSetupInput(input);
+
   const household: Household = {
     id: randomUUID(),
-    name: input.householdName,
+    name: householdName,
     createdAtIso: new Date().toISOString(),
   };
   const account: Account = {
     id: randomUUID(),
     householdId: household.id,
-    name: input.accountName,
-    currencyCode: input.currencyCode,
+    name: accountName,
+    currencyCode,
   };
 
   db.exec("BEGIN IMMEDIATE");
