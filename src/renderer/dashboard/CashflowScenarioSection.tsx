@@ -328,9 +328,11 @@ export function CashflowScenarioSection({
 
   return (
     <section
+      id="cashflow-scenarios"
       className="cashflow-scenario-section"
       aria-label="Cashflow scenarios"
       aria-busy={isSubmitting}
+      tabIndex={-1}
     >
       <header className="cashflow-scenario-heading">
         <div>
@@ -339,11 +341,14 @@ export function CashflowScenarioSection({
             Compare temporary changes with the local three-month forecast. Assumptions are
             used for this comparison only and do not change transactions or budgets.
           </p>
-          <p>
-            Confirmed commitments with future occurrences are included in both paths. Only
-            historical payments linked to those commitments are removed from the moving-average
-            baseline.
-          </p>
+          <details className="cashflow-baseline-disclosure">
+            <summary>How the baseline is calculated</summary>
+            <p>
+              Confirmed commitments with future occurrences are included in both paths. Only
+              historical payments linked to those commitments are removed from the moving-average
+              baseline.
+            </p>
+          </details>
         </div>
       </header>
 
@@ -356,6 +361,9 @@ export function CashflowScenarioSection({
             aria-label="Scenario assumption inputs"
             onSubmit={addAssumption}
           >
+            <p id="cashflow-locale-entry-help" className="field-help">
+              The date field follows your system order; enter amounts using the decimal separator shown (1 234,50 or 1234.50). Results use Norwegian NOK formatting.
+            </p>
             <div className="cashflow-scenario-fields">
               <label className="cashflow-scenario-field">
                 <span>Scenario adjustment type</span>
@@ -401,6 +409,8 @@ export function CashflowScenarioSection({
                 <span>Scenario amount</span>
                 <input
                   type="number"
+                  lang="nb-NO"
+                  aria-describedby="cashflow-locale-entry-help"
                   inputMode="decimal"
                   min="0.01"
                   step="0.01"
@@ -437,6 +447,8 @@ export function CashflowScenarioSection({
                 </span>
                 <input
                   type="date"
+                  lang="nb-NO"
+                  aria-describedby="cashflow-locale-entry-help"
                   value={dateIso}
                   onChange={(event) => {
                     setDateIso(event.target.value);

@@ -38,7 +38,7 @@ export class DashboardPage {
 
   /** The net definition value inside the monthly totals section. */
   get netValue() {
-    return this.monthlyTotalsSection.getByLabel("Net", { exact: true });
+    return this.monthlyTotalsSection.getByLabel("Monthly net", { exact: true });
   }
 
   /** The landmark region wrapping the category breakdown (aria-label="Category Breakdown"). */
@@ -72,6 +72,14 @@ export class DashboardPage {
     return this.monthlyTotalsSection.getByRole("group", { name: "Monthly comparison" });
   }
 
+  get spendableCashSection() {
+    return this.page.getByRole("region", { name: "Spendable cash until income" });
+  }
+
+  get cashflowScenarioSection() {
+    return this.page.getByRole("region", { name: "Cashflow scenarios" });
+  }
+
   get categoryTargetEntrySection() {
     return this.page.getByRole("region", { name: "Category Target Entry" });
   }
@@ -101,7 +109,7 @@ export class DashboardPage {
     return this.page.getByRole("alert").filter({ hasText: "Unable to change month." });
   }
 
-  monthlyTotal(label: "Income" | "Expenses" | "Net"): Locator {
+  monthlyTotal(label: "Income" | "Expenses" | "Monthly net"): Locator {
     return this.monthlyTotalsSection.getByRole("group", { name: `${label} total` });
   }
 
