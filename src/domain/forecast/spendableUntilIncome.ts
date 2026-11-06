@@ -374,7 +374,9 @@ export function calculateSpendableUntilIncome(
           dateIso: pending.transactionDateIso,
         });
       }
-      continue;
+      if (reconciledTransaction.bookedAtIso.slice(0, 10) < input.nextIncomeDateIso) {
+        continue;
+      }
     }
     const account = accountsById.get(pending.accountId);
     if (account === undefined) continue;
