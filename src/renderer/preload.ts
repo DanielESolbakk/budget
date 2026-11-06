@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   DashboardData,
   DashboardViewContract,
+  CashflowScenarioRequest,
+  CashflowScenarioResult,
+  SpendableCashEstimate,
+  SpendableCashEstimateRequest,
   NokMonthlyReport,
   NokValuationReport,
 } from "../app/dashboardApi.js";
@@ -92,6 +96,14 @@ export interface DashboardApi {
 
 export interface ForecastApi {
   getEntries: () => Promise<ForecastEntry[]>;
+}
+
+export interface SpendableCashApi {
+  getEstimate: (input: SpendableCashEstimateRequest) => Promise<SpendableCashEstimate>;
+}
+
+export interface CashflowScenariosApi {
+  evaluate: (input: CashflowScenarioRequest) => Promise<CashflowScenarioResult>;
 }
 
 export interface CategoryTargetsApi {
@@ -250,6 +262,8 @@ export interface BudgetApi {
   accounts: AccountsApi;
   setup: SetupApi;
   forecast: ForecastApi;
+  spendableCash: SpendableCashApi;
+  cashflowScenarios: CashflowScenariosApi;
   categoryTargets: CategoryTargetsApi;
   export: ExportApi;
   import: ImportApi;
@@ -285,6 +299,14 @@ const budgetApi: BudgetApi = {
   forecast: {
     getEntries: (): Promise<ForecastEntry[]> =>
       ipcRenderer.invoke("forecast:getEntries"),
+  },
+  spendableCash: {
+    getEstimate: (input: SpendableCashEstimateRequest): Promise<SpendableCashEstimate> =>
+      ipcRenderer.invoke("spendableCash:estimate", input),
+  },
+  cashflowScenarios: {
+    evaluate: (input: CashflowScenarioRequest): Promise<CashflowScenarioResult> =>
+      ipcRenderer.invoke("cashflowScenario:evaluate", input),
   },
   categoryTargets: {
     upsert: (input: MonthlyCategoryTargetInput): Promise<MonthlyCategoryTarget> =>

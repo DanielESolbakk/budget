@@ -155,7 +155,7 @@ interface RecurringCommitmentServiceTestApi {
   list: () => RecurringCommitment[];
   confirm: (commitmentId: string) => RecurringCommitment;
   linkPayment: (input: RecurringCommitmentPaymentLinkInput) => RecurringCommitmentPaymentLink;
-  getSchedule: (evaluatedAtIso: string) => RecurringCommitmentSchedule;
+  getSchedule: (evaluatedAtIso: string, throughDateIso?: string) => RecurringCommitmentSchedule;
   confirmPriceChange: (commitmentId: string, newAmountMinor: number) => RecurringCommitment;
   pause: (commitmentId: string) => RecurringCommitment;
   resume: (commitmentId: string) => RecurringCommitment;
@@ -324,6 +324,31 @@ describe("recurring commitments in backup snapshots", () => {
       expect(ledger.loadLedgerSnapshotData().pendingObservations?.[0]?.reconciledTransactionId)
         .toBe(transaction.id);
       expect(networkFetch).not.toHaveBeenCalled();
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("extends recurring occurrences through a requested income date", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-recurring-income-horizon-"));
+    const ledger = openLedger(join(directory, "ledger.sqlite"));
+
+    try {
+      const service = createService(ledger);
+      const active = service.confirm(service.create(commitmentInput).id);
+      const schedule = service.getSchedule(
+        "2026-03-01T00:00:00.000Z",
+        "2026-12-31"
+      );
+
+      expect(schedule.occurrences).toContainEqual(
+        expect.objectContaining({
+          commitmentId: active.id,
+          dueDateIso: "2026-12-31",
+          amountMinor: 12_900,
+        })
+      );
     } finally {
       ledger.close();
       rmSync(directory, { recursive: true, force: true });
