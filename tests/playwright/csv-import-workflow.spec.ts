@@ -399,6 +399,8 @@ test.describe("CSV import renderer workflow", () => {
     const manualButton = window.getByRole("button", { name: "Enter transaction manually", exact: true });
     await expect(statementButton).toBeVisible();
     await expect(manualButton).toBeVisible();
+    await expect(appShell.workspace("Import").getByRole("status", { name: "Import household" }))
+      .toContainText("sample-hh");
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);

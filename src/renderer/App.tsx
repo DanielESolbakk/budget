@@ -105,13 +105,14 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   }
 
   React.useEffect(() => {
+    if (appState.status !== "ready") return;
     if (previousWorkspaceRef.current === activeWorkspace) return;
     previousWorkspaceRef.current = activeWorkspace;
     const heading = workspaceRef.current?.querySelector(".destination-workspace:not([hidden]) h2");
     setWorkspaceAnnouncement(heading?.textContent ?? activeWorkspace);
     if (focusDestinationRef.current) focusWorkspaceHeading();
     focusDestinationRef.current = false;
-  }, [activeWorkspace]);
+  }, [activeWorkspace, appState.status]);
 
   React.useEffect(() => {
     let isActive = true;
@@ -235,6 +236,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
 
   function handleSetupComplete(): void {
     setSetupRequired(false);
+    openWorkspace("import", true);
     setRefreshCounter((counter) => counter + 1);
   }
 
@@ -430,7 +432,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
               isActive={activeWorkspace === "import"}
               refreshKey={refreshCounter}
               onImportSuccess={() => setRefreshCounter((counter) => counter + 1)}
-              onOpenLedger={() => openWorkspace("transactions")}
+              onOpenLedger={() => openWorkspace("transactions", true)}
               onReviewUncategorized={openReviewQueue}
             />
           )}

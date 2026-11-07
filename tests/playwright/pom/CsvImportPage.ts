@@ -45,6 +45,31 @@ export class CsvImportPage {
     return this.page.getByRole("button", { name: "Confirm CSV import" });
   }
 
+  get accountSelect() {
+    return this.importSection.getByRole("combobox", { name: "Import into account", exact: true });
+  }
+
+  get resultSummary() {
+    return this.importSection.getByRole("region", { name: "Import result summary", exact: true });
+  }
+
+  async preview(filePath: string): Promise<void> {
+    await this.enterFilePath(filePath);
+    await this.importButton.click();
+  }
+
+  async openLedger(): Promise<void> {
+    await this.importSection.getByRole("button", { name: "Return to ledger", exact: true }).click();
+  }
+
+  async openCategoryReview(): Promise<void> {
+    await this.importSection.getByRole("button", { name: "Review category decisions", exact: true }).click();
+  }
+
+  async skipAllDuplicates(): Promise<void> {
+    await this.previewRegion.getByRole("button", { name: "Skip all duplicate candidates", exact: true }).click();
+  }
+
   async enterFilePath(filePath: string): Promise<void> {
     const advancedPathEntry = this.importSection.locator("details.import-path-entry");
     if (await advancedPathEntry.getAttribute("open") === null) {

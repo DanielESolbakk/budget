@@ -32,6 +32,22 @@ export function ImportWorkspace({
   const [fileSelectionId, setFileSelectionId] = React.useState(0);
   const [selectionError, setSelectionError] = React.useState<string | null>(null);
   const [selectionNotice, setSelectionNotice] = React.useState<string | null>(null);
+  const [householdId, setHouseholdId] = React.useState<string | null>(null);
+  const [contextError, setContextError] = React.useState<string | null>(null);
+  const [contextRefreshKey, setContextRefreshKey] = React.useState(0);
+
+  React.useEffect(() => {
+    let active = true;
+    setContextError(null);
+    window.budgetApi.accounts.getCurrent().then((current) => {
+      if (!active) return;
+      if (current === null) throw new Error("No local household is configured.");
+      setHouseholdId(current.householdId);
+    }).catch((error: unknown) => {
+      if (active) setContextError(error instanceof Error ? error.message : "Could not load the import household.");
+    });
+    return () => { active = false; };
+  }, [contextRefreshKey]);
 
   async function chooseStatementFile(): Promise<void> {
     try {
@@ -103,6 +119,17 @@ export function ImportWorkspace({
       <div className="destination-heading">
         <h2 id="import-workspace-heading" tabIndex={-1}>{isManualEntry ? "Add a transaction" : "Import"}</h2>
         <p>{headingDescription}</p>
+        {householdId !== null && (
+          <p role="status" aria-label="Import household">Household ledger: {householdId}</p>
+        )}
+        {contextError !== null && (
+          <div role="alert">
+            <p>{contextError}</p>
+            <button type="button" onClick={() => setContextRefreshKey((key) => key + 1)}>
+              Retry household loading
+            </button>
+          </div>
+        )}
       </div>
       {!isManualEntry && (
       <div className="import-workspace-switcher" role="group" aria-label="Import sections">
