@@ -94,6 +94,43 @@ test.describe("Dashboard renderer smoke", () => {
     ).toHaveAttribute("aria-current", "page");
   });
 
+  test("healthy monthly checks avoid unnecessary category and budget actions", async ({ dashboard }) => {
+    await expect(dashboard.monthlyAttention).toContainText("No category reviews or over-target categories this month.");
+    await expect(dashboard.monthlyAttention.getByRole("button", { name: "Set a category target" })).toHaveCount(0);
+    await expect(dashboard.monthlyAttention).toContainText("No statement periods recorded");
+  });
+
+  test("review action explains that it opens transactions across all months", async ({ window, appShell }) => {
+    await window.getByRole("button", { name: "Review all transactions", exact: true }).click();
+    await expect(appShell.workspace("Transactions")).toBeVisible();
+  });
+
+  test("independent forecast is available through keyboard-operated planning disclosure", async ({ window }) => {
+    const forecast = window.getByRole("region", { name: "Forecast", exact: true });
+    await expect(forecast).toBeHidden();
+    const planning = window.getByRole("group", { name: "Planning tools" });
+    const summary = planning.locator("summary").first();
+    await summary.focus();
+    await summary.press("Enter");
+    await expect(forecast).toBeVisible();
+    await expect(forecast).toContainText("does not follow the review month selector");
+  });
+
+  test("budget maintenance opens on demand without obscuring comparison", async ({ window, dashboard }) => {
+    await expect(dashboard.targetVsActualSection).toBeVisible();
+    await expect(dashboard.categoryTargetEntrySection).toBeHidden();
+    const summary = window.getByText("Manage category targets", { exact: true });
+    await summary.focus();
+    await summary.press("Enter");
+    await expect(dashboard.categoryTargetEntrySection).toBeVisible();
+    await dashboard.categoryTargetEntrySection.getByRole("button", { name: "Add target", exact: true }).click();
+    await expect(window.getByRole("combobox", { name: "Category", exact: true })).toBeFocused();
+    await expect(dashboard.monthSelector).toBeDisabled();
+    await summary.click();
+    await expect(dashboard.categoryTargetEntrySection).toBeVisible();
+    await expect(dashboard.monthSelector).toBeDisabled();
+  });
+
   test("monthly net is distinct from spendable cash and links to both planning tools", async ({
     dashboard,
     window,
@@ -123,15 +160,18 @@ test.describe("Dashboard renderer smoke", () => {
   });
 
   test("category target entry repeats the selected month beside its form", async ({ window }) => {
+    await window.getByText("Manage category targets", { exact: true }).click();
     const targetSection = window.getByRole("region", { name: "Category Target Entry" });
     await expect(targetSection.getByText("Targets for mai 2026", { exact: true })).toBeVisible();
   });
 
-  test("monthly checks lead directly to keyboard-operable target setup", async ({ dashboard, categoryTarget }) => {
-    const setup = dashboard.monthlyAttention.getByRole("button", { name: "Set a category target" });
+  test("target management leads directly to keyboard-operable target setup", async ({ window, categoryTarget }) => {
+    const setup = window.getByText("Manage category targets", { exact: true });
+    await setup.click();
     await setup.focus();
     await setup.press("Enter");
-    await expect(categoryTarget.addTargetButton).toBeFocused();
+    await expect(categoryTarget.addTargetButton).toBeVisible();
+    await categoryTarget.addTargetButton.focus();
     await categoryTarget.addTargetButton.press("Enter");
     await expect(categoryTarget.categorySelect).toBeFocused();
   });
@@ -232,6 +272,8 @@ test.describe("Dashboard renderer smoke", () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(934, 768);
     });
+    await window.getByText("Manage category targets", { exact: true }).click();
+    await window.getByText("Plan ahead", { exact: true }).click();
     const targetEntryAtIntermediate = await dashboard.categoryTargetEntrySection.boundingBox();
     const forecastAtIntermediate = await window.getByRole("region", { name: "Forecast" }).boundingBox();
     expect(targetEntryAtIntermediate).not.toBeNull();
@@ -262,13 +304,14 @@ test.describe("Dashboard renderer smoke", () => {
     expect(categoryHeadingSize).toBeGreaterThanOrEqual(spendingHeadingSize * 1.25);
   });
 
-  test("category breakdown uses registered category display names", async ({ dashboard }) => {
+  test("category breakdown uses registered category display names", async ({ dashboard, window }) => {
     await expect(dashboard.categoryBreakdownSection).toContainText("Salary / wages");
     await expect(dashboard.categoryBreakdownSection).toContainText("Groceries & food");
     await expect(dashboard.categoryBreakdownSection).not.toContainText("salary");
     await expect(dashboard.targetVsActualSection).toContainText("Salary / wages");
-    await expect(dashboard.targetVsActualSection).toContainText("Groceries & food");
+    await window.getByText("Manage category targets", { exact: true }).click();
     await expect(dashboard.categoryTargetEntrySection).toContainText("Groceries & food");
+    await expect(dashboard.targetVsActualSection).toContainText("Groceries & food");
   });
 
   test("category breakdown separates spending from money-in categories", async ({ dashboard }) => {
@@ -286,8 +329,7 @@ test.describe("Dashboard renderer smoke", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
     });
 
-    await expect(dashboard.monthlyAttention).toContainText("No category decisions need review this month.");
-    await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
+    await expect(dashboard.monthlyAttention).toContainText("No category reviews or over-target categories this month.");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
     const totalsPrecedeAttention = await dashboard.monthlyTotalsSection.evaluate((totals) => {
@@ -477,7 +519,7 @@ test.describe("Dashboard renderer smoke", () => {
     expect(deltaBounds.x + deltaBounds.width).toBeLessThanOrEqual(390);
   });
 
-  test("compact review presents category spending before budget details", async ({ dashboard, electronApp }) => {
+  test("compact review presents category spending before budget details", async ({ dashboard, electronApp, window }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
@@ -486,7 +528,7 @@ test.describe("Dashboard renderer smoke", () => {
     const attentionBounds = await dashboard.monthlyAttention.boundingBox();
     const categoryBounds = await dashboard.spendingCategories.boundingBox();
     const targetVsActualBounds = await dashboard.targetVsActualSection.boundingBox();
-    const targetBounds = await dashboard.categoryTargetEntrySection.boundingBox();
+    const targetBounds = await window.getByText("Manage category targets", { exact: true }).boundingBox();
     if (
       attentionBounds === null ||
       categoryBounds === null ||
@@ -543,11 +585,11 @@ test.describe("Dashboard renderer smoke", () => {
   test("monthly review signals follow a single attention reading path", async ({ window }) => {
     await window.setViewportSize({ width: 1440, height: 1100 });
     const attentionItems = window.locator(".monthly-attention-content > .monthly-attention-item");
-    await expect(attentionItems).toHaveCount(3);
+    await expect(attentionItems).toHaveCount(2);
     const rowPositions = await attentionItems.evaluateAll((items) =>
       [...new Set(items.map((item) => Math.round(item.getBoundingClientRect().top)))]
     );
-    expect(rowPositions).toHaveLength(3);
+    expect(rowPositions).toHaveLength(2);
   });
 
   test("@visual Visual: compact dashboard preserves primary workspace navigation", async ({ window, electronApp }) => {

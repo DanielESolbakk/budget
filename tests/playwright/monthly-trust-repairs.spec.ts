@@ -27,6 +27,7 @@ test(`monthly NOK subtotals refresh after recording a local dated rate at ${widt
   await expect(currencyWarning).toContainText(/Incomplete.*GBP/);
   await expect(dashboard.monthlyTotalsSection.getByLabel("Native currency subtotals"))
     .toContainText(/78,00\s+GBP/);
+  await window.getByText("Plan ahead", { exact: true }).click();
   await expect(window.getByRole("region", { name: "Forecast", exact: true }))
     .toContainText(/incomplete NOK history/i);
   await dashboard.monthlyTotalsSection.screenshot({ path: test.info().outputPath(`monthly-incomplete-${width}.png`) });
@@ -146,6 +147,7 @@ test("forecast states its net measure, history cutoff and independence from the 
 }) => {
   await appShell.openWorkspace("Review");
   await dashboard.monthSelector.selectOption("2026-04");
+  await window.getByText("Plan ahead", { exact: true }).click();
   const forecast = window.getByRole("region", { name: "Forecast", exact: true });
   await expect(forecast).toContainText(/monthly net/i);
   await expect(forecast).toContainText(/through 2026-05/i);

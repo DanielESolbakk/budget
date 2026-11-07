@@ -37,7 +37,8 @@ test.describe("Electron startup smoke", () => {
     expect(fields.hasForecast).toBe(true);
   });
 
-  test("Scenario 3: forecast section shows projected output for the seeded history", async ({ forecast }) => {
+  test("Scenario 3: forecast section shows projected output for the seeded history", async ({ forecast, window }) => {
+    await window.getByText("Plan ahead", { exact: true }).click();
     await expect(forecast.sectionHeading).toBeVisible();
     await expect(forecast.section).toBeVisible();
     await expect(forecast.projectedDescription).toBeVisible();
@@ -125,6 +126,7 @@ test.describe("Electron startup smoke — fallback branch", () => {
   });
 
   test("Scenario 6: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast, window }, testInfo) => {
+    await window.getByText("Plan ahead", { exact: true }).click();
     // AC-3: explicit fallback label renders at the Electron runtime level when
     // the IPC response signals insufficient transaction history.
     await expect(forecast.sectionHeading).toBeVisible();
@@ -172,6 +174,7 @@ test.describe("Fresh local setup", () => {
     await createLedgerButton.click();
     await expect(window.getByRole("heading", { name: "Set up your household" })).toHaveCount(0);
     await expect(window.getByText("Lønn AS", { exact: true })).toHaveCount(0);
+    await window.getByText("Plan ahead", { exact: true }).click();
     const forecastSection = window.getByRole("region", { name: "Forecast", exact: true });
     await expect(forecastSection.getByRole("status")).toContainText("Not enough history");
     await expect(forecastSection.getByRole("listitem")).toHaveCount(0);
@@ -195,6 +198,7 @@ test.describe("Fresh local setup", () => {
     await window.getByRole("button", { name: "Add transaction" }).click();
     await expect(window.getByRole("status").filter({ hasText: "Added First entry to your ledger." })).toBeVisible();
     await appShell.openWorkspace("Review");
+    await window.getByText("Plan ahead", { exact: true }).click();
     await expect(forecastSection.getByRole("listitem")).toHaveCount(3);
     await expect(forecastSection.getByRole("listitem").first()).toContainText("1,23");
     await expect(forecastSection.getByRole("status")).toHaveCount(0);

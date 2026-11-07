@@ -314,6 +314,7 @@ test("pending CSV and text-PDF imports leave budget actuals and forecasts unchan
   await dashboard.monthSelector.selectOption("2026-05");
   await expect(dashboardTarget.targetCell("groceries")).toHaveText(/90,00/);
   await expect(dashboardTarget.actualCell("groceries")).toHaveText(/85,00/);
+  await window.getByText("Plan ahead", { exact: true }).click();
   await expect(forecast.projectedDescription).toBeVisible();
   const groceriesActualBefore = await dashboardTarget.actualCell("groceries").innerText();
   const forecastRowsBefore = await forecast.section.getByRole("listitem").allTextContents();

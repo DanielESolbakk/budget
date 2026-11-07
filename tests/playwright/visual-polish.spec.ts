@@ -80,6 +80,7 @@ for (const width of [1440, 390]) {
         if (label === null || amount === null) throw new Error("Category amounts must be visible.");
         expect.soft(amount.x).toBeGreaterThan(label.x + label.width);
       }
+      await window.getByText("Plan ahead", { exact: true }).click();
       const forecastRows = window.getByRole("region", { name: "Forecast", exact: true }).getByRole("listitem");
       await expect(forecastRows).toHaveCount(3);
       for (const row of await forecastRows.all()) {
