@@ -189,7 +189,7 @@ export function CategoryTargetEntrySection({
           </ul>
         )
       )}
-      <button type="button" onClick={openAddTarget} disabled={formState.status === "saving"}>
+      <button id="category-target-add" type="button" onClick={openAddTarget} disabled={formState.status === "saving"}>
         Add target
       </button>
       {isFormOpen && (

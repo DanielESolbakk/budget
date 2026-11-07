@@ -54,7 +54,6 @@ export function MonthlyTotalsSection({
     return (
       <section aria-label="Monthly Totals">
         <h2>Monthly Totals</h2>
-        <p>No transactions for this month.</p>
         <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
         <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
       </section>
@@ -115,7 +114,7 @@ export function MonthlyTotalsSection({
 
 type MonthlyComparisonState =
   | { status: "loading"; previousYearMonth: string }
-  | { status: "ready"; previousYearMonth: string; previousExpenseMinor: number; isIncomplete: boolean }
+  | { status: "ready"; previousYearMonth: string; previousExpenseMinor: number; isIncomplete: boolean; isEmpty: boolean }
   | { status: "error"; previousYearMonth: string };
 
 function MonthlyComparisonSummary({
@@ -162,6 +161,7 @@ function MonthlyComparisonSummary({
           previousYearMonth,
           previousExpenseMinor: previousView.snapshot.monthlyTotals.expenseMinor,
           isIncomplete: (previousView.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0,
+          isEmpty: previousView.state === "empty",
         });
       })
       .catch(() => {
@@ -195,6 +195,8 @@ function MonthlyComparisonSummary({
         </div>
       ) : currentIsIncomplete || comparison.isIncomplete ? (
         <p role="status">Spending comparison is incomplete until missing dated exchange rates are recorded.</p>
+      ) : viewContract.state === "empty" && comparison.isEmpty ? (
+        <p role="status">No activity to compare with {previousMonthLabel}.</p>
       ) : (
         <p role="status">
           {currentExpenseMinor === comparison.previousExpenseMinor

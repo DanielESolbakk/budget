@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures/electron.js";
 import type { Page } from "@playwright/test";
 import type { ManualEntryValues } from "./pom/ManualEntryPage.js";
 import { LedgerPage } from "./pom/LedgerPage.js";
+import { DatabaseSync } from "node:sqlite";
 
 async function rendererLocalDate(page: Page): Promise<string> {
   return page.evaluate(() => {
@@ -21,6 +22,72 @@ const manualEntry: ManualEntryValues = {
 };
 
 test.describe("Manual entry and duplicate detection", () => {
+  test("manual entry is a distinct transaction task and keeps input when returning from statements", async ({
+    manualEntry: entry, window, appShell,
+  }) => {
+    const workspace = appShell.workspace("Import");
+    await expect(workspace.getByRole("heading", { name: "Add a transaction", exact: true })).toBeVisible();
+    await expect(workspace.getByRole("heading", { name: "Add a transaction", exact: true })).toBeFocused();
+    await expect(workspace.getByRole("group", { name: "Import sections" })).toBeHidden();
+    await entry.merchantInput.fill("Synthetic task separation");
+    await workspace.getByRole("button", { name: "Back to statement imports" }).click();
+    await expect(workspace.getByRole("button", { name: "Choose statement file", exact: true })).toBeVisible();
+    await appShell.selectImportFormat("Manual transaction");
+    await expect(entry.merchantInput).toHaveValue("Synthetic task separation");
+    await expect(window.getByRole("form", { name: "Manual transaction entry form" })).toBeVisible();
+  });
+
+  test("merchant validation clears only when its field is corrected and allows resubmission", async ({
+    manualEntry: entry,
+  }) => {
+    await entry.submitEntry({ ...manualEntry, merchantRaw: "   " });
+    await expect(entry.resultAlert).toContainText("Enter a description or merchant");
+    await expect(entry.merchantInput).toHaveAttribute("aria-invalid", "true");
+    await entry.amountInput.fill("-13,50");
+    await expect(entry.resultAlert).toBeVisible();
+    await entry.merchantInput.fill("Corrected synthetic merchant");
+    await expect(entry.resultAlert).toBeHidden();
+    await expect(entry.merchantInput).not.toHaveAttribute("aria-invalid", "true");
+    await entry.submitButton.click();
+    await expect(entry.successStatus).toContainText("Corrected synthetic merchant");
+  });
+
+  test("a local save failure keeps input and offers safe ledger-first recovery", async ({
+    manualEntry: entry, databasePath, appShell, window,
+  }) => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      await entry.submitEntry({ ...manualEntry, merchantRaw: "Synthetic locked database entry" });
+      await expect(entry.resultAlert).toContainText("Check the ledger before trying again");
+      await expect(entry.merchantInput).toHaveValue("Synthetic locked database entry");
+      await expect(entry.amountInput).toHaveValue("-12,50");
+      await expect(entry.resultAlert.getByRole("button", { name: "Open ledger" })).toBeVisible();
+      database.exec("ROLLBACK");
+      await entry.resultAlert.getByRole("button", { name: "Open ledger" }).click();
+      await expect(new LedgerPage(window).transaction("Synthetic locked database entry")).toHaveCount(0);
+      await appShell.openWorkspace("Import");
+      await expect(entry.merchantInput).toHaveValue("Synthetic locked database entry");
+      await entry.submitButton.click();
+      await expect(entry.successStatus).toContainText("Synthetic locked database entry");
+    } finally {
+      database.close();
+    }
+  });
+
+  test("malformed NOK input stays associated with the amount until corrected", async ({ manualEntry: entry }) => {
+    await entry.submitEntry({ ...manualEntry, amountNok: "12,345" });
+    await expect(entry.amountInput).toHaveAttribute("aria-invalid", "true");
+    await expect(entry.resultAlert).toContainText("up to two decimals");
+    await entry.merchantInput.fill("Synthetic corrected amount");
+    await expect(entry.resultAlert).toBeVisible();
+    await entry.amountInput.fill("-12,34");
+    await expect(entry.resultAlert).toBeHidden();
+    await expect(entry.amountInput).not.toHaveAttribute("aria-invalid", "true");
+    await entry.submitButton.click();
+    await expect(entry.successStatus).toContainText("Synthetic corrected amount");
+  });
+
   test("manual entry defaults to the current local date", async ({ manualEntry: entry, window }) => {
     await expect(entry.bookedDateInput).toHaveValue(await rendererLocalDate(window));
   });

@@ -125,6 +125,9 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(dashboard.reviewQueueAction).toBeFocused();
     await expect(dashboard.targetVsActualSection).toHaveAttribute("tabindex", "0");
     await window.keyboard.press("Tab");
+    await expect(dashboard.monthlyAttention.getByRole("button", { name: "Set a category target" }))
+      .toBeFocused();
+    await window.keyboard.press("Tab");
     await expect(window.getByRole("button", { name: "Review account coverage", exact: true }))
       .toBeFocused();
     await window.keyboard.press("Tab");

@@ -127,6 +127,15 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(targetSection.getByText("Targets for mai 2026", { exact: true })).toBeVisible();
   });
 
+  test("monthly checks lead directly to keyboard-operable target setup", async ({ dashboard, categoryTarget }) => {
+    const setup = dashboard.monthlyAttention.getByRole("button", { name: "Set a category target" });
+    await setup.focus();
+    await setup.press("Enter");
+    await expect(categoryTarget.addTargetButton).toBeFocused();
+    await categoryTarget.addTargetButton.press("Enter");
+    await expect(categoryTarget.categorySelect).toBeFocused();
+  });
+
   test("cash-planning inputs explain system date and decimal formats", async ({ window }) => {
     await window.getByText("Plan ahead", { exact: true }).click();
     const spendableForm = window.getByRole("form", { name: "Spendable cash estimate inputs" });

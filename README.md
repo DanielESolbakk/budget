@@ -47,6 +47,10 @@ The current text/PDF adapter reads Rogaland Sparebank statements, including bina
 - `tests/fixtures/synthetic/rogaland-2026-05-binary.pdf`
 - `tests/fixtures/synthetic/rogaland-2026-05-statement.txt`
 
+**Enter transaction manually** opens a dedicated transaction-entry view without statement controls. Enter signed NOK amounts (for example `-12,50` for an expense); field errors clear when the affected field changes. **Back to statement imports** keeps the current transaction input while you switch tasks. If saving cannot be confirmed, check the ledger before retrying; your input remains available and **Error details** explains the local failure.
+
+In **Review**, use **Set a category target** beside the monthly budget checks to move directly to **Add target**. The target form repeats the selected month. Months with no transactions show one activity notice; when the previous month is also empty, the comparison reports that there is no activity to compare rather than a zero-spending trend. Secondary cash-planning tools remain under **Plan ahead**.
+
 Repeat imports of an unchanged source are skipped, and import jobs retain local provenance. When statements overlap or contain indistinguishable rows without a stable bank reference, the app cannot prove that rows from different files are the same purchase; check the ledger after importing overlapping exports. Back up locally before restoring another snapshot, since restore replaces the current ledger and learned categorization rules.
 
 When a preview finds possible duplicates, choose **Skip all duplicate candidates** or **Import all duplicate candidates**, then change any individual row that needs a different decision. Confirm the import only after reviewing those choices; importing a candidate may add a transaction already in your ledger.

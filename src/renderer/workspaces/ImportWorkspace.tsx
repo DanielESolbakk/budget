@@ -62,7 +62,9 @@ export function ImportWorkspace({
     setActiveView("new-import");
     setHasStatementImportCompleted(false);
     setSelectionNotice(null);
+    setSelectionError(null);
     setVisitedFormats((visited) => new Set(visited).add("manual"));
+    window.requestAnimationFrame(() => document.getElementById("import-workspace-heading")?.focus());
   }
 
   function cancelStatementImport(): void {
@@ -85,7 +87,10 @@ export function ImportWorkspace({
     window.requestAnimationFrame(() => document.getElementById("import-review-queue")?.focus());
   }
 
-  const headingDescription = activeView === "new-import"
+  const isManualEntry = activeView === "new-import" && selectedFormat === "manual";
+  const headingDescription = isManualEntry
+    ? "Add one transaction directly to your ledger. No statement file is needed."
+    : activeView === "new-import"
     ? hasStatementImportCompleted
       ? "Import complete. The summary below shows what was added and what stayed unchanged."
       : "Choose a statement, review the rows, then decide what to add."
@@ -96,9 +101,10 @@ export function ImportWorkspace({
   return (
     <section className="destination-workspace" aria-label="Import workspace" hidden={!isActive}>
       <div className="destination-heading">
-        <h2>Import</h2>
+        <h2 id="import-workspace-heading" tabIndex={-1}>{isManualEntry ? "Add a transaction" : "Import"}</h2>
         <p>{headingDescription}</p>
       </div>
+      {!isManualEntry && (
       <div className="import-workspace-switcher" role="group" aria-label="Import sections">
         <button
           type="button"
@@ -122,9 +128,10 @@ export function ImportWorkspace({
           Import history
         </button>
       </div>
+      )}
       {activeView === "new-import" && (
         <div className="import-new-panel">
-          {(selectedFormat === null || selectedFormat === "manual") && (
+          {selectedFormat === null && (
             <div className="import-file-source">
               <button
                 id="import-statement-picker-button"
@@ -133,7 +140,7 @@ export function ImportWorkspace({
                 aria-describedby="import-statement-file-help"
                 onClick={() => void chooseStatementFile()}
               >
-                {selectedFormat === "manual" ? "Choose a statement file instead" : "Choose statement file"}
+                Choose statement file
               </button>
               <p id="import-statement-file-help">
                 Choose a local .csv, .txt, or digital .pdf statement. Scanned-image PDFs are not supported.
@@ -203,6 +210,19 @@ export function ImportWorkspace({
             onReviewUncategorized={onReviewUncategorized}
           />
         </div>
+      )}
+      {isManualEntry && (
+        <button
+          type="button"
+          className="import-secondary-action"
+          onClick={() => {
+            setSelectedFormat(null);
+            setSelectionError(null);
+            window.requestAnimationFrame(() => document.getElementById("manual-entry-choice")?.focus());
+          }}
+        >
+          Back to statement imports
+        </button>
       )}
         </div>
       )}

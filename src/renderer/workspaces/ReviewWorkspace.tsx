@@ -61,6 +61,7 @@ export function ReviewWorkspace({
   const viewContract: DashboardViewContract | null = state.status === "ready" ? state.viewContract : null;
   const monthlyAttention = viewContract === null ? null : getMonthlyAttentionSummary(viewContract);
   const planningToolsRef = React.useRef<HTMLDetailsElement>(null);
+  const categoryTargetRef = React.useRef<HTMLDivElement>(null);
 
   function openPlanningTools(): void {
     if (planningToolsRef.current !== null) planningToolsRef.current.open = true;
@@ -178,6 +179,14 @@ export function ReviewWorkspace({
                           ? "Budget checks are incomplete until missing dated rates are recorded."
                           : "No categories over target."}</p>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => categoryTargetRef.current?.querySelector<HTMLButtonElement>(
+                          "#category-target-add"
+                        )?.focus()}
+                      >
+                        Set a category target
+                      </button>
                     </div>
                     <AccountCoverageSummary
                       isActive={isActive}
@@ -187,13 +196,15 @@ export function ReviewWorkspace({
                   </div>
                 )}
               </aside>
-            <div className="review-support review-category-breakdown">
-              <CategoryBreakdownSection viewContract={state.viewContract} />
-            </div>
+            {state.viewContract.state !== "empty" && (
+              <div className="review-support review-category-breakdown">
+                <CategoryBreakdownSection viewContract={state.viewContract} />
+              </div>
+            )}
             <div className="review-primary review-target-vs-actual">
               <TargetVsActualSection viewContract={state.viewContract} />
             </div>
-            <div className="review-primary review-category-target">
+            <div ref={categoryTargetRef} className="review-primary review-category-target">
               <CategoryTargetEntrySection
                 selectedYearMonth={state.selectedYearMonth}
                 selectedMonthLabel={formatYearMonth(state.selectedYearMonth)}
