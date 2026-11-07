@@ -21,7 +21,6 @@ Govern Feature, Story, Enabler, and Test planning, not implementation. Epics are
 - Keep transaction content local; add no cloud processing, telemetry, or analytics.
 - Use `- #NUMBER` references in structured sections; ban uncertainty in tasks, criteria, and validation commands.
 - A workflow pass proves structure only. Preserve `needs-grooming` until G1-G9 pass as planning checks with quoted evidence; an accurately documented open blocker alone is not a planning defect.
-- Run fresh planning validation for structural planning changes or a planning-invalid repair. For completion-only reconciliation of already delivered work—checking completion boxes, recording verified evidence, removing `needs-grooming` after prior planning checks passed, or closing completed issues—reuse the existing validation evidence; do not trigger another validation run. If reconciliation uncovers a structural defect, repair and validate that issue.
 - After planning checks pass, remove `needs-grooming` even if an open blocker remains. Report the issue as blocked and unassignable until blockers and missing runtime prerequisites are resolved.
 - At assignment, check each blocker against its live issue state. A closed prerequisite is not an open blocker and does not require an issue edit before work starts; verify required product/runtime seams separately.
 - Plan concrete Tests alongside approved Stories/Enablers before product code exists. Require parent ACs, one layer, expected scenarios, fixtures, file-creation tasks, commands, and product blockers; missing implementation blocks assignment, not planning. Never create coverage anchors.
@@ -35,7 +34,7 @@ For interactive forms, follow the repository-wide [GitHub MCP Interactive Writes
 
 When reporting batch progress, give the known remaining approval and validation-trigger counts separately; identify unknown counts and why. Include any separate post-validation label updates in the estimate.
 
-Run G1-G9 from the deep-dive for structural planning changes or planning-invalid repairs. Treat them as planning checks. Quote each pass with evidence only after fresh structural validation; keep `needs-grooming` until those checks pass. Completion-only reconciliation reuses prior passing evidence and does not require a new validation trigger. Separately check assignment prerequisites; do not assign an issue with an open blocker or missing runtime. For structural changes, a fresh structural validation result is required. After 180 seconds without one, stop without repair.
+Run G1-G9 from the deep-dive. Apply them to structural planning changes or planning-invalid repairs. Quote each pass only after fresh validation; retain `needs-grooming` until they pass. Completion-only reconciliation reuses prior passing evidence. Repair and validate structural defects found during reconciliation. Check assignment prerequisites separately; do not assign with open blockers or missing runtime. After 180 seconds without one, stop without repair.
 
 ## References
 
