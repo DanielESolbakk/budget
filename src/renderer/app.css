@@ -4937,12 +4937,14 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   }
 
   .review-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "totals totals"
-      "attention attention"
-      "category target"
-      "target-entry forecast";
+      "totals"
+      "attention"
+      "category"
+      "target"
+      "target-entry"
+      "forecast";
   }
 
   .account-coverage-forms,
@@ -4959,7 +4961,7 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   }
 
   .review-support {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .workflow-import-grid,
@@ -7420,16 +7422,6 @@ section[aria-label].destination-workspace.household-workspace {
 }
 
 @media (min-width: 1051px) {
-  .review-grid {
-    grid-template-areas:
-      "totals totals"
-      "attention attention"
-      "category target"
-      "target-entry forecast";
-  }
-}
-
-@media (min-width: 681px) and (max-width: 1050px) {
   .review-grid {
     grid-template-areas:
       "totals totals"

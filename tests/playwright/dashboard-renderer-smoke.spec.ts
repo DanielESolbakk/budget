@@ -501,6 +501,45 @@ test.describe("Dashboard renderer smoke", () => {
     expect(categoryBounds.y).toBeLessThan(targetBounds.y);
   });
 
+  test("narrow review keeps spending and budget sections full width without horizontal overflow", async ({
+    window,
+    electronApp,
+  }) => {
+    for (const width of [820, 390]) {
+      await electronApp.evaluate(({ BrowserWindow }, contentWidth) => {
+        const browserWindow = BrowserWindow.getAllWindows()[0];
+        if (browserWindow === undefined) throw new Error("The monthly review window must exist.");
+        browserWindow.setContentSize(contentWidth, 1100);
+      }, width);
+      await expect.poll(() => window.evaluate(() => innerWidth)).toBe(width);
+
+      const spending = window.getByRole("region", { name: "Category Breakdown", exact: true });
+      const budget = window.getByRole("region", { name: "Target vs Actual", exact: true });
+      await expect(spending).toBeVisible();
+      await expect(budget).toBeVisible();
+      const gridBounds = await window.locator(".review-grid").boundingBox();
+      if (gridBounds === null) throw new Error("The monthly review must be measurable.");
+
+      for (const section of [spending, budget]) {
+        const bounds = await section.boundingBox();
+        if (bounds === null) throw new Error("Monthly sections must be measurable.");
+        expect(Math.abs(bounds.width - gridBounds.width)).toBeLessThanOrEqual(1);
+        await expect.poll(() => section.evaluate((element) =>
+          element.scrollWidth <= element.clientWidth + 1
+        )).toBe(true);
+      }
+      const spendingBounds = await spending.boundingBox();
+      const budgetBounds = await budget.boundingBox();
+      if (spendingBounds === null || budgetBounds === null) {
+        throw new Error("Spending and budget sections must be measurable.");
+      }
+      expect(budgetBounds.y).toBeGreaterThanOrEqual(spendingBounds.y + spendingBounds.height);
+      await expect.poll(() => window.evaluate(() =>
+        document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+      )).toBe(true);
+    }
+  });
+
   test("monthly review signals follow a single attention reading path", async ({ window }) => {
     await window.setViewportSize({ width: 1440, height: 1100 });
     const attentionItems = window.locator(".monthly-attention-content > .monthly-attention-item");
