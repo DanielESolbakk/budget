@@ -74,6 +74,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   const [appState, setAppState] = React.useState<AppState>({ status: "loading" });
   const [initialYearMonth] = React.useState(getInitialYearMonth);
   const [setupRequired, setSetupRequired] = React.useState<boolean | null>(null);
+  const [isFirstImport, setIsFirstImport] = React.useState(false);
   const [activeWorkspace, setActiveWorkspace] = React.useState<WorkspaceId>("review");
   const [visitedWorkspaces, setVisitedWorkspaces] = React.useState<Set<WorkspaceId>>(
     () => new Set(["review"])
@@ -220,6 +221,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   }
 
   function openPrimaryWorkspace(workspaceId: PrimaryWorkspaceId): void {
+    setIsFirstImport(false);
     const defaultWorkspace: Record<PrimaryWorkspaceId, WorkspaceId> = {
       review: "review",
       activity: "transactions",
@@ -236,6 +238,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
 
   function handleSetupComplete(): void {
     setSetupRequired(false);
+    setIsFirstImport(true);
     openWorkspace("import", true);
     setRefreshCounter((counter) => counter + 1);
   }
@@ -290,7 +293,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
             <i aria-hidden="true" /> {headerStatus}
           </span>
           </div>
-          <button className="header-import-action" type="button" onClick={() => openWorkspace("import", true)}>
+          <button hidden={isFirstImport && activeWorkspace === "import"} className="header-import-action" type="button" onClick={() => openWorkspace("import", true)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
               <path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5" />
             </svg>
@@ -321,7 +324,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
           <p className="workspace-announcement" role="status" aria-label="Workspace destination">
             {workspaceAnnouncement}
           </p>
-          {(activeWorkspace === "transactions" ||
+          {!isFirstImport && (activeWorkspace === "transactions" ||
             activeWorkspace === "pending" ||
             activeWorkspace === "import") && (
             <nav className="workspace-subnavigation" aria-label="Activity views">
@@ -429,9 +432,17 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
           )}
           {visitedWorkspaces.has("import") && (
             <ImportWorkspace
+              isFirstImport={isFirstImport}
+              onExplore={() => {
+                setIsFirstImport(false);
+                openWorkspace("import", true);
+              }}
               isActive={activeWorkspace === "import"}
               refreshKey={refreshCounter}
-              onImportSuccess={() => setRefreshCounter((counter) => counter + 1)}
+              onImportSuccess={() => {
+                setIsFirstImport(false);
+                setRefreshCounter((counter) => counter + 1);
+              }}
               onOpenLedger={() => openWorkspace("transactions", true)}
               onReviewUncategorized={openReviewQueue}
             />

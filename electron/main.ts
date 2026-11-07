@@ -129,6 +129,7 @@ import {
   type AccountBalanceCheckpoint,
   type AccountStatementCoveragePeriod,
   type Household,
+  type HouseholdAccountContext,
   type HoldingRecord,
   type HoldingValuationInput,
   type HoldingValuationSnapshot,
@@ -1264,11 +1265,12 @@ app.whenReady().then(async () => {
     return localLedgerDatabase.getAccountsForHousehold(parseNonEmptyString(householdId, "householdId"));
   });
 
-  ipcMain.handle("account:getCurrent", (event): { householdId: string; accounts: Account[] } | null => {
+  ipcMain.handle("account:getCurrent", (event): HouseholdAccountContext | null => {
     assertTrustedRenderer(event);
     if (!localLedgerDatabase.hasHousehold()) return null;
     return {
       householdId: sampleHousehold.id,
+      householdName: sampleHousehold.name,
       accounts: localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id),
     };
   });

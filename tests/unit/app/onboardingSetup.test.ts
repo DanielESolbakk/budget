@@ -25,4 +25,19 @@ describe("normalizeHouseholdSetupInput", () => {
   ])("rejects %s", (_description, input) => {
     expect(() => normalizeHouseholdSetupInput(input)).toThrow();
   });
+
+  it.each([
+    ["householdName", { householdName: " ", accountName: "Checking", currencyCode: "NOK" }, "Enter a household name."],
+    ["accountName", { householdName: "Household", accountName: " ", currencyCode: "NOK" }, "Enter an account name."],
+    ["currencyCode", { householdName: "Household", accountName: "Checking", currencyCode: "N!" }, "Enter a three-letter currency code, such as NOK."],
+    ["accountName", { householdName: "Household", accountName: "A".repeat(101), currencyCode: "NOK" }, "Use 100 characters or fewer for the account name."],
+  ])("identifies %s so setup can associate the error with its field", (field, input, message) => {
+    let thrown: unknown;
+    try {
+      normalizeHouseholdSetupInput(input);
+    } catch (error: unknown) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({ field, message });
+  });
 });

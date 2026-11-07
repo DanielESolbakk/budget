@@ -35,6 +35,8 @@ type ImportState =
 const PREVIEW_PAGE_SIZE = 100;
 
 interface CsvImportSectionProps {
+  preferredAccountId?: string;
+  onAccountChange?: (accountId: string) => void;
   initialFilePath: string;
   fileSelectionId: number;
   onChooseFile: () => void;
@@ -46,6 +48,8 @@ interface CsvImportSectionProps {
 }
 
 export function CsvImportSection({
+  preferredAccountId,
+  onAccountChange,
   initialFilePath,
   fileSelectionId,
   onChooseFile,
@@ -126,6 +130,16 @@ export function CsvImportSection({
     setImportState({ status: "idle" });
     setStage(initialFilePath ? "map-and-validate" : "select-file");
   }, [fileSelectionId, initialFilePath]);
+
+  React.useEffect(() => {
+    setImportAccountId(preferredAccountId);
+    setPreview(null);
+    setPreviewMapping(null);
+    setDuplicateDecisions({});
+    setPreviewPage(0);
+    setValidationReportPage(0);
+    setImportState({ status: "idle" });
+  }, [preferredAccountId]);
 
   React.useEffect(() => {
     if (preview === null || !isPreviewExpanded || previewRegionRef.current === null) return;
@@ -283,6 +297,7 @@ export function CsvImportSection({
   function updateImportAccountId(nextAccountId: string): void {
     if (nextAccountId === effectiveImportAccountId) return;
     setImportAccountId(nextAccountId);
+    onAccountChange?.(nextAccountId);
     setPreview(null);
     setPreviewMapping(null);
     setDuplicateDecisions({});
@@ -333,6 +348,7 @@ export function CsvImportSection({
     setPreviewPage(0);
     setValidationReportPage(0);
     setImportAccountId(profile.accountId);
+    onAccountChange?.(profile.accountId);
     setImportState({ status: "idle" });
     setProfileError(null);
     setStage(filePath ? "map-and-validate" : "select-file");

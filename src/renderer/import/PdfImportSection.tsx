@@ -47,6 +47,8 @@ function fileNameFromPath(filePath: string): string {
 }
 
 interface PdfImportSectionProps {
+  preferredAccountId?: string;
+  onAccountChange?: (accountId: string) => void;
   initialFilePath: string;
   fileSelectionId: number;
   onChooseFile: () => void;
@@ -58,6 +60,8 @@ interface PdfImportSectionProps {
 }
 
 export function PdfImportSection({
+  preferredAccountId,
+  onAccountChange,
   initialFilePath,
   fileSelectionId,
   onChooseFile,
@@ -122,6 +126,15 @@ export function PdfImportSection({
     setImportState({ status: "idle" });
     setStage(initialFilePath ? "map-and-validate" : "select-file");
   }, [fileSelectionId, initialFilePath]);
+
+  React.useEffect(() => {
+    if (preferredAccountId !== undefined) setAccountId(preferredAccountId);
+    setPreview(null);
+    setPreviewPage(0);
+    setValidationReportPage(0);
+    setDuplicateDecisions({});
+    setImportState({ status: "idle" });
+  }, [preferredAccountId]);
 
   React.useEffect(() => {
     let active = true;
@@ -247,6 +260,7 @@ export function PdfImportSection({
 
   function updateAccountId(nextAccountId: string): void {
     setAccountId(nextAccountId);
+    onAccountChange?.(nextAccountId);
     setPreview(null);
     setIsPreviewExpanded(true);
     setPreviewPage(0);

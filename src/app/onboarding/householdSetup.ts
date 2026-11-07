@@ -6,13 +6,21 @@ export interface HouseholdSetupInput {
   currencyCode: string;
 }
 
-function parseNonEmptyName(value: unknown, fieldName: string): string {
+export class HouseholdSetupValidationError extends Error {
+  constructor(readonly field: keyof HouseholdSetupInput, message: string) {
+    super(message);
+    this.name = "HouseholdSetupValidationError";
+  }
+}
+
+function parseNonEmptyName(value: unknown, fieldName: "householdName" | "accountName"): string {
+  const label = fieldName === "householdName" ? "household name" : "account name";
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${fieldName} must be a non-empty string.`);
+    throw new HouseholdSetupValidationError(fieldName, `Enter ${fieldName === "householdName" ? "a" : "an"} ${label}.`);
   }
   const name = value.trim();
   if (name.length > 100) {
-    throw new Error("Household and account names must be 100 characters or fewer.");
+    throw new HouseholdSetupValidationError(fieldName, `Use 100 characters or fewer for the ${label}.`);
   }
   return name;
 }
@@ -27,7 +35,7 @@ export function normalizeHouseholdSetupInput(input: unknown): HouseholdSetupInpu
   const currencyCode =
     typeof record.currencyCode === "string" ? record.currencyCode.trim().toUpperCase() : "";
   if (!isCurrencyCode(currencyCode)) {
-    throw new Error("currencyCode must be a three-letter currency code.");
+    throw new HouseholdSetupValidationError("currencyCode", "Enter a three-letter currency code, such as NOK.");
   }
   return { householdName, accountName, currencyCode };
 }

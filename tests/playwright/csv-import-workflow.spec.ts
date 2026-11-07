@@ -21,6 +21,7 @@ import type { Request } from "@playwright/test";
 import { basename, join, resolve } from "node:path";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
@@ -348,18 +349,35 @@ test.describe("CSV import renderer workflow", () => {
     expect(layout.decisionTextRight).toBeLessThanOrEqual(layout.decisionCellRight + 1);
   });
 
-  test("a CSV profile saves the explicit account and mapping for reuse", async ({ csvImport }) => {
+  test("a CSV profile saves the explicit account and mapping for reuse", async ({ csvImport, databasePath, window, appShell, electronApp }) => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      database.prepare("INSERT INTO accounts (id, household_id, name, currency_code) VALUES (?, ?, ?, ?)")
+        .run("profile-acc", "sample-hh", "Profile account", "NOK");
+    } finally {
+      database.close();
+    }
+    await window.reload();
+    await appShell.openWorkspace("Import");
+    await window.getByRole("combobox", { name: "Import into account", exact: true }).selectOption("sample-acc");
+    const previousBehavior = await electronApp.evaluate(() => process.env["BUDGET_TEST_IMPORT_FILE_DIALOG"] ?? "native");
+    await electronApp.evaluate(() => { process.env["BUDGET_TEST_IMPORT_FILE_DIALOG"] = "csv-selected"; });
+    try {
+      await appShell.selectImportFormat("CSV statement");
+    } finally {
+      await electronApp.evaluate((_, behavior: string) => { process.env["BUDGET_TEST_IMPORT_FILE_DIALOG"] = behavior; }, previousBehavior);
+    }
     await csvImport.enterFilePath(FIXTURE_PATH);
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
     await csvImport.openColumnMapping();
-    await csvImport.mappingSelect("Description").selectOption("Beskrivelse");
+    await csvImport.mappingSelect("Description").selectOption("Type");
 
     const manageProfiles = csvImport.importSection.getByText("Manage CSV profiles", { exact: false });
     await expect(manageProfiles).toBeVisible();
     await manageProfiles.click();
     await csvImport.importSection.getByRole("textbox", { name: "Profile name" }).fill("Norwegian bank profile");
-    await csvImport.importSection.getByRole("combobox", { name: "Profile account" }).selectOption("sample-acc");
+    await csvImport.importSection.getByRole("combobox", { name: "Profile account" }).selectOption("profile-acc");
     await csvImport.importSection.getByRole("button", { name: "Save CSV profile", exact: true }).click();
 
     await expect(csvImport.importSection.getByText("Norwegian bank profile", { exact: true })).toBeVisible();
@@ -367,8 +385,8 @@ test.describe("CSV import renderer workflow", () => {
     await csvImport.importButton.click();
     await expect(csvImport.previewRegion).toBeVisible();
     await csvImport.openColumnMapping();
-    await expect(csvImport.mappingSelect("Description")).toHaveValue("Beskrivelse");
-    await expect(csvImport.importSection.getByRole("combobox", { name: "Import into account" })).toHaveValue("sample-acc");
+    await expect(csvImport.mappingSelect("Description")).toHaveValue("Type");
+    await expect(csvImport.importSection.getByRole("combobox", { name: "Import into account" })).toHaveValue("profile-acc");
 
     await csvImport.importSection.getByRole("button", { name: "Delete profile Norwegian bank profile", exact: true }).click();
     await expect(csvImport.importSection.getByText("Norwegian bank profile", { exact: true })).not.toBeVisible();
@@ -400,7 +418,7 @@ test.describe("CSV import renderer workflow", () => {
     await expect(statementButton).toBeVisible();
     await expect(manualButton).toBeVisible();
     await expect(appShell.workspace("Import").getByRole("status", { name: "Import household" }))
-      .toContainText("sample-hh");
+      .toHaveText("Sample Household");
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);

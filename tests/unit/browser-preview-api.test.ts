@@ -38,6 +38,10 @@ describe("renderer budget API resolution", () => {
 
     expect(resolved.isBrowserPreview).toBe(true);
     expect(await resolved.api.setup.isRequired()).toBe(false);
+    expect(await resolved.api.accounts.getCurrent()).toMatchObject({
+      householdName: "Preview Household",
+      accounts: [{ currencyCode: "NOK" }],
+    });
 
     const dashboardData = await resolved.api.dashboard.getData();
     expect(dashboardData.monthlyTotals.map(({ yearMonth }) => yearMonth)).toEqual([

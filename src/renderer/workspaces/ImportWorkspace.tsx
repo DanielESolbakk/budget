@@ -5,11 +5,15 @@ import { ImportHistorySection } from "../import/ImportHistorySection.js";
 import { ManualEntrySection } from "../import/ManualEntrySection.js";
 import { PdfImportSection } from "../import/PdfImportSection.js";
 import { classifyImportFilePath } from "../../domain/import/sourceDocument.js";
+import type { HouseholdAccountContext } from "../../domain/types.js";
+import { ImportAccountSelect } from "../import/ImportAccountSelect.js";
 
 type ImportFormat = "csv" | "pdf" | "manual";
 type ImportWorkspaceView = "new-import" | "review" | "history";
 
 interface ImportWorkspaceProps {
+  isFirstImport?: boolean;
+  onExplore?: () => void;
   isActive: boolean;
   refreshKey: number;
   onImportSuccess: () => void;
@@ -18,6 +22,8 @@ interface ImportWorkspaceProps {
 }
 
 export function ImportWorkspace({
+  isFirstImport = false,
+  onExplore,
   isActive,
   refreshKey,
   onImportSuccess,
@@ -32,7 +38,8 @@ export function ImportWorkspace({
   const [fileSelectionId, setFileSelectionId] = React.useState(0);
   const [selectionError, setSelectionError] = React.useState<string | null>(null);
   const [selectionNotice, setSelectionNotice] = React.useState<string | null>(null);
-  const [householdId, setHouseholdId] = React.useState<string | null>(null);
+  const [context, setContext] = React.useState<HouseholdAccountContext | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = React.useState("");
   const [contextError, setContextError] = React.useState<string | null>(null);
   const [contextRefreshKey, setContextRefreshKey] = React.useState(0);
 
@@ -42,15 +49,24 @@ export function ImportWorkspace({
     window.budgetApi.accounts.getCurrent().then((current) => {
       if (!active) return;
       if (current === null) throw new Error("No local household is configured.");
-      setHouseholdId(current.householdId);
+      const firstAccount = current.accounts[0];
+      if (firstAccount === undefined) throw new Error("No accounts are available for import.");
+      setContext(current);
+      setSelectedAccountId((selected) => selected || firstAccount.id);
     }).catch((error: unknown) => {
       if (active) setContextError(error instanceof Error ? error.message : "Could not load the import household.");
     });
     return () => { active = false; };
-  }, [contextRefreshKey]);
+  }, [contextRefreshKey, refreshKey]);
+
+  const selectedAccount = context?.accounts.find((account) => account.id === selectedAccountId);
 
   async function chooseStatementFile(): Promise<void> {
     try {
+      if (selectedAccount === undefined) {
+        setSelectionError("Choose an available destination account before selecting a statement.");
+        return;
+      }
       const selectedPath = await window.budgetApi.dialogs.chooseImportStatementPath();
       if (selectedPath === null) return;
       const fileFormat = classifyImportFilePath(selectedPath);
@@ -119,8 +135,13 @@ export function ImportWorkspace({
       <div className="destination-heading">
         <h2 id="import-workspace-heading" tabIndex={-1}>{isManualEntry ? "Add a transaction" : "Import"}</h2>
         <p>{headingDescription}</p>
-        {householdId !== null && (
-          <p role="status" aria-label="Import household">Household ledger: {householdId}</p>
+        {context !== null && (
+          <p role="status" aria-label="Import household">{context.householdName}</p>
+        )}
+        {selectedAccount !== undefined && (
+          <p role="status" aria-label="Import destination">
+            {selectedAccount.name} · {selectedAccount.currencyCode}
+          </p>
         )}
         {contextError !== null && (
           <div role="alert">
@@ -131,7 +152,7 @@ export function ImportWorkspace({
           </div>
         )}
       </div>
-      {!isManualEntry && (
+      {!isManualEntry && !isFirstImport && (
       <div className="import-workspace-switcher" role="group" aria-label="Import sections">
         <button
           type="button"
@@ -156,15 +177,33 @@ export function ImportWorkspace({
         </button>
       </div>
       )}
+      {isFirstImport && (
+        <p className="import-first-use-guidance">
+          Preview your first statement before adding it to the ledger.{" "}
+          <button type="button" className="import-secondary-action action-secondary" onClick={onExplore}>
+            Explore other workspaces
+          </button>
+        </p>
+      )}
       {activeView === "new-import" && (
         <div className="import-new-panel">
           {selectedFormat === null && (
             <div className="import-file-source">
+              {context !== null && (
+                <ImportAccountSelect
+                  id="statement-import-account"
+                  label="Import into account"
+                  accounts={context.accounts}
+                  value={selectedAccountId}
+                  onChange={setSelectedAccountId}
+                />
+              )}
               <button
                 id="import-statement-picker-button"
                 type="button"
                 className="import-file-choice-primary"
                 aria-describedby="import-statement-file-help"
+                disabled={selectedAccount === undefined || contextError !== null}
                 onClick={() => void chooseStatementFile()}
               >
                 Choose statement file
@@ -204,6 +243,8 @@ export function ImportWorkspace({
       {visitedFormats.has("csv") && (
         <div className="import-format-content" hidden={selectedFormat !== "csv"}>
           <CsvImportSection
+            preferredAccountId={selectedAccountId}
+            onAccountChange={setSelectedAccountId}
             initialFilePath={selectedFilePath}
             fileSelectionId={fileSelectionId}
             onChooseFile={chooseStatementFile}
@@ -218,6 +259,8 @@ export function ImportWorkspace({
       {visitedFormats.has("pdf") && (
         <div className="import-format-content" hidden={selectedFormat !== "pdf"}>
           <PdfImportSection
+            preferredAccountId={selectedAccountId}
+            onAccountChange={setSelectedAccountId}
             initialFilePath={selectedFilePath}
             fileSelectionId={fileSelectionId}
             onChooseFile={chooseStatementFile}

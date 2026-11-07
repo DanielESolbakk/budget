@@ -71,6 +71,10 @@ test.describe(`first statement import after setup at ${viewport.width}px`, () =>
     await expect(appShell.workspace("Import")).toBeVisible();
     await expect(appShell.workspace("Import").getByRole("heading", { name: "Import", exact: true }))
       .toBeFocused();
+    await expect(window.getByRole("navigation", { name: "Activity views" })).toHaveCount(0);
+    await expect(appShell.workspace("Import").getByRole("group", { name: "Import sections" })).toHaveCount(0);
+    await expect(appShell.workspace("Import").getByRole("button", { name: "Explore other workspaces" }))
+      .toBeVisible();
     await expectNoOverflow(window);
 
     const account = readDatabase<{ id: string; household_id: string }>(
@@ -80,7 +84,12 @@ test.describe(`first statement import after setup at ${viewport.width}px`, () =>
     const household = readDatabase<{ id: string }>(databasePath, "SELECT id FROM households");
     expect(account.household_id).toBe(household.id);
     await expect(appShell.workspace("Import").getByRole("status", { name: "Import household" }))
-      .toContainText(household.id);
+      .toHaveText("Test Household");
+    await expect(appShell.workspace("Import")).not.toContainText(household.id);
+    await expect(appShell.workspace("Import").getByRole("combobox", { name: "Import into account", exact: true }))
+      .toHaveValue(account.id);
+    await expect(appShell.workspace("Import").getByRole("status", { name: "Import destination" }))
+      .toHaveText("Checking · NOK");
     expect(transactionCount(databasePath)).toBe(0);
 
     await appShell.openWorkspace("Import");
@@ -98,6 +107,7 @@ test.describe(`first statement import after setup at ${viewport.width}px`, () =>
 
     await csvImport.confirmImportButton.click();
     await expect(csvImport.successStatus).toContainText("Added 14 transactions to your ledger");
+    await expect(window.getByRole("navigation", { name: "Activity views" })).toBeVisible();
     await expect(appShell.workspace("Import")).toBeVisible();
     const result = csvImport.resultSummary;
     await expect(result).toBeVisible();
@@ -173,11 +183,18 @@ test.describe(`first statement import after setup at ${viewport.width}px`, () =>
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_IMPORT_FILE_DIALOG"] = "pdf-selected";
     });
+    await window.reload();
+    await expect(appShell.workspace("Review")).toBeVisible();
+    await appShell.openWorkspace("Import");
+    await appShell.workspace("Import").getByRole("combobox", { name: "Import into account", exact: true })
+      .selectOption("second-account");
+    await expect(appShell.workspace("Import").getByRole("status", { name: "Import destination" }))
+      .toHaveText("Savings · NOK");
     await appShell.selectImportFormat("Digital PDF");
     const pdfImport = new PdfImportPage(window);
     await expect(pdfImport.accountSelect).toContainText("Checking");
     await expect(pdfImport.accountSelect).toContainText("Savings");
-    await pdfImport.selectAccount("second-account");
+    await expect(pdfImport.accountSelect).toHaveValue("second-account");
     await pdfImport.preview(join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-05-binary.pdf"));
     await expect(pdfImport.previewRegion).toBeVisible();
     await expect(pdfImport.accountSelect).toHaveValue("second-account");
@@ -273,6 +290,34 @@ test.describe(`first statement import after setup at ${viewport.width}px`, () =>
 });
 }
 
+test.describe("optional first-import guidance", () => {
+  test.use({ databaseSeed: "empty" });
+  test("lets a first-time user reveal the normal workspace navigation without importing", async ({
+    appShell, window, databasePath, electronApp,
+  }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const browserWindow = BrowserWindow.getAllWindows()[0];
+      if (browserWindow === undefined) throw new Error("Electron window is unavailable.");
+      browserWindow.setContentSize(1280, 800);
+      browserWindow.webContents.setZoomFactor(2);
+    });
+    await new OnboardingPage(window).submit("H".repeat(100), "Checking", "NOK");
+    await expect(appShell.workspace("Import")).toBeVisible();
+    await expect(window.locator(".header-import-action")).toBeHidden();
+    await expect.poll(() => window.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )).toBeLessThanOrEqual(0);
+    const pickerSize = await appShell.workspace("Import").getByRole("button", { name: "Choose statement file", exact: true }).boundingBox();
+    expect(pickerSize?.width).toBeGreaterThanOrEqual(44);
+    expect(pickerSize?.height).toBeGreaterThanOrEqual(44);
+    await appShell.workspace("Import").getByRole("button", { name: "Explore other workspaces" }).click();
+    await expect(window.getByRole("navigation", { name: "Activity views" })).toBeVisible();
+    await expect(appShell.workspace("Import").getByRole("group", { name: "Import sections" })).toBeVisible();
+    await expect(window.getByRole("heading", { name: "Import", exact: true })).toBeFocused();
+    expect(transactionCount(databasePath)).toBe(0);
+  });
+});
+
 test("explains household-context loading failure and retries against the real ledger", async ({
   appShell, databasePath,
 }) => {
@@ -297,5 +342,5 @@ test("explains household-context loading failure and retries against the real le
   await appShell.workspace("Import").getByRole("button", { name: "Retry household loading" }).click();
   await expect(appShell.workspace("Import").getByRole("alert")).toHaveCount(0);
   await expect(appShell.workspace("Import").getByRole("status", { name: "Import household" }))
-    .toContainText("sample-hh");
+    .toHaveText("Sample Household");
 });
