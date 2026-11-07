@@ -103,6 +103,7 @@ export class AppShellPage {
   }
 
   async openPlanningTools(): Promise<void> {
+    await this.openWorkspace("Review");
     await this.page.getByText("Plan ahead", { exact: true }).click();
   }
 }

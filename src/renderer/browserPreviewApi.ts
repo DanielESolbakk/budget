@@ -129,6 +129,7 @@ export function resolveRendererBudgetApi(
       list: async () => [previewAccount],
       getCurrent: async () => ({
         householdId: PREVIEW_HOUSEHOLD_ID,
+        householdName: "Preview Household",
         accounts: [previewAccount],
       }),
     },

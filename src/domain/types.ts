@@ -40,6 +40,12 @@ export interface Account {
   currencyCode: CurrencyCode;
 }
 
+export interface HouseholdAccountContext {
+  householdId: string;
+  householdName: string;
+  accounts: Account[];
+}
+
 export interface PropertyRecordInput {
   label: string;
 }

@@ -28,6 +28,7 @@ import type {
   AccountCoverageAssessment,
   AccountStatementCoveragePeriod,
   Account,
+  HouseholdAccountContext,
   ExchangeRate,
   ForecastEntry,
   HoldingCorrectionInput,
@@ -113,7 +114,7 @@ export interface CategoryTargetsApi {
 
 export interface AccountsApi {
   list: (householdId: string) => Promise<Account[]>;
-  getCurrent: () => Promise<{ householdId: string; accounts: Account[] } | null>;
+  getCurrent: () => Promise<HouseholdAccountContext | null>;
 }
 
 export interface SetupApi {
@@ -288,7 +289,7 @@ const budgetApi: BudgetApi = {
   accounts: {
     list: (householdId: string): Promise<Account[]> =>
       ipcRenderer.invoke("account:list", householdId),
-    getCurrent: (): Promise<{ householdId: string; accounts: Account[] } | null> =>
+    getCurrent: (): Promise<HouseholdAccountContext | null> =>
       ipcRenderer.invoke("account:getCurrent"),
   },
   dashboard: {

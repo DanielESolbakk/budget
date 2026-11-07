@@ -45,6 +45,27 @@ export class PdfImportPage {
     return this.page.getByRole("button", { name: "Confirm statement import" });
   }
 
+  get accountSelect() {
+    return this.importSection.getByRole("combobox", { name: "Import into account", exact: true });
+  }
+
+  get resultSummary() {
+    return this.importSection.getByRole("region", { name: "Import result summary", exact: true });
+  }
+
+  async selectAccount(accountId: string): Promise<void> {
+    await this.accountSelect.selectOption(accountId);
+  }
+
+  async preview(filePath: string): Promise<void> {
+    await this.enterFilePath(filePath);
+    await this.importButton.click();
+  }
+
+  async openLedger(): Promise<void> {
+    await this.importSection.getByRole("button", { name: "Return to ledger", exact: true }).click();
+  }
+
   async enterFilePath(filePath: string): Promise<void> {
     const advancedPathEntry = this.importSection.locator("details.import-path-entry");
     if (await advancedPathEntry.getAttribute("open") === null) {
