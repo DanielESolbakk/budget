@@ -54,8 +54,11 @@ Issue is assignable when all are true.
 
 ## Validation Loop Checklist
 
+First classify the issue update. A structural planning change alters scope, acceptance criteria, hierarchy or links, blockers, implementation/test entry points, validation commands, or other readiness content. A completion-only reconciliation records delivered work without changing that planning structure.
+
 - Update issue body and labels.
 - Never use GitHub CLI (`gh`) in this repository. Use GitHub MCP for issue operations and inspect the available Actions tools separately; do not infer their availability from issue-write access.
+- For structural planning changes or planning-invalid repairs, follow the validation trigger and result-verification steps below. For completion-only reconciliation—checking completed-task/AC boxes, adding evidence for work already delivered and validated, removing `needs-grooming` after prior planning checks passed, or closing completed issues—reuse the existing evidence and do not trigger a new planning-validation run. If reconciliation reveals a structural defect, repair and validate the affected issue.
 - Complete the authorized issue batch in dependency order, then record labels, recent comments, and time for each affected issue before the validation trigger.
 - Require a fresh human-originated trigger. An owner-submitted MCP label form or an authorized human through GitHub UI can apply `validate-planning`; verify the actual actor and fresh result. If that label is already present, use an available authorized dispatch route or the Actions UI with the target issue number. Bot-triggered label events may be skipped.
 - The `planning-validation` `workflow_dispatch.issue_numbers` input accepts the affected issue numbers as one comma-separated value. Return the complete value once per batch instead of stopping after each issue for a separate validation run.
