@@ -53,6 +53,7 @@ test.describe("No-network guard smoke", () => {
 
   test("Scenario 2: dashboard IPC flow works under the network guard", async ({ dashboard }) => {
     // F5.3 AC-3: local IPC flows are not affected by the guard; dashboard data loads.
+    await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.monthlyTotalsHeading).toBeVisible();
     await expect(dashboard.categoryBreakdownSection).toBeVisible();

@@ -6,7 +6,7 @@ import { DashboardTargetPage } from "./pom/DashboardTargetPage.js";
 import { categoryDisplayName } from "../../src/renderer/dashboard/categoryDisplayName.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
-const RESTART_TARGET_CATEGORY_ID = "restart-target";
+const RESTART_TARGET_CATEGORY_ID = "transport";
 const INITIAL_TARGET_NOK = "725";
 const UPDATED_TARGET_NOK = "900";
 
@@ -17,11 +17,13 @@ function persistedTargetRow(categoryId: string, targetNok: string): RegExp {
 test.describe("Category target persistence across application restart", () => {
   test("created and updated targets persist across restarts and feed the dashboard", async ({
     categoryTarget,
+    dashboard,
     databasePath,
     electronApp,
   }) => {
+    await dashboard.monthSelector.selectOption("2026-05");
     await categoryTarget.addTargetButton.click();
-    await categoryTarget.categoryIdInput.fill(RESTART_TARGET_CATEGORY_ID);
+    await categoryTarget.categorySelect.selectOption(RESTART_TARGET_CATEGORY_ID);
     await categoryTarget.targetAmountInput.fill(INITIAL_TARGET_NOK);
     await categoryTarget.saveButton.click();
     await expect(categoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
@@ -43,6 +45,7 @@ test.describe("Category target persistence across application restart", () => {
       const restartedWindow = await restartedApp.firstWindow();
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
+      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
         persistedTargetRow(RESTART_TARGET_CATEGORY_ID, INITIAL_TARGET_NOK),
@@ -71,6 +74,7 @@ test.describe("Category target persistence across application restart", () => {
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
       const restartedDashboardTarget = new DashboardTargetPage(restartedWindow);
+      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
         persistedTargetRow(RESTART_TARGET_CATEGORY_ID, UPDATED_TARGET_NOK),
@@ -82,7 +86,7 @@ test.describe("Category target persistence across application restart", () => {
         /0,00\s*kr/,
       );
       await expect(restartedDashboardTarget.deltaCell(RESTART_TARGET_CATEGORY_ID)).toHaveText(
-        /(?:-|\u2212)900,00\s*kr/,
+        /900,00\s*kr under target/,
       );
     } finally {
       await updatedApp.close();

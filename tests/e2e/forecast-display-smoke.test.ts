@@ -40,6 +40,24 @@ describe("forecast display smoke", () => {
       React.createElement(ForecastSection, { dashboardData: fallbackData })
     );
 
-    expect(markup).toContain("Not enough recorded months yet; showing a zero-value fallback estimate.");
+    expect(markup).toContain("Not enough history for an outlook.");
+    expect(markup).not.toContain("<li");
+    expect(markup).not.toContain("2026-04");
+    expect(markup).not.toContain("0,00");
+    expect(fallbackData.forecast.entries).toHaveLength(3);
+  });
+
+  it("shows a genuine zero net outlook when recorded history is available", () => {
+    const dashboardData = buildDashboardData({
+      monthlyTotals: [{ yearMonth: "2026-05", totalMinor: 0 }],
+    });
+    const markup = renderToStaticMarkup(
+      React.createElement(ForecastSection, { dashboardData })
+    );
+
+    expect(markup).not.toContain("Not enough history");
+    expect(markup).toContain("2026-06");
+    expect(markup).toContain("0,00");
+    expect(markup.match(/<li\b/g)).toHaveLength(3);
   });
 });

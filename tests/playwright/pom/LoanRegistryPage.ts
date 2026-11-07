@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export interface LoanInput {
   label: string;
@@ -134,6 +134,8 @@ export class LoanRegistryPage {
       await this.propertySelect.selectOption({ label: input.propertyLabel });
     }
     await this.createButton.click();
+    await expect(this.createForm).toBeHidden();
+    await expect(this.loan(input.label)).toBeVisible();
   }
 
   async addBalance(label: string, input: LoanBalanceInput): Promise<void> {

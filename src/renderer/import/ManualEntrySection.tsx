@@ -4,43 +4,71 @@ import type {
   ManualEntryResponse,
   ManualEntrySuccess,
 } from "../../app/import/manualEntry.js";
-import type { Account, ManualEntryInput } from "../../domain/types.js";
+import type { Account, ManualEntryInput, ManualEntryValidationErrorCode } from "../../domain/types.js";
 import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 import { CATEGORY_OPTIONS } from "./categoryOptions.js";
+import { parseNokAmountMinor } from "../parseNokAmountMinor.js";
 
 interface ManualEntryFormValues {
   accountId: string;
   bookedAtIso: string;
-  amountMinor: string;
+  amountNok: string;
   merchantRaw: string;
   categoryId: string;
 }
+
+type ValidationCode = ManualEntryValidationErrorCode | "INVALID_AMOUNT_NOK";
+
+const validationFields: Record<ValidationCode, keyof ManualEntryFormValues | null> = {
+  INVALID_HOUSEHOLD_ID: null,
+  INVALID_ACCOUNT_ID: "accountId",
+  INVALID_BOOKED_AT_ISO: "bookedAtIso",
+  INVALID_AMOUNT_MINOR_INTEGER: "amountNok",
+  INVALID_AMOUNT_NOK: "amountNok",
+  INVALID_MERCHANT_RAW: "merchantRaw",
+  INVALID_CATEGORY_ID: "categoryId",
+};
+
+const validationMessages: Record<ManualEntryValidationErrorCode, string> = {
+  INVALID_HOUSEHOLD_ID: "The household is unavailable. Return to Household and check your setup before adding a transaction.",
+  INVALID_ACCOUNT_ID: "Choose an account belonging to this household.",
+  INVALID_BOOKED_AT_ISO: "Choose a valid booked date.",
+  INVALID_AMOUNT_MINOR_INTEGER: "Enter a NOK amount with up to two decimals.",
+  INVALID_MERCHANT_RAW: "Enter a description or merchant, not just spaces.",
+  INVALID_CATEGORY_ID: "Choose a category or leave the transaction uncategorized for review.",
+};
 
 type ManualEntryState =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "success"; response: ManualEntrySuccess }
   | { status: "duplicate"; response: ManualEntryDuplicate }
-  | { status: "validation"; code: string; message: string }
+  | { status: "validation"; code: ValidationCode; message: string }
   | { status: "error"; message: string };
 
 function createInitialFormValues(accountId = ""): ManualEntryFormValues {
   return {
     accountId,
     bookedAtIso: toLocalIsoDate(new Date()),
-    amountMinor: "",
+    amountNok: "",
     merchantRaw: "",
     categoryId: "",
   };
 }
 
-function toManualEntryInput(values: ManualEntryFormValues, householdId: string): ManualEntryInput {
+function toManualEntryInput(
+  values: ManualEntryFormValues,
+  householdId: string
+): ManualEntryInput | null {
+  const amountMinor = parseNokAmountMinor(values.amountNok);
+  if (amountMinor === null) return null;
+
   const categoryId = values.categoryId.trim();
   return {
     householdId,
     accountId: values.accountId,
     bookedAtIso: values.bookedAtIso,
-    amountMinor: Number(values.amountMinor),
+    amountMinor,
     merchantRaw: values.merchantRaw,
     ...(categoryId.length > 0 ? { categoryId } : {}),
   };
@@ -87,15 +115,52 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
 
   function updateField(field: keyof ManualEntryFormValues, value: string): void {
     setFormValues((current) => ({ ...current, [field]: value }));
+    if (
+      entryState.status === "validation" &&
+      validationFields[entryState.code] === field
+    ) {
+      setEntryState({ status: "idle" });
+    }
+  }
+
+  function fieldHasError(field: keyof ManualEntryFormValues): boolean {
+    return entryState.status === "validation" && validationFields[entryState.code] === field;
+  }
+
+  function validationAttributes(field: keyof ManualEntryFormValues, helpId?: string): React.AriaAttributes {
+    return {
+      "aria-invalid": fieldHasError(field) ? true : undefined,
+      "aria-describedby": fieldHasError(field)
+        ? [helpId, `manual-${field}-error`].filter(Boolean).join(" ")
+        : helpId,
+    };
+  }
+
+  function renderFieldError(field: keyof ManualEntryFormValues): React.JSX.Element | null {
+    return fieldHasError(field) && entryState.status === "validation"
+      ? <p id={`manual-${field}-error`} role="alert">{entryState.message}</p>
+      : null;
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (householdId === null) return;
+
+    const input = toManualEntryInput(formValues, householdId);
+    if (input === null) {
+      setEntryState({
+        status: "validation",
+        code: "INVALID_AMOUNT_NOK",
+        message:
+          "Enter a NOK amount with up to two decimals. Use a negative amount for an expense and a positive amount for income.",
+      });
+      return;
+    }
+
     setEntryState({ status: "pending" });
 
     window.budgetApi.import
-      .addManualTransaction(toManualEntryInput(formValues, householdId))
+      .addManualTransaction(input)
       .then((response: ManualEntryResponse) => {
         if (response.ok) {
           setEntryState({ status: "success", response });
@@ -112,7 +177,7 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
         setEntryState({
           status: "validation",
           code: response.code,
-          message: response.message,
+          message: validationMessages[response.code],
         });
       })
       .catch((error: unknown) => {
@@ -128,6 +193,7 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
         <label htmlFor="manual-account-id">Account</label>
         <select
           id="manual-account-id"
+          {...validationAttributes("accountId")}
           value={formValues.accountId}
           onChange={(event) => updateField("accountId", event.target.value)}
           required
@@ -140,45 +206,53 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
             </option>
           ))}
         </select>
+        {renderFieldError("accountId")}
 
         <label htmlFor="manual-booked-date">Booked date</label>
         <input
           id="manual-booked-date"
+          {...validationAttributes("bookedAtIso")}
           type="date"
           value={formValues.bookedAtIso}
           onChange={(event) => updateField("bookedAtIso", event.target.value)}
           required
           disabled={entryState.status === "pending"}
         />
+        {renderFieldError("bookedAtIso")}
 
-        <label htmlFor="manual-amount-minor">Amount (øre)</label>
+        <label htmlFor="manual-amount-nok">Amount (NOK)</label>
         <input
-          id="manual-amount-minor"
-          type="number"
-          inputMode="numeric"
-          step="1"
-          value={formValues.amountMinor}
-          onChange={(event) => updateField("amountMinor", event.target.value)}
-          aria-describedby="manual-amount-help"
-          placeholder="-1250"
+          id="manual-amount-nok"
+          type="text"
+          inputMode="decimal"
+          value={formValues.amountNok}
+          onChange={(event) => updateField("amountNok", event.target.value)}
+          {...validationAttributes("amountNok", "manual-amount-help")}
+          placeholder="-12,50"
           required
           disabled={entryState.status === "pending"}
         />
-        <p id="manual-amount-help" className="field-help">1 kr = 100 øre. Use a negative number for an expense and a positive number for income.</p>
+        <p id="manual-amount-help" className="field-help">
+          Enter an amount with up to two decimals. Use a negative number for an expense and a positive number for income.
+        </p>
+        {renderFieldError("amountNok")}
 
         <label htmlFor="manual-merchant-raw">Description or merchant</label>
         <input
           id="manual-merchant-raw"
+          {...validationAttributes("merchantRaw")}
           type="text"
           value={formValues.merchantRaw}
           onChange={(event) => updateField("merchantRaw", event.target.value)}
           required
           disabled={entryState.status === "pending"}
         />
+        {renderFieldError("merchantRaw")}
 
         <label htmlFor="manual-category-id">Category (optional)</label>
         <select
           id="manual-category-id"
+          {...validationAttributes("categoryId")}
           value={formValues.categoryId}
           onChange={(event) => updateField("categoryId", event.target.value)}
           disabled={entryState.status === "pending"}
@@ -190,6 +264,7 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
             </option>
           ))}
         </select>
+        {renderFieldError("categoryId")}
 
         <button
           type="submit"
@@ -231,13 +306,22 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
           <p>Check the Ledger section to review the existing entry before adding another one.</p>
         </div>
       )}
-      {entryState.status === "validation" && (
+      {entryState.status === "validation" && validationFields[entryState.code] === null && (
         <div role="alert">
-          <p>Manual entry validation failed: {entryState.code}</p>
           <p>{entryState.message}</p>
         </div>
       )}
-      {entryState.status === "error" && <p role="alert">Manual entry failed: {entryState.message}</p>}
+      {entryState.status === "error" && (
+        <div role="alert">
+          <p>Saving this transaction could not be confirmed.</p>
+          <p>Your entries are kept here. Check the ledger before trying again to avoid adding the transaction twice.</p>
+          <button type="button" onClick={onOpenLedger}>Open ledger</button>
+          <details>
+            <summary>Error details</summary>
+            <p>{entryState.message}</p>
+          </details>
+        </div>
+      )}
     </section>
   );
 }

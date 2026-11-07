@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { createLoanRegistry } from "../../src/app/loanRegistry.js";
 import { createRecurringCommitmentService } from "../../src/app/recurringCommitmentService.js";
+import { AppShellPage } from "./pom/AppShellPage.js";
 import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
@@ -28,6 +29,7 @@ test.describe("local cashflow scenario workflow", () => {
     seedCashflowScenarioLedger(databasePath, evaluatedAtIso);
     const snapshotBeforeScenario = readLedgerSnapshot(databasePath);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -134,6 +136,7 @@ test.describe("local cashflow scenario workflow", () => {
       exact: true,
     })).toHaveCount(0);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
     await expect(window.getByRole("region", {
       name: "Cashflow scenarios",
       exact: true,
@@ -154,6 +157,7 @@ test.describe("local cashflow scenario workflow", () => {
     seedCashflowScenarioLedger(databasePath, evaluatedAtIso);
     const snapshotBeforeScenario = readLedgerSnapshot(databasePath);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -193,6 +197,7 @@ test.describe("local cashflow scenario workflow", () => {
     seedCashflowScenarioLedger(databasePath, evaluatedAtIso);
     const snapshotBeforeScenario = readLedgerSnapshot(databasePath);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -231,6 +236,7 @@ test.describe("local cashflow scenario workflow", () => {
     seedCashflowScenarioLedger(databasePath, evaluatedAtIso);
     const snapshotBeforeScenario = readLedgerSnapshot(databasePath);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -271,6 +277,7 @@ test.describe("local cashflow scenario workflow", () => {
     seedCashflowScenarioLedger(databasePath, evaluatedAtIso);
     const snapshotBeforeScenario = readLedgerSnapshot(databasePath);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -318,6 +325,7 @@ test.describe("local cashflow scenario workflow", () => {
     });
     const snapshotBeforeScenario = readLedgerSnapshot(databasePath);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -356,6 +364,7 @@ test.describe("local cashflow scenario workflow", () => {
       includeVerifiedBalance: false,
     });
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -376,6 +385,7 @@ test.describe("local cashflow scenario workflow", () => {
       includeVariableCommitment: true,
     });
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -395,6 +405,7 @@ test.describe("local cashflow scenario workflow", () => {
     await createLocalHousehold(window, evaluatedAtIso);
     seedCashflowScenarioLedger(databasePath, evaluatedAtIso);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = getScenarioSection(window);
     await expect(section).toBeVisible();
@@ -471,6 +482,9 @@ async function createLocalHousehold(window: Page, frozenTimeIso: string): Promis
     .toBeVisible();
   await expect(window.getByRole("region", { name: "Review workspace", exact: true }))
     .toHaveAttribute("aria-busy", "false");
+  await expect(window.getByRole("region", {
+    name: "Recurring commitments", exact: true, includeHidden: true,
+  })).toHaveAttribute("aria-busy", "false");
 }
 
 function seedCashflowScenarioLedger(

@@ -125,6 +125,9 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(dashboard.reviewQueueAction).toBeFocused();
     await expect(dashboard.targetVsActualSection).toHaveAttribute("tabindex", "0");
     await window.keyboard.press("Tab");
+    await expect(dashboard.monthlyAttention.getByRole("button", { name: "Set a category target" }))
+      .toBeFocused();
+    await window.keyboard.press("Tab");
     await expect(window.getByRole("button", { name: "Review account coverage", exact: true }))
       .toBeFocused();
     await window.keyboard.press("Tab");
@@ -138,7 +141,7 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(categoryTarget.addTargetButton).toBeFocused();
     await window.keyboard.press("Enter");
-    await expect(categoryTarget.categoryIdInput).toBeFocused();
+    await expect(categoryTarget.categorySelect).toBeFocused();
   });
 
   test("Household property creation remains keyboard-operable from navigation", async ({

@@ -13,7 +13,7 @@ test("refreshes the previous-month comparison after a backdated manual transacti
   await manualEntry.submitEntry({
     accountId: "sample-acc",
     bookedAtIso: "2026-04-25",
-    amountMinor: "-1000",
+    amountNok: "-10,00",
     merchantRaw: "SYNTHETIC BACKDATED GROCERY",
     categoryId: "groceries",
   });

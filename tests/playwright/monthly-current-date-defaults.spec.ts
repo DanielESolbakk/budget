@@ -39,6 +39,10 @@ test.describe("Current local date defaults", () => {
     await expect(dashboard.monthSelector.locator('option[value="2026-05"]')).toHaveCount(1);
     await expect(dashboard.monthSelector.locator(`option[value="${CURRENT_LOCAL_MONTH}"]`)).toHaveCount(1);
     await expect(dashboard.zeroActivityStatus).toContainText("No activity has been recorded for this month.");
+    await expect(window.getByRole("group", { name: "Monthly comparison" })).toContainText("No activity to compare");
+    await expect(dashboard.monthlyTotalsSection).not.toContainText("Spending was unchanged");
+    await expect(dashboard.monthlyTotalsSection).not.toContainText("No transactions for this month.");
+    await expect(dashboard.categoryBreakdownSection).toBeHidden();
 
     for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
       await electronApp.evaluate(({ BrowserWindow }, viewport) => {
