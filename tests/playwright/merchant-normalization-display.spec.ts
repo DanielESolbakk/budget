@@ -60,10 +60,42 @@ test.describe("standardized merchant display", () => {
     await expect.poll(() => ledger.tableScrollContainer.evaluate((element) =>
       element.scrollWidth > element.clientWidth
     )).toBe(true);
+
+    await ledger.tableScrollContainer.evaluate((element) => {
+      element.scrollLeft = 0;
+    });
+    await ledger.tableScrollContainer.focus();
+    await expect(ledger.tableScrollContainer).toBeFocused();
+    await ledger.tableScrollContainer.press("ArrowRight");
+    await expect.poll(() => ledger.tableScrollContainer.evaluate((element) =>
+      element.scrollLeft
+    )).toBeGreaterThan(0);
+    await ledger.tableScrollContainer.press("ArrowLeft");
+    await expect.poll(() => ledger.tableScrollContainer.evaluate((element) =>
+      element.scrollLeft
+    )).toBe(0);
+
     await standardizedMerchant.scrollIntoViewIfNeeded();
     await expect(transaction.getByText(merchantRaw, { exact: true })).toBeVisible();
     await expect(standardizedMerchant).toBeVisible();
     await expectTextNotClipped(standardizedMerchant);
+  });
+
+  test("does not repeat a merchant when normalization leaves its source unchanged", async ({
+    appShell,
+    csvImport,
+    window,
+  }) => {
+    const merchantRaw = "KIWI";
+    await window.setViewportSize({ width: 1280, height: 800 });
+    await csvImport.submitImport(writeMerchantFixture(merchantRaw));
+    await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
+
+    await appShell.openWorkspace("Transactions");
+    const transaction = new LedgerPage(window).transaction(merchantRaw);
+
+    await expect(transaction.getByText(merchantRaw, { exact: true })).toBeVisible();
+    await expect(transaction.getByText(/^Normalized from description:/)).toHaveCount(0);
   });
 
   test("explains an empty standardized merchant while preserving the source in mobile review", async ({
