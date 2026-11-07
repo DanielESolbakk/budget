@@ -123,6 +123,7 @@ export const test = base.extend<ElectronFixtures>({
     await use(new AppShellPage(window));
   },
   categoryTarget: async ({ window }, use) => {
+    await window.getByText("Manage category targets", { exact: true }).click();
     await use(new CategoryTargetPage(window));
   },
   csvImport: async ({ appShell, electronApp, window }, use) => {

@@ -604,6 +604,7 @@ test.describe("Recovery and portability renderer workflows", () => {
       await expect(dashboardTarget.targetCell("restored")).toHaveText(/^150,00/);
       await expect(dashboardTarget.actualCell("restored")).toHaveText(/^123,45/);
       await expect(dashboardTarget.deltaCell("restored")).toHaveText(/26,55\s*kr under target/);
+      await window.getByText("Plan ahead", { exact: true }).click();
       await expect(forecast.projectedDescription).toBeVisible();
       await expect(forecast.section.getByRole("listitem").first()).toContainText("2026-06");
       await expect(forecast.section.getByRole("listitem").first()).toContainText("−123,45");

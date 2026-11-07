@@ -248,6 +248,24 @@ describe("SQLite ledger queries", () => {
     });
   });
 
+  it("returns locally standardized merchant aliases without changing source descriptions", () => {
+    withDatabase([
+      transaction("merchant-variant", "2026-05-01T08:00:00Z", -1200, "Fjord   Syntetisk AS"),
+      transaction("suffix-only", "2026-05-02T08:00:00Z", -1300, "ASA"),
+    ], (database) => {
+      const transactions = database.queryTransactions(HOUSEHOLD.id, { pageSize: 10 }).transactions;
+
+      expect(transactions.find((item) => item.id === "merchant-variant")).toMatchObject({
+        merchantRaw: "Fjord   Syntetisk AS",
+        merchantAlias: "FJORD SYNTETISK",
+      });
+      expect(transactions.find((item) => item.id === "suffix-only")).toMatchObject({
+        merchantRaw: "ASA",
+        merchantAlias: "",
+      });
+    });
+  });
+
   it("sorts account and category columns by their displayed labels", () => {
     withDatabase([
       transaction("uncategorized-checking", "2026-05-01T08:00:00Z", -1000, "Uncategorized", {

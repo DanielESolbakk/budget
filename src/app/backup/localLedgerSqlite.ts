@@ -3477,7 +3477,10 @@ export function createLocalLedgerDatabase(
     `).all(...parameters, ...orderParameters, pageSize, (page - 1) * pageSize) as unknown as TransactionRow[];
 
     return {
-      transactions: transactionRows.map(mapTransactionRow),
+      transactions: transactionRows.map((row) => ({
+        ...mapTransactionRow(row),
+        merchantAlias: normalizeMerchantName(row.merchant_raw),
+      })),
       totalCount: countRow.total_count,
       page,
       pageSize,

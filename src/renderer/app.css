@@ -2139,6 +2139,24 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
   padding: 0.65rem 0.75rem;
 }
 
+.ledger-merchant-details {
+  display: grid;
+  min-width: 0;
+  gap: 0.3rem;
+}
+
+.ledger-merchant-details > span:first-child {
+  overflow-wrap: anywhere;
+}
+
+.standardized-merchant {
+  display: block;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .ledger-table th {
   color: var(--paper-muted);
   font-size: 0.78rem;
@@ -2594,7 +2612,7 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
     "totals totals"
     "attention attention"
     "category target"
-    "target-entry forecast";
+    "target-entry target-entry";
   gap: 1.25rem;
   align-items: start;
   margin-top: 1.5rem;
@@ -2620,10 +2638,6 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   grid-area: target-entry;
 }
 
-.review-forecast {
-  grid-area: forecast;
-}
-
 .review-planning-sections {
   display: grid;
   gap: 1.25rem;
@@ -2631,24 +2645,26 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   min-width: 0;
 }
 
-.review-planning-disclosure {
+.review-planning-disclosure,
+.review-maintenance-disclosure {
   min-width: 0;
   border-block: 1px solid var(--line);
   margin-top: 1.5rem;
 }
 
-.review-planning-disclosure > summary {
-  display: flex;
+.review-planning-disclosure > summary,
+.review-maintenance-disclosure > summary {
+  display: list-item;
   min-height: 3.25rem;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem 1rem;
+  padding-block: 0.75rem;
+  list-style-position: inside;
   cursor: pointer;
   color: var(--paper);
   font-weight: 700;
 }
 
 .review-planning-disclosure > summary small {
+  margin-inline-start: 0.5rem;
   color: var(--paper-muted);
   font-size: 0.875rem;
   font-weight: 400;
@@ -2657,6 +2673,10 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
 .review-planning-content {
   display: grid;
   gap: 1.25rem;
+  padding-block: 0.75rem 1rem;
+}
+
+.review-maintenance-disclosure > .review-primary {
   padding-block: 0.75rem 1rem;
 }
 
@@ -4695,6 +4715,10 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   font-size: 0.8rem;
 }
 
+.review-queue-details .standardized-merchant {
+  font-family: inherit;
+}
+
 .review-queue-action {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -4915,12 +4939,13 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   }
 
   .review-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "totals totals"
-      "attention attention"
-      "category target"
-      "target-entry forecast";
+      "totals"
+      "attention"
+      "category"
+      "target"
+      "target-entry";
   }
 
   .account-coverage-forms,
@@ -4937,7 +4962,7 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   }
 
   .review-support {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .workflow-import-grid,
@@ -5364,8 +5389,7 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
       "attention"
       "category"
       "target"
-      "target-entry"
-      "forecast";
+      "target-entry";
   }
 
   .import-stage-progress ol {
@@ -7403,17 +7427,7 @@ section[aria-label].destination-workspace.household-workspace {
       "totals totals"
       "attention attention"
       "category target"
-      "target-entry forecast";
-  }
-}
-
-@media (min-width: 681px) and (max-width: 1050px) {
-  .review-grid {
-    grid-template-areas:
-      "totals totals"
-      "attention attention"
-      "category target"
-      "target-entry forecast";
+      "target-entry target-entry";
   }
 }
 

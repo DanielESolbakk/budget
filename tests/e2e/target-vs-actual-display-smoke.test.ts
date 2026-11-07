@@ -46,7 +46,8 @@ describe("target-vs-actual display smoke", () => {
     expect(markup).toContain("Target vs Actual");
     expect(markup).toContain('<th scope="col">Target</th>');
     expect(markup).toContain('<th scope="col">Actual</th>');
-    expect(markup).toContain('<th scope="col">Delta</th>');
+    expect(markup).toContain('<th scope="col">Over/under target</th>');
+    expect(markup).toContain('20,00\u00a0kr over target');
     expect(markup).toContain("Groceries &amp; food");
   });
 

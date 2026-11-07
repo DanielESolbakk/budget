@@ -61,7 +61,6 @@ export function ReviewWorkspace({
   const viewContract: DashboardViewContract | null = state.status === "ready" ? state.viewContract : null;
   const monthlyAttention = viewContract === null ? null : getMonthlyAttentionSummary(viewContract);
   const planningToolsRef = React.useRef<HTMLDetailsElement>(null);
-  const categoryTargetRef = React.useRef<HTMLDivElement>(null);
   const [isTargetFormOpen, setIsTargetFormOpen] = React.useState(false);
 
   function openPlanningTools(): void {
@@ -157,38 +156,30 @@ export function ReviewWorkspace({
                   <p role="status">Calculating monthly exceptions...</p>
                 ) : (
                   <div className="monthly-attention-content">
-                    <div className="monthly-attention-item">
-                      <p>
-                        {monthlyAttention.categoryReviewCount > 0
-                          ? `${monthlyAttention.categoryReviewCount} category ${
-                            monthlyAttention.categoryReviewCount === 1 ? "decision needs" : "decisions need"
-                          } review this month.`
-                          : "No category decisions need review this month."}
-                      </p>
-                      <button type="button" onClick={onOpenTransactions}>
-                        Open all-month queue
-                      </button>
-                    </div>
-                    <div className="monthly-attention-item">
-                      {monthlyAttention.overTargetCategoryCount > 0 ? (
+                    {monthlyAttention.categoryReviewCount > 0 && (
+                      <div className="monthly-attention-item">
+                        <p>{monthlyAttention.categoryReviewCount} category {monthlyAttention.categoryReviewCount === 1
+                          ? "decision needs" : "decisions need"} review this month.</p>
+                      </div>
+                    )}
+                    {monthlyAttention.overTargetCategoryCount > 0 && (
+                      <div className="monthly-attention-item">
                         <a href="#target-vs-actual">
                           Review {monthlyAttention.overTargetCategoryCount} {monthlyAttention.overTargetCategoryCount === 1
                             ? "category"
                             : "categories"} over target
                         </a>
-                      ) : (
-                        <p>{(state.viewContract.state !== "loading" &&
-                          (state.viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0)
-                          ? "Budget checks are incomplete until missing dated rates are recorded."
-                          : "No categories over target."}</p>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => categoryTargetRef.current?.querySelector<HTMLButtonElement>(
-                          "#category-target-add"
-                        )?.focus()}
-                      >
-                        Set a category target
+                      </div>
+                    )}
+                    <div className="monthly-attention-item">
+                      {(state.viewContract.state !== "loading" &&
+                        (state.viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0) ? (
+                        <p role="status">Budget checks are incomplete until missing dated rates are recorded.</p>
+                      ) : monthlyAttention.categoryReviewCount === 0 && monthlyAttention.overTargetCategoryCount === 0 ? (
+                        <p>No category reviews or over-target categories this month.</p>
+                      ) : null}
+                      <button type="button" onClick={onOpenTransactions}>
+                        Review all transactions
                       </button>
                     </div>
                     <AccountCoverageSummary
@@ -207,17 +198,25 @@ export function ReviewWorkspace({
             <div className="review-primary review-target-vs-actual">
               <TargetVsActualSection viewContract={state.viewContract} />
             </div>
-            <div ref={categoryTargetRef} className="review-primary review-category-target">
+            <details
+              className="review-category-target review-maintenance-disclosure"
+              aria-label="Category target management"
+              onToggle={(event) => {
+                if (isTargetFormOpen && !event.currentTarget.open) event.currentTarget.open = true;
+              }}
+            >
+              <summary aria-describedby={isTargetFormOpen ? "target-draft-help" : undefined}>
+                Manage category targets
+              </summary>
+              <div className="review-primary">
               <CategoryTargetEntrySection
                 selectedYearMonth={state.selectedYearMonth}
                 selectedMonthLabel={formatYearMonth(state.selectedYearMonth)}
                 onTargetSaved={onTargetSaved}
                 onFormOpenChange={setIsTargetFormOpen}
               />
-            </div>
-            <div className="review-support review-forecast">
-              <ForecastSection dashboardData={state.dashboardData} />
-            </div>
+              </div>
+            </details>
           </div>
           <details
             ref={planningToolsRef}
@@ -226,9 +225,10 @@ export function ReviewWorkspace({
           >
             <summary>
               <span>Plan ahead</span>
-              <small>Recurring commitments, spendable cash, and cashflow scenarios</small>
+              <small>Forecast, recurring commitments, spendable cash, and cashflow scenarios</small>
             </summary>
             <div className="review-planning-content">
+              <ForecastSection dashboardData={state.dashboardData} />
               <div className="review-recurring-commitments">
                 <RecurringCommitmentsSection isActive={isActive} refreshKey={refreshKey} />
               </div>

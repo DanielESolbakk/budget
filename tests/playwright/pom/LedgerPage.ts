@@ -37,6 +37,10 @@ export class LedgerPage {
     return this.section.getByRole("table", { name: "Ledger transactions" });
   }
 
+  get tableScrollContainer() {
+    return this.section.locator(".ledger-table-scroll");
+  }
+
   get paginationStatus() {
     return this.section.getByRole("navigation", { name: "Ledger pagination" }).locator("span");
   }

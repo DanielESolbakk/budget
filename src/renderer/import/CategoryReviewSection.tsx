@@ -328,6 +328,11 @@ export function CategoryReviewSection({
             <li className="review-queue-item" key={transaction.id} aria-label={`Review ${transaction.merchantRaw}`}>
               <div className="review-queue-details">
                 <strong>{transaction.merchantRaw}</strong>
+                {transaction.merchantAlias !== transaction.merchantRaw && (
+                  <span className="standardized-merchant">
+                    Normalized from description: {transaction.merchantAlias || "No name remains after normalization."}
+                  </span>
+                )}
                 <span>{transaction.bookedAtIso.slice(0, 10)} · {formatAmount(transaction.amountMinor, transaction.currencyCode ?? "NOK")}</span>
                 {transaction.categorization !== undefined && (
                   <span>
