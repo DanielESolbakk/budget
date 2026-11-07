@@ -2,6 +2,7 @@ import { test as baseTest, expect } from "./fixtures/electron.js";
 import type { Locator, Page } from "@playwright/test";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { createRecurringCommitmentService } from "../../src/app/recurringCommitmentService.js";
+import { AppShellPage } from "./pom/AppShellPage.js";
 import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
@@ -32,6 +33,7 @@ test.describe("local spendable cash estimate", () => {
       commitmentDateIso: addUtcDays(evaluatedDateIso, 5),
     });
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = window.getByRole("region", {
       name: "Spendable cash until income",
@@ -90,6 +92,7 @@ test.describe("local spendable cash estimate", () => {
     });
     const snapshotBeforeEstimate = readLedgerSnapshot(databasePath);
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = window.getByRole("region", {
       name: "Spendable cash until income",
@@ -111,6 +114,7 @@ test.describe("local spendable cash estimate", () => {
     await expectNoHorizontalOverflow(window);
 
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
     await expect(window.getByRole("region", {
       name: "Spendable cash until income",
       exact: true,
@@ -133,6 +137,7 @@ test.describe("local spendable cash estimate", () => {
       commitmentDateIso: addUtcDays(evaluatedDateIso, 5),
     });
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = window.getByRole("region", {
       name: "Spendable cash until income",
@@ -165,6 +170,7 @@ test.describe("local spendable cash estimate", () => {
       commitmentDateIso: addUtcDays(evaluatedDateIso, 5),
     });
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = window.getByRole("region", {
       name: "Spendable cash until income",
@@ -207,6 +213,7 @@ test.describe("local spendable cash estimate", () => {
       },
     });
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
 
     const section = window.getByRole("region", {
       name: "Spendable cash until income",
@@ -253,6 +260,9 @@ async function createLocalHousehold(window: Page, frozenTimeIso: string): Promis
     .toBeVisible();
   await expect(window.getByRole("region", { name: "Review workspace", exact: true }))
     .toHaveAttribute("aria-busy", "false");
+  await expect(window.getByRole("region", {
+    name: "Recurring commitments", exact: true, includeHidden: true,
+  })).toHaveAttribute("aria-busy", "false");
 }
 
 function seedSpendableLedger(

@@ -101,4 +101,8 @@ export class AppShellPage {
     }
     await this.page.getByRole("button", { name: "Choose statement file", exact: true }).click();
   }
+
+  async openPlanningTools(): Promise<void> {
+    await this.page.getByText("Plan ahead", { exact: true }).click();
+  }
 }

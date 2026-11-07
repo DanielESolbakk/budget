@@ -130,6 +130,10 @@ test("holding labels and values remain legible on the household canvas", async (
     amount: "11000",
   });
 
+  await expect(holding(window, "Global fund")
+    .getByRole("table", { name: "Valuation history", exact: true })
+    .getByRole("cell", { name: /^EUR 11\s*000,00$/ })).toBeVisible();
+
   const colors = await window.evaluate(() => {
     const workspace = document.querySelector('[aria-label="Investments workspace"]');
     const record = workspace?.querySelector(".holding-record");

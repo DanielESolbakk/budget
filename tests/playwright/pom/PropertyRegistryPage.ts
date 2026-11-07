@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export interface PropertyValuationInput {
   effectiveDate: string;
@@ -118,6 +118,8 @@ export class PropertyRegistryPage {
     await this.openCreateForm();
     await this.propertyLabelInput.fill(label);
     await this.addPropertyButton.click();
+    await expect(this.propertyCreateForm).toBeHidden();
+    await expect(this.property(label)).toBeVisible();
   }
 
   async openCreateForm(): Promise<void> {

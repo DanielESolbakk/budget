@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import type { ImportJob, PendingTransactionObservation, Transaction } from "../../src/domain/types.js";
 import { RecurringCommitmentsPage } from "./pom/RecurringCommitmentsPage.js";
+import { AppShellPage } from "./pom/AppShellPage.js";
 
 const test = baseTest.extend({});
 
@@ -108,6 +109,7 @@ test.describe("local recurring commitment workflow", () => {
     await expect(commitment).toContainText("Ended");
 
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
     await expect(window.getByRole("group", {
       name: "Commitment Synthetic home insurance",
       exact: true,
@@ -184,6 +186,7 @@ test.describe("local recurring commitment workflow", () => {
     await expect(commitment).toContainText("Active");
 
     await window.reload();
+    await new AppShellPage(window).openPlanningTools();
     await expect(window.getByRole("group", {
       name: "Commitment Synthetic resumable bill",
       exact: true,
@@ -460,6 +463,7 @@ async function createLocalHousehold(window: Page, frozenTimeIso: string): Promis
   await window.getByRole("button", { name: "Create local ledger", exact: true }).click();
   await expect(window.getByRole("heading", { name: "Budget Planner", exact: true }))
     .toBeVisible();
+  await new AppShellPage(window).openPlanningTools();
 }
 
 async function expectNoHorizontalOverflow(window: Page): Promise<void> {

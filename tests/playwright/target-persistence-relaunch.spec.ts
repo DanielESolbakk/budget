@@ -17,9 +17,11 @@ function persistedTargetRow(categoryId: string, targetNok: string): RegExp {
 test.describe("Category target persistence across application restart", () => {
   test("created and updated targets persist across restarts and feed the dashboard", async ({
     categoryTarget,
+    dashboard,
     databasePath,
     electronApp,
   }) => {
+    await dashboard.monthSelector.selectOption("2026-05");
     await categoryTarget.addTargetButton.click();
     await categoryTarget.categorySelect.selectOption(RESTART_TARGET_CATEGORY_ID);
     await categoryTarget.targetAmountInput.fill(INITIAL_TARGET_NOK);
@@ -43,6 +45,7 @@ test.describe("Category target persistence across application restart", () => {
       const restartedWindow = await restartedApp.firstWindow();
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
+      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
         persistedTargetRow(RESTART_TARGET_CATEGORY_ID, INITIAL_TARGET_NOK),
@@ -71,6 +74,7 @@ test.describe("Category target persistence across application restart", () => {
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
       const restartedDashboardTarget = new DashboardTargetPage(restartedWindow);
+      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
         persistedTargetRow(RESTART_TARGET_CATEGORY_ID, UPDATED_TARGET_NOK),
