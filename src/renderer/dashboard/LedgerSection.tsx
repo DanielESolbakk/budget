@@ -784,7 +784,7 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
                           <span>{transaction.merchantRaw}</span>
                           {transaction.merchantAlias !== transaction.merchantRaw && (
                             <span className="standardized-merchant">
-                              Standardized merchant: {transaction.merchantAlias || "No standardized merchant name available"}
+                            Normalized from description: {transaction.merchantAlias || "No name remains after normalization."}
                             </span>
                           )}
                         </div>

@@ -330,7 +330,7 @@ export function CategoryReviewSection({
                 <strong>{transaction.merchantRaw}</strong>
                 {transaction.merchantAlias !== transaction.merchantRaw && (
                   <span className="standardized-merchant">
-                    Standardized merchant: {transaction.merchantAlias || "No standardized merchant name available"}
+                    Normalized from description: {transaction.merchantAlias || "No name remains after normalization."}
                   </span>
                 )}
                 <span>{transaction.bookedAtIso.slice(0, 10)} · {formatAmount(transaction.amountMinor, transaction.currencyCode ?? "NOK")}</span>

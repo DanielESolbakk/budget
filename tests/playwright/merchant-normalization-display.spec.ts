@@ -48,11 +48,20 @@ test.describe("standardized merchant display", () => {
     const ledger = new LedgerPage(window);
     const transaction = ledger.transaction(merchantRaw);
     const standardizedMerchant = transaction.getByText(
-      "Standardized merchant: FJORD SYNTETISK",
+      "Normalized from description: FJORD SYNTETISK",
       { exact: true }
     );
 
     await expect(transaction).toContainText(merchantRaw);
+    await expect(standardizedMerchant).toBeVisible();
+    await expectTextNotClipped(standardizedMerchant);
+
+    await window.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(() => ledger.tableScrollContainer.evaluate((element) =>
+      element.scrollWidth > element.clientWidth
+    )).toBe(true);
+    await standardizedMerchant.scrollIntoViewIfNeeded();
+    await expect(transaction.getByText(merchantRaw, { exact: true })).toBeVisible();
     await expect(standardizedMerchant).toBeVisible();
     await expectTextNotClipped(standardizedMerchant);
   });
@@ -71,7 +80,7 @@ test.describe("standardized merchant display", () => {
     const reviewQueue = new ReviewQueuePage(window);
     const reviewItem = reviewQueue.reviewItem(merchantRaw);
     const standardizedMerchant = reviewItem.getByText(
-      "Standardized merchant: No standardized merchant name available",
+      "Normalized from description: No name remains after normalization.",
       { exact: true }
     );
 
