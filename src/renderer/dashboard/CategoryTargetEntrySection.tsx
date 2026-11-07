@@ -1,5 +1,6 @@
 import React from "react";
 import type { MonthlyCategoryTarget } from "../../domain/types.js";
+import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
 import { categoryDisplayName } from "./categoryDisplayName.js";
 
 const MINOR_UNITS_PER_NOK = 100;
@@ -17,6 +18,7 @@ function formatMinor(minor: number): string {
 
 export interface CategoryTargetEntrySectionProps {
   selectedYearMonth: string;
+  selectedMonthLabel: string;
   onTargetSaved: () => void;
 }
 
@@ -28,6 +30,7 @@ type FormState =
 
 export function CategoryTargetEntrySection({
   selectedYearMonth,
+  selectedMonthLabel,
   onTargetSaved,
 }: CategoryTargetEntrySectionProps): React.JSX.Element {
   const [targets, setTargets] = React.useState<MonthlyCategoryTarget[]>([]);
@@ -41,8 +44,10 @@ export function CategoryTargetEntrySection({
   const [formState, setFormState] = React.useState<FormState>({ status: "idle" });
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [editingCategoryId, setEditingCategoryId] = React.useState<string | null>(null);
-  const categoryInputRef = React.useRef<HTMLInputElement>(null);
+  const categoryInputRef = React.useRef<HTMLSelectElement>(null);
   const editingCategoryLabel = editingCategoryId === null ? null : categoryDisplayName(editingCategoryId);
+  const hasEditingCategoryOption =
+    editingCategoryId !== null && CATEGORY_OPTIONS.some((category) => category.id === editingCategoryId);
 
   React.useEffect(() => {
     let isActive = true;
@@ -107,7 +112,7 @@ export function CategoryTargetEntrySection({
 
     const trimmedCategoryId = categoryId.trim();
     if (!trimmedCategoryId) {
-      setFormState({ status: "error", message: "Category ID is required." });
+      setFormState({ status: "error", message: "Choose a category." });
       return;
     }
 
@@ -145,6 +150,7 @@ export function CategoryTargetEntrySection({
   return (
     <section aria-label="Category Target Entry" aria-busy={isLoadingTargets || formState.status === "saving"}>
       <h2>Set Category Budget Target</h2>
+      <p className="category-target-month">Targets for {selectedMonthLabel}</p>
       {isLoadingTargets && (
         <p role="status">
           {loadedMonth === selectedYearMonth ? "Updating saved targets..." : "Loading saved targets..."}
@@ -190,15 +196,22 @@ export function CategoryTargetEntrySection({
         <form aria-label="Category target entry form" onSubmit={handleSubmit}>
           <h3>{editingCategoryLabel === null ? "Add target" : `Edit target: ${editingCategoryLabel}`}</h3>
           <label htmlFor="target-category-id">Category</label>
-          <input
+          <select
             id="target-category-id"
-            type="text"
-            aria-label="Category ID"
             ref={categoryInputRef}
             value={categoryId}
-            readOnly={editingCategoryId !== null}
+            required
+            disabled={editingCategoryId !== null}
             onChange={(e) => setCategoryId(e.target.value)}
-          />
+          >
+            <option value="" disabled>Choose a category</option>
+            {!hasEditingCategoryOption && editingCategoryId !== null && (
+              <option value={editingCategoryId}>{editingCategoryLabel} (existing category)</option>
+            )}
+            {CATEGORY_OPTIONS.map((category) => (
+              <option key={category.id} value={category.id}>{category.label}</option>
+            ))}
+          </select>
           <label htmlFor="target-amount">Target Amount (NOK)</label>
           <input
             id="target-amount"

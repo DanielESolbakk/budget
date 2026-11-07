@@ -27,29 +27,38 @@ test.describe("Category target entry renderer smoke", () => {
     await expect(categoryTarget.section).toBeVisible();
     await expect(categoryTarget.heading).toBeVisible();
     await expect(categoryTarget.addTargetButton).toBeVisible();
-    await expect(categoryTarget.categoryIdInput).not.toBeVisible();
+    await expect(categoryTarget.categorySelect).not.toBeVisible();
 
     await categoryTarget.addTargetButton.click();
-    await expect(categoryTarget.categoryIdInput).toBeVisible();
+    await expect(categoryTarget.categorySelect).toBeVisible();
     await expect(categoryTarget.targetAmountInput).toBeVisible();
     await expect(categoryTarget.saveButton).toBeVisible();
 
     // Verify form fields accept input.
-    await categoryTarget.categoryIdInput.fill("groceries");
-    await expect(categoryTarget.categoryIdInput).toHaveValue("groceries");
+    await categoryTarget.categorySelect.selectOption("groceries");
+    await expect(categoryTarget.categorySelect).toHaveValue("groceries");
     await categoryTarget.targetAmountInput.fill("100");
     await expect(categoryTarget.targetAmountInput).toHaveValue("100");
+  });
 
-    // Reset fields so subsequent tests start clean.
-    await categoryTarget.categoryIdInput.fill("");
-    await categoryTarget.targetAmountInput.fill("");
+  test("category target entry offers named categories instead of an internal ID field", async ({
+    categoryTarget,
+  }) => {
+    await categoryTarget.addTargetButton.click();
+
+    await expect(categoryTarget.categorySelect).toBeVisible();
+    expect(await categoryTarget.categorySelect.getByRole("option", {
+      name: "Groceries & food",
+    }).getAttribute("value")).toBe("groceries");
+    await expect(categoryTarget.section.getByRole("textbox", { name: "Category ID" })).toHaveCount(0);
   });
 
   test("editing a saved target opens the form with its current values", async ({ categoryTarget }) => {
     await categoryTarget.editTargetButton("groceries").click();
 
-    await expect(categoryTarget.categoryIdInput).toBeVisible();
-    await expect(categoryTarget.categoryIdInput).toHaveValue("groceries");
+    await expect(categoryTarget.categorySelect).toBeVisible();
+    await expect(categoryTarget.categorySelect).toHaveValue("groceries");
+    await expect(categoryTarget.categorySelect).toBeDisabled();
     await expect(categoryTarget.targetAmountInput).toHaveValue("90.00");
   });
 
@@ -57,19 +66,20 @@ test.describe("Category target entry renderer smoke", () => {
   // separate describe block below so it can use its own isolated Electron instance
   // with a clean in-memory store.  This describe block covers Scenario 1 and 3.
   test("Scenario 3: invalid input shows visible validation feedback without blank-screen failure", async ({ appShell, categoryTarget }) => {
-    // AC-3: submitting an empty category ID shows an explicit validation error.
+    // AC-3: the category picker prevents saving until a category is selected.
     await categoryTarget.addTargetButton.click();
-    await categoryTarget.categoryIdInput.fill("");
     await categoryTarget.targetAmountInput.fill("50");
     await categoryTarget.saveButton.click();
 
-    await expect(categoryTarget.validationError).toHaveText("Category ID is required.");
+    expect(await categoryTarget.categorySelect.evaluate(
+      (select: HTMLSelectElement) => select.validity.valueMissing
+    )).toBe(true);
     // Confirm the app shell and section are still visible (no blank-screen regression).
     await expect(appShell.heading).toBeVisible();
     await expect(categoryTarget.section).toBeVisible();
 
     // The number input rejects a negative amount through native validation.
-    await categoryTarget.categoryIdInput.fill("transport");
+    await categoryTarget.categorySelect.selectOption("transport");
     await categoryTarget.targetAmountInput.fill("-10");
     await categoryTarget.saveButton.click();
 
@@ -95,7 +105,7 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     // AC-2: save a target for a category not in the default store, then reload.
     // The default sampleTargetStore in main.ts includes groceries/2026-05 but not transport.
     await categoryTarget.addTargetButton.click();
-    await categoryTarget.categoryIdInput.fill("transport");
+    await categoryTarget.categorySelect.selectOption("transport");
     await categoryTarget.targetAmountInput.fill("500");
     await categoryTarget.saveButton.click();
 
@@ -123,7 +133,7 @@ test.describe("Category target entry renderer smoke — save and reload persiste
 
     await expect(categoryTarget.savedConfirmation).toBeVisible();
     await expect(categoryTarget.savedTargetItem("groceries")).toContainText("125,00");
-    await expect(categoryTarget.categoryIdInput).not.toBeVisible();
+    await expect(categoryTarget.categorySelect).not.toBeVisible();
   });
 
   test("saving a target synchronizes its monthly comparison and over-target checks", async ({

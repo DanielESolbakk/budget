@@ -16,6 +16,7 @@
  */
 
 import { test, expect } from "./fixtures/electron.js";
+import { AppShellPage } from "./pom/AppShellPage.js";
 
 const MOBILE_SCREENSHOT_DIFF_RATIO = process.platform === "linux" ? 0.03 : 0.01;
 
@@ -72,6 +73,27 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthlyTotal("Monthly net").getByLabel("Monthly net", { exact: true })).toBeVisible();
   });
 
+  test("primary navigation explains workspace contents and identifies the active view", async ({
+    window,
+  }) => {
+    const appShell = new AppShellPage(window);
+    const activity = appShell.destination("Transactions");
+
+    await expect(activity).toHaveAttribute("aria-describedby", "activity-workspace-description");
+    await expect(window.locator("#activity-workspace-description")).toHaveText(
+      "Transactions, pending items, and imports"
+    );
+
+    await appShell.openWorkspace("Import");
+    await expect(activity).toHaveAttribute("aria-current", "page");
+    await expect(
+      window.getByRole("navigation", { name: "Activity views" }).getByRole("button", {
+        name: "Import",
+        exact: true,
+      })
+    ).toHaveAttribute("aria-current", "page");
+  });
+
   test("monthly net is distinct from spendable cash and links to both planning tools", async ({
     dashboard,
     window,
@@ -91,12 +113,22 @@ test.describe("Dashboard renderer smoke", () => {
       exact: true,
     })).toHaveAttribute("href", "#cashflow-scenarios");
 
+    const planningDisclosure = window.getByRole("group", { name: "Planning tools" });
+    await expect(planningDisclosure).not.toHaveAttribute("open", "");
+    await expect(dashboard.spendableCashSection).toBeHidden();
     await spendableLink.click();
     await expect(window).toHaveURL(/#spendable-cash$/);
+    await expect(planningDisclosure).toHaveAttribute("open", "");
     await expect(dashboard.spendableCashSection).toBeInViewport();
   });
 
+  test("category target entry repeats the selected month beside its form", async ({ window }) => {
+    const targetSection = window.getByRole("region", { name: "Category Target Entry" });
+    await expect(targetSection.getByText("Targets for mai 2026", { exact: true })).toBeVisible();
+  });
+
   test("cash-planning inputs explain system date and decimal formats", async ({ window }) => {
+    await window.getByText("Plan ahead", { exact: true }).click();
     const spendableForm = window.getByRole("form", { name: "Spendable cash estimate inputs" });
     const nextIncomeDate = spendableForm.getByLabel("Next income date");
     const reserve = spendableForm.getByLabel("Reserve (NOK)");
@@ -117,6 +149,7 @@ test.describe("Dashboard renderer smoke", () => {
   test("commitment dates explain their different schedule roles and disclose the optional end date", async ({
     window,
   }) => {
+    await window.getByText("Plan ahead", { exact: true }).click();
     const form = window.getByRole("form", { name: "Recurring commitment form" });
     const scheduleDates = form.getByRole("group", { name: "Schedule dates" });
     await expect(scheduleDates).toContainText(
@@ -134,6 +167,7 @@ test.describe("Dashboard renderer smoke", () => {
   });
 
   test("editing a commitment with an end date opens that optional field", async ({ window }) => {
+    await window.getByText("Plan ahead", { exact: true }).click();
     const form = window.getByRole("form", { name: "Recurring commitment form" });
     await form.getByLabel("Commitment description").fill("Synthetic end-dated commitment");
     await form.getByLabel("Commitment amount or estimate").fill("129,00");
@@ -152,7 +186,8 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(activeUntil).toHaveValue("2099-12-31");
   });
 
-  test("cashflow baseline detail is available on demand", async ({ dashboard }) => {
+  test("cashflow baseline detail is available on demand", async ({ dashboard, window }) => {
+    await window.getByText("Plan ahead", { exact: true }).click();
     const baselineExplanation = dashboard.cashflowScenarioSection.getByText(
       "How the baseline is calculated",
       { exact: true }
@@ -482,5 +517,51 @@ test.describe("Dashboard renderer smoke", () => {
       animations: "disabled",
       maxDiffPixelRatio: MOBILE_SCREENSHOT_DIFF_RATIO,
     });
+  });
+
+  test("compact shell keeps the household descriptor readable", async ({ window, electronApp }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
+    });
+
+    const descriptor = window.getByText("Local household ledger", { exact: true });
+    await expect(descriptor).toBeVisible();
+    const fontSize = await descriptor.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).fontSize)
+    );
+    expect(fontSize).toBeGreaterThanOrEqual(12);
+  });
+
+  test("minimum compact navigation stays within the viewport", async ({ window, electronApp }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(320, 844);
+    });
+
+    const dimensions = await window.evaluate(() => ({
+      viewportWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
+    const navigationBounds = await window.getByRole("navigation", { name: "Primary" }).boundingBox();
+    if (navigationBounds === null) {
+      throw new Error("Primary navigation must remain measurable at compact widths.");
+    }
+    expect(navigationBounds.x + navigationBounds.width).toBeLessThanOrEqual(dimensions.viewportWidth);
+  });
+
+  test("compact desktop header keeps import controls inside the viewport", async ({ window, electronApp }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(681, 900);
+    });
+
+    const viewportWidth = await window.evaluate(() => document.documentElement.clientWidth);
+    const documentWidth = await window.evaluate(() => document.documentElement.scrollWidth);
+    const importAction = await window.getByRole("button", { name: "Import statement" }).boundingBox();
+    if (importAction === null) {
+      throw new Error("The statement import action must remain measurable at compact desktop widths.");
+    }
+
+    expect(documentWidth).toBeLessThanOrEqual(viewportWidth);
+    expect(importAction.x + importAction.width).toBeLessThanOrEqual(viewportWidth);
   });
 });

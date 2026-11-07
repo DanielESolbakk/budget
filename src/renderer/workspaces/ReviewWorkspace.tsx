@@ -60,6 +60,11 @@ export function ReviewWorkspace({
 }: ReviewWorkspaceProps): React.JSX.Element {
   const viewContract: DashboardViewContract | null = state.status === "ready" ? state.viewContract : null;
   const monthlyAttention = viewContract === null ? null : getMonthlyAttentionSummary(viewContract);
+  const planningToolsRef = React.useRef<HTMLDetailsElement>(null);
+
+  function openPlanningTools(): void {
+    if (planningToolsRef.current !== null) planningToolsRef.current.open = true;
+  }
 
   return (
     <section
@@ -136,7 +141,11 @@ export function ReviewWorkspace({
 
           <div className="review-grid">
             <div className="review-overview-totals">
-            <MonthlyTotalsSection viewContract={state.viewContract} refreshKey={refreshKey} />
+            <MonthlyTotalsSection
+              viewContract={state.viewContract}
+              refreshKey={refreshKey}
+              onOpenPlanningTools={openPlanningTools}
+            />
             </div>
             <aside className="monthly-attention review-overview-attention" aria-label="Monthly attention">
                 <h3>Monthly checks</h3>
@@ -187,6 +196,7 @@ export function ReviewWorkspace({
             <div className="review-primary review-category-target">
               <CategoryTargetEntrySection
                 selectedYearMonth={state.selectedYearMonth}
+                selectedMonthLabel={formatYearMonth(state.selectedYearMonth)}
                 onTargetSaved={onTargetSaved}
               />
             </div>
@@ -194,13 +204,25 @@ export function ReviewWorkspace({
               <ForecastSection dashboardData={state.dashboardData} />
             </div>
           </div>
-          <div className="review-recurring-commitments">
-            <RecurringCommitmentsSection isActive={isActive} refreshKey={refreshKey} />
-          </div>
-          <div className="review-planning-sections">
-            <SpendableCashSection isActive={isActive} refreshKey={refreshKey} />
-            <CashflowScenarioSection refreshKey={refreshKey} />
-          </div>
+          <details
+            ref={planningToolsRef}
+            className="review-planning-disclosure"
+            aria-label="Planning tools"
+          >
+            <summary>
+              <span>Plan ahead</span>
+              <small>Recurring commitments, spendable cash, and cashflow scenarios</small>
+            </summary>
+            <div className="review-planning-content">
+              <div className="review-recurring-commitments">
+                <RecurringCommitmentsSection isActive={isActive} refreshKey={refreshKey} />
+              </div>
+              <div className="review-planning-sections">
+                <SpendableCashSection isActive={isActive} refreshKey={refreshKey} />
+                <CashflowScenarioSection refreshKey={refreshKey} />
+              </div>
+            </div>
+          </details>
         </>
       )}
     </section>

@@ -6,7 +6,7 @@ import { DashboardTargetPage } from "./pom/DashboardTargetPage.js";
 import { categoryDisplayName } from "../../src/renderer/dashboard/categoryDisplayName.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
-const RESTART_TARGET_CATEGORY_ID = "restart-target";
+const RESTART_TARGET_CATEGORY_ID = "transport";
 const INITIAL_TARGET_NOK = "725";
 const UPDATED_TARGET_NOK = "900";
 
@@ -21,7 +21,7 @@ test.describe("Category target persistence across application restart", () => {
     electronApp,
   }) => {
     await categoryTarget.addTargetButton.click();
-    await categoryTarget.categoryIdInput.fill(RESTART_TARGET_CATEGORY_ID);
+    await categoryTarget.categorySelect.selectOption(RESTART_TARGET_CATEGORY_ID);
     await categoryTarget.targetAmountInput.fill(INITIAL_TARGET_NOK);
     await categoryTarget.saveButton.click();
     await expect(categoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(

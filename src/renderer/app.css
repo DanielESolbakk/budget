@@ -2631,6 +2631,41 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   min-width: 0;
 }
 
+.review-planning-disclosure {
+  min-width: 0;
+  border-block: 1px solid var(--line);
+  margin-top: 1.5rem;
+}
+
+.review-planning-disclosure > summary {
+  display: flex;
+  min-height: 3.25rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  cursor: pointer;
+  color: var(--paper);
+  font-weight: 700;
+}
+
+.review-planning-disclosure > summary small {
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.review-planning-content {
+  display: grid;
+  gap: 1.25rem;
+  padding-block: 0.75rem 1rem;
+}
+
+.category-target-month {
+  margin: -0.5rem 0 0;
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+}
+
 .review-primary,
 .review-support {
   display: grid;
@@ -4946,7 +4981,7 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   }
 
   .brand-lockup p {
-    font-size: 0.55rem;
+    font-size: 0.75rem;
   }
 
   .header-meta {

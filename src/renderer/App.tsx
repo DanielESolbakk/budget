@@ -44,9 +44,9 @@ type PrimaryWorkspaceId = "review" | "activity" | "accounts" | "household";
 
 const PRIMARY_WORKSPACES: Array<{ id: PrimaryWorkspaceId; label: string; description: string }> = [
   { id: "review", label: "Review", description: "Monthly position" },
-  { id: "activity", label: "Activity", description: "Transactions and imports" },
-  { id: "accounts", label: "Accounts", description: "Statements and balances" },
-  { id: "household", label: "Household", description: "Assets, rates and recovery" },
+  { id: "activity", label: "Activity", description: "Transactions, pending items, and imports" },
+  { id: "accounts", label: "Accounts", description: "Statement coverage and balances" },
+  { id: "household", label: "Household", description: "Assets, exchange rates, and data safety" },
 ];
 
 interface AppProps {
@@ -304,12 +304,13 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
               key={workspace.id}
               type="button"
               aria-label={workspace.label}
+              aria-describedby={`${workspace.id}-workspace-description`}
               aria-current={primaryWorkspaceFor(activeWorkspace) === workspace.id ? "page" : undefined}
               className={primaryWorkspaceFor(activeWorkspace) === workspace.id ? "workspace-link is-current" : "workspace-link"}
               onClick={() => openPrimaryWorkspace(workspace.id)}
             >
               <span>{workspace.label}</span>
-              <small aria-hidden="true">{workspace.description}</small>
+              <small id={`${workspace.id}-workspace-description`}>{workspace.description}</small>
             </button>
           ))}
         </nav>

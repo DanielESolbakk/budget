@@ -138,7 +138,7 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(categoryTarget.addTargetButton).toBeFocused();
     await window.keyboard.press("Enter");
-    await expect(categoryTarget.categoryIdInput).toBeFocused();
+    await expect(categoryTarget.categorySelect).toBeFocused();
   });
 
   test("Household property creation remains keyboard-operable from navigation", async ({

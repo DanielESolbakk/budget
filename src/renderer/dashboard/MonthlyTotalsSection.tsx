@@ -14,12 +14,16 @@ function formatMinor(minor: number): string {
   return nokCurrencyFormatter.format(minor / MINOR_UNITS_PER_NOK);
 }
 
-function CashPlanningNavigation(): React.JSX.Element {
+function CashPlanningNavigation({
+  onOpenPlanningTools,
+}: {
+  onOpenPlanningTools: () => void;
+}): React.JSX.Element {
   return (
     <nav className="cash-planning-shortcuts" aria-label="Cash planning">
       <strong>Cash planning</strong>
-      <a href="#spendable-cash">Estimate spendable cash</a>
-      <a href="#cashflow-scenarios">Compare cashflow scenarios</a>
+      <a href="#spendable-cash" onClick={onOpenPlanningTools}>Estimate spendable cash</a>
+      <a href="#cashflow-scenarios" onClick={onOpenPlanningTools}>Compare cashflow scenarios</a>
     </nav>
   );
 }
@@ -27,11 +31,16 @@ function CashPlanningNavigation(): React.JSX.Element {
 export interface MonthlyTotalsSectionProps {
   viewContract: DashboardViewContract;
   refreshKey: number;
+  onOpenPlanningTools: () => void;
 }
 
 type LoadedDashboardViewContract = Exclude<DashboardViewContract, { state: "loading" }>;
 
-export function MonthlyTotalsSection({ viewContract, refreshKey }: MonthlyTotalsSectionProps): React.JSX.Element {
+export function MonthlyTotalsSection({
+  viewContract,
+  refreshKey,
+  onOpenPlanningTools,
+}: MonthlyTotalsSectionProps): React.JSX.Element {
   if (viewContract.state === "loading") {
     return (
       <section aria-label="Monthly Totals">
@@ -47,7 +56,7 @@ export function MonthlyTotalsSection({ viewContract, refreshKey }: MonthlyTotals
         <h2>Monthly Totals</h2>
         <p>No transactions for this month.</p>
         <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
-        <CashPlanningNavigation />
+        <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
       </section>
     );
   }
@@ -82,7 +91,7 @@ export function MonthlyTotalsSection({ viewContract, refreshKey }: MonthlyTotals
       <p className="monthly-net-meaning">
         Monthly net is this month&apos;s income minus expenses; it is not spendable cash until your next income.
       </p>
-      <CashPlanningNavigation />
+      <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
       <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
       {currencyReport?.nativeSubtotals.some((subtotal) => subtotal.currencyCode !== "NOK") && (
         <div className="native-currency-subtotals">

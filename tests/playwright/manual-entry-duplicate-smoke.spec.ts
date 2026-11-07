@@ -15,7 +15,7 @@ async function rendererLocalDate(page: Page): Promise<string> {
 const manualEntry: ManualEntryValues = {
   accountId: "sample-acc",
   bookedAtIso: "2026-05-23",
-  amountMinor: "-1250",
+  amountNok: "-12,50",
   merchantRaw: "Manual Playwright Entry",
   categoryId: "groceries",
 };
@@ -23,6 +23,26 @@ const manualEntry: ManualEntryValues = {
 test.describe("Manual entry and duplicate detection", () => {
   test("manual entry defaults to the current local date", async ({ manualEntry: entry, window }) => {
     await expect(entry.bookedDateInput).toHaveValue(await rendererLocalDate(window));
+  });
+
+  test("manual entry accepts a signed NOK decimal and stores the corresponding minor units", async ({
+    appShell,
+    manualEntry: entry,
+    window,
+  }) => {
+    const amountInput = entry.entrySection.getByLabel("Amount (NOK)");
+    await expect(amountInput).toBeVisible();
+    await entry.accountInput.selectOption("sample-acc");
+    await entry.bookedDateInput.fill("2026-05-23");
+    await amountInput.fill("-12,50");
+    await entry.merchantInput.fill("NOK decimal entry");
+    await entry.categoryInput.selectOption("groceries");
+    await entry.submitButton.click();
+
+    await expect(entry.successStatus).toHaveText("Added NOK decimal entry to your ledger.");
+    await appShell.openWorkspace("Transactions");
+    const row = new LedgerPage(window).transaction("NOK decimal entry");
+    await expect(row).toContainText("12,50");
   });
 
   test("reduced motion keeps transaction confirmation visible without button transitions", async ({ window, manualEntry: entry }) => {

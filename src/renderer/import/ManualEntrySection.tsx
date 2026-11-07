@@ -7,11 +7,12 @@ import type {
 import type { Account, ManualEntryInput } from "../../domain/types.js";
 import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 import { CATEGORY_OPTIONS } from "./categoryOptions.js";
+import { parseManualEntryAmountMinor } from "./manualEntryAmount.js";
 
 interface ManualEntryFormValues {
   accountId: string;
   bookedAtIso: string;
-  amountMinor: string;
+  amountNok: string;
   merchantRaw: string;
   categoryId: string;
 }
@@ -28,19 +29,25 @@ function createInitialFormValues(accountId = ""): ManualEntryFormValues {
   return {
     accountId,
     bookedAtIso: toLocalIsoDate(new Date()),
-    amountMinor: "",
+    amountNok: "",
     merchantRaw: "",
     categoryId: "",
   };
 }
 
-function toManualEntryInput(values: ManualEntryFormValues, householdId: string): ManualEntryInput {
+function toManualEntryInput(
+  values: ManualEntryFormValues,
+  householdId: string
+): ManualEntryInput | null {
+  const amountMinor = parseManualEntryAmountMinor(values.amountNok);
+  if (amountMinor === null) return null;
+
   const categoryId = values.categoryId.trim();
   return {
     householdId,
     accountId: values.accountId,
     bookedAtIso: values.bookedAtIso,
-    amountMinor: Number(values.amountMinor),
+    amountMinor,
     merchantRaw: values.merchantRaw,
     ...(categoryId.length > 0 ? { categoryId } : {}),
   };
@@ -87,15 +94,34 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
 
   function updateField(field: keyof ManualEntryFormValues, value: string): void {
     setFormValues((current) => ({ ...current, [field]: value }));
+    if (
+      field === "amountNok" &&
+      entryState.status === "validation" &&
+      entryState.code === "INVALID_AMOUNT_NOK"
+    ) {
+      setEntryState({ status: "idle" });
+    }
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (householdId === null) return;
+
+    const input = toManualEntryInput(formValues, householdId);
+    if (input === null) {
+      setEntryState({
+        status: "validation",
+        code: "INVALID_AMOUNT_NOK",
+        message:
+          "Enter a NOK amount with up to two decimals. Use a negative amount for an expense and a positive amount for income.",
+      });
+      return;
+    }
+
     setEntryState({ status: "pending" });
 
     window.budgetApi.import
-      .addManualTransaction(toManualEntryInput(formValues, householdId))
+      .addManualTransaction(input)
       .then((response: ManualEntryResponse) => {
         if (response.ok) {
           setEntryState({ status: "success", response });
@@ -151,20 +177,33 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
           disabled={entryState.status === "pending"}
         />
 
-        <label htmlFor="manual-amount-minor">Amount (øre)</label>
+        <label htmlFor="manual-amount-nok">Amount (NOK)</label>
         <input
-          id="manual-amount-minor"
-          type="number"
-          inputMode="numeric"
-          step="1"
-          value={formValues.amountMinor}
-          onChange={(event) => updateField("amountMinor", event.target.value)}
-          aria-describedby="manual-amount-help"
-          placeholder="-1250"
+          id="manual-amount-nok"
+          type="text"
+          inputMode="decimal"
+          value={formValues.amountNok}
+          onChange={(event) => updateField("amountNok", event.target.value)}
+          aria-invalid={
+            entryState.status === "validation" && entryState.code === "INVALID_AMOUNT_NOK"
+              ? true
+              : undefined
+          }
+          aria-describedby={
+            entryState.status === "validation" && entryState.code === "INVALID_AMOUNT_NOK"
+              ? "manual-amount-help manual-amount-error"
+              : "manual-amount-help"
+          }
+          placeholder="-12,50"
           required
           disabled={entryState.status === "pending"}
         />
-        <p id="manual-amount-help" className="field-help">1 kr = 100 øre. Use a negative number for an expense and a positive number for income.</p>
+        <p id="manual-amount-help" className="field-help">
+          Enter an amount with up to two decimals. Use a negative number for an expense and a positive number for income.
+        </p>
+        {entryState.status === "validation" && entryState.code === "INVALID_AMOUNT_NOK" && (
+          <p id="manual-amount-error" role="alert">{entryState.message}</p>
+        )}
 
         <label htmlFor="manual-merchant-raw">Description or merchant</label>
         <input
@@ -231,9 +270,8 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
           <p>Check the Ledger section to review the existing entry before adding another one.</p>
         </div>
       )}
-      {entryState.status === "validation" && (
+      {entryState.status === "validation" && entryState.code !== "INVALID_AMOUNT_NOK" && (
         <div role="alert">
-          <p>Manual entry validation failed: {entryState.code}</p>
           <p>{entryState.message}</p>
         </div>
       )}
