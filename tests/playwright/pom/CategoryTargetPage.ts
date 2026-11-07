@@ -42,9 +42,9 @@ export class CategoryTargetPage {
     return this.page.getByRole("combobox", { name: "Category", exact: true });
   }
 
-  /** The target amount number input field (spinbutton role for type="number"). */
+  /** The target amount in NOK. */
   get targetAmountInput() {
-    return this.page.getByRole("spinbutton", { name: "Target amount" });
+    return this.section.getByRole("textbox", { name: "Target amount", exact: true });
   }
 
   /** The save button that submits the entry form. */

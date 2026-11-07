@@ -30,7 +30,7 @@ export class DashboardTargetPage {
   }
 
   get targetColumn() {
-    return this.table.getByRole("columnheader", { name: "Target" });
+    return this.table.getByRole("columnheader", { name: "Target", exact: true });
   }
 
   get actualColumn() {
@@ -38,7 +38,7 @@ export class DashboardTargetPage {
   }
 
   get deltaColumn() {
-    return this.table.getByRole("columnheader", { name: "Delta" });
+    return this.table.getByRole("columnheader", { name: "Over/under target", exact: true });
   }
 
   categoryRow(category: string): Locator {

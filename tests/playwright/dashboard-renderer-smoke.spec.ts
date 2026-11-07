@@ -373,7 +373,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(rows).toHaveCount(2);
     for (const row of await rows.all()) {
       await expect(row.locator("td")).toHaveCount(4);
-      for (const label of ["Category", "Target", "Actual", "Delta"]) {
+      for (const label of ["Category", "Target", "Actual", "Over/under target"]) {
         const cell = row.locator(`td[data-label="${label}"]`);
         await expect(cell).toBeVisible();
         const bounds = await cell.boundingBox();
@@ -467,7 +467,7 @@ test.describe("Dashboard renderer smoke", () => {
   test("compact target-versus-actual rows keep the delta visible", async ({ window }) => {
     await window.setViewportSize({ width: 390, height: 844 });
     const targetVsActual = window.getByRole("region", { name: "Target vs Actual" });
-    const delta = targetVsActual.locator('td[data-label="Delta"]').first();
+    const delta = targetVsActual.locator('td[data-label="Over/under target"]').first();
     await expect(delta).toBeVisible();
 
     const deltaBounds = await delta.boundingBox();

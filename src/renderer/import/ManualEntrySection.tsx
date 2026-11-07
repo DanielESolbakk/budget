@@ -7,7 +7,7 @@ import type {
 import type { Account, ManualEntryInput, ManualEntryValidationErrorCode } from "../../domain/types.js";
 import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 import { CATEGORY_OPTIONS } from "./categoryOptions.js";
-import { parseManualEntryAmountMinor } from "./manualEntryAmount.js";
+import { parseNokAmountMinor } from "../parseNokAmountMinor.js";
 
 interface ManualEntryFormValues {
   accountId: string;
@@ -60,7 +60,7 @@ function toManualEntryInput(
   values: ManualEntryFormValues,
   householdId: string
 ): ManualEntryInput | null {
-  const amountMinor = parseManualEntryAmountMinor(values.amountNok);
+  const amountMinor = parseNokAmountMinor(values.amountNok);
   if (amountMinor === null) return null;
 
   const categoryId = values.categoryId.trim();

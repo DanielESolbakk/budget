@@ -2,19 +2,8 @@ import React from "react";
 import type { MonthlyCategoryTarget } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
 import { categoryDisplayName } from "./categoryDisplayName.js";
-
-const MINOR_UNITS_PER_NOK = 100;
-
-const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
-  style: "currency",
-  currency: "NOK",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function formatMinor(minor: number): string {
-  return nokCurrencyFormatter.format(minor / MINOR_UNITS_PER_NOK);
-}
+import { parseNokAmountMinor } from "../parseNokAmountMinor.js";
+import { formatNokAmountMinor } from "../formatNokAmountMinor.js";
 
 export interface CategoryTargetEntrySectionProps {
   selectedYearMonth: string;
@@ -26,6 +15,7 @@ type FormState =
   | { status: "idle" }
   | { status: "saving" }
   | { status: "saved" }
+  | { status: "validation"; field: "category" | "amount"; message: string }
   | { status: "error"; message: string };
 
 export function CategoryTargetEntrySection({
@@ -45,6 +35,10 @@ export function CategoryTargetEntrySection({
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [editingCategoryId, setEditingCategoryId] = React.useState<string | null>(null);
   const categoryInputRef = React.useRef<HTMLSelectElement>(null);
+  const amountInputRef = React.useRef<HTMLInputElement>(null);
+  const formOpenerRef = React.useRef<HTMLButtonElement | null>(null);
+  const restoreFocusRef = React.useRef(false);
+  const saveRequestRef = React.useRef(0);
   const editingCategoryLabel = editingCategoryId === null ? null : categoryDisplayName(editingCategoryId);
   const hasEditingCategoryOption =
     editingCategoryId !== null && CATEGORY_OPTIONS.some((category) => category.id === editingCategoryId);
@@ -72,6 +66,8 @@ export function CategoryTargetEntrySection({
   }, [selectedYearMonth, refreshCounter, retryCounter]);
 
   React.useEffect(() => {
+    saveRequestRef.current += 1;
+    restoreFocusRef.current = false;
     setIsFormOpen(false);
     setEditingCategoryId(null);
     setCategoryId("");
@@ -80,10 +76,21 @@ export function CategoryTargetEntrySection({
   }, [selectedYearMonth]);
 
   React.useEffect(() => {
-    if (isFormOpen) categoryInputRef.current?.focus();
+    if (isFormOpen) {
+      if (editingCategoryId !== null) amountInputRef.current?.focus();
+      else categoryInputRef.current?.focus();
+    }
   }, [isFormOpen, editingCategoryId]);
 
-  function openAddTarget(): void {
+  React.useEffect(() => {
+    if (!isFormOpen && restoreFocusRef.current) {
+      restoreFocusRef.current = false;
+      formOpenerRef.current?.focus();
+    }
+  }, [isFormOpen]);
+
+  function openAddTarget(opener: HTMLButtonElement): void {
+    formOpenerRef.current = opener;
     setEditingCategoryId(null);
     setCategoryId("");
     setTargetNok("");
@@ -91,15 +98,18 @@ export function CategoryTargetEntrySection({
     setIsFormOpen(true);
   }
 
-  function openEditTarget(target: MonthlyCategoryTarget): void {
+  function openEditTarget(target: MonthlyCategoryTarget, opener: HTMLButtonElement): void {
+    formOpenerRef.current = opener;
     setEditingCategoryId(target.categoryId);
     setCategoryId(target.categoryId);
-    setTargetNok((target.targetMinor / MINOR_UNITS_PER_NOK).toFixed(2));
+    const minor = BigInt(target.targetMinor);
+    setTargetNok(`${minor / 100n}.${String(minor % 100n).padStart(2, "0")}`);
     setFormState({ status: "idle" });
     setIsFormOpen(true);
   }
 
   function closeForm(): void {
+    restoreFocusRef.current = true;
     setIsFormOpen(false);
     setEditingCategoryId(null);
     setCategoryId("");
@@ -112,35 +122,40 @@ export function CategoryTargetEntrySection({
 
     const trimmedCategoryId = categoryId.trim();
     if (!trimmedCategoryId) {
-      setFormState({ status: "error", message: "Choose a category." });
+      setFormState({ status: "validation", field: "category", message: "Choose a category." });
+      categoryInputRef.current?.focus();
       return;
     }
 
-    const parsed = parseFloat(targetNok);
-    if (!Number.isFinite(parsed) || parsed < 0) {
+    const targetMinor = parseNokAmountMinor(targetNok);
+    if (targetMinor === null || targetMinor < 0) {
       setFormState({
-        status: "error",
-        message: "Target amount must be a non-negative number.",
+        status: "validation",
+        field: "amount",
+        message: "Enter a non-negative NOK amount with up to two decimals, no more than 90071992547409.91.",
       });
+      amountInputRef.current?.focus();
       return;
     }
 
-    const targetMinor = Math.round(parsed * MINOR_UNITS_PER_NOK);
-
+    const requestId = ++saveRequestRef.current;
     setFormState({ status: "saving" });
 
     window.budgetApi.categoryTargets
       .upsert({ yearMonth: selectedYearMonth, categoryId: trimmedCategoryId, targetMinor })
       .then(() => {
+        onTargetSaved();
+        if (requestId !== saveRequestRef.current) return;
+        restoreFocusRef.current = true;
         setFormState({ status: "saved" });
         setRefreshCounter((c) => c + 1);
         setCategoryId("");
         setTargetNok("");
         setEditingCategoryId(null);
         setIsFormOpen(false);
-        onTargetSaved();
       })
       .catch((error: unknown) => {
+        if (requestId !== saveRequestRef.current) return;
         const message =
           error instanceof Error ? error.message : "Failed to save target.";
         setFormState({ status: "error", message });
@@ -173,13 +188,13 @@ export function CategoryTargetEntrySection({
               const label = categoryDisplayName(t.categoryId);
               return (
                 <li key={t.categoryId}>
-                  <span>{label}: {formatMinor(t.targetMinor)}</span>
+                  <span>{label}: {formatNokAmountMinor(t.targetMinor)}</span>
                   <button
                     type="button"
                     className="target-edit-button"
                     aria-label={`Edit target ${label}`}
                     disabled={formState.status === "saving"}
-                    onClick={() => openEditTarget(t)}
+                    onClick={(event) => openEditTarget(t, event.currentTarget)}
                   >
                     Edit
                   </button>
@@ -189,11 +204,11 @@ export function CategoryTargetEntrySection({
           </ul>
         )
       )}
-      <button id="category-target-add" type="button" onClick={openAddTarget} disabled={formState.status === "saving"}>
+      <button id="category-target-add" type="button" onClick={(event) => openAddTarget(event.currentTarget)} disabled={formState.status === "saving"}>
         Add target
       </button>
       {isFormOpen && (
-        <form aria-label="Category target entry form" onSubmit={handleSubmit}>
+        <form aria-label="Category target entry form" onSubmit={handleSubmit} noValidate>
           <h3>{editingCategoryLabel === null ? "Add target" : `Edit target: ${editingCategoryLabel}`}</h3>
           <label htmlFor="target-category-id">Category</label>
           <select
@@ -201,8 +216,13 @@ export function CategoryTargetEntrySection({
             ref={categoryInputRef}
             value={categoryId}
             required
-            disabled={editingCategoryId !== null}
-            onChange={(e) => setCategoryId(e.target.value)}
+            disabled={editingCategoryId !== null || formState.status === "saving"}
+            aria-invalid={formState.status === "validation" && formState.field === "category" ? true : undefined}
+            aria-describedby={formState.status === "validation" && formState.field === "category" ? "target-category-error" : undefined}
+            onChange={(e) => {
+              setCategoryId(e.target.value);
+              if (formState.status === "validation" && formState.field === "category") setFormState({ status: "idle" });
+            }}
           >
             <option value="" disabled>Choose a category</option>
             {!hasEditingCategoryOption && editingCategoryId !== null && (
@@ -212,16 +232,32 @@ export function CategoryTargetEntrySection({
               <option key={category.id} value={category.id}>{category.label}</option>
             ))}
           </select>
+          {formState.status === "validation" && formState.field === "category" && (
+            <p id="target-category-error" role="alert">{formState.message}</p>
+          )}
           <label htmlFor="target-amount">Target Amount (NOK)</label>
           <input
             id="target-amount"
-            type="number"
+            ref={amountInputRef}
+            type="text"
+            inputMode="decimal"
             aria-label="Target amount"
             value={targetNok}
-            min="0"
-            step="0.01"
-            onChange={(e) => setTargetNok(e.target.value)}
+            required
+            disabled={formState.status === "saving"}
+            aria-invalid={formState.status === "validation" && formState.field === "amount" ? true : undefined}
+            aria-describedby={formState.status === "validation" && formState.field === "amount" ? "target-amount-help target-amount-error" : "target-amount-help"}
+            onChange={(e) => {
+              setTargetNok(e.target.value);
+              if (formState.status === "validation" && formState.field === "amount") setFormState({ status: "idle" });
+            }}
           />
+          <p id="target-amount-help" className="field-help">
+            Enter zero or a positive NOK amount with up to two decimals, using a comma or period (for example 125,50).
+          </p>
+          {formState.status === "validation" && formState.field === "amount" && (
+            <p id="target-amount-error" role="alert">{formState.message}</p>
+          )}
           <div className="target-form-actions">
             <button type="submit" aria-label="Save target" disabled={formState.status === "saving"}>
               Save target
@@ -233,9 +269,14 @@ export function CategoryTargetEntrySection({
         </form>
       )}
       {formState.status === "error" && (
-        <p role="alert">
-          {formState.message}
-        </p>
+        <div role="alert">
+          <p>Saving this target could not be confirmed. Your entries are kept here.</p>
+          <p>Check the saved targets before trying again. Saving the same category and month updates its target.</p>
+          <details>
+            <summary>Error details</summary>
+            <p>{formState.message}</p>
+          </details>
+        </div>
       )}
       {formState.status === "saved" && (
         <p role="status">

@@ -82,7 +82,7 @@ test.describe("Category target persistence across application restart", () => {
         /0,00\s*kr/,
       );
       await expect(restartedDashboardTarget.deltaCell(RESTART_TARGET_CATEGORY_ID)).toHaveText(
-        /(?:-|\u2212)900,00\s*kr/,
+        /900,00\s*kr under target/,
       );
     } finally {
       await updatedApp.close();

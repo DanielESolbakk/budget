@@ -1,6 +1,6 @@
 const MAX_SAFE_MINOR_UNITS = BigInt(Number.MAX_SAFE_INTEGER);
 
-export function parseManualEntryAmountMinor(value: string): number | null {
+export function parseNokAmountMinor(value: string): number | null {
   const normalized = value.trim().replace(/[ \u00a0\u202f]/g, "").replace(",", ".");
   if (!/^-?\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
 

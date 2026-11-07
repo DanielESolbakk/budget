@@ -15,6 +15,7 @@
  */
 
 import { test, expect } from "./fixtures/electron.js";
+import { DatabaseSync } from "node:sqlite";
 
 test.describe("Category target entry renderer smoke", () => {
   test.beforeEach(async ({ dashboard }) => {
@@ -62,6 +63,91 @@ test.describe("Category target entry renderer smoke", () => {
     await expect(categoryTarget.targetAmountInput).toHaveValue("90.00");
   });
 
+  for (const [amount, expectedMinor] of [["12,50", 1250], ["90071992547409.91", Number.MAX_SAFE_INTEGER]] as const) {
+    test(`target NOK entry saves ${amount} exactly and edits without losing precision`, async ({ categoryTarget, dashboard, window }) => {
+      await categoryTarget.addTargetButton.click();
+      const amountInput = categoryTarget.section.getByLabel("Target amount", { exact: true });
+      await expect(amountInput).toHaveAttribute("type", "text");
+      await categoryTarget.categorySelect.selectOption("transport");
+      await amountInput.fill(amount);
+      await categoryTarget.saveButton.click();
+      await expect(categoryTarget.savedConfirmation).toBeVisible();
+      const displayedAmount = expectedMinor === Number.MAX_SAFE_INTEGER ? "409,91" : "12,50";
+      await expect(categoryTarget.savedTargetItem("transport")).toContainText(displayedAmount);
+      const row = dashboard.targetVsActualSection.getByRole("row").filter({ hasText: "Transport" });
+      await expect(row.getByRole("cell").nth(1)).toContainText(displayedAmount);
+      await expect(row.getByRole("cell").nth(3)).toContainText(displayedAmount);
+      await expect(row.getByRole("cell").nth(3)).toContainText("under target");
+      const saved = await window.evaluate(() => globalThis.window.budgetApi.categoryTargets.listByMonth("2026-05"));
+      expect(saved.find((target) => target.categoryId === "transport")?.targetMinor).toBe(expectedMinor);
+      await categoryTarget.editTargetButton("transport").click();
+      await expect(amountInput).toHaveValue(amount.replace(",", "."));
+      await expect(amountInput).toBeFocused();
+    });
+  }
+
+  for (const amount of ["-1", "12,345", "90071992547409.92", "12abc"]) {
+    test(`target entry rejects ${amount} with field-specific recoverable feedback`, async ({ categoryTarget }) => {
+      await categoryTarget.addTargetButton.click();
+      const amountInput = categoryTarget.section.getByLabel("Target amount", { exact: true });
+      await expect(amountInput).toHaveAttribute("type", "text");
+      await categoryTarget.categorySelect.selectOption("transport");
+      await amountInput.fill(amount);
+      await categoryTarget.saveButton.click();
+      await expect(amountInput).toHaveAttribute("aria-invalid", "true");
+      await expect(amountInput).toBeFocused();
+      await expect(categoryTarget.section.getByRole("alert")).toContainText("non-negative NOK amount");
+      await categoryTarget.categorySelect.selectOption("groceries");
+      await expect(categoryTarget.section.getByRole("alert")).toBeVisible();
+      await amountInput.fill("0");
+      await expect(categoryTarget.section.getByRole("alert")).toBeHidden();
+      await expect(amountInput).not.toHaveAttribute("aria-invalid", "true");
+      await categoryTarget.saveButton.click();
+      await expect(categoryTarget.savedTargetItem("groceries")).toContainText("0,00");
+    });
+  }
+
+  for (const action of ["add", "edit"] as const) {
+    test(`cancelling a target ${action} restores focus to its opener`, async ({ categoryTarget }) => {
+      const opener = action === "add" ? categoryTarget.addTargetButton : categoryTarget.editTargetButton("groceries");
+      await opener.click();
+      await categoryTarget.section.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(opener).toBeFocused();
+      await expect(categoryTarget.section.getByRole("form")).toBeHidden();
+    });
+
+    test(`saving a target ${action} restores focus after removing the form`, async ({ categoryTarget }) => {
+      const opener = action === "add" ? categoryTarget.addTargetButton : categoryTarget.editTargetButton("groceries");
+      await opener.click();
+      if (action === "add") await categoryTarget.categorySelect.selectOption("transport");
+      await categoryTarget.targetAmountInput.fill("125.50");
+      await categoryTarget.saveButton.click();
+      await expect(categoryTarget.savedConfirmation).toBeVisible();
+      await expect(opener).toBeFocused();
+    });
+  }
+
+  test("target save failure keeps its draft and offers recovery without exposing raw errors first", async ({
+    categoryTarget, databasePath,
+  }) => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      await categoryTarget.editTargetButton("groceries").click();
+      await categoryTarget.targetAmountInput.fill("125.50");
+      await categoryTarget.saveButton.click();
+      await expect(categoryTarget.section.getByRole("alert")).toContainText("Check the saved targets before trying again");
+      await expect(categoryTarget.targetAmountInput).toHaveValue("125.50");
+      await expect(categoryTarget.section.getByRole("button", { name: "Save target" })).toBeEnabled();
+      await expect(categoryTarget.section.getByText("Error details", { exact: true })).toBeVisible();
+      database.exec("ROLLBACK");
+      await categoryTarget.saveButton.click();
+      await expect(categoryTarget.savedTargetItem("groceries")).toContainText("125,50");
+    } finally {
+      database.close();
+    }
+  });
+
   // Note: Scenario 2 (save + reload persistence) is intentionally placed in a
   // separate describe block below so it can use its own isolated Electron instance
   // with a clean in-memory store.  This describe block covers Scenario 1 and 3.
@@ -71,21 +157,20 @@ test.describe("Category target entry renderer smoke", () => {
     await categoryTarget.targetAmountInput.fill("50");
     await categoryTarget.saveButton.click();
 
-    expect(await categoryTarget.categorySelect.evaluate(
-      (select: HTMLSelectElement) => select.validity.valueMissing
-    )).toBe(true);
+    await expect(categoryTarget.categorySelect).toHaveAttribute("aria-invalid", "true");
+    await expect(categoryTarget.categorySelect).toBeFocused();
+    await expect(categoryTarget.section.getByRole("alert")).toHaveText("Choose a category.");
     // Confirm the app shell and section are still visible (no blank-screen regression).
     await expect(appShell.heading).toBeVisible();
     await expect(categoryTarget.section).toBeVisible();
 
-    // The number input rejects a negative amount through native validation.
+    // A negative target is rejected with actionable field feedback.
     await categoryTarget.categorySelect.selectOption("transport");
     await categoryTarget.targetAmountInput.fill("-10");
     await categoryTarget.saveButton.click();
 
-    expect(await categoryTarget.targetAmountInput.evaluate(
-      (input: HTMLInputElement) => input.validity.rangeUnderflow
-    )).toBe(true);
+    await expect(categoryTarget.targetAmountInput).toHaveAttribute("aria-invalid", "true");
+    await expect(categoryTarget.section.getByRole("alert")).toContainText("non-negative NOK amount");
     await expect(categoryTarget.savedTargetItem("transport")).toHaveCount(0);
     await expect(appShell.heading).toBeVisible();
     await expect(categoryTarget.section).toBeVisible();
@@ -148,7 +233,7 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     await expect(categoryTarget.savedConfirmation).toBeVisible();
     await expect(groceries.getByRole("cell").nth(1)).toContainText("10,00");
     await expect(groceries.getByRole("cell").nth(2)).toContainText("85,00");
-    await expect(groceries.getByRole("cell").nth(3)).toContainText("75,00");
+    await expect(groceries.getByRole("cell").nth(3)).toHaveText(/75,00\s*kr over target/);
     await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
     await expect(dashboard.monthSelector).toHaveValue("2026-05");
 
@@ -156,7 +241,7 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     await categoryTarget.targetAmountInput.fill("125");
     await categoryTarget.saveButton.click();
     await expect(groceries.getByRole("cell").nth(1)).toContainText("125,00");
-    await expect(groceries.getByRole("cell").nth(3)).toContainText("−40,00");
+    await expect(groceries.getByRole("cell").nth(3)).toHaveText(/40,00\s*kr under target/);
     await expect(dashboard.monthlyAttention).toContainText("No categories over target.");
   });
 

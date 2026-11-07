@@ -33,7 +33,7 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
     await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_BASELINE_TARGET_MINOR));
     await expect(targetPage.actualCell("groceries")).toHaveText(formatMinor(GROCERIES_ACTUAL_MINOR));
     await expect(targetPage.deltaCell("groceries")).toHaveText(
-      formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_BASELINE_TARGET_MINOR)
+      `${formatMinor(GROCERIES_BASELINE_TARGET_MINOR - GROCERIES_ACTUAL_MINOR)} under target`
     );
   });
 
@@ -44,6 +44,23 @@ test.describe("Dashboard target-vs-actual renderer smoke", () => {
     await expect(targetPage.deltaCell("salary")).toHaveText("No target");
     await expect(targetPage.noTargetIndicators("salary")).toHaveCount(2);
   });
+
+  for (const [targetNok, expectedDifference] of [
+    ["90", /5,00\s*kr under target/],
+    ["80", /5,00\s*kr over target/],
+    ["85", /^At target$/],
+  ] as const) {
+    test(`explains the budget difference for a ${targetNok} NOK target without a signed delta`, async ({
+      categoryTarget, dashboardTarget: targetPage,
+    }) => {
+      await categoryTarget.editTargetButton("groceries").click();
+      await categoryTarget.targetAmountInput.fill(targetNok);
+      await categoryTarget.saveButton.click();
+      await expect(targetPage.section.getByRole("columnheader", { name: "Over/under target" })).toBeVisible();
+      await expect(targetPage.deltaCell("groceries")).toHaveText(expectedDifference);
+      await expect(targetPage.section).toContainText("Actual is the recorded category amount");
+    });
+  }
 });
 
 test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () => {
@@ -55,7 +72,7 @@ test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () =
     await expect(targetPage.section).toBeVisible();
     await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_BASELINE_TARGET_MINOR));
     await expect(targetPage.deltaCell("groceries")).toHaveText(
-      formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_BASELINE_TARGET_MINOR)
+      `${formatMinor(GROCERIES_BASELINE_TARGET_MINOR - GROCERIES_ACTUAL_MINOR)} under target`
     );
 
     await categoryTarget.editTargetButton("groceries").click();
@@ -69,7 +86,7 @@ test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () =
     await expect(targetPage.targetCell("groceries")).toHaveText(formatMinor(GROCERIES_UPDATED_TARGET_MINOR));
     await expect(targetPage.actualCell("groceries")).toHaveText(formatMinor(GROCERIES_ACTUAL_MINOR));
     await expect(targetPage.deltaCell("groceries")).toHaveText(
-      formatMinor(GROCERIES_ACTUAL_MINOR - GROCERIES_UPDATED_TARGET_MINOR)
+      `${formatMinor(GROCERIES_UPDATED_TARGET_MINOR - GROCERIES_ACTUAL_MINOR)} under target`
     );
     await expect(window.getByRole("combobox", { name: "Select month" })).toHaveValue(DEFAULT_YEAR_MONTH);
   });
