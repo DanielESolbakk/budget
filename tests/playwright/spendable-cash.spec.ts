@@ -258,6 +258,7 @@ async function createLocalHousehold(window: Page, frozenTimeIso: string): Promis
   await window.getByRole("button", { name: "Create local ledger", exact: true }).click();
   await expect(window.getByRole("heading", { name: "Budget Planner", exact: true }))
     .toBeVisible();
+  await new AppShellPage(window).openWorkspace("Review");
   await expect(window.getByRole("region", { name: "Review workspace", exact: true }))
     .toHaveAttribute("aria-busy", "false");
   await expect(window.getByRole("region", {

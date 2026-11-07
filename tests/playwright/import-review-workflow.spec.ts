@@ -451,7 +451,7 @@ test.describe("single statement import entry", () => {
 
       await electronApp.close();
       const restartedApp = await electron.launch({
-        args: [MAIN_ENTRY],
+        args: [`--user-data-dir=${join(dirname(databasePath), "electron-profile")}`, MAIN_ENTRY],
         env: {
           ...process.env,
           NODE_ENV: "test",

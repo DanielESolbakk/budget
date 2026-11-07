@@ -174,6 +174,7 @@ test.describe("Fresh local setup", () => {
     await createLedgerButton.click();
     await expect(window.getByRole("heading", { name: "Set up your household" })).toHaveCount(0);
     await expect(window.getByText("Lønn AS", { exact: true })).toHaveCount(0);
+    await appShell.openWorkspace("Review");
     await window.getByText("Plan ahead", { exact: true }).click();
     const forecastSection = window.getByRole("region", { name: "Forecast", exact: true });
     await expect(forecastSection.getByRole("status")).toContainText("Not enough history");

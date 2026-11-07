@@ -50,7 +50,7 @@ for (const width of [1440, 390]) {
         await appShell.openWorkspace(name);
         const header = appShell.workspace(name).locator(".destination-heading");
         const title = await header.getByRole("heading").boundingBox();
-        const description = await header.locator("p").boundingBox();
+        const description = await header.locator("p").first().boundingBox();
         if (title === null || description === null) throw new Error(`${name} header is not visible.`);
         expect.soft(description.y, `${name} description must follow its title`).toBeGreaterThanOrEqual(title.y + title.height + 4);
         expect.soft(Math.abs(description.x - title.x), `${name} header must share a left edge`).toBeLessThanOrEqual(1);
