@@ -2139,6 +2139,24 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
   padding: 0.65rem 0.75rem;
 }
 
+.ledger-merchant-details {
+  display: grid;
+  min-width: 0;
+  gap: 0.3rem;
+}
+
+.ledger-merchant-details > span:first-child {
+  overflow-wrap: anywhere;
+}
+
+.standardized-merchant {
+  display: block;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .ledger-table th {
   color: var(--paper-muted);
   font-size: 0.78rem;
@@ -4693,6 +4711,10 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   color: var(--paper-muted);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.8rem;
+}
+
+.review-queue-details .standardized-merchant {
+  font-family: inherit;
 }
 
 .review-queue-action {

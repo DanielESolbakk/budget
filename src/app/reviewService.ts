@@ -20,7 +20,10 @@ export function listCategorizationReviewQueue(
     transaction.householdId === householdId &&
     needsCategorizationReview(transaction)
   );
-  return orderReviewQueueTransactions(reviewTransactions);
+  return orderReviewQueueTransactions(reviewTransactions).map((transaction) => ({
+    ...transaction,
+    merchantAlias: normalizeMerchantName(transaction.merchantRaw),
+  }));
 }
 
 export function applyCategorizationCorrection(

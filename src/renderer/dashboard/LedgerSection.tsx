@@ -779,7 +779,16 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
                   <React.Fragment key={transaction.id}>
                     <tr aria-label={`Ledger transaction ${transaction.merchantRaw}`}>
                       <td>{bookedDateFormatter.format(bookedDate)}</td>
-                      <td>{transaction.merchantRaw}</td>
+                      <td>
+                        <div className="ledger-merchant-details">
+                          <span>{transaction.merchantRaw}</span>
+                          {transaction.merchantAlias !== transaction.merchantRaw && (
+                            <span className="standardized-merchant">
+                              Standardized merchant: {transaction.merchantAlias || "No standardized merchant name available"}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="ledger-amount">{formatCurrencyAmount(transaction.amountMinor, currencyCode)}</td>
                       <td>{categoryName}</td>
                       <td>{accountName}</td>
