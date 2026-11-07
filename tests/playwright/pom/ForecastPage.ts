@@ -25,7 +25,7 @@ export class ForecastPage {
 
   /** Fallback label shown when there is insufficient history. */
   get fallbackLabel() {
-    return this.page.getByText("Not enough recorded months yet; showing a zero-value fallback estimate.");
+    return this.section.getByRole("status").filter({ hasText: "Not enough history for an outlook." });
   }
 
   /** Projected-months description shown when history is sufficient. */

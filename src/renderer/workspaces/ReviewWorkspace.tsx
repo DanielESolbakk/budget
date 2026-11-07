@@ -62,6 +62,7 @@ export function ReviewWorkspace({
   const monthlyAttention = viewContract === null ? null : getMonthlyAttentionSummary(viewContract);
   const planningToolsRef = React.useRef<HTMLDetailsElement>(null);
   const categoryTargetRef = React.useRef<HTMLDivElement>(null);
+  const [isTargetFormOpen, setIsTargetFormOpen] = React.useState(false);
 
   function openPlanningTools(): void {
     if (planningToolsRef.current !== null) planningToolsRef.current.open = true;
@@ -86,6 +87,8 @@ export function ReviewWorkspace({
               id="month-select"
               aria-label="Select month"
               value={state.selectedYearMonth}
+              disabled={isTargetFormOpen}
+              aria-describedby={isTargetFormOpen ? "target-draft-help" : undefined}
               onChange={(event) => onMonthChange(event.target.value)}
             >
               {state.availableMonths.map((month) => (
@@ -209,6 +212,7 @@ export function ReviewWorkspace({
                 selectedYearMonth={state.selectedYearMonth}
                 selectedMonthLabel={formatYearMonth(state.selectedYearMonth)}
                 onTargetSaved={onTargetSaved}
+                onFormOpenChange={setIsTargetFormOpen}
               />
             </div>
             <div className="review-support review-forecast">

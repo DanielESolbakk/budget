@@ -35,23 +35,23 @@ export function ForecastSection({ dashboardData }: ForecastSectionProps): React.
         <p className="currency-warning" role="status">
           Forecast unavailable: incomplete NOK history. Record missing dated exchange rates before relying on an outlook.
         </p>
-      ) : <>
-      {dashboardData.forecast.usedFallback ? (
-        <p>Not enough recorded months yet; showing a zero-value fallback estimate.</p>
+      ) : dashboardData.forecast.usedFallback ? (
+        <p role="status">Not enough history for an outlook. Record booked transactions to build monthly history.</p>
       ) : (
-        <p>Estimated from the average of up to three recent monthly totals.</p>
+        <>
+          <p>Estimated from the average of up to three recent monthly totals.</p>
+          <ul className="financial-rows">
+            {dashboardData.forecast.entries.map((entry) => (
+              <li key={entry.yearMonth}>
+                <strong>{entry.yearMonth}</strong>
+                <span className="financial-row-value" aria-label={`Projected amount ${formatProjectedMinor(entry.projectedMinor)}`}>
+                  {formatProjectedMinor(entry.projectedMinor)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-      <ul className="financial-rows">
-        {dashboardData.forecast.entries.map((entry) => (
-          <li key={entry.yearMonth}>
-            <strong>{entry.yearMonth}</strong>
-            <span className="financial-row-value" aria-label={`Projected amount ${formatProjectedMinor(entry.projectedMinor)}`}>
-              {formatProjectedMinor(entry.projectedMinor)}
-            </span>
-          </li>
-        ))}
-      </ul>
-      </>}
     </section>
   );
 }

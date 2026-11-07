@@ -53,6 +53,8 @@ In **Review**, use **Set a category target** beside the monthly budget checks to
 
 Targets accept zero or positive NOK amounts with up to two decimals, using a comma or period. Invalid amounts are explained beside the input; changing another field does not hide the amount error. **Save target** and **Cancel** return keyboard focus to the Add/Edit button that opened the form. If saving cannot be confirmed, the draft stays available with recovery guidance and optional technical details.
 
+While a target form is open, finish it with **Save target** or **Cancel** before changing the review month or opening another target. Those controls are temporarily disabled to prevent accidental draft replacement. After an uncertain save, **Refresh saved targets** reloads the saved list without changing your draft; check that list before retrying.
+
 **Over/under target** uses plain-language amounts rather than signed deltas: **5,00 kr under target**, **5,00 kr over target**, or **At target**. Actual is the recorded category amount for the selected month; categories without a target still show **No target**, and comparisons with missing dated rates remain **Incomplete**.
 
 Repeat imports of an unchanged source are skipped, and import jobs retain local provenance. When statements overlap or contain indistinguishable rows without a stable bank reference, the app cannot prove that rows from different files are the same purchase; check the ledger after importing overlapping exports. Back up locally before restoring another snapshot, since restore replaces the current ledger and learned categorization rules.
@@ -83,7 +85,7 @@ In **Household** > **Exchange rates**, record a foreign-currency rate as NOK per
 
 Monthly review uses those same dated conversions for totals, category amounts, and target actuals. When a rate is missing, it prominently labels the known NOK subtotal **Incomplete**, keeps native net subtotals separate, and withholds definitive target deltas. Recording or importing local rates refreshes the monthly review and historical NOK series without changing native ledger amounts. Split conversions reconcile rounding to their source amount.
 
-The forecast is a monthly **net** outlook, not an account balance. It states its latest recorded history month and does not follow the review month selector. If any of its recent history months has missing exchange rates, estimates are withheld until that history can be converted.
+The forecast is a monthly **net** outlook, not an account balance. It states its latest recorded history month and does not follow the review month selector. Without recorded history, it shows **Not enough history for an outlook** and explains how to build history instead of presenting zero-value predictions. Once booked transactions provide history, projected months appear. If any of its recent history months has missing exchange rates, estimates are withheld until that history can be converted.
 
 In **Household** > **Properties**, create a local property label and add dated valuations in the currency you record. Valuation history preserves recorded timestamps and corrections.
 

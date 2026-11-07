@@ -9,6 +9,7 @@ export interface CategoryTargetEntrySectionProps {
   selectedYearMonth: string;
   selectedMonthLabel: string;
   onTargetSaved: () => void;
+  onFormOpenChange: (isOpen: boolean) => void;
 }
 
 type FormState =
@@ -22,6 +23,7 @@ export function CategoryTargetEntrySection({
   selectedYearMonth,
   selectedMonthLabel,
   onTargetSaved,
+  onFormOpenChange,
 }: CategoryTargetEntrySectionProps): React.JSX.Element {
   const [targets, setTargets] = React.useState<MonthlyCategoryTarget[]>([]);
   const [loadedMonth, setLoadedMonth] = React.useState<string | null>(null);
@@ -74,6 +76,10 @@ export function CategoryTargetEntrySection({
     setTargetNok("");
     setFormState({ status: "idle" });
   }, [selectedYearMonth]);
+
+  React.useEffect(() => {
+    onFormOpenChange(isFormOpen);
+  }, [isFormOpen, onFormOpenChange]);
 
   React.useEffect(() => {
     if (isFormOpen) {
@@ -193,7 +199,7 @@ export function CategoryTargetEntrySection({
                     type="button"
                     className="target-edit-button"
                     aria-label={`Edit target ${label}`}
-                    disabled={formState.status === "saving"}
+                    disabled={isFormOpen}
                     onClick={(event) => openEditTarget(t, event.currentTarget)}
                   >
                     Edit
@@ -204,12 +210,16 @@ export function CategoryTargetEntrySection({
           </ul>
         )
       )}
-      <button id="category-target-add" type="button" onClick={(event) => openAddTarget(event.currentTarget)} disabled={formState.status === "saving"}>
+      <button id="category-target-add" type="button" onClick={(event) => openAddTarget(event.currentTarget)} disabled={isFormOpen}>
         Add target
       </button>
       {isFormOpen && (
         <form aria-label="Category target entry form" onSubmit={handleSubmit} noValidate>
           <h3>{editingCategoryLabel === null ? "Add target" : `Edit target: ${editingCategoryLabel}`}</h3>
+          <p id="target-draft-help" className="field-help">
+            Save or cancel this target before changing the review month or opening another target.
+            Your entries stay here while you work.
+          </p>
           <label htmlFor="target-category-id">Category</label>
           <select
             id="target-category-id"
@@ -272,6 +282,13 @@ export function CategoryTargetEntrySection({
         <div role="alert">
           <p>Saving this target could not be confirmed. Your entries are kept here.</p>
           <p>Check the saved targets before trying again. Saving the same category and month updates its target.</p>
+          <button
+            type="button"
+            disabled={isLoadingTargets}
+            onClick={() => setRetryCounter((current) => current + 1)}
+          >
+            Refresh saved targets
+          </button>
           <details>
             <summary>Error details</summary>
             <p>{formState.message}</p>

@@ -124,12 +124,21 @@ test.describe("Electron startup smoke — fallback branch", () => {
     await window.reload();
   });
 
-  test("Scenario 6: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast }) => {
+  test("Scenario 6: fallback label is visible when dashboard data indicates insufficient history", async ({ forecast, window }, testInfo) => {
     // AC-3: explicit fallback label renders at the Electron runtime level when
     // the IPC response signals insufficient transaction history.
     await expect(forecast.sectionHeading).toBeVisible();
     await expect(forecast.fallbackLabel).toBeVisible();
     await expect(forecast.projectedDescription).not.toBeVisible();
+    await expect(forecast.section.getByRole("listitem")).toHaveCount(0);
+    await expect(forecast.section).not.toContainText("0,00");
+    await expect(forecast.section.getByRole("status")).toContainText(/record.*transaction.*history/i);
+    for (const width of [1280, 390]) {
+      await window.setViewportSize({ width, height: 900 });
+      const path = testInfo.outputPath(`forecast-empty-${width}.png`);
+      await forecast.section.screenshot({ path, animations: "disabled" });
+      await testInfo.attach(`Forecast empty ${width}`, { path, contentType: "image/png" });
+    }
   });
 });
 
@@ -163,6 +172,9 @@ test.describe("Fresh local setup", () => {
     await createLedgerButton.click();
     await expect(window.getByRole("heading", { name: "Set up your household" })).toHaveCount(0);
     await expect(window.getByText("Lønn AS", { exact: true })).toHaveCount(0);
+    const forecastSection = window.getByRole("region", { name: "Forecast", exact: true });
+    await expect(forecastSection.getByRole("status")).toContainText("Not enough history");
+    await expect(forecastSection.getByRole("listitem")).toHaveCount(0);
 
     await window.reload();
     await expect(window.getByRole("heading", { name: "Set up your household" })).toHaveCount(0);
@@ -178,9 +190,13 @@ test.describe("Fresh local setup", () => {
     const accountId = await accountOption.getAttribute("value");
     await accountInput.selectOption(accountId!);
     await window.getByLabel("Booked date").fill("2026-10-03");
-    await window.getByLabel("Amount (øre)").fill("-123");
+    await window.getByLabel("Amount (NOK)", { exact: true }).fill("-1.23");
     await window.getByLabel("Description or merchant").fill("First entry");
     await window.getByRole("button", { name: "Add transaction" }).click();
     await expect(window.getByRole("status").filter({ hasText: "Added First entry to your ledger." })).toBeVisible();
+    await appShell.openWorkspace("Review");
+    await expect(forecastSection.getByRole("listitem")).toHaveCount(3);
+    await expect(forecastSection.getByRole("listitem").first()).toContainText("1,23");
+    await expect(forecastSection.getByRole("status")).toHaveCount(0);
   });
 });

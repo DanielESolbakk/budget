@@ -63,6 +63,42 @@ test.describe("Category target entry renderer smoke", () => {
     await expect(categoryTarget.targetAmountInput).toHaveValue("90.00");
   });
 
+  for (const action of ["add", "edit"] as const) {
+    test(`unfinished target ${action} prevents accidental month and form replacement until cancelled`, async ({
+      categoryTarget, dashboard, window,
+    }, testInfo) => {
+      const opener = action === "add" ? categoryTarget.addTargetButton : categoryTarget.editTargetButton("groceries");
+      await opener.click();
+      await categoryTarget.targetAmountInput.fill("125,50");
+      await expect(dashboard.monthSelector).toBeDisabled();
+      await expect(categoryTarget.addTargetButton).toBeDisabled();
+      await expect(categoryTarget.editTargetButton("groceries")).toBeDisabled();
+      await expect(categoryTarget.section.getByText(/save or cancel.*before/i)).toBeVisible();
+      await expect(categoryTarget.targetAmountInput).toHaveValue("125,50");
+      if (action === "edit") {
+        for (const width of [1280, 390]) {
+          await window.setViewportSize({ width, height: 900 });
+          const path = testInfo.outputPath(`target-draft-${width}.png`);
+          await categoryTarget.section.screenshot({ path, animations: "disabled" });
+          await testInfo.attach(`Target draft ${width}`, { path, contentType: "image/png" });
+          const dimensions = await window.evaluate(() => ({
+            width: globalThis.window.innerWidth,
+            clientWidth: document.documentElement.clientWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+          }));
+          expect(dimensions.width).toBe(width);
+          expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+        }
+      }
+      await categoryTarget.section.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(dashboard.monthSelector).toBeEnabled();
+      await expect(opener).toBeEnabled();
+      await expect(opener).toBeFocused();
+      await dashboard.monthSelector.selectOption("2026-04");
+      await expect(dashboard.monthSelector).toHaveValue("2026-04");
+    });
+  }
+
   for (const [amount, expectedMinor] of [["12,50", 1250], ["90071992547409.91", Number.MAX_SAFE_INTEGER]] as const) {
     test(`target NOK entry saves ${amount} exactly and edits without losing precision`, async ({ categoryTarget, dashboard, window }) => {
       await categoryTarget.addTargetButton.click();
@@ -143,6 +179,33 @@ test.describe("Category target entry renderer smoke", () => {
       database.exec("ROLLBACK");
       await categoryTarget.saveButton.click();
       await expect(categoryTarget.savedTargetItem("groceries")).toContainText("125,50");
+    } finally {
+      database.close();
+    }
+  });
+
+  test("uncertain target save can refresh persisted values without losing its draft", async ({
+    categoryTarget, databasePath, dashboard, window,
+  }) => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      await categoryTarget.editTargetButton("groceries").click();
+      await categoryTarget.targetAmountInput.fill("125.50");
+      await categoryTarget.saveButton.click();
+      await expect(categoryTarget.section.getByRole("alert")).toContainText("could not be confirmed");
+      database.exec("ROLLBACK");
+      await window.evaluate(() => globalThis.window.budgetApi.categoryTargets.upsert({
+        yearMonth: "2026-05", categoryId: "groceries", targetMinor: 10000,
+      }));
+      await expect(categoryTarget.savedTargetItem("groceries")).toContainText("90,00");
+      await categoryTarget.section.getByRole("button", { name: "Refresh saved targets", exact: true }).click();
+      await expect(categoryTarget.savedTargetItem("groceries")).toContainText("100,00");
+      await expect(categoryTarget.targetAmountInput).toHaveValue("125.50");
+      await expect(dashboard.monthSelector).toBeDisabled();
+      await categoryTarget.saveButton.click();
+      await expect(categoryTarget.savedTargetItem("groceries")).toContainText("125,50");
+      await expect(dashboard.monthSelector).toBeEnabled();
     } finally {
       database.close();
     }
