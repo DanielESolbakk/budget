@@ -269,6 +269,14 @@ describe("same-merchant correction persistence", () => {
       expect(database.getTransactionById("tx-first")?.categoryId).toBeUndefined();
       expect(database.getTransactionById("tx-second")?.categoryId).toBeUndefined();
       expect(database.listSameMerchantPropagationOperations()).toEqual([]);
+      const reopened = createLocalLedgerDatabase({ dbPath });
+      try {
+        expect(reopened.getTransactionById("tx-first")?.categoryId).toBeUndefined();
+        expect(reopened.getTransactionById("tx-second")?.categoryId).toBeUndefined();
+        expect(reopened.listSameMerchantPropagationOperations()).toEqual([]);
+      } finally {
+        reopened.close();
+      }
     } finally {
       failureInjector?.close();
       database.close();
