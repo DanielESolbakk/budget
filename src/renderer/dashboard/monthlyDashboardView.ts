@@ -2,7 +2,7 @@ import {
   buildDashboardViewContract,
   type DashboardViewContract,
   type DashboardViewContractInput,
-} from "../../app/dashboardApi.js";
+} from "../../shared/dashboard.js";
 import type { Transaction } from "../../domain/types.js";
 
 export function renderMonthlyDashboardView(input: DashboardViewContractInput): DashboardViewContract {

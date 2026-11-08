@@ -3,7 +3,7 @@ import React from "react";
 import type {
   CashflowScenarioRequest,
   CashflowScenarioResult,
-} from "../../app/dashboardApi.js";
+} from "../../shared/dashboard.js";
 import {
   isCurrencyCode,
 } from "../../domain/types.js";

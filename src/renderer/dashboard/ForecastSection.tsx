@@ -1,5 +1,5 @@
 import React from "react";
-import type { DashboardData } from "../../app/dashboardApi.js";
+import type { DashboardData } from "../../shared/dashboard.js";
 
 const MINOR_UNITS_PER_NOK = 100;
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {

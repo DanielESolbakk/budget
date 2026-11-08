@@ -23,6 +23,7 @@ The application must:
 - Use Electron, React, TypeScript, and SQLite unless an ADR replaces this stack.
 - Keep renderer focused on presentation; move import, persistence, categorization, export, backup, forecasting logic to Electron main process plus service layer.
 - Keep shared domain types and validation contracts in dedicated shared layer.
+- Edit IPC wiring in the relevant responsibility group under `electron/ipc/`, not in `electron/main.ts`. Main retains startup, window/database lifecycle, service construction, trusted-renderer checks, and shared runtime-state ownership; channel groups use declared context dependencies and must not own connections or copy mutable runtime values. See [Application and renderer boundaries](../README.md#application-and-renderer-boundaries) for the group layout, shared-contract rules, and restore invariants.
 
 ## Privacy And Data Handling
 

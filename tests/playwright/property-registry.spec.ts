@@ -290,7 +290,7 @@ test("property history survives a restart without converting currency or using t
 
   await electronApp.close();
   const restartedApp = await electron.launch({
-    args: [MAIN_ENTRY],
+    args: ["--lang=en-GB", `--user-data-dir=${join(dirname(databasePath), "electron-profile")}`, MAIN_ENTRY],
     env: {
       ...process.env,
       NODE_ENV: "test",

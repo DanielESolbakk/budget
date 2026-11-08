@@ -8,7 +8,7 @@ import type {
   SpendableCashEstimateRequest,
   NokMonthlyReport,
   NokValuationReport,
-} from "../app/dashboardApi.js";
+} from "../shared/dashboard.js";
 import type { ExportCsvSummary } from "../app/exportCsv.js";
 import type {
   CsvImportPreviewResponse,

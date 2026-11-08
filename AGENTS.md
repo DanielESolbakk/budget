@@ -83,9 +83,12 @@ Alternative: enable the GitHub Copilot built-in Experimental setting for Impecca
 - `src/domain/types.ts`: shared domain types.
 - `src/domain/import/`: import-specific pure logic such as transaction fingerprinting.
 - `src/domain/merchant/`: merchant normalization and later categorization support.
+- `src/shared/`: runtime-independent contracts, validation, and pure composition consumed by application and renderer code.
 - `src/app/`: thin application-level workflows that compose domain modules.
 - `src/renderer/workspaces/holding/`, `property/`, `loan/`: feature-local registry sections, create forms, history, and draft helpers; state and refresh ownership stay in the sections.
 - `src/renderer/import/useImportPreflight.ts`: shared preview identity/progress/cancellation lifecycle; CSV mapping/profiles and PDF evidence stay format-specific. See [Renderer feature ownership](README.md#renderer-feature-ownership).
+- `electron/main.ts`: startup, window and database lifecycle, service construction, and channel registration.
+- `electron/ipc/`: responsibility-grouped IPC handlers and input validation; connection ownership remains in main.
 - `scripts/`: command-line entrypoints only; keep reusable logic in `src/`.
 - `tests/unit/`: pure logic tests.
 - `tests/integration/`: fixture and cross-module contract tests.

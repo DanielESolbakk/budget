@@ -203,6 +203,14 @@ The schema, snapshot format (versions 1-10), public ledger methods, query orderi
 - Planning and policy source of truth for AI work lives in plan and repository AI instructions.
   Learn more: [plan.md](plan.md), [.github/copilot-instructions.md](.github/copilot-instructions.md), [.github/instructions/style.instructions.md](.github/instructions/style.instructions.md), [.github/instructions/planning.instructions.md](.github/instructions/planning.instructions.md), [.github/instructions/testing.instructions.md](.github/instructions/testing.instructions.md), [.github/instructions/playwright.instructions.md](.github/instructions/playwright.instructions.md)
 
+## Application and renderer boundaries
+
+- [Shared modules](src/shared/) own pure household setup validation, spendable-cash request types, and deterministic dashboard contracts/composition. They do not load Electron, files, or SQLite. The old application setup/dashboard entry points re-export these contracts for compatibility; setup validation retains a single error-class identity.
+- Renderer code imports shared/domain runtime logic and may use application **types only**. ESLint rejects runtime application imports and re-exports, including dynamic renderer imports. Browser preview remains synthetic and does not invoke desktop services.
+- [Electron startup](electron/main.ts) owns the window, trusted-renderer assertion, ledger connection, coordinator, and runtime hydration. [Channel groups](electron/ipc/) register reports, dialogs, setup/accounts, recurring commitments, registries, imports, recovery, and ledger/review handlers using only their declared context dependencies. Registration itself performs no service/file/database work.
+- Each handler keeps its original trust check before payload validation or side effects. Restore replaces data through the **same ledger facade/connection**, refreshes shared household/account/target/rule objects in place, increments the shared import generation counter, and invalidates preview receipts. Channel modules do not own connections or copy mutable runtime values.
+- Registry component and renderer import-lifecycle refactoring are separate from these boundaries; no appearance, input policy, coordinator semantics, or persistence format changes are introduced here.
+
 ## Renderer feature ownership
 
 - Registry sections, create forms, history views, and draft/formatting helpers live under [holding](src/renderer/workspaces/holding/), [property](src/renderer/workspaces/property/), and [loan](src/renderer/workspaces/loan/). Registry sections retain loading, saving, drafts, focus refs, and refresh ownership; extracted presentation components receive typed props. [Data safety](src/renderer/workspaces/DataSafetyWorkspace.tsx) contains backup, export, and restore only.

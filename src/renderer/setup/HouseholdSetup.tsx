@@ -3,7 +3,7 @@ import {
   HouseholdSetupValidationError,
   normalizeHouseholdSetupInput,
   type HouseholdSetupInput,
-} from "../../app/onboarding/householdSetup.js";
+} from "../../shared/householdSetup.js";
 
 interface HouseholdSetupProps {
   onComplete: () => void;

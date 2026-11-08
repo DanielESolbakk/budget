@@ -1,5 +1,5 @@
 import React from "react";
-import type { DashboardViewContract } from "../../app/dashboardApi.js";
+import type { DashboardViewContract } from "../../shared/dashboard.js";
 import { categoryDisplayName } from "./categoryDisplayName.js";
 import { formatNokAmountMinor } from "../formatNokAmountMinor.js";
 

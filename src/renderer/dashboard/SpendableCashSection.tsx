@@ -2,7 +2,7 @@ import React from "react";
 import type {
   SpendableCashEstimate,
   SpendableCashEstimateRequest,
-} from "../../app/dashboardApi.js";
+} from "../../shared/dashboard.js";
 import type { Account, ExchangeRate } from "../../domain/types.js";
 import { formatCurrencySymbolAmount as formatAmount } from "../formatCurrencyAmount.js";
 import { parseReserveMinor } from "../amountInputs.js";
