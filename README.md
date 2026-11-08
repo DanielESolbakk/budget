@@ -166,6 +166,16 @@ This project is building a desktop application that:
 - Categorization strategy: rules-first with confidence scoring and review flows
 - Privacy model: no bank APIs, no cloud processing of transaction content, no telemetry by default
 
+### Persistence Boundaries
+
+- `src/app/backup/localLedgerSqlite.ts` remains the public ledger facade and owns the SQLite connection, initialization, snapshot replacement, and close lifetime. It re-exports the unchanged public types from `localLedgerContracts.ts`; repository and reader types derive from those contracts without facade import cycles.
+- `ledgerSchema.ts` owns the existing DDL and additive upgrade/backfill sequence; `ledgerSnapshot.ts` owns snapshot reads and insertion using that same connection.
+- `ledgerRowMappers.ts` and `ledgerTransactionRows.ts` retain typed row conversion, optional-field omission, correction history, and transaction serialization.
+- Transaction/query, import-ledger, import-history/undo, import-review, correction/propagation, registry, account-coverage, exchange-rate, and recurring-commitment repositories use the facade's connection. They preserve their existing operation-specific transaction boundaries; callers do not wrap them in additional transactions. Shared import history/baseline persistence stays in `importJobPersistence.ts`, and the facade runs history backfill once after initialization.
+- `restoreBackupSnapshot.ts` owns file reading and hash review. `validateBackupSnapshot.ts` owns historical version capabilities and snapshot-level validation orchestration; `snapshotRecordValidation.ts` retains record and reference checks, separately from UI input validation.
+
+The schema, snapshot format (versions 1-10), public ledger methods, query ordering/scoping, and local-only runtime/privacy boundaries are unchanged. Version 1 discards merchant rules; versions 2+ require them. Coverage/rates are required from version 3, properties from 4, loans from 6, holdings from 7, household shares from 9, and recurring collections from 10. Earlier absent registry collections normalize to empty arrays; pending observations remain optional. Snapshot and list queries deliberately retain their different ordering and household scopes.
+
 ## AI Oversight Snapshot
 
 - We use AI to speed delivery, but every important change is checked by automated quality gates before merge.

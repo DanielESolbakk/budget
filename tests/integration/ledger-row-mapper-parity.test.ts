@@ -146,6 +146,17 @@ describe("ledger list and snapshot row contracts", () => {
         quantity: 1.5, costBasisMinor: 12300, currencyCode: "EUR", createdAtIso: "2026-01-01T00:00:00Z",
         revisions: [{ id: "revision-a", label: "Old fund", quantity: 1, costBasisMinor: 12000,
           currencyCode: "EUR", correctedAtIso: "2026-01-02T00:00:00Z" }] }]);
+      expect(snapshot.loanRecords).toEqual([
+        { id: "loan-a", householdId: "hh-a", label: "Loan", principalMinor: 100000,
+          annualInterestRateBasisPoints: 450, termMonths: 12, paymentAmountMinor: 9000,
+          paymentFrequency: "monthly", currencyCode: "NOK", propertyId: "property-a",
+          createdAtIso: "2026-01-01T00:00:00Z", responsibilityShareBasisPoints: 5000 },
+      ]);
+      expect(ledger.listHoldingRecords("hh-a")).toEqual(snapshot.holdings);
+      expect(ledger.listLoanRecords("hh-a")).toEqual(snapshot.loanRecords);
+      expect(ledger.listRecurringCommitments("hh-a")).toEqual([
+        snapshot.recurringCommitments?.[1], snapshot.recurringCommitments?.[0],
+      ]);
       for (const accountId of ["acc-a", "acc-z"]) {
         expect(ledger.listAccountBalanceCheckpoints(accountId)).toEqual(
           snapshot.accountBalanceCheckpoints?.filter((row) => row.accountId === accountId));
@@ -171,6 +182,12 @@ describe("ledger list and snapshot row contracts", () => {
       }
       ledger.createPropertyRecord({ id: "property-other", householdId: "hh-other", label: "Aardvark",
         createdAtIso: "2026-01-01T00:00:00Z" });
+      ledger.createHoldingRecord({ id: "holding-other", householdId: "hh-other", label: "Other fund",
+        quantity: 1, costBasisMinor: 100, currencyCode: "NOK", createdAtIso: "2026-01-01T00:00:00Z" });
+      ledger.createLoanRecord({ id: "loan-other", householdId: "hh-other", label: "Other loan",
+        principalMinor: 1000, annualInterestRateBasisPoints: 100, termMonths: 12,
+        paymentAmountMinor: 100, paymentFrequency: "monthly", currencyCode: "NOK",
+        createdAtIso: "2026-01-01T00:00:00Z" });
       ledger.createRecurringCommitment({ id: "commitment-other", householdId: "hh-other",
         description: "Other bill", currencyCode: "NOK", amountMinor: 100, isVariable: false,
         cadence: "monthly", firstDueDateIso: "2026-01-01", activeFromIso: "2026-01-01",
@@ -186,6 +203,10 @@ describe("ledger list and snapshot row contracts", () => {
         .toEqual(["commitment-a", "commitment-z"]);
       expect(ledger.loadLedgerSnapshotData().properties?.map((row) => row.id))
         .toEqual(["property-a", "property-other", "property-z"]);
+      expect(ledger.listHoldingRecords("hh-a").map(row => row.id)).toEqual(["holding-a"]);
+      expect(ledger.listLoanRecords("hh-a").map(row => row.id)).toEqual(["loan-a"]);
+      expect(ledger.loadLedgerSnapshotData().holdings?.map(row => row.id)).toEqual(["holding-a"]);
+      expect(ledger.loadLedgerSnapshotData().loanRecords?.map(row => row.id)).toEqual(["loan-a"]);
       expect(ledger.listAccountStatementCoveragePeriods("acc-other")).toEqual([]);
       expect(ledger.listAccountBalanceCheckpoints("acc-other")).toEqual([]);
       expect(ledger.listRecurringCommitmentPaymentLinks("hh-other")).toEqual([]);

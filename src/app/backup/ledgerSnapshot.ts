@@ -1,16 +1,39 @@
-import { mapAccountStatementCoveragePeriodRow, mapAccountBalanceCheckpointRow, mapPropertyRecordRow, mapPropertyValuationSnapshotRow, mapHoldingValuationSnapshotRow, mapLoanBalanceSnapshotRow, mapRecurringCommitmentRow, mapRecurringCommitmentPaymentLinkRow, mapRecurringCommitmentDecisionRow } from "./ledgerRowMappers.js";
+import {
+  mapAccountStatementCoveragePeriodRow,
+  mapAccountBalanceCheckpointRow,
+  mapPropertyRecordRow,
+  mapPropertyValuationSnapshotRow,
+  mapHoldingValuationSnapshotRow,
+  mapLoanBalanceSnapshotRow,
+  mapRecurringCommitmentRow,
+  mapRecurringCommitmentPaymentLinkRow,
+  mapRecurringCommitmentDecisionRow,
+} from "./ledgerRowMappers.js";
 import { DatabaseSync } from "node:sqlite";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
 import { transactionBookingTimeMillis } from "../../domain/ledger/filterTransactions.js";
-import type { CategorizationDecision, HoldingRecord, ImportJob, ImportJobProvenance, LoanRecord, ExchangeRate, Transaction } from "../../domain/types.js";
-import { type PendingTransactionObservationRow, merchantSearchValue, mapTransactionRow, serializeTransactionCategoryAllocations, mapPendingTransactionObservationRow, parseSourceType } from "./ledgerTransactionRows.js";
+import type {
+  CategorizationDecision,
+  ImportJob,
+  ImportJobProvenance,
+  Transaction,
+} from "../../domain/types.js";
+import {
+  type PendingTransactionObservationRow,
+  merchantSearchValue,
+  mapTransactionRow,
+  serializeTransactionCategoryAllocations,
+  mapPendingTransactionObservationRow,
+  parseSourceType,
+} from "./ledgerTransactionRows.js";
+import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 
-interface LedgerSnapshotReaders {
-  listExchangeRates: () => ExchangeRate[];
-  listHoldingRecords: (householdId: string) => HoldingRecord[];
-  listLoanRecords: (householdId: string) => LoanRecord[];
-}
+type LedgerSnapshotReaders = Pick<LocalLedgerDatabase,
+  | "listExchangeRates"
+  | "listHoldingRecords"
+  | "listLoanRecords"
+>;
 
 export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): void {
   db.prepare(

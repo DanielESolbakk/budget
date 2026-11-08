@@ -1,6 +1,11 @@
 import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
 import { validateTransactionCategoryAllocations } from "../../domain/ledger/transactionAllocations.js";
-import type { ImportJob, PendingTransactionObservation, Transaction, TransactionCategoryAllocation } from "../../domain/types.js";
+import type {
+  ImportJob,
+  PendingTransactionObservation,
+  Transaction,
+  TransactionCategoryAllocation,
+} from "../../domain/types.js";
 
 export interface TransactionRow {
   id: string;
