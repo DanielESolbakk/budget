@@ -16,7 +16,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:f
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   buildRogalandImportJobId,
   parseRogalandStatementText,
@@ -30,6 +30,7 @@ import {
 } from "../../src/domain/import/parserAdapterRegistry.js";
 import type { SourceDocument } from "../../src/domain/import/sourceDocument.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import type { LocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { buildDashboardViewContract } from "../../src/app/dashboardApi.js";
 import { createTextSourceDocument } from "../../src/domain/import/sourceDocument.js";
 import {
@@ -65,6 +66,11 @@ const SAMPLE_ACCOUNT: Account = {
   currencyCode: "NOK",
 };
 
+const testLedgers = new Set<LocalLedgerDatabase>();
+afterEach(() => {
+  for (const ledger of testLedgers) ledger.close();
+});
+
 function loadFixture(): string {
   return readFileSync(FIXTURE_PATH, "utf8");
 }
@@ -85,9 +91,10 @@ function makeTestLedger(suffix = randomUUID(), accounts: Account[] = [SAMPLE_ACC
     },
   });
 
-  return {
+  const testLedger = {
     ...ledger,
     close() {
+      if (!testLedgers.delete(testLedger)) return;
       try {
         ledger.close();
       } finally {
@@ -95,6 +102,8 @@ function makeTestLedger(suffix = randomUUID(), accounts: Account[] = [SAMPLE_ACC
       }
     },
   };
+  testLedgers.add(testLedger);
+  return testLedger;
 }
 
 function runPdfImportOrchestration(
@@ -328,8 +337,7 @@ describe("pdf import contract", () => {
       }],
       textLineEvidence: [],
     };
-    const importJobs: ImportJob[] = [];
-    const importedTransactions: Transaction[] = [];
+    const ledger = makeTestLedger();
     let lookedUpContentDigest: string | undefined;
 
     const response = runPdfImportWorkflow({
@@ -347,15 +355,14 @@ describe("pdf import contract", () => {
         lookedUpContentDigest = contentDigest;
         return [];
       },
-      appendImportJob: (importJob) => importJobs.push(importJob),
-      appendTransactions: (transactions) => {
-        importedTransactions.push(...transactions);
-        return transactions.length;
-      },
-      getTransactionsForImportJob: (importJobId) =>
-        importedTransactions.filter((transaction) => transaction.importJobId === importJobId),
+      appendImportJob: () => { throw new Error("Normal PDF import must use atomic persistence."); },
+      appendTransactions: () => { throw new Error("Normal PDF import must use atomic persistence."); },
+      appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
     });
 
+    const importJobs = ledger.loadLedgerSnapshotData().importJobs;
+    const importedTransactions = ledger.getTransactionsForImportJob("bank-b-import-job");
     expect(response).toMatchObject({ ok: true, adapterId: "bank-b-pdf-v1", transactionCount: 1 });
     expect(importJobs[0]).toMatchObject({
       adapterId: "bank-b-pdf-v1",
@@ -368,6 +375,8 @@ describe("pdf import contract", () => {
     expect(lookedUpContentDigest).toBe(expectedContentDigest);
     expect(importJobs[0]?.provenance?.contentDigest).toBe(expectedContentDigest);
     expect(importedTransactions).toMatchObject([{ merchantRaw: "BANK-B SHOP", sourceType: "pdf" }]);
+    expect(importedTransactions).toHaveLength(1);
+    expect(importedTransactions[0]?.amountMinor).toBe(-1200);
   });
 
   describe("pending bank transaction imports", () => {
@@ -687,16 +696,18 @@ describe("pdf import contract", () => {
   });
 
   describe("AC-1: fixture produces expected transaction candidates", () => {
-    it("parses the synthetic fixture into transactions with all required domain fields", () => {
+    it("persists production-imported fixture transactions with all required domain fields", () => {
       const text = loadFixture();
-      const result = parseRogalandStatementText(text, MAPPING_OPTIONS);
+      const ledger = makeTestLedger();
+      const result = runPdfImportOrchestration(text, ledger, MAPPING_OPTIONS);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
 
-      expect(result.transactions.length).toBeGreaterThan(0);
+      const transactions = ledger.getTransactionsForImportJob(result.importJobId);
+      expect(transactions).toHaveLength(10);
 
-      for (const tx of result.transactions) {
+      for (const tx of transactions) {
         expect(typeof tx.id).toBe("string");
         expect(tx.id.length).toBeGreaterThan(0);
         expect(tx.householdId).toBe("hh-test");
@@ -710,15 +721,17 @@ describe("pdf import contract", () => {
       }
     });
 
-    it("fixture contains at least one income and one expense transaction", () => {
+    it("production-imported fixture contains persisted income and expenses", () => {
       const text = loadFixture();
-      const result = parseRogalandStatementText(text, MAPPING_OPTIONS);
+      const ledger = makeTestLedger();
+      const result = runPdfImportOrchestration(text, ledger, MAPPING_OPTIONS);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
 
-      const hasIncome = result.transactions.some((tx) => tx.amountMinor > 0);
-      const hasExpense = result.transactions.some((tx) => tx.amountMinor < 0);
+      const transactions = ledger.getTransactionsForImportJob(result.importJobId);
+      const hasIncome = transactions.some((tx) => tx.amountMinor > 0);
+      const hasExpense = transactions.some((tx) => tx.amountMinor < 0);
 
       expect(hasIncome).toBe(true);
       expect(hasExpense).toBe(true);
@@ -726,24 +739,27 @@ describe("pdf import contract", () => {
 
     it("transaction ids from the fixture are unique", () => {
       const text = loadFixture();
-      const result = parseRogalandStatementText(text, MAPPING_OPTIONS);
+      const ledger = makeTestLedger();
+      const result = runPdfImportOrchestration(text, ledger, MAPPING_OPTIONS);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
 
-      const ids = result.transactions.map((tx) => tx.id);
+      const ids = ledger.getTransactionsForImportJob(result.importJobId).map((tx) => tx.id);
+      expect(ids).toHaveLength(10);
       expect(new Set(ids).size).toBe(ids.length);
     });
 
     it("fixture transactions are compatible with the dashboard app consumer", () => {
       const text = loadFixture();
-      const result = parseRogalandStatementText(text, MAPPING_OPTIONS);
+      const ledger = makeTestLedger();
+      const result = runPdfImportOrchestration(text, ledger, MAPPING_OPTIONS);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
 
       const contract = buildDashboardViewContract({
-        transactions: result.transactions,
+        transactions: ledger.getTransactionsForImportJob(result.importJobId),
         selectedYearMonth: "2026-05",
       });
 
@@ -1678,6 +1694,7 @@ describe("pdf import contract", () => {
           appendImportJob: ledger.appendImportJob,
           appendTransactions: ledger.appendTransactions,
           getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           onTransactionsPersisted: appendVisibleTransactions,
         }
       );
@@ -1700,6 +1717,7 @@ describe("pdf import contract", () => {
           appendImportJob: ledger.appendImportJob,
           appendTransactions: ledger.appendTransactions,
           getTransactionsForImportJob: ledger.getTransactionsForImportJob,
+          appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           onTransactionsPersisted: appendVisibleTransactions,
         }
       );

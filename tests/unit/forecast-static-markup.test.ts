@@ -11,7 +11,7 @@ const monthlyTotals: MonthlyTotal[] = [
   { yearMonth: "2026-05", totalMinor: 54000 },
 ];
 
-describe("forecast display smoke", () => {
+describe("forecast static markup (not interactive renderer)", () => {
   it("AC-1: renderer receives dashboard forecast data and displays projected months", async () => {
     const dashboardData = buildDashboardData({ monthlyTotals });
     const markup = renderToStaticMarkup(

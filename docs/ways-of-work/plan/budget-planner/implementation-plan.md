@@ -103,12 +103,13 @@ Exit criteria:
 
 This repository uses two test frameworks with distinct, non-overlapping ownership.
 
-### Vitest (unit, integration, and Vitest e2e smoke)
+### Vitest (unit, integration, and static artifact checks)
 
 - **Scope**: pure logic, parsing, normalization, domain calculations, React component rendering (via `renderToStaticMarkup`), IPC contract behavior.
 - **Entry points**: `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/nonetwork/`.
 - **Runs in**: Node process, no Electron binary required.  Safe to run with `ELECTRON_SKIP_BINARY_DOWNLOAD=1`.
-- **Commands**: `npm run test:unit`, `npm run test:integration`, `npm run test:e2e:vitest`, `npm run verify:no-network`.
+- **Commands**: `npm run test:unit`, `npm run test:integration`, `npm run test:artifacts`, `npm run verify:no-network`.
+- **Artifact lane**: `npm run test:artifacts` rebuilds main, preload, and renderer once before static inspection, even when outputs exist. `npm run test:e2e:vitest` is its compatibility alias, not native startup or IPC evidence.
 
 ### Playwright (Electron runtime smoke)
 
@@ -134,7 +135,8 @@ Once scaffolding exists, the repository must provide CI scripts for:
 - `typecheck`
 - `test:unit`
 - `test:integration`
-- `test:e2e:vitest`
+- `test:artifacts` (fresh-build static inspection)
+- `test:e2e:vitest` (compatibility alias)
 - `test:e2e:playwright` (when Playwright coverage is in issue scope)
 - `verify:no-network`
 

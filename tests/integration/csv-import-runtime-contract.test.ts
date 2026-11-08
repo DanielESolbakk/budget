@@ -1,10 +1,11 @@
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import type { LocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import {
   buildCsvImportRequest,
   filterPreviouslyImportedCsvTransactions,
@@ -16,6 +17,13 @@ import { parseCsvText } from "../../src/domain/import/parseCsvText.js";
 import { mapCsvRows } from "../../src/domain/import/csvRowMapper.js";
 import { buildDashboardViewContract } from "../../src/app/dashboardApi.js";
 import type { Household, Account, ImportJob, Transaction } from "../../src/domain/types.js";
+import type { CsvImportProfile } from "../../src/domain/import/csvImportProfile.js";
+import { withIsolatedLedger } from "../helpers/isolatedLedger.js";
+
+const testLedgers = new Set<LocalLedgerDatabase>();
+afterEach(() => {
+  for (const ledger of testLedgers) ledger.close();
+});
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
 
@@ -48,10 +56,11 @@ function makeTestLedger(suffix: string, cleanupOnClose = true) {
     },
   });
 
-  return {
+  const testLedger = {
     ...ledger,
     dbPath,
     close() {
+      if (!testLedgers.delete(testLedger)) return;
       try {
         ledger.close();
       } finally {
@@ -59,6 +68,8 @@ function makeTestLedger(suffix: string, cleanupOnClose = true) {
       }
     },
   };
+  testLedgers.add(testLedger);
+  return testLedger;
 }
 
 function openTestLedger(dbPath: string) {
@@ -74,99 +85,56 @@ function openTestLedger(dbPath: string) {
   });
 }
 
-interface TestCsvImportProfile {
-  id: string;
-  householdId: string;
-  name: string;
-  accountId: string;
-  columnMapping: Record<string, string>;
-  createdAtIso: string;
-  updatedAtIso: string;
-}
-
-interface TestCsvImportProfileStore {
-  saveCsvImportProfile: (profile: TestCsvImportProfile) => void;
-  listCsvImportProfiles: (householdId: string) => TestCsvImportProfile[];
-  deleteCsvImportProfile: (householdId: string, profileId: string) => boolean;
-}
-
-interface TestImportJobHistoryStore {
-  listImportJobHistory: (householdId: string) => Array<{
-    id: string;
-    accountId: string | null;
-    candidateCount: number;
-    importedCount: number;
-    duplicateCount: number;
-    undoAvailable: boolean;
-    retainedTransactions: Array<{
-      id: string;
-      bookedAtIso: string;
-      amountMinor: number;
-      merchantRaw: string;
-      currencyCode: string;
-      reason: "changed-after-import" | "baseline-unavailable";
-    }>;
-  }>;
-  undoImportJob: (importJobId: string) => {
-    importJobId: string;
-    removedCount: number;
-    retainedCount: number;
-    alreadyUndone: boolean;
-    retainedTransactions: Array<{
-      id: string;
-      bookedAtIso: string;
-      amountMinor: number;
-      merchantRaw: string;
-      currencyCode: string;
-      reason: "changed-after-import" | "baseline-unavailable";
-    }>;
-  };
-}
-
-/**
- * Exercises CSV parsing, mapping, validation, and SQLite persistence as a component contract.
- * This helper reimplements the import decision and does not exercise Electron's `import:csv` handler.
- */
-function runImportOrchestration(
+function importCsvIntoLedger(
   csvText: string,
   ledger: ReturnType<typeof makeTestLedger>,
   options: { householdId: string; accountId: string }
 ) {
-  const rows = parseCsvText(csvText);
-  const importJobId = `import-csv-test-${Date.now()}`;
-  const now = new Date().toISOString();
-
-  const result = mapCsvRows(rows, {
+  return runCsvImportWorkflow({
+    rows: parseCsvText(csvText),
+    filePath: "synthetic-test.csv",
     householdId: options.householdId,
     accountId: options.accountId,
-    importJobId,
-    idPrefix: importJobId,
+    importJobId: `import-csv-test-${randomUUID()}`,
+    sourceIdentity: createHash("sha256").update(csvText).digest("hex"),
+    sourceScope: "synthetic-test.csv",
+    startedAtIso: "2026-06-01T12:00:00Z",
+    finishedAtIso: "2026-06-01T12:00:01Z",
+  }, {
+    categoryRules: new Map(),
+    loadLedgerSnapshotData: ledger.loadLedgerSnapshotData,
+    getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
+    appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+    getTransactionsForImportJob: ledger.getTransactionsForImportJob,
   });
-
-  if (result.skipped.length > 0) {
-    return normalizeCsvImportErrors(result.skipped);
-  }
-
-  const importJob: ImportJob = {
-    id: importJobId,
-    householdId: options.householdId,
-    sourceType: "csv",
-    sourceName: "test.csv",
-    startedAtIso: now,
-    finishedAtIso: now,
-  };
-
-  ledger.appendImportJob(importJob);
-  ledger.appendTransactions(result.transactions);
-
-  return {
-    ok: true as const,
-    importJobId,
-    transactionCount: result.transactions.length,
-  };
 }
 
 describe("csv-import-runtime-contract", () => {
+  it("requires explicit duplicate choices and persists a deliberately imported duplicate with new identity", async () => {
+    await withIsolatedLedger({}, ({ ledger }) => {
+      const input = {
+        rows: parseCsvText("Utført dato;Beskrivelse;Beløp ut;Valuta\n28.05.2026;SYNTHETIC SHOP;-12.50;NOK\n"),
+        filePath: "duplicate.csv", householdId: "hh-isolated", accountId: "acc-isolated",
+        sourceIdentity: "duplicate-source", sourceScope: "duplicate.csv",
+        startedAtIso: "2026-06-01T12:00:00Z", finishedAtIso: "2026-06-01T12:00:01Z",
+      };
+      const dependencies = { categoryRules: new Map<string, string>(), ...ledger };
+      expect(runCsvImportWorkflow({ ...input, importJobId: "first" }, dependencies)).toMatchObject({ ok: true, transactionCount: 1 });
+      const before = ledger.loadLedgerSnapshotData();
+      expect(runCsvImportWorkflow({ ...input, importJobId: "missing" }, dependencies)).toMatchObject({
+        ok: false, errors: [{ rowIndex: 0, codes: ["DUPLICATE_DECISION_REQUIRED"] }],
+      });
+      expect(ledger.loadLedgerSnapshotData()).toEqual(before);
+      expect(runCsvImportWorkflow({ ...input, importJobId: "skipped", duplicateDecisions: [{ rowIndex: 0, action: "skip" }] }, dependencies))
+        .toMatchObject({ ok: true, transactionCount: 0, duplicateCount: 1 });
+      const imported = runCsvImportWorkflow({ ...input, importJobId: "imported", duplicateDecisions: [{ rowIndex: 0, action: "import" }] }, dependencies);
+      expect(imported).toMatchObject({ ok: true, transactionCount: 1, duplicateCount: 0, reconciliation: { fullyReconciled: true } });
+      const rows = ledger.loadLedgerSnapshotData().transactions;
+      expect(rows.map(({ amountMinor }) => amountMinor)).toEqual([-1250, -1250]);
+      expect(new Set(rows.map(({ id }) => id)).size).toBe(2);
+      expect(ledger.listImportJobHistory("hh-isolated")).toHaveLength(3);
+    });
+  });
   it("returns identical ordered source metadata for repeated previews before duplicate classification", async () => {
     const rows = parseCsvText([
       "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta;Melding/KID/Fakt.nr",
@@ -236,7 +204,7 @@ describe("csv-import-runtime-contract", () => {
 
       const reopenedLedger = openTestLedger(dbPath);
       try {
-        const store = reopenedLedger as unknown as TestImportJobHistoryStore;
+        const store = reopenedLedger;
         let result: unknown;
         try {
           result = store.undoImportJob(importJob.id);
@@ -288,7 +256,7 @@ describe("csv-import-runtime-contract", () => {
       importJobId: "unrelated-job",
       merchantRaw: "Bus ticket",
     };
-    const historyStore = ledger as unknown as Partial<TestImportJobHistoryStore>;
+    const historyStore = ledger;
 
     try {
       ledger.appendImportJobAndTransactions(importJob, [unchangedTransaction, correctedTransaction]);
@@ -298,14 +266,14 @@ describe("csv-import-runtime-contract", () => {
       });
       ledger.appendTransactions([unrelatedTransaction]);
 
-      expect(historyStore.listImportJobHistory?.(SAMPLE_HOUSEHOLD.id)?.[0]).toMatchObject({
+      expect(historyStore.listImportJobHistory(SAMPLE_HOUSEHOLD.id)[0]).toMatchObject({
         id: importJob.id,
         accountId: SAMPLE_ACCOUNT.id,
         candidateCount: 2,
         importedCount: 2,
         duplicateCount: 0,
       });
-      expect(historyStore.undoImportJob?.(importJob.id)).toMatchObject({
+      expect(historyStore.undoImportJob(importJob.id)).toMatchObject({
         importJobId: importJob.id,
         removedCount: 1,
         retainedCount: 1,
@@ -319,7 +287,7 @@ describe("csv-import-runtime-contract", () => {
           reason: "changed-after-import",
         }],
       });
-      expect(historyStore.listImportJobHistory?.(SAMPLE_HOUSEHOLD.id)?.[0]).toMatchObject({
+      expect(historyStore.listImportJobHistory(SAMPLE_HOUSEHOLD.id)[0]).toMatchObject({
         undoneAtIso: expect.any(String),
         undoRemovedCount: 1,
         undoRetainedCount: 1,
@@ -346,8 +314,8 @@ describe("csv-import-runtime-contract", () => {
 
   it("creates, edits, deletes, and retains CSV import profiles across a database restart", () => {
     const ledger = makeTestLedger(randomUUID(), false);
-    const profileStore = ledger as unknown as Partial<TestCsvImportProfileStore>;
-    const profile: TestCsvImportProfile = {
+    const profileStore = ledger;
+    const profile: CsvImportProfile = {
       id: "csv-profile-groceries",
       householdId: SAMPLE_HOUSEHOLD.id,
       name: "Groceries export",
@@ -359,17 +327,17 @@ describe("csv-import-runtime-contract", () => {
     let originalConnectionOpen = true;
 
     try {
-      profileStore.saveCsvImportProfile?.(profile);
-      expect(profileStore.listCsvImportProfiles?.(SAMPLE_HOUSEHOLD.id)).toEqual([profile]);
+      profileStore.saveCsvImportProfile(profile);
+      expect(profileStore.listCsvImportProfiles(SAMPLE_HOUSEHOLD.id)).toEqual([profile]);
 
-      const editedProfile = {
+      const editedProfile: CsvImportProfile = {
         ...profile,
         name: "Updated groceries export",
         columnMapping: { description: "Payee", amountOut: "Debit" },
         updatedAtIso: "2026-10-03T11:00:00.000Z",
       };
-      profileStore.saveCsvImportProfile?.(editedProfile);
-      expect(profileStore.listCsvImportProfiles?.(SAMPLE_HOUSEHOLD.id)).toEqual([editedProfile]);
+      profileStore.saveCsvImportProfile(editedProfile);
+      expect(profileStore.listCsvImportProfiles(SAMPLE_HOUSEHOLD.id)).toEqual([editedProfile]);
 
       const dbPath = ledger.dbPath;
       ledger.close();
@@ -377,7 +345,7 @@ describe("csv-import-runtime-contract", () => {
 
       const reopenedLedger = openTestLedger(dbPath);
       try {
-        const reopenedProfiles = reopenedLedger as unknown as TestCsvImportProfileStore;
+        const reopenedProfiles = reopenedLedger;
         expect(reopenedProfiles.listCsvImportProfiles(SAMPLE_HOUSEHOLD.id)).toEqual([editedProfile]);
         expect(reopenedProfiles.deleteCsvImportProfile(SAMPLE_HOUSEHOLD.id, profile.id)).toBe(true);
         expect(reopenedProfiles.listCsvImportProfiles(SAMPLE_HOUSEHOLD.id)).toEqual([]);
@@ -732,7 +700,7 @@ describe("csv-import-runtime-contract", () => {
       const ledger = makeTestLedger(randomUUID());
       const csvText = readFileSync(FIXTURE_PATH, "utf8");
 
-      const response = runImportOrchestration(csvText, ledger, {
+      const response = importCsvIntoLedger(csvText, ledger, {
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
       });
@@ -740,7 +708,7 @@ describe("csv-import-runtime-contract", () => {
       expect(response.ok).toBe(true);
       if (!response.ok) return;
 
-      expect(response.transactionCount).toBeGreaterThan(0);
+      expect(response).toMatchObject({ transactionCount: 14, pendingCount: 2, unresolvedCount: 0 });
 
       const snapshot = ledger.loadLedgerSnapshotData();
 
@@ -762,13 +730,14 @@ describe("csv-import-runtime-contract", () => {
       const ledger = makeTestLedger(randomUUID());
       const csvText = readFileSync(FIXTURE_PATH, "utf8");
 
-      runImportOrchestration(csvText, ledger, {
+      const response = importCsvIntoLedger(csvText, ledger, {
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
       });
 
+      expect(response).toMatchObject({ ok: true, transactionCount: 14, pendingCount: 2 });
       const snapshot = ledger.loadLedgerSnapshotData();
-
+      expect(snapshot.transactions).toHaveLength(14);
       for (const tx of snapshot.transactions) {
         expect(Number.isInteger(tx.amountMinor)).toBe(true);
         expect(tx.bookedAtIso).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
@@ -867,7 +836,7 @@ describe("csv-import-runtime-contract", () => {
       }
     });
 
-    it("preserves the seeded ledger when an invalid row is between valid CSV rows", () => {
+    it("mapper component rejects the batch when an invalid row is between valid CSV rows", () => {
       const ledger = makeTestLedger(randomUUID());
       const existingTransaction: Transaction = {
         id: "existing-csv-ledger-row",
@@ -889,10 +858,12 @@ describe("csv-import-runtime-contract", () => {
         ledger.appendTransactions([existingTransaction]);
         const beforeImport = structuredClone(ledger.loadLedgerSnapshotData());
 
-        const response = runImportOrchestration(csvText, ledger, {
+        const mapped = mapCsvRows(parseCsvText(csvText), {
           householdId: SAMPLE_HOUSEHOLD.id,
           accountId: SAMPLE_ACCOUNT.id,
         });
+        expect(mapped.transactions).toEqual([]);
+        const response = normalizeCsvImportErrors(mapped.skipped);
 
         expect(response).toEqual({
           ok: false,
@@ -909,14 +880,16 @@ describe("csv-import-runtime-contract", () => {
       }
     });
 
-    it("rejects empty and header-only CSV input without creating an import job", () => {
+    it("mapper component rejects empty and header-only CSV input without ledger writes", () => {
       for (const csvText of ["", "Utført dato;Beskrivelse;Beløp ut;Valuta\n"]) {
         const ledger = makeTestLedger(randomUUID());
 
-        const response = runImportOrchestration(csvText, ledger, {
+        const mapped = mapCsvRows(parseCsvText(csvText), {
           householdId: SAMPLE_HOUSEHOLD.id,
           accountId: SAMPLE_ACCOUNT.id,
         });
+        expect(mapped.transactions).toEqual([]);
+        const response = normalizeCsvImportErrors(mapped.skipped);
 
         expect(response).toEqual({
           ok: false,
@@ -937,15 +910,17 @@ describe("csv-import-runtime-contract", () => {
       }
     });
 
-    it("returns ok=false with explicit errors and writes zero transactions for missing headers", () => {
+    it("mapper component reports missing headers without writing ledger records", () => {
       const ledger = makeTestLedger(randomUUID());
       // CSV with headers that do not match any supported canonical or alias names.
       const invalidCsv = "OtherDate;OtherText;OtherAmount\n01.01.2026;Test;-100.00\n";
 
-      const response = runImportOrchestration(invalidCsv, ledger, {
+      const mapped = mapCsvRows(parseCsvText(invalidCsv), {
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
       });
+      expect(mapped.transactions).toEqual([]);
+      const response = normalizeCsvImportErrors(mapped.skipped);
 
       expect(response.ok).toBe(false);
       if (response.ok) return;
@@ -959,17 +934,19 @@ describe("csv-import-runtime-contract", () => {
       ledger.close();
     });
 
-    it("returns validation errors with codes and messages for invalid row values", () => {
+    it("mapper component reports invalid date codes without writing ledger records", () => {
       const ledger = makeTestLedger(randomUUID());
       // Valid headers but invalid date value.
       const invalidCsv =
         "Utført dato;Bokført dato;Rentedato;Beskrivelse;Type;Undertype;Fra konto;Avsender;Til konto;Mottakernavn;Beløp inn;Beløp ut;Valuta;Status;Melding/KID/Fakt.nr\n" +
         "NOT_A_DATE;;29.05.2026;MERCHANT_001;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-45.00;NOK;Reservert;TXN-001\n";
 
-      const response = runImportOrchestration(invalidCsv, ledger, {
+      const mapped = mapCsvRows(parseCsvText(invalidCsv), {
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
       });
+      expect(mapped.transactions).toEqual([]);
+      const response = normalizeCsvImportErrors(mapped.skipped);
 
       expect(response.ok).toBe(false);
       if (response.ok) return;
@@ -1005,7 +982,7 @@ describe("csv-import-runtime-contract", () => {
       const ledger = makeTestLedger(randomUUID());
       const csvText = readFileSync(FIXTURE_PATH, "utf8");
 
-      const response = runImportOrchestration(csvText, ledger, {
+      const response = importCsvIntoLedger(csvText, ledger, {
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
       });
@@ -1037,13 +1014,13 @@ describe("csv-import-runtime-contract", () => {
       const ledger = makeTestLedger(randomUUID());
       const csvText = readFileSync(FIXTURE_PATH, "utf8");
 
-      runImportOrchestration(csvText, ledger, {
+      const response = importCsvIntoLedger(csvText, ledger, {
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
       });
 
+      expect(response).toMatchObject({ ok: true, transactionCount: 14, pendingCount: 2 });
       const snapshot = ledger.loadLedgerSnapshotData();
-
       const contract = buildDashboardViewContract({
         transactions: snapshot.transactions,
         selectedYearMonth: "2026-05",
@@ -1069,7 +1046,7 @@ describe("csv-import-runtime-contract", () => {
       const ledger = makeTestLedger(randomUUID());
       const csvText = readFileSync(FIXTURE_PATH, "utf8");
 
-      const response1 = runImportOrchestration(csvText, ledger, {
+      const response1 = importCsvIntoLedger(csvText, ledger, {
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
       });
@@ -1080,7 +1057,7 @@ describe("csv-import-runtime-contract", () => {
         "Utført dato;Bokført dato;Rentedato;Beskrivelse;Type;Undertype;Fra konto;Avsender;Til konto;Mottakernavn;Beløp inn;Beløp ut;Valuta;Status;Melding/KID/Fakt.nr\n" +
         "01.06.2026;01.06.2026;01.06.2026;EXTRA_MERCHANT;Varekjøp;Debetkort;ACCT-001;;;USER_1;;-999.00;NOK;Bokført;REF-EXTRA\n";
 
-      const response2 = runImportOrchestration(secondCsv, ledger, {
+      const response2 = importCsvIntoLedger(secondCsv, ledger, {
         householdId: SAMPLE_HOUSEHOLD.id,
         accountId: SAMPLE_ACCOUNT.id,
       });

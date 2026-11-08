@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildTransactionFingerprint } from "../../src/domain/import/buildTransactionFingerprint.js";
 
-describe("buildTransactionFingerprint", () => {
+describe("buildTransactionFingerprint date-only input", () => {
   const baseInput = {
     accountId: "acc-1",
     bookedAtIso: "2026-05-23",

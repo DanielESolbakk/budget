@@ -14,6 +14,7 @@ import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
 import type { Transaction } from "../../src/domain/types.js";
 import { minorUnitsToDecimal } from "../../src/domain/money/minorUnits.js";
 import { parseCurrencyAmountMinor } from "../../src/renderer/workspaces/parseCurrencyAmountMinor.js";
+import { withIsolatedLedger } from "../helpers/isolatedLedger.js";
 
 const HOUSEHOLD = {
   id: "household-property-test",
@@ -461,18 +462,18 @@ describe("property value history persistence", () => {
     }
   });
 
-  it("renames a property without changing its dated valuation history", () => {
-    const directory = mkdtempSync(join(tmpdir(), "budget-property-rename-"));
-    const dbPath = join(directory, "ledger.sqlite");
+  it("renames a property without changing its dated valuation history", async () => {
     let idIndex = 0;
     let timestampIndex = 0;
     const recordedTimes = [
       "2026-09-01T09:00:00.000Z",
       "2026-10-02T09:00:00.000Z",
     ];
-    const ledger = openLedger(dbPath);
-
-    try {
+    await withIsolatedLedger({ seed: {
+      household: HOUSEHOLD,
+      accounts: [{ id: "account-nok", householdId: HOUSEHOLD.id, name: "Current", currencyCode: "NOK" }],
+      transactions: [], importJobs: [], monthlyCategoryTargets: [],
+    } }, ({ ledger }) => {
       const registry = createPropertyRegistry(ledger, {
         createId: () => `property-record-${++idIndex}`,
         now: () => new Date(recordedTimes[timestampIndex++]!),
@@ -491,10 +492,7 @@ describe("property value history persistence", () => {
       expect(registry.list()).toEqual([
         { ...property, label: "Primary home", valuations: [valuation] },
       ]);
-    } finally {
-      ledger.close();
-      rmSync(directory, { recursive: true, force: true });
-    }
+    });
   });
 
   it("migrates an existing valuation table to store correction metadata", () => {
