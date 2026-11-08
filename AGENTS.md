@@ -32,7 +32,8 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Integration tests: `npm run test:integration`
 - Unit mutation signal: `npm run test:mutation:signal`
 - Unit and integration mutation signal (advisory): `npm run test:mutation:unit-integration:signal`
-- Vitest end-to-end smoke tests: `npm run test:e2e:vitest`
+- Fresh-build static artifact checks (not native E2E): `npm run test:artifacts`
+- Compatibility alias for that artifact lane: `npm run test:e2e:vitest`
 - Playwright runtime tests: `npm run test:e2e:playwright`
 - No-network verification: `npm run verify:no-network`
 - Harness eval (determinism + baseline drift): `npm run eval:skill`

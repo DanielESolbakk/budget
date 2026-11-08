@@ -29,7 +29,7 @@ const transactions: Transaction[] = [
   },
 ];
 
-describe("target-vs-actual display smoke", () => {
+describe("target-vs-actual static markup (not interactive renderer)", () => {
   it("AC-1: renders target, actual, and delta columns with category rows", () => {
     const store = createMonthlyCategoryTargetStore([
       { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 10000 },

@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { filterTransactions, queryTransactions } from "../../../../src/domain/ledger/filterTransactions.js";
+import { filterTransactions, parseNokAmountToMinor, queryTransactions } from "../../../../src/domain/ledger/filterTransactions.js";
 import type { Transaction } from "../../../../src/domain/types.js";
-
-const ledgerFilterHelpers = await import("../../../../src/domain/ledger/filterTransactions.js") as unknown as {
-  parseNokAmountToMinor?: (value: string) => number | null;
-};
 
 const transactions: Transaction[] = [
   {
@@ -176,7 +172,7 @@ describe("filterTransactions", () => {
       transactionType: "expenses",
       amountFromMinor: -1_000_000,
       amountToMinor: -1_000_000,
-    } as never);
+    });
 
     expect(result.transactions.map((transaction) => transaction.id)).toEqual([
       "uncategorized-boundary",
@@ -194,7 +190,7 @@ describe("filterTransactions", () => {
         { ...transactions[0]!, id: "june", bookedAtIso: "2026-06-01T00:00:00Z" },
       ];
 
-      expect(queryTransactions(monthTransactions, { datePreset: "thisMonth" } as never)
+      expect(queryTransactions(monthTransactions, { datePreset: "thisMonth" })
         .transactions.map((transaction) => transaction.id)).toEqual(["may-end", "may-start"]);
     } finally {
       vi.useRealTimers();
@@ -232,13 +228,13 @@ describe("filterTransactions", () => {
       { ...transactions[0]!, id: "below-threshold", amountMinor: -999_999 },
     ];
 
-    expect(queryTransactions(largeExpenses, { largeTransactionsOnly: true } as never)
+    expect(queryTransactions(largeExpenses, { largeTransactionsOnly: true })
       .transactions.map((transaction) => transaction.id)).toEqual(["large-expense", "large-income"]);
   });
 
   it("converts NOK amounts to minor units exactly and rejects excess precision", () => {
-    expect(ledgerFilterHelpers.parseNokAmountToMinor?.("1 234,56")).toBe(123_456);
-    expect(ledgerFilterHelpers.parseNokAmountToMinor?.("-0.25")).toBe(-25);
-    expect(ledgerFilterHelpers.parseNokAmountToMinor?.("1,005")).toBeNull();
+    expect(parseNokAmountToMinor("1 234,56")).toBe(123_456);
+    expect(parseNokAmountToMinor("-0.25")).toBe(-25);
+    expect(parseNokAmountToMinor("1,005")).toBeNull();
   });
 });

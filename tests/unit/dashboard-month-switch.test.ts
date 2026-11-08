@@ -35,7 +35,7 @@ const transactions: Transaction[] = [
   },
 ];
 
-describe("dashboard month switch smoke", () => {
+describe("dashboard month switch view-model contract", () => {
   it("renders month data and refreshes deterministically when switching month", () => {
     const may = renderMonthlyDashboardView({
       transactions,

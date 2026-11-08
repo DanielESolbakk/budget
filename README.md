@@ -119,7 +119,10 @@ npm run test:unit
 # Integration tests
 npm run test:integration
 
-# Vitest end-to-end smoke tests
+# Fresh-build static artifact checks (not native E2E)
+npm run test:artifacts
+
+# Compatibility alias for the same artifact lane
 npm run test:e2e:vitest
 
 # Playwright runtime tests
@@ -128,6 +131,22 @@ npm run test:e2e:playwright
 # No-network verification
 npm run verify:no-network
 ```
+
+The artifact lane rebuilds Electron main, preload, and renderer outputs before static
+contract inspection, even if outputs already exist. It does not launch Electron or
+prove IPC behavior. Pure workflow, dashboard view-model, fingerprint, and static
+markup checks run in the unit lane; persistence-backed imports run in integration.
+Playwright remains the native runtime lane.
+
+Relocated cases (none discarded):
+
+| Previous lane/file | Current unit file | Cases |
+| --- | --- | --- |
+| E2E `workflow-smoke` | [local-workflow](tests/unit/local-workflow.test.ts) | 1 |
+| E2E `dashboard-month-switch-smoke` | [dashboard-month-switch](tests/unit/dashboard-month-switch.test.ts) | 1 |
+| E2E `forecast-display-smoke` | [forecast-static-markup](tests/unit/forecast-static-markup.test.ts) | 4 |
+| E2E `target-vs-actual-display-smoke` | [target-vs-actual-static-markup](tests/unit/target-vs-actual-static-markup.test.ts) | 2 |
+| Integration `buildTransactionFingerprint` | [date-only fingerprint cases](tests/unit/buildTransactionFingerprint.date-only.test.ts) | 3 |
 
 ## Mission
 
