@@ -12,6 +12,8 @@ import { ImportAccountSelect } from "./ImportAccountSelect.js";
 import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
 import { ImportReconciliationSummary } from "./ImportReconciliationSummary.js";
 import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
+import { useImportPreflight } from "./useImportPreflight.js";
+import { ImportPreflightStatus } from "./ImportPreflightStatus.js";
 
 type ImportState =
   | { status: "idle" }
@@ -75,13 +77,6 @@ export function PdfImportSection({
   const statementFormat = classifyImportFilePath(filePath) === "text" ? "Text statement" : "PDF";
   const previewFormatLabel = statementFormat === "PDF" ? "PDF statement" : statementFormat;
   const [importState, setImportState] = React.useState<ImportState>({ status: "idle" });
-  const [activePreflightRequestId, setActivePreflightRequestId] = React.useState<string | undefined>();
-  const [preflightProgress, setPreflightProgress] = React.useState<{
-    requestId: string;
-    phase: string;
-    completedRows: number;
-    totalRows: number;
-  } | null>(null);
   const [stage, setStage] = React.useState<ImportWorkflowStage>("select-file");
   const [preview, setPreview] = React.useState<PdfImportPreviewSuccess | null>(null);
   const [isPreviewExpanded, setIsPreviewExpanded] = React.useState(true);
@@ -95,6 +90,9 @@ export function PdfImportSection({
   const [accountLoadState, setAccountLoadState] = React.useState<"loading" | "ready" | "error">("loading");
   const [accountRefreshKey, setAccountRefreshKey] = React.useState(0);
   const [duplicateDecisions, setDuplicateDecisions] = React.useState<Record<number, DuplicateImportDecision["action"]>>({});
+  const preflight = useImportPreflight("pdf", JSON.stringify([
+    filePath, fileSelectionId, preferredAccountId, accountId,
+  ]));
   const duplicateCandidates = preview?.duplicateCandidates ?? [];
   const pendingObservations = preview?.pendingObservations ?? [];
   const unresolvedRows = preview?.unresolvedRows ?? [];
@@ -153,13 +151,6 @@ export function PdfImportSection({
     };
   }, [accountRefreshKey]);
 
-  React.useEffect(() => window.budgetApi.import.onPreflightProgress((progress) => {
-    if (progress.format !== "pdf") return;
-    setPreflightProgress((current) => current?.requestId === progress.requestId
-      ? { ...current, phase: progress.phase, completedRows: progress.completedRows, totalRows: progress.totalRows }
-      : current);
-  }), []);
-
   React.useEffect(() => {
     if (duplicateRowToFocus === null) return;
     const row = document.getElementById(`pdf-preview-row-${duplicateRowToFocus}`);
@@ -179,9 +170,7 @@ export function PdfImportSection({
     const trimmedPath = filePath.trim();
     if (!trimmedPath || !accountId || accountLoadState !== "ready") return;
 
-    const requestId = crypto.randomUUID();
-    setActivePreflightRequestId(requestId);
-    setPreflightProgress({ requestId, phase: "Reading statement", completedRows: 0, totalRows: 0 });
+    const requestId = preflight.begin();
     setImportState({ status: "pending" });
     setIsPreviewExpanded(true);
     setStage("map-and-validate");
@@ -191,6 +180,7 @@ export function PdfImportSection({
 
     try {
       const response = await window.budgetApi.import.previewPdf({ filePath: trimmedPath, requestId, accountId });
+      if (!preflight.isCurrent(requestId)) return;
       if (response.ok) {
         setPreview(response);
         setPreviewPage(0);
@@ -201,7 +191,6 @@ export function PdfImportSection({
         wasCancelled = true;
         setPreview(null);
         setImportState({ status: "cancelled" });
-        setPreflightProgress({ requestId, phase: "Preview cancelled", completedRows: 0, totalRows: 0 });
         setStage("select-file");
       } else {
         setPreview(null);
@@ -209,6 +198,7 @@ export function PdfImportSection({
         setStage("map-and-validate");
       }
     } catch (error: unknown) {
+      if (!preflight.isCurrent(requestId)) return;
       setPreview(null);
       setImportState({
         status: "error",
@@ -216,10 +206,7 @@ export function PdfImportSection({
       });
       setStage("map-and-validate");
     } finally {
-      setActivePreflightRequestId((current) => current === requestId ? undefined : current);
-      setPreflightProgress((current) => current?.requestId !== requestId
-        ? current
-        : wasCancelled ? { ...current, phase: "Preview cancelled" } : null);
+      preflight.finish(requestId, wasCancelled);
     }
   }
 
@@ -239,12 +226,6 @@ export function PdfImportSection({
       previewButton?.scrollIntoView({ block: "start" });
       previewButton?.focus({ preventScroll: true });
     });
-  }
-
-  function cancelPreview(): void {
-    if (activePreflightRequestId !== undefined) {
-      void window.budgetApi.import.cancelPreview(activePreflightRequestId);
-    }
   }
 
   function updateFilePath(nextFilePath: string): void {
@@ -398,20 +379,13 @@ export function PdfImportSection({
           )}
         </div>
       )}
-      {((importState.status === "pending" && activePreflightRequestId !== undefined) || importState.status === "cancelled") && (
-        <div className="import-preflight-status">
-          <p role="status" aria-label="Import preflight progress">
-            {importState.status === "cancelled"
-              ? "Preview cancelled. No transactions were saved."
-              : preflightProgress === null || preflightProgress.totalRows === 0
-                ? preflightProgress?.phase ?? "Preparing statement..."
-                : `${preflightProgress.phase}: ${preflightProgress.completedRows.toLocaleString("nb-NO")} of ${preflightProgress.totalRows.toLocaleString("nb-NO")} rows`}
-          </p>
-          {importState.status === "pending" && (
-            <button type="button" className="import-secondary-action" onClick={cancelPreview}>Cancel preview</button>
-          )}
-        </div>
-      )}
+      <ImportPreflightStatus
+        pending={importState.status === "pending" && preflight.requestId !== undefined}
+        cancelled={importState.status === "cancelled"}
+        progress={preflight.progress}
+        onCancel={preflight.cancel}
+        cancellationError={preflight.cancellationError}
+      />
       {importState.status === "pending" && (
         <p role="status">{getImportPendingMessage(stage)}</p>
       )}

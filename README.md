@@ -211,6 +211,13 @@ The schema, snapshot format (versions 1-10), public ledger methods, query orderi
 - Each handler keeps its original trust check before payload validation or side effects. Restore replaces data through the **same ledger facade/connection**, refreshes shared household/account/target/rule objects in place, increments the shared import generation counter, and invalidates preview receipts. Channel modules do not own connections or copy mutable runtime values.
 - Registry component and renderer import-lifecycle refactoring are separate from these boundaries; no appearance, input policy, coordinator semantics, or persistence format changes are introduced here.
 
+## Renderer feature ownership
+
+- Registry sections, create forms, history views, and draft/formatting helpers live under [holding](src/renderer/workspaces/holding/), [property](src/renderer/workspaces/property/), and [loan](src/renderer/workspaces/loan/). Registry sections retain loading, saving, drafts, focus refs, and refresh ownership; extracted presentation components receive typed props. [Data safety](src/renderer/workspaces/DataSafetyWorkspace.tsx) contains backup, export, and restore only.
+- [Import preflight](src/renderer/import/useImportPreflight.ts) owns preview request identity, progress subscriptions, cancellation, and finalization. File selection, account, or CSV mapping changes invalidate and cancel pending previews; late responses and progress cannot overwrite newer context, and unmount removes the subscription and cancels pending work. Explicit cancellation failures remain visible; failures during obsolete-request cleanup are logged locally.
+- [Shared preflight status](src/renderer/import/ImportPreflightStatus.tsx) preserves the existing progress/cancel presentation. CSV profiles/mapping and PDF parser evidence/exclusions remain in their format-specific sections. Mapping changes release only pending preview state; CSV mapping is locked while a confirmed import is saving. Import confirmation, persistence, styling, and registry validation policies otherwise remain unchanged.
+- Renderer preflight component-contract tests use the existing Playwright browser server with a controlled bridge to schedule responses; they are not native import-to-ledger evidence. Existing Electron journeys separately cover real import and registry persistence.
+
 ## Agent Readiness
 
 - Universal entrypoint for agents: [AGENTS.md](AGENTS.md)
