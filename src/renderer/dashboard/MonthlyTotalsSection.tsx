@@ -1,5 +1,5 @@
 import React from "react";
-import type { DashboardViewContract } from "../../app/dashboardApi.js";
+import type { DashboardViewContract } from "../../shared/dashboard.js";
 import { formatCurrencyAmount } from "../formatCurrencyAmount.js";
 
 const MINOR_UNITS_PER_NOK = 100;

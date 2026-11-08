@@ -2,7 +2,7 @@ import {
   buildDashboardData,
   buildDashboardViewContract,
   queryMonthlyTotals,
-} from "../app/dashboardApi.js";
+} from "../shared/dashboard.js";
 import { toLocalYearMonth } from "../domain/date/localDateDefaults.js";
 import {
   validateMonthlyCategoryTargetInput,

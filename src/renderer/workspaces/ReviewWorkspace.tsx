@@ -1,5 +1,5 @@
 import React from "react";
-import { getMonthlyAttentionSummary, type DashboardViewContract } from "../../app/dashboardApi.js";
+import { getMonthlyAttentionSummary, type DashboardViewContract } from "../../shared/dashboard.js";
 import { CategoryBreakdownSection } from "../dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySection.js";
 import { CashflowScenarioSection } from "../dashboard/CashflowScenarioSection.js";
