@@ -1,3 +1,14 @@
+import {
+  mapAccountStatementCoveragePeriodRow,
+  mapAccountBalanceCheckpointRow,
+  mapPropertyRecordRow,
+  mapPropertyValuationSnapshotRow,
+  mapHoldingValuationSnapshotRow,
+  mapLoanBalanceSnapshotRow,
+  mapRecurringCommitmentRow,
+  mapRecurringCommitmentPaymentLinkRow,
+  mapRecurringCommitmentDecisionRow,
+} from "./ledgerRowMappers.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -1743,34 +1754,7 @@ export function createLocalLedgerDatabase(
       FROM account_statement_coverage_periods
       WHERE account_id = ?
       ORDER BY start_date_iso, end_date_iso, id
-    `).all(accountId).map((row) => {
-      const period = row as {
-        id: string;
-        account_id: string;
-        start_date_iso: string;
-        end_date_iso: string;
-        currency_code: string;
-        source_name: string;
-        source_type: AccountStatementCoveragePeriod["sourceType"];
-        import_job_id: string | null;
-        imported_at_iso: string | null;
-        confirmed: number;
-        confirmed_at_iso: string | null;
-      };
-      return {
-        id: period.id,
-        accountId: period.account_id,
-        startDateIso: period.start_date_iso,
-        endDateIso: period.end_date_iso,
-        currencyCode: period.currency_code,
-        sourceName: period.source_name,
-        sourceType: period.source_type,
-        ...(period.import_job_id === null ? {} : { importJobId: period.import_job_id }),
-        ...(period.imported_at_iso === null ? {} : { importedAtIso: period.imported_at_iso }),
-        confirmed: period.confirmed === 1,
-        ...(period.confirmed_at_iso === null ? {} : { confirmedAtIso: period.confirmed_at_iso }),
-      };
-    });
+    `).all(accountId).map(mapAccountStatementCoveragePeriodRow);
   }
 
   function listAccountBalanceCheckpoints(accountId: string): AccountBalanceCheckpoint[] {
@@ -1780,28 +1764,7 @@ export function createLocalLedgerDatabase(
       FROM account_balance_checkpoints
       WHERE account_id = ?
       ORDER BY date_iso, recorded_at_iso, id
-    `).all(accountId).map((row) => {
-      const checkpoint = row as {
-        id: string;
-        account_id: string;
-        date_iso: string;
-        currency_code: string;
-        balance_minor: number;
-        source: string;
-        source_reference: string | null;
-        recorded_at_iso: string;
-      };
-      return {
-        id: checkpoint.id,
-        accountId: checkpoint.account_id,
-        dateIso: checkpoint.date_iso,
-        currencyCode: checkpoint.currency_code,
-        balanceMinor: checkpoint.balance_minor,
-        source: checkpoint.source,
-        ...(checkpoint.source_reference === null ? {} : { sourceReference: checkpoint.source_reference }),
-        recordedAtIso: checkpoint.recorded_at_iso,
-      };
-    });
+    `).all(accountId).map(mapAccountBalanceCheckpointRow);
   }
 
   function upsertExchangeRate(rate: ExchangeRate): void {
@@ -1930,22 +1893,7 @@ export function createLocalLedgerDatabase(
       FROM properties
       WHERE household_id = ?
       ORDER BY label COLLATE NOCASE, id
-    `).all(householdId).map((row) => {
-      const property = row as {
-        id: string;
-        household_id: string;
-        label: string;
-        created_at_iso: string;
-        ownership_share_basis_points: number;
-      };
-      return {
-        id: property.id,
-        householdId: property.household_id,
-        label: property.label,
-        createdAtIso: property.created_at_iso,
-        ownershipShareBasisPoints: property.ownership_share_basis_points,
-      };
-    });
+    `).all(householdId).map(mapPropertyRecordRow);
   }
 
   function appendPropertyValuationSnapshot(valuation: PropertyValuationSnapshot): void {
@@ -2040,29 +1988,7 @@ export function createLocalLedgerDatabase(
       FROM property_valuation_snapshots
       WHERE property_id = ?
       ORDER BY effective_date_iso, recorded_at_iso, id
-    `).all(propertyId).map((row) => {
-      const valuation = row as {
-        id: string;
-        property_id: string;
-        effective_date_iso: string;
-        amount_minor: number;
-        currency_code: string;
-        recorded_at_iso: string;
-        correction_json: string | null;
-      };
-      const correction = valuation.correction_json === null
-        ? undefined
-        : validatePropertyValuationCorrectionMetadata(JSON.parse(valuation.correction_json) as unknown);
-      return {
-        id: valuation.id,
-        propertyId: valuation.property_id,
-        effectiveDateIso: valuation.effective_date_iso,
-        amountMinor: valuation.amount_minor,
-        currencyCode: valuation.currency_code,
-        recordedAtIso: valuation.recorded_at_iso,
-        ...(correction === undefined ? {} : { correction }),
-      };
-    });
+    `).all(propertyId).map(mapPropertyValuationSnapshotRow);
   }
 
   function createHoldingRecord(holding: HoldingRecord): void {
@@ -2216,29 +2142,7 @@ export function createLocalLedgerDatabase(
       FROM holding_valuation_snapshots
       WHERE holding_id = ?
       ORDER BY effective_date_iso, recorded_at_iso, id
-    `).all(holdingId).map((row) => {
-      const valuation = row as {
-        id: string;
-        holding_id: string;
-        effective_date_iso: string;
-        amount_minor: number;
-        currency_code: string;
-        recorded_at_iso: string;
-        correction_json: string | null;
-      };
-      const correction = valuation.correction_json === null
-        ? undefined
-        : validateHoldingValuationCorrectionMetadata(JSON.parse(valuation.correction_json) as unknown);
-      return {
-        id: valuation.id,
-        holdingId: valuation.holding_id,
-        effectiveDateIso: valuation.effective_date_iso,
-        amountMinor: valuation.amount_minor,
-        currencyCode: valuation.currency_code,
-        recordedAtIso: valuation.recorded_at_iso,
-        ...(correction === undefined ? {} : { correction }),
-      };
-    });
+    `).all(holdingId).map(mapHoldingValuationSnapshotRow);
   }
 
   function createLoanRecord(loan: LoanRecord): void {
@@ -2367,24 +2271,7 @@ export function createLocalLedgerDatabase(
       FROM loan_balance_snapshots
       WHERE loan_id = ?
       ORDER BY effective_date_iso, recorded_at_iso, id
-    `).all(loanId).map((row) => {
-      const balance = row as {
-        id: string;
-        loan_id: string;
-        effective_date_iso: string;
-        amount_minor: number;
-        currency_code: string;
-        recorded_at_iso: string;
-      };
-      return {
-        id: balance.id,
-        loanId: balance.loan_id,
-        effectiveDateIso: balance.effective_date_iso,
-        amountMinor: balance.amount_minor,
-        currencyCode: balance.currency_code,
-        recordedAtIso: balance.recorded_at_iso,
-      };
-    });
+    `).all(loanId).map(mapLoanBalanceSnapshotRow);
   }
 
   function createRecurringCommitment(commitment: RecurringCommitment): void {
@@ -2485,38 +2372,7 @@ export function createLocalLedgerDatabase(
       FROM recurring_commitments
       WHERE household_id = ?
       ORDER BY first_due_date_iso, description COLLATE NOCASE, id
-    `).all(householdId).map((row) => {
-      const commitment = row as {
-        id: string;
-        household_id: string;
-        description: string;
-        currency_code: string;
-        amount_minor: number | null;
-        is_variable: number;
-        cadence: RecurringCommitment["cadence"];
-        first_due_date_iso: string;
-        active_from_iso: string;
-        active_until_iso: string | null;
-        status: RecurringCommitment["status"];
-        created_at_iso: string;
-        updated_at_iso: string;
-      };
-      return {
-        id: commitment.id,
-        householdId: commitment.household_id,
-        description: commitment.description,
-        currencyCode: commitment.currency_code,
-        amountMinor: commitment.amount_minor,
-        isVariable: commitment.is_variable === 1,
-        cadence: commitment.cadence,
-        firstDueDateIso: commitment.first_due_date_iso,
-        activeFromIso: commitment.active_from_iso,
-        ...(commitment.active_until_iso === null ? {} : { activeUntilIso: commitment.active_until_iso }),
-        status: commitment.status,
-        createdAtIso: commitment.created_at_iso,
-        updatedAtIso: commitment.updated_at_iso,
-      };
-    });
+    `).all(householdId).map(mapRecurringCommitmentRow);
   }
 
   function createRecurringCommitmentPaymentLink(link: RecurringCommitmentPaymentLink): void {
@@ -2652,24 +2508,7 @@ export function createLocalLedgerDatabase(
         ON commitment.id = payment_link.commitment_id
       WHERE commitment.household_id = ?
       ORDER BY payment_link.commitment_id, payment_link.occurrence_date_iso, payment_link.id
-    `).all(householdId).map((row) => {
-      const link = row as {
-        id: string;
-        commitment_id: string;
-        occurrence_date_iso: string;
-        transaction_id: string | null;
-        pending_observation_id: string | null;
-        linked_at_iso: string;
-      };
-      return {
-        id: link.id,
-        commitmentId: link.commitment_id,
-        occurrenceDateIso: link.occurrence_date_iso,
-        ...(link.transaction_id === null ? {} : { transactionId: link.transaction_id }),
-        ...(link.pending_observation_id === null ? {} : { pendingObservationId: link.pending_observation_id }),
-        linkedAtIso: link.linked_at_iso,
-      };
-    });
+    `).all(householdId).map(mapRecurringCommitmentPaymentLinkRow);
   }
 
   function createRecurringCommitmentDecision(decision: RecurringCommitmentDecision): void {
@@ -2715,26 +2554,7 @@ export function createLocalLedgerDatabase(
         ON commitment.id = decision.commitment_id
       WHERE commitment.household_id = ?
       ORDER BY decision.commitment_id, decision.decided_at_iso, decision.id
-    `).all(householdId).map((row) => {
-      const decision = row as {
-        id: string;
-        commitment_id: string;
-        decision_type: RecurringCommitmentDecision["decisionType"];
-        decided_at_iso: string;
-        previous_amount_minor: number | null;
-        new_amount_minor: number | null;
-      };
-      return {
-        id: decision.id,
-        commitmentId: decision.commitment_id,
-        decisionType: decision.decision_type,
-        decidedAtIso: decision.decided_at_iso,
-        ...(decision.previous_amount_minor === null
-          ? {}
-          : { previousAmountMinor: decision.previous_amount_minor }),
-        ...(decision.new_amount_minor === null ? {} : { newAmountMinor: decision.new_amount_minor }),
-      };
-    });
+    `).all(householdId).map(mapRecurringCommitmentDecisionRow);
   }
 
   function backfillImportJobHistory(): void {
@@ -2880,162 +2700,38 @@ export function createLocalLedgerDatabase(
         source_type, import_job_id, imported_at_iso, confirmed, confirmed_at_iso
       FROM account_statement_coverage_periods
       ORDER BY account_id, start_date_iso, end_date_iso, id
-    `).all().map((row) => {
-      const period = row as {
-        id: string;
-        account_id: string;
-        start_date_iso: string;
-        end_date_iso: string;
-        currency_code: string;
-        source_name: string;
-        source_type: AccountStatementCoveragePeriod["sourceType"];
-        import_job_id: string | null;
-        imported_at_iso: string | null;
-        confirmed: number;
-        confirmed_at_iso: string | null;
-      };
-      return {
-        id: period.id,
-        accountId: period.account_id,
-        startDateIso: period.start_date_iso,
-        endDateIso: period.end_date_iso,
-        currencyCode: period.currency_code,
-        sourceName: period.source_name,
-        sourceType: period.source_type,
-        ...(period.import_job_id === null ? {} : { importJobId: period.import_job_id }),
-        ...(period.imported_at_iso === null ? {} : { importedAtIso: period.imported_at_iso }),
-        confirmed: period.confirmed === 1,
-        ...(period.confirmed_at_iso === null ? {} : { confirmedAtIso: period.confirmed_at_iso }),
-      };
-    });
+    `).all().map(mapAccountStatementCoveragePeriodRow);
 
     const accountBalanceCheckpoints = db.prepare(`
       SELECT id, account_id, date_iso, currency_code, balance_minor, source,
         source_reference, recorded_at_iso
       FROM account_balance_checkpoints
       ORDER BY account_id, date_iso, recorded_at_iso, id
-    `).all().map((row) => {
-      const checkpoint = row as {
-        id: string;
-        account_id: string;
-        date_iso: string;
-        currency_code: string;
-        balance_minor: number;
-        source: string;
-        source_reference: string | null;
-        recorded_at_iso: string;
-      };
-      return {
-        id: checkpoint.id,
-        accountId: checkpoint.account_id,
-        dateIso: checkpoint.date_iso,
-        currencyCode: checkpoint.currency_code,
-        balanceMinor: checkpoint.balance_minor,
-        source: checkpoint.source,
-        ...(checkpoint.source_reference === null ? {} : { sourceReference: checkpoint.source_reference }),
-        recordedAtIso: checkpoint.recorded_at_iso,
-      };
-    });
+    `).all().map(mapAccountBalanceCheckpointRow);
     const exchangeRates = listExchangeRates();
     const properties = db.prepare(`
       SELECT id, household_id, label, created_at_iso, ownership_share_basis_points
       FROM properties
       ORDER BY id
-    `).all().map((row) => {
-      const property = row as {
-        id: string;
-        household_id: string;
-        label: string;
-        created_at_iso: string;
-        ownership_share_basis_points: number;
-      };
-      return {
-        id: property.id,
-        householdId: property.household_id,
-        label: property.label,
-        createdAtIso: property.created_at_iso,
-        ownershipShareBasisPoints: property.ownership_share_basis_points,
-      };
-    });
+    `).all().map(mapPropertyRecordRow);
     const propertyValuations = db.prepare(`
       SELECT id, property_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso,
         correction_json
       FROM property_valuation_snapshots
       ORDER BY property_id, effective_date_iso, recorded_at_iso, id
-    `).all().map((row) => {
-      const valuation = row as {
-        id: string;
-        property_id: string;
-        effective_date_iso: string;
-        amount_minor: number;
-        currency_code: string;
-        recorded_at_iso: string;
-        correction_json: string | null;
-      };
-      const correction = valuation.correction_json === null
-        ? undefined
-        : validatePropertyValuationCorrectionMetadata(JSON.parse(valuation.correction_json) as unknown);
-      return {
-        id: valuation.id,
-        propertyId: valuation.property_id,
-        effectiveDateIso: valuation.effective_date_iso,
-        amountMinor: valuation.amount_minor,
-        currencyCode: valuation.currency_code,
-        recordedAtIso: valuation.recorded_at_iso,
-        ...(correction === undefined ? {} : { correction }),
-      };
-    });
+    `).all().map(mapPropertyValuationSnapshotRow);
     const holdings = listHoldingRecords(householdRow.id);
     const holdingValuations = db.prepare(`
       SELECT id, holding_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso, correction_json
       FROM holding_valuation_snapshots
       ORDER BY holding_id, effective_date_iso, recorded_at_iso, id
-    `).all().map((row) => {
-      const valuation = row as {
-        id: string;
-        holding_id: string;
-        effective_date_iso: string;
-        amount_minor: number;
-        currency_code: string;
-        recorded_at_iso: string;
-        correction_json: string | null;
-      };
-      const correction = valuation.correction_json === null
-        ? undefined
-        : validateHoldingValuationCorrectionMetadata(JSON.parse(valuation.correction_json) as unknown);
-      return {
-        id: valuation.id,
-        holdingId: valuation.holding_id,
-        effectiveDateIso: valuation.effective_date_iso,
-        amountMinor: valuation.amount_minor,
-        currencyCode: valuation.currency_code,
-        recordedAtIso: valuation.recorded_at_iso,
-        ...(correction === undefined ? {} : { correction }),
-      };
-    });
+    `).all().map(mapHoldingValuationSnapshotRow);
     const loanRecords = listLoanRecords(householdRow.id);
     const loanBalanceSnapshots = db.prepare(`
       SELECT id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
       FROM loan_balance_snapshots
       ORDER BY loan_id, effective_date_iso, recorded_at_iso, id
-    `).all().map((row) => {
-      const balance = row as {
-        id: string;
-        loan_id: string;
-        effective_date_iso: string;
-        amount_minor: number;
-        currency_code: string;
-        recorded_at_iso: string;
-      };
-      return {
-        id: balance.id,
-        loanId: balance.loan_id,
-        effectiveDateIso: balance.effective_date_iso,
-        amountMinor: balance.amount_minor,
-        currencyCode: balance.currency_code,
-        recordedAtIso: balance.recorded_at_iso,
-      };
-    });
+    `).all().map(mapLoanBalanceSnapshotRow);
     const recurringCommitments = db.prepare(`
       SELECT id, household_id, description, currency_code, amount_minor, is_variable,
         cadence, first_due_date_iso, active_from_iso, active_until_iso, status,
@@ -3043,38 +2739,7 @@ export function createLocalLedgerDatabase(
       FROM recurring_commitments
       WHERE household_id = ?
       ORDER BY id
-    `).all(householdRow.id).map((row) => {
-      const commitment = row as {
-        id: string;
-        household_id: string;
-        description: string;
-        currency_code: string;
-        amount_minor: number | null;
-        is_variable: number;
-        cadence: RecurringCommitment["cadence"];
-        first_due_date_iso: string;
-        active_from_iso: string;
-        active_until_iso: string | null;
-        status: RecurringCommitment["status"];
-        created_at_iso: string;
-        updated_at_iso: string;
-      };
-      return {
-        id: commitment.id,
-        householdId: commitment.household_id,
-        description: commitment.description,
-        currencyCode: commitment.currency_code,
-        amountMinor: commitment.amount_minor,
-        isVariable: commitment.is_variable === 1,
-        cadence: commitment.cadence,
-        firstDueDateIso: commitment.first_due_date_iso,
-        activeFromIso: commitment.active_from_iso,
-        ...(commitment.active_until_iso === null ? {} : { activeUntilIso: commitment.active_until_iso }),
-        status: commitment.status,
-        createdAtIso: commitment.created_at_iso,
-        updatedAtIso: commitment.updated_at_iso,
-      };
-    });
+    `).all(householdRow.id).map(mapRecurringCommitmentRow);
     const recurringCommitmentPaymentLinks = db.prepare(`
       SELECT payment_link.id, payment_link.commitment_id, payment_link.occurrence_date_iso,
         payment_link.transaction_id, payment_link.pending_observation_id, payment_link.linked_at_iso
@@ -3083,26 +2748,7 @@ export function createLocalLedgerDatabase(
         ON commitment.id = payment_link.commitment_id
       WHERE commitment.household_id = ?
       ORDER BY payment_link.commitment_id, payment_link.occurrence_date_iso, payment_link.id
-    `).all(householdRow.id).map((row) => {
-      const link = row as {
-        id: string;
-        commitment_id: string;
-        occurrence_date_iso: string;
-        transaction_id: string | null;
-        pending_observation_id: string | null;
-        linked_at_iso: string;
-      };
-      return {
-        id: link.id,
-        commitmentId: link.commitment_id,
-        occurrenceDateIso: link.occurrence_date_iso,
-        ...(link.transaction_id === null ? {} : { transactionId: link.transaction_id }),
-        ...(link.pending_observation_id === null
-          ? {}
-          : { pendingObservationId: link.pending_observation_id }),
-        linkedAtIso: link.linked_at_iso,
-      };
-    });
+    `).all(householdRow.id).map(mapRecurringCommitmentPaymentLinkRow);
     const recurringCommitmentDecisions = db.prepare(`
       SELECT decision.id, decision.commitment_id, decision.decision_type, decision.decided_at_iso,
         decision.previous_amount_minor, decision.new_amount_minor
@@ -3111,26 +2757,7 @@ export function createLocalLedgerDatabase(
         ON commitment.id = decision.commitment_id
       WHERE commitment.household_id = ?
       ORDER BY decision.commitment_id, decision.decided_at_iso, decision.id
-    `).all(householdRow.id).map((row) => {
-      const decision = row as {
-        id: string;
-        commitment_id: string;
-        decision_type: RecurringCommitmentDecision["decisionType"];
-        decided_at_iso: string;
-        previous_amount_minor: number | null;
-        new_amount_minor: number | null;
-      };
-      return {
-        id: decision.id,
-        commitmentId: decision.commitment_id,
-        decisionType: decision.decision_type,
-        decidedAtIso: decision.decided_at_iso,
-        ...(decision.previous_amount_minor === null
-          ? {}
-          : { previousAmountMinor: decision.previous_amount_minor }),
-        ...(decision.new_amount_minor === null ? {} : { newAmountMinor: decision.new_amount_minor }),
-      };
-    });
+    `).all(householdRow.id).map(mapRecurringCommitmentDecisionRow);
 
     const mappedTransactions: Transaction[] = transactions.map((transaction) => {
       const mapped = mapTransactionRow(transaction);
