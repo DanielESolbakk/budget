@@ -38,6 +38,19 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Harness eval (determinism + baseline drift): `npm run eval:skill`
 - Fixture verification: `npm run verify-fixture -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv`
 
+Integration tests and integration coverage use a two-worker limit in
+`vitest.integration.config.ts`. Local Windows measurements passed three
+two-worker runs (449 tests each); four workers timed out during property
+backup recovery. The limit favors repeatability over maximum throughput and
+does not raise timeouts or share databases. Run validation sequentially;
+`npm run test:integration -- --maxWorkers=1` is a diagnostic override, not a
+replacement for checking the configured default command.
+
+Unit tests also enforce owned-code lint scope and strict parsing of the
+application stylesheet. Installed Impeccable skill trees and generated
+`.impeccable` output are excluded from ESLint; owned governance scripts,
+application code and tests remain linted.
+
 ## Frontend Design Governance (Opt-In)
 
 Impeccable is an opt-in design governance tool for frontend-relevant issues. Non-frontend issues (import, persistence, categorization, IPC, backup, export) do not require it.

@@ -7,6 +7,9 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   {
     ignores: [
+      ".agents/skills/impeccable/**",
+      ".github/skills/impeccable/**",
+      ".impeccable/**",
       "coverage/**",
       "dist/**",
       "out/**",

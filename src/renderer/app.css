@@ -2407,19 +2407,6 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
   color: var(--ink);
   background: var(--paper);
 }
-  color: var(--paper);
-}
-
-.ledger-save-view-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 0.75rem;
-}
-
-.ledger-save-view-form button {
-  align-self: end;
-}
 
 .status-panel {
   margin-top: 2rem;
