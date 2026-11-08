@@ -71,7 +71,7 @@ describe("backup historical version capabilities", () => {
     }
   );
 
-  it.each(["4", "5", "6", "7", "8"])("defaults pre-share property records for version %s", version => {
+  it.each(["1", "2", "3", "4", "5", "6", "7", "8"])("defaults pre-share property records for version %s", version => {
     const requirements = versions.find(row => row.version === version)!.required;
     const value = snapshot(version, requirements);
     value.properties = [{ id: "property", householdId: "hh", label: "Home",
@@ -91,6 +91,37 @@ describe("backup historical version capabilities", () => {
       createdAtIso: "2026-01-01T00:00:00Z" }];
     withSnapshot(value, snapshotPath => {
       expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(/Invalid snapshot properties/);
+    });
+  });
+
+  it.each(["1", "2", "3", "4", "5", "6", "7", "8"])("defaults supplied pre-share loan records for version %s", version => {
+    const requirements = versions.find(row => row.version === version)!.required;
+    const value = snapshot(version, requirements);
+    value.loanRecords = [{
+      id: "loan", householdId: "hh", label: "Mortgage", principalMinor: 100000,
+      annualInterestRateBasisPoints: 500, termMonths: 12, paymentAmountMinor: 9000,
+      paymentFrequency: "monthly", currencyCode: "NOK", createdAtIso: "2026-01-01T00:00:00Z",
+    }];
+    withSnapshot(value, snapshotPath => {
+      expect(restoreBackupSnapshot({ snapshotPath }).loanRecords).toEqual([{
+        id: "loan", householdId: "hh", label: "Mortgage", principalMinor: 100000,
+        annualInterestRateBasisPoints: 500, termMonths: 12, paymentAmountMinor: 9000,
+        paymentFrequency: "monthly", currencyCode: "NOK", createdAtIso: "2026-01-01T00:00:00Z",
+        responsibilityShareBasisPoints: 10000,
+      }]);
+    });
+  });
+
+  it.each(["9", "10"])("rejects missing responsibility share in version %s", version => {
+    const requirements = versions.find(row => row.version === version)!.required;
+    const value = snapshot(version, requirements);
+    value.loanRecords = [{
+      id: "loan", householdId: "hh", label: "Mortgage", principalMinor: 100000,
+      annualInterestRateBasisPoints: 500, termMonths: 12, paymentAmountMinor: 9000,
+      paymentFrequency: "monthly", currencyCode: "NOK", createdAtIso: "2026-01-01T00:00:00Z",
+    }];
+    withSnapshot(value, snapshotPath => {
+      expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(/Invalid snapshot loan records/);
     });
   });
 
