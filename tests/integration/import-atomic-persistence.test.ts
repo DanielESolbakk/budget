@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { runCsvImportWorkflow } from "../../src/app/import/importCsv.js";
 import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
 import { parseCsvText } from "../../src/domain/import/parseCsvText.js";
@@ -48,7 +49,7 @@ describe("production import atomic persistence", () => {
     { source: "csv", table: "pending_transaction_observations" },
     { source: "pdf", table: "import_review_items" },
     { source: "pdf", table: "pending_transaction_observations" },
-  ] as const)("$source rolls back the job and all collections when $table insertion fails", async ({ source, table }) => {
+  ] as const)("$source preserves rollback after reopen when $table insertion fails", async ({ source, table }) => {
     await withIsolatedLedger({}, ({ ledger, dbPath }) => {
       const database = new DatabaseSync(dbPath);
       try {
@@ -72,6 +73,15 @@ describe("production import atomic persistence", () => {
       expect(ledger.listImportReviewItems("hh-isolated")).toEqual([]);
       expect(ledger.listPendingTransactionObservations("hh-isolated")).toEqual([]);
       expect(ledger.listImportJobHistory("hh-isolated")).toEqual([]);
+      const reopened = createLocalLedgerDatabase({ dbPath });
+      try {
+        expect(reopened.loadLedgerSnapshotData()).toEqual(before);
+        expect(reopened.listImportReviewItems("hh-isolated")).toEqual([]);
+        expect(reopened.listPendingTransactionObservations("hh-isolated")).toEqual([]);
+        expect(reopened.listImportJobHistory("hh-isolated")).toEqual([]);
+      } finally {
+        reopened.close();
+      }
     });
   });
   it("keeps the legacy PDF fallback contract explicit for booked and review/pending inputs", async () => {
