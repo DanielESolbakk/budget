@@ -158,3 +158,32 @@ test("CSV mapping changes cancel an active update and permit a new preview", asy
   });
   await expect(page.getByRole("button", { name: "Hide preview", exact: true })).toBeVisible();
 });
+
+for (const outcome of ["success", "error"] as const) {
+  test(`CSV mapping stays locked until confirmation finishes with ${outcome}`, async ({ page }) => {
+    await page.getByRole("button", { name: "Preview CSV", exact: true }).click();
+    await page.evaluate(() => {
+      const harness = window.importComponentHarness;
+      harness.settle(harness.requests[0]!, "success");
+      harness.holdCsvConfirmation();
+    });
+    const confirmation = page.getByRole("button", { name: "Confirm CSV import", exact: true });
+    const mapping = page.getByRole("combobox", { name: "Map Description", exact: true });
+    await confirmation.click();
+    await expect(confirmation).toBeDisabled();
+    await expect(mapping).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Hide preview", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Cancel preview", exact: true })).toHaveCount(0);
+    await page.evaluate((result) => window.importComponentHarness.settleCsvConfirmation(result), outcome);
+    if (outcome === "success") {
+      await expect(page.getByRole("heading", { name: "Import complete", exact: true })).toBeVisible();
+      await expect(mapping).toHaveCount(0);
+    } else {
+      await expect(page.getByRole("alert")).toContainText("Synthetic confirmation failure");
+      await expect(mapping).toBeEnabled();
+      await mapping.selectOption("Description");
+      await expect(confirmation).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Update preview", exact: true })).toBeEnabled();
+    }
+  });
+}

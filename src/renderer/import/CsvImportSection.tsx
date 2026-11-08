@@ -619,7 +619,7 @@ export function CsvImportSection({
           <h3>CSV import preview</h3>
           <details className="import-mapping" open={validPreviewRowCount === 0}>
           <summary>Match your CSV columns</summary>
-          <fieldset aria-label="CSV column mapping">
+          <fieldset aria-label="CSV column mapping" disabled={importState.status === "pending" && stage === "confirm"}>
             <legend>Match your CSV columns</legend>
             {mappingFields.map(({ key, label }) => (
               <label key={key}>
@@ -640,7 +640,7 @@ export function CsvImportSection({
                       return updated;
                     });
                     setPreviewMapping(null);
-                    setImportState({ status: "idle" });
+                    if (preflight.requestId !== undefined) setImportState({ status: "idle" });
                     setStage("map-and-validate");
                   }}
                 >

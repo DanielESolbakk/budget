@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import type { CsvImportPreviewResponse } from "../../../src/app/import/importCsv.js";
+import type { CsvImportPreviewResponse, CsvImportResponse } from "../../../src/app/import/importCsv.js";
 import type { PdfImportPreviewResponse } from "../../../src/app/import/importPdf.js";
 import type { ImportPreflightProgress } from "../../../src/app/import/importPreflight.js";
 import { CsvImportSection } from "../../../src/renderer/import/CsvImportSection.js";
@@ -14,6 +14,7 @@ export function mountImportComponent(format: "csv" | "pdf") {
   const pending = new Map<string, (outcome: "success" | "cancelled" | "error") => void>();
   const requests: string[] = [];
   const cancelled: string[] = [];
+  let settleCsvConfirmation: ((outcome: "success" | "error") => void) | undefined;
   let failCancellation = false;
   const listeners = new Set<(progress: ImportPreflightProgress) => void>();
   const original = window.budgetApi;
@@ -82,6 +83,29 @@ export function mountImportComponent(format: "csv" | "pdf") {
   return {
     requests,
     cancelled,
+    holdCsvConfirmation: () => {
+      window.budgetApi.import.importCsv = () => new Promise<CsvImportResponse>((resolve, reject) => {
+        if (settleCsvConfirmation !== undefined) throw new Error("A CSV confirmation is already pending.");
+        settleCsvConfirmation = (outcome) => {
+          settleCsvConfirmation = undefined;
+          if (outcome === "error") {
+            reject(new Error("Synthetic confirmation failure"));
+          } else {
+            resolve({
+              ok: true, importJobId: "synthetic-confirmation", transactionCount: 0,
+              pendingCount: 0, duplicateCount: 0, unresolvedCount: 0,
+              reconciliation: {
+                importJobId: "synthetic-confirmation", amounts: [], rows: [], fullyReconciled: true,
+              },
+            });
+          }
+        };
+      });
+    },
+    settleCsvConfirmation: (outcome: "success" | "error") => {
+      if (settleCsvConfirmation === undefined) throw new Error("No CSV confirmation is pending.");
+      settleCsvConfirmation(outcome);
+    },
     failCancellation: () => { failCancellation = true; },
     listenerCount: () => listeners.size,
     changeFile: () => { path = `second.${format}`; selectionId += 1; render(); },
