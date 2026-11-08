@@ -29,7 +29,7 @@ import {
   type DuplicateTransactionMatch,
 } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { canonicalSourcePath } from "./sourceIdentity.js";
 import { assignImportedTransactionIds } from "../../domain/import/assignImportedTransactionIds.js";
 import { filterPreviouslyImportedTransactions } from "../../domain/import/filterPreviouslyImportedTransactions.js";
 import { buildTransactionFingerprint } from "../../domain/import/buildTransactionFingerprint.js";
@@ -218,11 +218,6 @@ export async function previewCsvRowsWithProgress(
     transactions,
     ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
   };
-}
-
-function canonicalSourcePath(filePath: string): string {
-  const resolvedPath = resolve(filePath);
-  return process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
 }
 
 export function filterPreviouslyImportedCsvTransactions(

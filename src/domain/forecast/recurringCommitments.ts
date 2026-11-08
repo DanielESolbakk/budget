@@ -1,3 +1,4 @@
+import { isIsoCalendarDate as isCalendarDate } from "../date/calendarDate.js";
 import { isCurrencyCode } from "../types.js";
 import type {
   RecurringCommitment,
@@ -6,12 +7,6 @@ import type {
   RecurringCommitmentPaymentObservation,
   RecurringCommitmentPriceChange,
 } from "../types.js";
-
-function isCalendarDate(value: unknown): value is string {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
 
 function daysInMonth(year: number, month: number): number {
   if (month === 2) {

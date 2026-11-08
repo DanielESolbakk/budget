@@ -150,6 +150,14 @@ Relocated cases (none discarded):
 
 ## Mission
 
+Shared cleanup primitives retain caller policies: strict calendar dates do not
+trim or accept timestamps; manual/import date parsers remain separate. Month
+increment does not choose a local/UTC default. Import source identity uses native
+lexical path resolution (Windows case-insensitive, POSIX case-sensitive), not
+symlink equivalence. Safe minor-unit addition guards the sum while callers own
+input validation and error messages. Digital PDF extraction uses `pdfjs-dist`;
+the unused `pdf-parse` and font packages are not runtime dependencies.
+
 This project is building a desktop application that:
 
 - runs locally with a graphical user interface

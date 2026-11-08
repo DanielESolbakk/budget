@@ -1,5 +1,12 @@
 const MAX_SAFE_MINOR_UNITS = BigInt(Number.MAX_SAFE_INTEGER);
 
+/** Sum guard only; input validation and overflow wording remain caller-owned. */
+export function addMinorUnits(total: number, amountMinor: number, overflowMessage: string): number {
+  const result = total + amountMinor;
+  if (!Number.isSafeInteger(result)) throw new RangeError(overflowMessage);
+  return result;
+}
+
 function safeMinorUnits(value: bigint): number | null {
   return value < -MAX_SAFE_MINOR_UNITS || value > MAX_SAFE_MINOR_UNITS ? null : Number(value);
 }
