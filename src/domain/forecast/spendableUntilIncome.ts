@@ -1,3 +1,5 @@
+import { addMinorUnits as addSafeMinorUnits } from "../money/minorUnits.js";
+import { isIsoCalendarDate as isCalendarDate } from "../date/calendarDate.js";
 import { convertCurrencyAmount } from "../money/convertCurrencyAmount.js";
 import type { CurrencyConversionResult } from "../money/convertCurrencyAmount.js";
 import type {
@@ -109,22 +111,12 @@ interface CashFlow {
   lineItem: SpendableCashLineItem;
 }
 
-function isCalendarDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
 function isIsoTimestamp(value: string): boolean {
   return value.includes("T") && !Number.isNaN(Date.parse(value));
 }
 
 function addMinorUnits(total: number, amountMinor: number): number {
-  const result = total + amountMinor;
-  if (!Number.isSafeInteger(result)) {
-    throw new RangeError("Spendable cash exceeds the safe integer range.");
-  }
-  return result;
+  return addSafeMinorUnits(total, amountMinor, "Spendable cash exceeds the safe integer range.");
 }
 
 function convertAmount(

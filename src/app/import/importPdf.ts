@@ -21,7 +21,7 @@ import type {
   Transaction,
   CurrencyCode,
 } from "../../domain/types.js";
-import { resolve } from "node:path";
+import { canonicalSourcePath as canonicalSourceScope } from "./sourceIdentity.js";
 import {
   reconcileImportJob,
   type ImportReconciliation,
@@ -197,11 +197,6 @@ function buildPdfImportTransactions(
     candidates.map((transaction) => categorizeTransaction(transaction)),
     { sourceScope }
   );
-}
-
-function canonicalSourceScope(filePath: string): string {
-  const resolvedPath = resolve(filePath);
-  return process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
 }
 
 export function previewPdfImportWorkflow(

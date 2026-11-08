@@ -18,50 +18,14 @@ import type { BackupSnapshotCatalogEntry, LedgerSnapshotData } from "../../domai
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
 import { type SavedLedgerView } from "../../domain/ledger/filterTransactions.js";
 import type {
-  AccountBalanceCheckpoint,
-  AccountStatementCoveragePeriod,
   Account,
   Household,
-  HoldingRecord,
-  HoldingValuationSnapshot,
-  ImportJob,
-  LoanBalanceSnapshot,
-  LoanRecord,
-  MerchantCategoryRule,
   MonthlyCategoryTarget,
-  ExchangeRate,
-  PendingTransactionObservation,
-  PropertyRecord,
-  PropertyValuationSnapshot,
-  RecurringCommitment,
-  RecurringCommitmentDecision,
-  RecurringCommitmentPaymentLink,
-  Transaction,
 } from "../../domain/types.js";
 import type { LocalLedgerDatabase, LocalLedgerRuntimeMetadata } from "./localLedgerContracts.js";
 export type { LocalLedgerDatabase, LocalLedgerRuntimeMetadata } from "./localLedgerContracts.js";
 
-interface LocalLedgerSeedData {
-  household: Household;
-  accounts: Account[];
-  transactions: Transaction[];
-  pendingObservations?: PendingTransactionObservation[];
-  importJobs: ImportJob[];
-  monthlyCategoryTargets: MonthlyCategoryTarget[];
-  merchantCategoryRules?: MerchantCategoryRule[];
-  accountStatementCoveragePeriods?: AccountStatementCoveragePeriod[];
-  accountBalanceCheckpoints?: AccountBalanceCheckpoint[];
-  exchangeRates?: ExchangeRate[];
-  properties?: PropertyRecord[];
-  propertyValuations?: PropertyValuationSnapshot[];
-  holdings?: HoldingRecord[];
-  holdingValuations?: HoldingValuationSnapshot[];
-  loanRecords?: LoanRecord[];
-  loanBalanceSnapshots?: LoanBalanceSnapshot[];
-  recurringCommitments?: RecurringCommitment[];
-  recurringCommitmentPaymentLinks?: RecurringCommitmentPaymentLink[];
-  recurringCommitmentDecisions?: RecurringCommitmentDecision[];
-}
+type LocalLedgerSeedData = Omit<LedgerSnapshotData, "createdAtIso">;
 
 interface CreateLocalLedgerDatabaseOptions {
   dbPath?: string;

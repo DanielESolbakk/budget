@@ -29,6 +29,7 @@ import type {
   TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import { isYearMonth } from "../../domain/types.js";
+import { nextYearMonth } from "../../domain/date/calendarDate.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 
 type SnapshotReader = Pick<LocalLedgerDatabase,
@@ -62,13 +63,6 @@ const categorySortParameters = [
   "Uncategorized",
   ...CATEGORY_OPTIONS.flatMap(({ id, label }) => [id, label]),
 ];
-
-function nextYearMonth(yearMonth: string): string {
-  const [yearText, monthText] = yearMonth.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-  return month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
-}
 
 export function createTransactionRepository(db: DatabaseSync, readers: SnapshotReader): TransactionRepository {
   const { loadLedgerSnapshotData } = readers;

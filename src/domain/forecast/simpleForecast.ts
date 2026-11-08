@@ -1,19 +1,7 @@
+import { nextYearMonth as addOneMonth } from "../date/calendarDate.js";
 import type { ForecastEntry, ForecastMethod, ForecastResult, MonthlyTotal } from "../types.js";
 
 const MOVING_AVERAGE_WINDOW = 3;
-
-/**
- * Adds one calendar month to a YYYY-MM string.
- */
-function addOneMonth(yearMonth: string): string {
-  const [yearStr, monthStr] = yearMonth.split("-");
-  const year = Number(yearStr);
-  const month = Number(monthStr);
-  if (month === 12) {
-    return `${year + 1}-01`;
-  }
-  return `${year}-${String(month + 1).padStart(2, "0")}`;
-}
 
 /**
  * Computes a deterministic near-term forecast using a 3-month simple moving

@@ -1,3 +1,5 @@
+import { addMinorUnits as addSafeMinorUnits } from "../domain/money/minorUnits.js";
+import { nextYearMonth } from "../domain/date/calendarDate.js";
 import { buildDashboardData, queryHouseholdDashboardData } from "./dashboardApi.js";
 import { createRecurringCommitmentService } from "./recurringCommitmentService.js";
 import { createSpendableCashService } from "./spendableCashService.js";
@@ -19,21 +21,8 @@ export interface CashflowScenarioService {
   getScenario: (input: CashflowScenarioRequest) => CashflowScenarioResult;
 }
 
-function nextYearMonth(yearMonth: string): string {
-  const [yearText, monthText] = yearMonth.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-  return month === 12
-    ? `${year + 1}-01`
-    : `${year}-${String(month + 1).padStart(2, "0")}`;
-}
-
 function addMinorUnits(total: number, amountMinor: number): number {
-  const result = total + amountMinor;
-  if (!Number.isSafeInteger(result)) {
-    throw new RangeError("Cashflow scenario exceeds the safe integer range.");
-  }
-  return result;
+  return addSafeMinorUnits(total, amountMinor, "Cashflow scenario exceeds the safe integer range.");
 }
 
 function removeLinkedCommitmentPaymentsFromHistory(

@@ -1,3 +1,4 @@
+import { isIsoCalendarDate as isIsoDate } from "../../domain/date/calendarDate.js";
 import React from "react";
 import type {
   CashflowScenarioRequest,
@@ -37,13 +38,6 @@ function parseDurationMonths(value: string): number {
     throw new Error(`Duration must be between 1 and ${MAX_FORECAST_MONTHS} months.`);
   }
   return durationMonths;
-}
-
-function isIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsedDate = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsedDate.getTime()) &&
-    parsedDate.toISOString().slice(0, 10) === value;
 }
 
 function describeError(error: unknown, fallback: string): string {
