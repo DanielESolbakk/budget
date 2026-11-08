@@ -86,6 +86,56 @@ function withSnapshotFile(snapshot: unknown, assertSnapshot: (snapshotPath: stri
 }
 
 describe("backup/restore contract", () => {
+  it("preserves historical bare bookings through backup, recovery and bounded queries", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-booking-recovery-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    const snapshotPath = join(directory, "snapshot.json");
+    const transactions: Transaction[] = [
+      { ...SAMPLE_TRANSACTIONS[0]!, id: "historic-bare", bookedAtIso: "2026-05-23" },
+      { ...SAMPLE_TRANSACTIONS[0]!, id: "historic-stamp", bookedAtIso: "2026-05-23T00:00:00Z" },
+      { ...SAMPLE_TRANSACTIONS[0]!, id: "next-bare", bookedAtIso: "2026-05-24" },
+    ];
+    const ledger = createLocalLedgerDatabase({
+      dbPath,
+      seedData: {
+        household: SAMPLE_HOUSEHOLD, accounts: SAMPLE_ACCOUNTS, transactions,
+        importJobs: SAMPLE_IMPORT_JOBS, monthlyCategoryTargets: SAMPLE_TARGETS,
+      },
+    });
+    let recoveredLedger: ReturnType<typeof createLocalLedgerDatabase> | undefined;
+    try {
+      createBackupSnapshot({
+        ...ledger.loadLedgerSnapshotData(),
+        createdAtIso: "2026-06-01T12:00:00Z",
+        outputPath: snapshotPath,
+      });
+      const restored = restoreBackupSnapshot({ snapshotPath });
+      recoveredLedger = createLocalLedgerDatabase({
+        dbPath: join(directory, "recovered.sqlite"),
+        seedData: restored,
+      });
+      recoveredLedger.replaceLedgerSnapshotData(restored);
+      const page = recoveredLedger.queryTransactions(SAMPLE_HOUSEHOLD.id, {
+        bookedFromIso: "2026-05-23", bookedToIso: "2026-05-23", sortDirection: "asc",
+      });
+      expect(page.totalCount).toBe(2);
+      expect(page.transactions).toMatchObject([
+        { id: "historic-bare", bookedAtIso: "2026-05-23", amountMinor: -2500, categoryId: "groceries", importJobId: "job-01" },
+        { id: "historic-stamp", bookedAtIso: "2026-05-23T00:00:00Z", amountMinor: -2500, categoryId: "groceries", importJobId: "job-01" },
+      ]);
+      expect(recoveredLedger.loadLedgerSnapshotData().transactions.map(({ id, bookedAtIso }) => ({ id, bookedAtIso })))
+        .toEqual([
+          { id: "historic-bare", bookedAtIso: "2026-05-23" },
+          { id: "historic-stamp", bookedAtIso: "2026-05-23T00:00:00Z" },
+          { id: "next-bare", bookedAtIso: "2026-05-24" },
+        ]);
+    } finally {
+      recoveredLedger?.close();
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   describe("AC-1: snapshot creation produces deterministic artifact with expected schema and metadata", () => {
     it("buildBackupSnapshot sets correct metadata version and transaction/account counts", () => {
       const snapshot = buildBackupSnapshot({

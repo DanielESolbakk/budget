@@ -6,6 +6,7 @@ export type TransactionDatePreset = "thisMonth";
 
 export interface TransactionFilters {
   accountId?: string;
+  /** Calendar dates cover a UTC day; timestamp bounds are inclusive instants. Stored bookings are unchanged. */
   bookedFromIso?: string;
   bookedToIso?: string;
   merchant?: string;
@@ -86,15 +87,17 @@ function thisMonthRange(now = new Date()): { from: string; to: string } {
 export function resolveTransactionDateBounds(
   query: Pick<TransactionQuery, "bookedFromIso" | "bookedToIso" | "datePreset">,
   now = new Date()
-): { bookedFromIso: string | undefined; bookedToIso: string | undefined } {
+): { bookedFromMs: number | undefined; bookedToMs: number | undefined } {
   const currentMonth = query.datePreset === "thisMonth" ? thisMonthRange(now) : undefined;
+  const bookedFromIso = currentMonth === undefined
+    ? query.bookedFromIso
+    : laterBookingStartBound(query.bookedFromIso, currentMonth.from);
+  const bookedToIso = currentMonth === undefined
+    ? query.bookedToIso
+    : earlierBookingEndBound(query.bookedToIso, currentMonth.to);
   return {
-    bookedFromIso: currentMonth === undefined
-      ? query.bookedFromIso
-      : laterBookingStartBound(query.bookedFromIso, currentMonth.from),
-    bookedToIso: currentMonth === undefined
-      ? query.bookedToIso
-      : earlierBookingEndBound(query.bookedToIso, currentMonth.to),
+    bookedFromMs: bookedFromIso === undefined ? undefined : transactionBookingTimeMillis(bookedFromIso),
+    bookedToMs: bookedToIso === undefined ? undefined : transactionBookingTimeMillis(bookingTimeEnd(bookedToIso)),
   };
 }
 
@@ -137,6 +140,12 @@ function bookingTimeEnd(value: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
 }
 
+export function transactionBookingTimeMillis(value: string): number {
+  const time = Date.parse(bookingTimeStart(value));
+  if (!Number.isFinite(time)) throw new RangeError("Invalid transaction booking date.");
+  return time;
+}
+
 function laterBookingStartBound(left: string | undefined, right: string): string {
   if (left === undefined) return right;
   return compareBookingTimes(left, right) >= 0 ? left : right;
@@ -144,31 +153,25 @@ function laterBookingStartBound(left: string | undefined, right: string): string
 
 function earlierBookingEndBound(left: string | undefined, right: string): string {
   if (left === undefined) return right;
-  const leftEnd = Date.parse(bookingTimeEnd(left));
-  const rightEnd = Date.parse(bookingTimeEnd(right));
-  if (!Number.isFinite(leftEnd) || !Number.isFinite(rightEnd)) {
-    return left.localeCompare(right) <= 0 ? left : right;
-  }
+  const leftEnd = transactionBookingTimeMillis(bookingTimeEnd(left));
+  const rightEnd = transactionBookingTimeMillis(bookingTimeEnd(right));
   return leftEnd <= rightEnd ? left : right;
 }
 
 function compareBookingTimes(left: string, right: string): number {
-  const leftTime = Date.parse(bookingTimeStart(left));
-  const rightTime = Date.parse(bookingTimeStart(right));
-  if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return leftTime - rightTime;
-  return bookingTimeStart(left).localeCompare(bookingTimeStart(right));
+  return transactionBookingTimeMillis(left) - transactionBookingTimeMillis(right);
 }
 
 export function filterTransactions(
   transactions: readonly Transaction[],
   query: TransactionQuery
 ): Transaction[] {
-  const { bookedFromIso, bookedToIso } = resolveTransactionDateBounds(query);
+  const { bookedFromMs, bookedToMs } = resolveTransactionDateBounds(query);
 
   return transactions
     .filter((transaction) => query.accountId === undefined || transaction.accountId === query.accountId)
-    .filter((transaction) => bookedFromIso === undefined || compareBookingTimes(transaction.bookedAtIso, bookedFromIso) >= 0)
-    .filter((transaction) => bookedToIso === undefined || compareBookingTimes(transaction.bookedAtIso, bookingTimeEnd(bookedToIso)) <= 0)
+    .filter((transaction) => bookedFromMs === undefined || transactionBookingTimeMillis(transaction.bookedAtIso) >= bookedFromMs)
+    .filter((transaction) => bookedToMs === undefined || transactionBookingTimeMillis(transaction.bookedAtIso) <= bookedToMs)
     .filter((transaction) => query.amountMinor === undefined || transaction.amountMinor === query.amountMinor)
     .filter((transaction) => query.amountFromMinor === undefined || transaction.amountMinor >= query.amountFromMinor)
     .filter((transaction) => query.amountToMinor === undefined || transaction.amountMinor <= query.amountToMinor)

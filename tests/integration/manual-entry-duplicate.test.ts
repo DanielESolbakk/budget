@@ -48,6 +48,28 @@ afterEach(() => {
 });
 
 describe("manual-entry-duplicate integration", () => {
+  it("finds a saved bare-date manual entry at calendar and timestamp boundaries after reopen", () => {
+    const result = submitManualEntry(validInput, [], ledger);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    for (const reopen of [false, true]) {
+      if (reopen) {
+        ledger.close();
+        ledger = createLocalLedgerDatabase({ dbPath: join(temporaryDirectory, "budget.sqlite") });
+      }
+      for (const bound of ["2026-05-23", "2026-05-23T00:00:00.000Z"]) {
+        const page = ledger.queryTransactions(sampleHousehold.id, { bookedFromIso: bound, bookedToIso: bound });
+        expect(page.totalCount).toBe(1);
+        expect(page.transactions[0]).toMatchObject({
+          id: result.transaction.id, bookedAtIso: validInput.bookedAtIso,
+          amountMinor: validInput.amountMinor, categoryId: validInput.categoryId, importJobId: result.importJobId,
+        });
+      }
+    }
+    expect(ledger.queryTransactions(sampleHousehold.id, { bookedFromIso: "2026-05-24" }).totalCount).toBe(0);
+    expect(ledger.queryTransactions(sampleHousehold.id, { bookedToIso: "2026-05-22" }).totalCount).toBe(0);
+  });
+
   describe("AC-1: valid manual transaction is persisted with correct fields", () => {
     it("persists the transaction and manual import job in SQLite", () => {
       const result = submitManualEntry(validInput, ledger.loadLedgerSnapshotData().transactions, ledger);

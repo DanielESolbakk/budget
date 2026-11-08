@@ -28,6 +28,25 @@ const transactions: Transaction[] = [
 ];
 
 describe("filterTransactions", () => {
+  it.each(["not-a-date", "2026-05-23' OR 1=1 --"])("rejects an invalid booking bound: %s", (value) => {
+    expect(() => filterTransactions([], { bookedFromIso: value })).toThrow("Invalid transaction booking date");
+    expect(() => filterTransactions([], { bookedToIso: value, datePreset: "thisMonth" }))
+      .toThrow("Invalid transaction booking date");
+  });
+
+  it("compares pre-epoch offset timestamps and fractional seconds at millisecond precision", () => {
+    const rows = [
+      { ...transactions[0]!, id: "before", bookedAtIso: "1969-12-31T23:59:59.999Z" },
+      { ...transactions[0]!, id: "bare", bookedAtIso: "1970-01-01" },
+      { ...transactions[0]!, id: "negative-offset", bookedAtIso: "1969-12-31T23:00:00-01:00" },
+      { ...transactions[0]!, id: "fractional", bookedAtIso: "1970-01-01T00:00:00.0009Z" },
+      { ...transactions[0]!, id: "after", bookedAtIso: "1970-01-01T00:00:00.001Z" },
+    ];
+    expect(filterTransactions(rows, {
+      bookedFromIso: "1970-01-01T00:00:00.000Z", bookedToIso: "1970-01-01T00:00:00Z",
+    }).map(({ id }) => id).sort()).toEqual(["bare", "fractional", "negative-offset"]);
+  });
+
   it("applies merchant, date, amount, account, and category filters", () => {
     expect(filterTransactions(transactions, {
       accountId: "account",
