@@ -6,10 +6,8 @@ import {
   mapCsvRowToTransaction,
   validateCsvRow,
 } from "../../src/domain/import/csvRowMapper.js";
-import {
-  buildTransactionsFromFixturePath,
-  importFixtureCsv,
-} from "../../src/tooling/fixtures/fixtureTransactions.js";
+import { importFixtureCsv } from "../../src/tooling/fixtures/fixtureTransactions.js";
+import { loadRogalandBookedTransactions } from "../helpers/loadRogalandBookedTransactions.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
 
@@ -241,15 +239,15 @@ describe("csv import contract", () => {
   });
 
   describe("AC-2: fixture adapter determinism", () => {
-    it("buildTransactionsFromFixturePath returns the same result across repeated calls", () => {
-      const first = buildTransactionsFromFixturePath(FIXTURE_PATH);
-      const second = buildTransactionsFromFixturePath(FIXTURE_PATH);
+    it("explicit booked fixture projection returns the same result across repeated calls", () => {
+      const first = loadRogalandBookedTransactions(FIXTURE_PATH);
+      const second = loadRogalandBookedTransactions(FIXTURE_PATH);
 
       expect(first).toEqual(second);
     });
 
     it("all mapped transactions have the required domain fields", () => {
-      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
 
       expect(transactions.length).toBeGreaterThan(0);
       for (const tx of transactions) {
@@ -268,7 +266,8 @@ describe("csv import contract", () => {
     it("importFixtureCsv returns a CsvImportResult covering all fixture rows", () => {
       const result = importFixtureCsv(FIXTURE_PATH);
 
-      expect(result.transactions.length + result.skipped.length).toBeGreaterThan(0);
+      expect(result.transactions).toHaveLength(14);
+      expect(result.pendingObservations).toHaveLength(2);
       expect(result.transactions).toBeInstanceOf(Array);
       expect(result.skipped).toBeInstanceOf(Array);
       expect(result.skipped).toEqual([]);
@@ -291,7 +290,7 @@ describe("csv import contract", () => {
     });
 
     it("transaction ids from the fixture are unique", () => {
-      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
       const ids = transactions.map((tx) => tx.id);
       const uniqueIds = new Set(ids);
 
@@ -299,7 +298,7 @@ describe("csv import contract", () => {
     });
 
     it("mapped fixture transactions remain compatible with the dashboard app consumer", () => {
-      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
       const contract = buildDashboardViewContract({
         transactions,
         selectedYearMonth: "2026-05",

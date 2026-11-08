@@ -186,6 +186,21 @@ This repository is public.
 - Use repository-relative paths in committed documentation instead of machine-specific absolute paths.
 - Keep sensitive local-only files in gitignored paths such as `local/`, `private/`, `data/local/`, `backups/local/`, and `fixtures/private/`.
 
+### Fixture tooling contracts
+
+- [Strict transaction builders](src/tooling/fixtures/fixtureTransactions.ts) reject invalid, empty and pending inputs rather than silently dropping rows. Errors include bounded error codes/fields and zero-based **mapper row indexes**, not physical CSV line numbers; empty rows use index `-1`. Use `importFixtureCsv` (files) or `mapCsvRows` (row objects) when inspecting the full result. The mapper returns no transactions when any row is invalid.
+- [Fixture CSV serialization](src/tooling/fixtures/fixtureCsv.ts) validates row widths and quotes headers/cells containing semicolons, quotes, line breaks or outer whitespace. It keeps semicolon delimiters and a final LF. Parsing intentionally removes blank/bank-summary rows and trims outer file text; this is not a universal lossless CSV API.
+- The mixed-status Rogaland fixture contains **14 booked transactions and 2 pending observations**. Import/export tests assert both collections before taking a booked projection. Dashboard/no-network tests use an explicitly named [synthetic booked projection](tests/helpers/buildBookedDashboardFixture.ts) of all 16 rows to preserve their independent reporting totals and category assignments. That projection is not evidence of real pending-to-booked import behavior.
+- [Synthetic PDF writers](tests/helpers/pdfObjectWriter.ts) share object/xref serialization only. Text, pagination, rotation and malformed scenarios remain distinct; byte hashes and actual extraction/import tests protect them.
+- For sanitizer experiments, provide explicit input/output/map paths and a fixed seed, for example:
+
+  ```bash
+  npm run sanitizer -- --input tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv --output local/sanitized-fixture.csv --map local/sanitization-map.json --seed fixture-check
+  npm run verify-fixture -- --input local/sanitized-fixture.csv
+  ```
+
+  Writes require distinct resolved input/output/map paths (case-insensitive on Windows); dry runs write nothing. Do not use default output paths for experiments or overwrite tracked fixtures. Token maps contain source values and must stay private/gitignored when sanitizing real data. Only synthetic or independently reviewed sanitized output is eligible for public fixtures.
+
 ## Planning Files
 
 The planning work for this project is centered around:

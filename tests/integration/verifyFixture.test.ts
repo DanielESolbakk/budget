@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { verifyFixture } from "../../src/tooling/fixtures/verifyFixture.js";
+import { sanitizeFixtureCsv } from "../../src/tooling/fixtures/sanitizeCsv.js";
+import { readFixtureCsv } from "../../src/tooling/fixtures/fixtureCsv.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const tsxCliPath = fileURLToPath(new URL("../../node_modules/tsx/dist/cli.mjs", import.meta.url));
@@ -63,6 +65,21 @@ afterEach(() => {
 });
 
 describe("verifyFixture", () => {
+  it("verifies sanitized escaped rows while retaining non-tokenized cells and the source", () => {
+    const source = [
+      expectedHeaders.join(";"),
+      '28.05.2026;28.05.2026;28.05.2026;SHOP;"Vare; ""Øre""\nsecond line";Debetkort;ACCT-001;;;LOCAL_USER;;-12.34;GBP;Bokført;REF-001',
+    ].join("\n");
+    const inputPath = writeTemporaryFixtureFile("input.csv", source);
+    const outputPath = join(dirname(inputPath), "sanitized.csv");
+    const mapPath = join(dirname(inputPath), "map.json");
+    sanitizeFixtureCsv({ inputPath, outputPath, mapPath, seed: "42", dryRun: false });
+    expect(readFixtureCsv(outputPath).rows[0]?.[4]).toBe('Vare; "Øre"\nsecond line');
+    expect(verifyFixture({ inputPath: outputPath })).toMatchObject({
+      ok: true, errors: [], stats: { rowCount: 1, nonNokRowCount: 1, uniqueMerchantCount: 1 },
+    });
+    expect(readFileSync(inputPath, "utf8")).toBe(source);
+  });
   it("emits the documented machine-readable report for the committed synthetic fixture", () => {
     const reportPath = writeTemporaryFixtureFile("verification-report.json", "");
     const report = verifyFixture({

@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseFixtureCsv, readFixtureCsv } from "../../src/tooling/fixtures/fixtureCsv.js";
 import { sanitizeFixtureCsv, type SanitizationMapEntry } from "../../src/tooling/fixtures/sanitizeCsv.js";
@@ -27,6 +27,56 @@ function tsxCliPath(): string {
 }
 
 describe("sanitizeFixtureCsv", () => {
+  it("rejects normalized input aliases before reading or writing files", () => {
+    const directory = createTemporaryDirectory("budget-sanitize-alias-");
+    const inputPath = join(directory, "input.csv");
+    const outputPath = relative(process.cwd(), inputPath);
+    expect(() => sanitizeFixtureCsv({ inputPath, outputPath, mapPath: join(directory, "map.json"), seed: "42", dryRun: false })).toThrow(/distinct/i);
+  });
+  it.runIf(process.platform === "win32")("rejects differently cased Windows input aliases", () => {
+    const directory = createTemporaryDirectory("budget-sanitize-case-");
+    const inputPath = join(directory, "input.csv");
+    expect(() => sanitizeFixtureCsv({ inputPath, outputPath: inputPath.toUpperCase(), mapPath: join(directory, "map.json"), seed: "42", dryRun: false })).toThrow(/distinct/i);
+  });
+  it.each(["input-output", "input-map", "output-map"])("rejects colliding %s paths without overwriting input", (collision) => {
+    const directory = createTemporaryDirectory("budget-sanitize-paths-");
+    const inputPath = join(directory, "input.csv");
+    const outputPath = collision === "input-output" ? inputPath : join(directory, "output.csv");
+    const mapPath = collision === "input-map" ? inputPath : collision === "output-map" ? outputPath : join(directory, "map.json");
+    const source = "Beskrivelse;Extra\nSHOP;retained\n";
+    writeFileSync(inputPath, source);
+    expect(() => sanitizeFixtureCsv({ inputPath, outputPath, mapPath, seed: "42", dryRun: false })).toThrow(/distinct/i);
+    expect(readFileSync(inputPath, "utf8")).toBe(source);
+  });
+  it("preserves escaped non-tokenized cells and leaves the source unchanged", () => {
+    const directory = createTemporaryDirectory("budget-sanitize-escaped-");
+    const inputPath = join(directory, "input.csv");
+    const outputPath = join(directory, "output.csv");
+    const mapPath = join(directory, "map.json");
+    const source = 'Beskrivelse;Extra\nSHOP;"retained; ""Øre""\nsecond line "\n';
+    writeFileSync(inputPath, source);
+    const result = sanitizeFixtureCsv({ inputPath, outputPath, mapPath, seed: "42", dryRun: false });
+    expect(parseFixtureCsv(result.outputText)).toEqual({
+      header: ["Beskrivelse", "Extra"],
+      rows: [[expect.stringMatching(/^MERCHANT-[A-F0-9]{10}$/), 'retained; "Øre"\nsecond line ']],
+    });
+    expect(readFileSync(inputPath, "utf8")).toBe(source);
+    expect(readFileSync(outputPath, "utf8")).toBe(result.outputText);
+    expect(JSON.parse(readFileSync(mapPath, "utf8"))).toEqual(result.mapEntries);
+    expect(result.mapEntries).toEqual([expect.objectContaining({ kind: "MERCHANT", original: "SHOP" })]);
+    const repeated = sanitizeFixtureCsv({ inputPath, outputPath, mapPath, seed: "42", dryRun: true });
+    expect(repeated).toEqual(result);
+  });
+  it("rejects malformed widths before writing outputs", () => {
+    const directory = createTemporaryDirectory("budget-sanitize-invalid-");
+    const inputPath = join(directory, "input.csv");
+    const outputPath = join(directory, "output.csv");
+    const mapPath = join(directory, "map.json");
+    writeFileSync(inputPath, "Beskrivelse;Extra\nSHOP;one;two\n");
+    expect(() => sanitizeFixtureCsv({ inputPath, outputPath, mapPath, seed: "42", dryRun: false })).toThrow(/Row 2.*expected 2/);
+    expect(existsSync(outputPath)).toBe(false);
+    expect(existsSync(mapPath)).toBe(false);
+  });
   it("is deterministic: identical input and seed produce identical output text and sorted map entries", () => {
     const tempDir = createTemporaryDirectory("budget-sanitize-");
     const outputPath = join(tempDir, "sanitized.csv");
@@ -190,6 +240,26 @@ describe("sanitizeFixtureCsv", () => {
     });
     expect(existsSync(outputPath)).toBe(false);
     expect(existsSync(mapPath)).toBe(false);
+  });
+
+  it("CLI writes verified synthetic output and map using explicit paths and seed", () => {
+    const directory = createTemporaryDirectory("budget-sanitize-cli-write-");
+    const inputPath = join(directory, "input.csv");
+    const outputPath = join(directory, "sanitized.csv");
+    const mapPath = join(directory, "map.json");
+    const source = readFileSync(syntheticFixture, "utf8");
+    writeFileSync(inputPath, source);
+    const summary = JSON.parse(execFileSync(process.execPath, [
+      tsxCliPath(), "scripts/sanitize-csv.ts", "--input", inputPath,
+      "--output", outputPath, "--map", mapPath, "--seed", "42",
+    ], { encoding: "utf8" }));
+    expect(summary).toEqual({ rowCount: 16, mapEntryCount: 38, outputPath, mapPath });
+    expect(readFixtureCsv(outputPath).rows).toHaveLength(16);
+    expect(JSON.parse(readFileSync(mapPath, "utf8"))).toHaveLength(38);
+    expect(readFileSync(inputPath, "utf8")).toBe(source);
+    expect(JSON.parse(execFileSync(process.execPath, [
+      tsxCliPath(), "scripts/verify-fixture.ts", "--input", outputPath,
+    ], { encoding: "utf8" }))).toMatchObject({ ok: true, errors: [], stats: { rowCount: 16, nonNokRowCount: 1 } });
   });
 
 });

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "csv-parse/sync";
 import { describe, expect, it } from "vitest";
-import { buildTransactionsFromFixturePath } from "../../src/tooling/fixtures/fixtureTransactions.js";
+import { loadRogalandBookedTransactions } from "../helpers/loadRogalandBookedTransactions.js";
 import { EXPORT_CSV_HEADERS, buildCsvOutput, buildCsvRow, serializeCsvRow } from "../../src/domain/export/buildCsvRows.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { exportCsv, exportCsvToFile, exportLedgerCsvToFile } from "../../src/app/exportCsv.js";
@@ -110,7 +110,7 @@ describe("csv export contract", () => {
     });
 
     it("fixture transactions produce deterministic CSV across repeated exports", () => {
-      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
       const first = exportCsv({ transactions });
       const second = exportCsv({ transactions });
       expect(first.csvText).toBe(second.csvText);
@@ -256,7 +256,7 @@ describe("csv export contract", () => {
     });
 
     it("exported amountMinor values parse back to the original integers", () => {
-      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
       const { csvText } = exportCsv({ transactions });
       const lines = csvText.trimEnd().split("\n");
       const headers = lines[0]!.split(",");
@@ -273,7 +273,7 @@ describe("csv export contract", () => {
     });
 
     it("exported bookedAtIso values match ISO 8601 datetime format", () => {
-      const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+      const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
       const { csvText } = exportCsv({ transactions });
       const lines = csvText.trimEnd().split("\n");
       const headers = lines[0]!.split(",");
