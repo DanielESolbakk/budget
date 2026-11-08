@@ -17,6 +17,7 @@ import type {
 } from "../../domain/types.js";
 import { isCurrencyCode } from "../../domain/types.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
+import { formatMinorUnits } from "../../domain/money/minorUnits.js";
 import { HouseholdShareForm, useHouseholdShareFormStates } from "./HouseholdShareForm.js";
 import { DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS } from "../../domain/householdShareValidation.js";
 
@@ -126,7 +127,7 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 function formatAmount(amountMinor: number, currencyCode: string): string {
-  return `${currencyCode} ${amountFormatter.format(amountMinor / 100)}`;
+  return `${currencyCode} ${formatMinorUnits(amountMinor, amountFormatter)}`;
 }
 
 function formatTerm(termMonths: number): string {

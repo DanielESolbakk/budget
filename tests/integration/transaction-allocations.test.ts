@@ -11,6 +11,8 @@ import { computeCategoryBreakdown } from "../../src/domain/aggregation/computeCa
 import { computeMonthlyTotals } from "../../src/domain/aggregation/computeMonthlyTotals.js";
 import { buildCsvOutput } from "../../src/domain/export/buildCsvRows.js";
 import type { Transaction, TransactionCategoryAllocation } from "../../src/domain/types.js";
+import { minorUnitsToDecimal } from "../../src/domain/money/minorUnits.js";
+import { parseSignedAmountMinor } from "../../src/renderer/amountInputs.js";
 
 const transaction: Transaction = {
   id: "tx-allocation",
@@ -57,6 +59,38 @@ function allocationLedger(ledger: ReturnType<typeof createLedger>) {
 }
 
 describe("transaction allocation persistence", () => {
+  it("retains extreme signed allocation amounts through unchanged edit serialization and reopen", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-allocation-exact-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    let ledger = createLedger(databasePath);
+    try {
+      ledger.appendTransactions([{
+        ...transaction, id: "extreme-allocation", amountMinor: -Number.MAX_SAFE_INTEGER,
+      }]);
+      const allocations = [
+        { categoryId: "housing", amountMinor: -Number.MAX_SAFE_INTEGER + 1 },
+        { categoryId: "groceries", amountMinor: -1 },
+      ];
+      ledger.updateTransactionCategoryAllocations("extreme-allocation", allocations);
+      const draft = ledger.getTransactionById("extreme-allocation")!.categoryAllocations!
+        .map((allocation) => ({ ...allocation, amountText: minorUnitsToDecimal(allocation.amountMinor) }));
+      expect(draft.map(({ amountText }) => amountText)).toEqual(["-90071992547409.90", "-0.01"]);
+      const replacement = draft.map(({ categoryId, amountText }) => {
+        const amountMinor = parseSignedAmountMinor(amountText);
+        if (amountMinor === null) throw new Error("Exact allocation draft must parse.");
+        return { categoryId, amountMinor };
+      });
+      ledger.updateTransactionCategoryAllocations("extreme-allocation", replacement);
+      ledger.close();
+      ledger = createLedger(databasePath);
+      expect(ledger.getTransactionById("extreme-allocation")).toMatchObject({
+        amountMinor: -Number.MAX_SAFE_INTEGER, categoryAllocations: allocations,
+      });
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it("keeps allocation details through reopen and backup restore without duplicating the source transaction", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-allocation-roundtrip-"));
     const databasePath = join(directory, "ledger.sqlite");

@@ -1,5 +1,6 @@
 import React from "react";
 import { parseCurrencyAmountMinor } from "../workspaces/parseCurrencyAmountMinor.js";
+import { formatMinorUnits, minorUnitsToDecimal } from "../../domain/money/minorUnits.js";
 import { createRecurringCommitmentPaymentSearchIndex } from "./recurringCommitmentSearch.js";
 import type {
   RecurringCommitment,
@@ -60,7 +61,7 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 function formatCurrencyAmount(amountMinor: number, currencyCode: string): string {
-  const amount = amountFormatter.format(Math.abs(amountMinor) / 100);
+  const amount = formatMinorUnits(Math.abs(amountMinor), amountFormatter);
   const currencyAmount = currencyCode === "NOK" ? `${amount} kr` : `${currencyCode} ${amount}`;
   if (amountMinor < 0) return `-${currencyAmount}`;
   return currencyAmount;
@@ -233,7 +234,7 @@ export function RecurringCommitmentsSection({
     setDraft({
       description: commitment.description,
       currencyCode: commitment.currencyCode,
-      amount: commitment.amountMinor === null ? "" : (commitment.amountMinor / 100).toFixed(2),
+      amount: commitment.amountMinor === null ? "" : minorUnitsToDecimal(commitment.amountMinor),
       isVariable: commitment.isVariable,
       cadence: commitment.cadence,
       firstDueDateIso: commitment.firstDueDateIso,

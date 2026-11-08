@@ -6,6 +6,8 @@ import type {
   AccountStatementCoveragePeriod,
 } from "../../domain/types.js";
 import type { ImportJobHistoryEntry } from "../../domain/import/importJobHistory.js";
+import { formatMinorUnits } from "../../domain/money/minorUnits.js";
+import { parseSignedAmountMinor as parseAmountMinor } from "../amountInputs.js";
 
 const amountFormatter = new Intl.NumberFormat("nb-NO", {
   minimumFractionDigits: 2,
@@ -17,20 +19,13 @@ const dateFormatter = new Intl.DateTimeFormat("nb-NO", {
 });
 
 function displayMinorAmount(amountMinor: number, currencyCode: string): string {
-  return `${currencyCode} ${amountFormatter.format(amountMinor / 100)}`;
+  return `${currencyCode} ${formatMinorUnits(amountMinor, amountFormatter)}`;
 }
 
 function displayDate(dateIso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateIso);
   if (match === null) return dateIso;
   return dateFormatter.format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))));
-}
-
-function parseAmountMinor(value: string): number | null {
-  const normalized = value.trim().replace(",", ".");
-  if (!/^-?\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
-  const amountMinor = Math.round(Number(normalized) * 100);
-  return Number.isSafeInteger(amountMinor) ? amountMinor : null;
 }
 
 function errorMessage(error: unknown, fallback: string): string {

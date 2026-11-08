@@ -4,9 +4,8 @@ import type {
   SpendableCashEstimateRequest,
 } from "../../app/dashboardApi.js";
 import type { Account, ExchangeRate } from "../../domain/types.js";
-
-const NOK_MINOR_UNITS = 100;
-const moneyFormatters = new Map<string, Intl.NumberFormat>();
+import { formatCurrencySymbolAmount as formatAmount } from "../formatCurrencyAmount.js";
+import { parseReserveMinor } from "../amountInputs.js";
 
 interface SpendableCashSectionProps {
   isActive: boolean;
@@ -18,37 +17,8 @@ interface MonthlyRateRequest {
   yearMonth: string;
 }
 
-function formatAmount(amountMinor: number, currencyCode: string): string {
-  let formatter = moneyFormatters.get(currencyCode);
-  if (formatter === undefined) {
-    formatter = new Intl.NumberFormat("nb-NO", {
-      style: "currency",
-      currency: currencyCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-    moneyFormatters.set(currencyCode, formatter);
-  }
-  return formatter.format(amountMinor / NOK_MINOR_UNITS);
-}
-
 function describeError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
-}
-
-function parseReserveMinor(value: string): number {
-  const amount = Number(value);
-  const amountMinor = Math.round(amount * NOK_MINOR_UNITS);
-  if (
-    value.trim() === "" ||
-    !Number.isFinite(amount) ||
-    amount < 0 ||
-    !Number.isSafeInteger(amountMinor) ||
-    Math.abs(amount * NOK_MINOR_UNITS - amountMinor) > 0.000001
-  ) {
-    throw new Error("Reserve must be a non-negative amount with at most two decimal places.");
-  }
-  return amountMinor;
 }
 
 function getMissingRateRequests(result: SpendableCashEstimate | null): MonthlyRateRequest[] {

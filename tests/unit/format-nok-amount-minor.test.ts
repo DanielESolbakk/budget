@@ -2,8 +2,14 @@ import { describe, expect, it } from "vitest";
 import { formatNokAmountMinor } from "../../src/renderer/formatNokAmountMinor.js";
 
 describe("exact NOK display", () => {
+  it.each([NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid minor-unit numbers: %s", (minor) => {
+      expect(() => formatNokAmountMinor(minor)).toThrow(RangeError);
+    }
+  );
   it.each([
     [0, "0,00 kr"],
+    [-0, "0,00 kr"],
     [1, "0,01 kr"],
     [-1, "\u22120,01 kr"],
     [1_250, "12,50 kr"],

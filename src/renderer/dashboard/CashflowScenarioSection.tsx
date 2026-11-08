@@ -5,17 +5,17 @@ import type {
 } from "../../app/dashboardApi.js";
 import {
   isCurrencyCode,
-  type CurrencyCode,
 } from "../../domain/types.js";
 import type {
   CashflowScenarioAppliedAssumption,
   CashflowScenarioAssumption,
   CashflowScenarioPlan,
 } from "../../domain/forecast/cashflowScenarios.js";
+import { formatCurrencySymbolAmount as formatAmount } from "../formatCurrencyAmount.js";
+import { parseScenarioAmountMinor as parseAmountMinor } from "../amountInputs.js";
+import { minorUnitsToDecimal } from "../../domain/money/minorUnits.js";
 
-const NOK_MINOR_UNITS = 100;
 const MAX_FORECAST_MONTHS = 3;
-const moneyFormatters = new Map<string, Intl.NumberFormat>();
 const cashPathDateFormatter = new Intl.DateTimeFormat("nb-NO", {
   day: "2-digit",
   month: "2-digit",
@@ -25,35 +25,6 @@ const cashPathDateFormatter = new Intl.DateTimeFormat("nb-NO", {
 
 interface CashflowScenarioSectionProps {
   refreshKey: number;
-}
-
-function formatAmount(amountMinor: number, currencyCode: CurrencyCode): string {
-  let formatter = moneyFormatters.get(currencyCode);
-  if (formatter === undefined) {
-    formatter = new Intl.NumberFormat("nb-NO", {
-      style: "currency",
-      currency: currencyCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-    moneyFormatters.set(currencyCode, formatter);
-  }
-  return formatter.format(amountMinor / NOK_MINOR_UNITS);
-}
-
-function parseAmountMinor(value: string): number {
-  const amount = Number(value);
-  const amountMinor = Math.round(amount * NOK_MINOR_UNITS);
-  if (
-    value.trim() === "" ||
-    !Number.isFinite(amount) ||
-    amount <= 0 ||
-    !Number.isSafeInteger(amountMinor) ||
-    Math.abs(amount * NOK_MINOR_UNITS - amountMinor) > 0.000001
-  ) {
-    throw new Error("Enter a positive amount with at most two decimal places.");
-  }
-  return amountMinor;
 }
 
 function parseDurationMonths(value: string): number {
@@ -298,7 +269,7 @@ export function CashflowScenarioSection({
     } else {
       setDateIso(assumption.occurrenceDateIso);
     }
-    setAmount((assumption.amountMinor / NOK_MINOR_UNITS).toFixed(2));
+    setAmount(minorUnitsToDecimal(assumption.amountMinor));
     setCurrencyCode(assumption.currencyCode);
     invalidateResult();
   }
