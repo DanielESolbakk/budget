@@ -58,7 +58,29 @@ export default tseslint.config(
       "react-hooks": reactHooks
     },
     rules: {
-      ...reactHooks.configs.recommended.rules
+      ...reactHooks.configs.recommended.rules,
+      "@typescript-eslint/no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["**/app/**"],
+          allowTypeImports: true,
+          message: "Renderer runtime code belongs in shared/domain modules; application services run in Electron main."
+        }]
+      }],
+      "no-restricted-syntax": ["error", {
+        selector: "ImportExpression[source.value=/app\\u002F/]",
+        message: "Do not dynamically load application services in the renderer."
+      }]
+    }
+  },
+  {
+    files: ["src/shared/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["**/app/**", "**/electron/**", "electron", "node:*", "fs", "fs/**", "path", "sqlite"],
+          message: "Shared contracts and composition must not depend on application services or desktop runtime."
+        }]
+      }]
     }
   },
   {

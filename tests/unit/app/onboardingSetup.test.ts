@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { normalizeHouseholdSetupInput } from "../../../src/app/onboarding/householdSetup.js";
+import { HouseholdSetupValidationError } from "../../../src/app/onboarding/householdSetup.js";
+import { normalizeHouseholdSetupInput } from "../../../src/shared/householdSetup.js";
 
 describe("normalizeHouseholdSetupInput", () => {
   it("trims household and account names and normalizes currency", () => {
@@ -39,5 +40,6 @@ describe("normalizeHouseholdSetupInput", () => {
       thrown = error;
     }
     expect(thrown).toMatchObject({ field, message });
+    expect(thrown).toBeInstanceOf(HouseholdSetupValidationError);
   });
 });

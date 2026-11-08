@@ -1,5 +1,5 @@
 import React from "react";
-import type { NokMonthlyReport, NokValuationReport } from "../../app/dashboardApi.js";
+import type { NokMonthlyReport, NokValuationReport } from "../../shared/dashboard.js";
 import type { ExchangeRate } from "../../domain/types.js";
 import { toLocalIsoDate, toLocalYearMonth } from "../../domain/date/localDateDefaults.js";
 

@@ -1,26 +1,21 @@
-import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
+import type { LedgerSnapshotData } from "../domain/backup/snapshotContract.js";
 import {
   calculateSpendableUntilIncome,
   type SpendableAccountBalance,
   type SpendableUntilIncomeInput,
   type SpendableUntilIncomeResult,
 } from "../domain/forecast/spendableUntilIncome.js";
-import { createRecurringCommitmentService } from "./recurringCommitmentService.js";
-import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
+import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
 import type {
   Account,
   AccountBalanceCheckpoint,
   AccountCoverageAssessmentInput,
   AccountStatementCoveragePeriod,
 } from "../domain/types.js";
-import type { LedgerSnapshotData } from "../domain/backup/snapshotContract.js";
-
-export interface SpendableCashEstimateRequest {
-  selectedAccountIds: string[];
-  nextIncomeDateIso: string;
-  reserveMinor: number;
-  monthlyReferenceRateIds?: Readonly<Record<string, string>>;
-}
+import type { SpendableCashEstimateRequest } from "../shared/spendableCashContracts.js";
+import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
+import { createRecurringCommitmentService } from "./recurringCommitmentService.js";
+export type { SpendableCashEstimateRequest } from "../shared/spendableCashContracts.js";
 
 export interface SpendableCashService {
   getEstimate: (input: SpendableCashEstimateRequest) => SpendableUntilIncomeResult;

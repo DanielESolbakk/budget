@@ -1,4 +1,4 @@
-import type { DashboardData, DashboardViewContract } from "../../app/dashboardApi.js";
+import type { DashboardData, DashboardViewContract } from "../../shared/dashboard.js";
 
 export type ReviewState =
   | { status: "loading" }
