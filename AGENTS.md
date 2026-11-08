@@ -84,6 +84,8 @@ Alternative: enable the GitHub Copilot built-in Experimental setting for Impecca
 - `src/domain/import/`: import-specific pure logic such as transaction fingerprinting.
 - `src/domain/merchant/`: merchant normalization and later categorization support.
 - `src/app/`: thin application-level workflows that compose domain modules.
+- `src/renderer/workspaces/holding/`, `property/`, `loan/`: feature-local registry sections, create forms, history, and draft helpers; state and refresh ownership stay in the sections.
+- `src/renderer/import/useImportPreflight.ts`: shared preview identity/progress/cancellation lifecycle; CSV mapping/profiles and PDF evidence stay format-specific. See [Renderer feature ownership](README.md#renderer-feature-ownership).
 - `scripts/`: command-line entrypoints only; keep reusable logic in `src/`.
 - `tests/unit/`: pure logic tests.
 - `tests/integration/`: fixture and cross-module contract tests.

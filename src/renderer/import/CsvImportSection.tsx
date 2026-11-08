@@ -13,6 +13,8 @@ import { ImportAccountSelect } from "./ImportAccountSelect.js";
 import { DuplicateBulkActions } from "./DuplicateBulkActions.js";
 import { ImportReconciliationSummary } from "./ImportReconciliationSummary.js";
 import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
+import { useImportPreflight } from "./useImportPreflight.js";
+import { ImportPreflightStatus } from "./ImportPreflightStatus.js";
 
 type ImportState =
   | { status: "idle" }
@@ -70,13 +72,6 @@ export function CsvImportSection({
   const [profileRefreshKey, setProfileRefreshKey] = React.useState(0);
   const [filePath, setFilePath] = React.useState(initialFilePath);
   const [importState, setImportState] = React.useState<ImportState>({ status: "idle" });
-  const [activePreflightRequestId, setActivePreflightRequestId] = React.useState<string | undefined>();
-  const [preflightProgress, setPreflightProgress] = React.useState<{
-    requestId: string;
-    phase: string;
-    completedRows: number;
-    totalRows: number;
-  } | null>(null);
   const [stage, setStage] = React.useState<ImportWorkflowStage>("select-file");
   const [preview, setPreview] = React.useState<CsvImportPreviewSuccess | null>(null);
   const [isPreviewExpanded, setIsPreviewExpanded] = React.useState(true);
@@ -88,6 +83,9 @@ export function CsvImportSection({
   const [columnMapping, setColumnMapping] = React.useState<CsvColumnMapping>({});
   const [previewMapping, setPreviewMapping] = React.useState<CsvColumnMapping | null>(null);
   const effectiveImportAccountId = importAccountId ?? accounts[0]?.id;
+  const preflight = useImportPreflight("csv", JSON.stringify([
+    filePath, fileSelectionId, preferredAccountId, effectiveImportAccountId, columnMapping,
+  ]));
   const validPreviewRowCount = preview?.rows.filter((row) =>
     row.transaction !== undefined || row.pendingObservation !== undefined
   ).length ?? 0;
@@ -167,13 +165,6 @@ export function CsvImportSection({
     };
   }, [profileRefreshKey]);
 
-  React.useEffect(() => window.budgetApi.import.onPreflightProgress((progress) => {
-    if (progress.format !== "csv") return;
-    setPreflightProgress((current) => current?.requestId === progress.requestId
-      ? { ...current, phase: progress.phase, completedRows: progress.completedRows, totalRows: progress.totalRows }
-      : current);
-  }), []);
-
   const mappingFields: Array<{ key: CsvColumnKey; label: string }> = [
     { key: "executionDate", label: "Execution date" },
     { key: "bookedDate", label: "Booked date" },
@@ -199,9 +190,7 @@ export function CsvImportSection({
     const trimmedPath = filePath.trim();
     if (!trimmedPath || effectiveImportAccountId === undefined || profileLoadState !== "ready") return;
 
-    const requestId = crypto.randomUUID();
-    setActivePreflightRequestId(requestId);
-    setPreflightProgress({ requestId, phase: "Reading statement", completedRows: 0, totalRows: 0 });
+    const requestId = preflight.begin();
     setImportState({ status: "pending" });
     setIsPreviewExpanded(true);
     setStage("map-and-validate");
@@ -214,6 +203,7 @@ export function CsvImportSection({
         columnMapping,
         accountId: effectiveImportAccountId,
       });
+      if (!preflight.isCurrent(requestId)) return;
       if (response.ok) {
         setPreview(response);
         setPreviewPage(0);
@@ -226,7 +216,6 @@ export function CsvImportSection({
         setPreview(null);
         setPreviewMapping(null);
         setImportState({ status: "cancelled" });
-        setPreflightProgress({ requestId, phase: "Preview cancelled", completedRows: 0, totalRows: 0 });
         setStage("select-file");
       } else {
         setPreview(null);
@@ -235,6 +224,7 @@ export function CsvImportSection({
         setStage("map-and-validate");
       }
     } catch (error: unknown) {
+      if (!preflight.isCurrent(requestId)) return;
       setPreview(null);
       setImportState({
         status: "error",
@@ -242,10 +232,7 @@ export function CsvImportSection({
       });
       setStage("map-and-validate");
     } finally {
-      setActivePreflightRequestId((current) => current === requestId ? undefined : current);
-      setPreflightProgress((current) => current?.requestId !== requestId
-        ? current
-        : wasCancelled ? { ...current, phase: "Preview cancelled" } : null);
+      preflight.finish(requestId, wasCancelled);
     }
   }
 
@@ -265,12 +252,6 @@ export function CsvImportSection({
       previewButton?.scrollIntoView({ block: "start" });
       previewButton?.focus({ preventScroll: true });
     });
-  }
-
-  function cancelPreview(): void {
-    if (activePreflightRequestId !== undefined) {
-      void window.budgetApi.import.cancelPreview(activePreflightRequestId);
-    }
   }
 
   function navigateToValidationRow(rowIndex: number): void {
@@ -556,20 +537,13 @@ export function CsvImportSection({
           )}
         </div>
       )}
-      {((importState.status === "pending" && activePreflightRequestId !== undefined) || importState.status === "cancelled") && (
-        <div className="import-preflight-status">
-          <p role="status" aria-label="Import preflight progress">
-            {importState.status === "cancelled"
-              ? "Preview cancelled. No transactions were saved."
-              : preflightProgress === null || preflightProgress.totalRows === 0
-                ? preflightProgress?.phase ?? "Preparing statement..."
-                : `${preflightProgress.phase}: ${preflightProgress.completedRows.toLocaleString("nb-NO")} of ${preflightProgress.totalRows.toLocaleString("nb-NO")} rows`}
-          </p>
-          {importState.status === "pending" && (
-            <button type="button" className="import-secondary-action" onClick={cancelPreview}>Cancel preview</button>
-          )}
-        </div>
-      )}
+      <ImportPreflightStatus
+        pending={importState.status === "pending" && preflight.requestId !== undefined}
+        cancelled={importState.status === "cancelled"}
+        progress={preflight.progress}
+        onCancel={preflight.cancel}
+        cancellationError={preflight.cancellationError}
+      />
       {importState.status === "cancelled" && <p role="status">Preview cancelled. No transactions were saved.</p>}
       {importState.status === "success" && (
         <div className="import-success">
@@ -666,6 +640,7 @@ export function CsvImportSection({
                       return updated;
                     });
                     setPreviewMapping(null);
+                    setImportState({ status: "idle" });
                     setStage("map-and-validate");
                   }}
                 >

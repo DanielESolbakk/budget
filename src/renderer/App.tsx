@@ -1,20 +1,18 @@
 import React from "react";
+import { toLocalYearMonth } from "../domain/date/localDateDefaults.js";
 import "./app.css";
-import { loadDashboardData } from "./dashboard/loadDashboardData.js";
-import {
-  DataSafetyWorkspace,
-  HoldingRegistrySection,
-  PropertyRegistrySection,
-} from "./workspaces/DataSafetyWorkspace.js";
-import { LoanRegistrySection } from "./workspaces/LoanRegistrySection.js";
-import { ImportWorkspace } from "./workspaces/ImportWorkspace.js";
-import { PendingTransactionsWorkspace } from "./workspaces/PendingTransactionsWorkspace.js";
-import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
-import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
 import { AccountCoverageSection } from "./dashboard/AccountCoverageSection.js";
+import { loadDashboardData } from "./dashboard/loadDashboardData.js";
 import { ExchangeRatesSection } from "./settings/ExchangeRatesSection.js";
 import { HouseholdSetup } from "./setup/HouseholdSetup.js";
-import { toLocalYearMonth } from "../domain/date/localDateDefaults.js";
+import { DataSafetyWorkspace } from "./workspaces/DataSafetyWorkspace.js";
+import { HoldingRegistrySection } from "./workspaces/holding/HoldingRegistrySection.js";
+import { ImportWorkspace } from "./workspaces/ImportWorkspace.js";
+import { LoanRegistrySection } from "./workspaces/loan/LoanRegistrySection.js";
+import { PendingTransactionsWorkspace } from "./workspaces/PendingTransactionsWorkspace.js";
+import { PropertyRegistrySection } from "./workspaces/property/PropertyRegistrySection.js";
+import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
+import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
 import type { ReviewState } from "./workspaces/types.js";
 
 const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());

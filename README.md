@@ -203,6 +203,13 @@ The schema, snapshot format (versions 1-10), public ledger methods, query orderi
 - Planning and policy source of truth for AI work lives in plan and repository AI instructions.
   Learn more: [plan.md](plan.md), [.github/copilot-instructions.md](.github/copilot-instructions.md), [.github/instructions/style.instructions.md](.github/instructions/style.instructions.md), [.github/instructions/planning.instructions.md](.github/instructions/planning.instructions.md), [.github/instructions/testing.instructions.md](.github/instructions/testing.instructions.md), [.github/instructions/playwright.instructions.md](.github/instructions/playwright.instructions.md)
 
+## Renderer feature ownership
+
+- Registry sections, create forms, history views, and draft/formatting helpers live under [holding](src/renderer/workspaces/holding/), [property](src/renderer/workspaces/property/), and [loan](src/renderer/workspaces/loan/). Registry sections retain loading, saving, drafts, focus refs, and refresh ownership; extracted presentation components receive typed props. [Data safety](src/renderer/workspaces/DataSafetyWorkspace.tsx) contains backup, export, and restore only.
+- [Import preflight](src/renderer/import/useImportPreflight.ts) owns preview request identity, progress subscriptions, cancellation, and finalization. File selection, account, or CSV mapping changes invalidate and cancel pending previews; late responses and progress cannot overwrite newer context, and unmount removes the subscription and cancels pending work. Explicit cancellation failures remain visible; failures during obsolete-request cleanup are logged locally.
+- [Shared preflight status](src/renderer/import/ImportPreflightStatus.tsx) preserves the existing progress/cancel presentation. CSV profiles/mapping and PDF parser evidence/exclusions remain in their format-specific sections. These changes do not alter import confirmation, persistence, styling, or registry validation policies.
+- Renderer preflight component-contract tests use the existing Playwright browser server with a controlled bridge to schedule responses; they are not native import-to-ledger evidence. Existing Electron journeys separately cover real import and registry persistence.
+
 ## Agent Readiness
 
 - Universal entrypoint for agents: [AGENTS.md](AGENTS.md)
