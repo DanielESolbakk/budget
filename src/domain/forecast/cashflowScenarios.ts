@@ -1,3 +1,6 @@
+import { addMinorUnits as addSafeMinorUnits } from "../money/minorUnits.js";
+import { nextYearMonth as addOneMonth } from "../date/calendarDate.js";
+import { isIsoCalendarDate as isCalendarDate } from "../date/calendarDate.js";
 import { convertCurrencyAmount } from "../money/convertCurrencyAmount.js";
 import {
   isCurrencyCode,
@@ -146,12 +149,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isCalendarDate(value: unknown): value is string {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
 function isIsoTimestamp(value: unknown): value is string {
   return typeof value === "string" &&
     isCalendarDate(value.slice(0, 10)) &&
@@ -282,20 +279,7 @@ export function validateCashflowScenarioRequest(input: unknown): CashflowScenari
 }
 
 function addMinorUnits(total: number, amountMinor: number): number {
-  const result = total + amountMinor;
-  if (!Number.isSafeInteger(result)) {
-    throw new RangeError("Cashflow scenario exceeds the safe integer range.");
-  }
-  return result;
-}
-
-function addOneMonth(yearMonth: string): string {
-  const [yearText, monthText] = yearMonth.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-  return month === 12
-    ? `${year + 1}-01`
-    : `${year}-${String(month + 1).padStart(2, "0")}`;
+  return addSafeMinorUnits(total, amountMinor, "Cashflow scenario exceeds the safe integer range.");
 }
 
 function monthEndDate(yearMonth: string): string {

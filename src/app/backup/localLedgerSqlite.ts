@@ -1,3 +1,4 @@
+import { nextYearMonth } from "../../domain/date/calendarDate.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -81,27 +82,7 @@ import type {
 } from "../../domain/types.js";
 import { isCurrencyCode, isYearMonth } from "../../domain/types.js";
 
-interface LocalLedgerSeedData {
-  household: Household;
-  accounts: Account[];
-  transactions: Transaction[];
-  pendingObservations?: PendingTransactionObservation[];
-  importJobs: ImportJob[];
-  monthlyCategoryTargets: MonthlyCategoryTarget[];
-  merchantCategoryRules?: MerchantCategoryRule[];
-  accountStatementCoveragePeriods?: AccountStatementCoveragePeriod[];
-  accountBalanceCheckpoints?: AccountBalanceCheckpoint[];
-  exchangeRates?: ExchangeRate[];
-  properties?: PropertyRecord[];
-  propertyValuations?: PropertyValuationSnapshot[];
-  holdings?: HoldingRecord[];
-  holdingValuations?: HoldingValuationSnapshot[];
-  loanRecords?: LoanRecord[];
-  loanBalanceSnapshots?: LoanBalanceSnapshot[];
-  recurringCommitments?: RecurringCommitment[];
-  recurringCommitmentPaymentLinks?: RecurringCommitmentPaymentLink[];
-  recurringCommitmentDecisions?: RecurringCommitmentDecision[];
-}
+type LocalLedgerSeedData = Omit<LedgerSnapshotData, "createdAtIso">;
 
 export interface LocalLedgerRuntimeMetadata {
   household: Household;
@@ -271,13 +252,6 @@ const categorySortParameters = [
 
 function merchantSearchValue(transaction: Pick<Transaction, "merchantRaw" | "merchantAlias">): string {
   return `${transaction.merchantRaw}\n${transaction.merchantAlias ?? ""}`.toUpperCase();
-}
-
-function nextYearMonth(yearMonth: string): string {
-  const [yearText, monthText] = yearMonth.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-  return month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
 }
 
 function mapTransactionRow(transaction: TransactionRow): Transaction {

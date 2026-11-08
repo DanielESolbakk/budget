@@ -1,16 +1,5 @@
+import { nextYearMonth as addOneMonth } from "../date/calendarDate.js";
 import type { MonthlyTotal, Transaction } from "../types.js";
-
-function addOneMonth(yearMonth: string): string {
-  const [yearStr, monthStr] = yearMonth.split("-");
-  const year = Number(yearStr);
-  const month = Number(monthStr);
-
-  if (month === 12) {
-    return `${year + 1}-01`;
-  }
-
-  return `${year}-${String(month + 1).padStart(2, "0")}`;
-}
 
 function toYearMonth(bookedAtIso: string): string {
   return bookedAtIso.slice(0, 7);
