@@ -57,6 +57,8 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 ### Ledger And Review
 
 - Ledger queries expose filtering by account, date, merchant, amount, category, and confidence.
+- Date-only ledger bounds cover the entire UTC calendar day; timestamp bounds are inclusive instants at millisecond precision, including equivalent `Z` and offset representations. Unparseable bounds produce an explicit error.
+- SQLite derives and indexes `transactions.booked_at_millis` for date-range filtering while preserving `booked_at_iso`, existing text sort order, fingerprints and backup contracts. All transaction insertion paths populate the numeric value. Opening an older database atomically adds/backfills the column and creates the index; an unparseable historical booking aborts that upgrade without changing its original booking data. Rows inserted by an older application are backfilled on the next open. Backup recovery derives the value again from the original strings.
 - Import review isolates unresolved rows from text, CSV, and PDF imports.
 - Categorization review isolates low-confidence and uncategorized transactions.
 - Correction actions update the transaction record and retain provenance.

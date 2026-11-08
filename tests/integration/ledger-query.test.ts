@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import type { Transaction } from "../../src/domain/types.js";
@@ -9,6 +10,7 @@ import {
   getMonthlyAttentionSummary,
   queryHouseholdDashboardData,
 } from "../../src/app/dashboardApi.js";
+import { filterTransactions, type TransactionQuery } from "../../src/domain/ledger/filterTransactions.js";
 
 const HOUSEHOLD = {
   id: "hh-ledger-query",
@@ -51,7 +53,7 @@ function transaction(
 
 function withDatabase<Result>(
   transactions: Transaction[],
-  run: (database: ReturnType<typeof createLocalLedgerDatabase>) => Result
+  run: (database: ReturnType<typeof createLocalLedgerDatabase>, dbPath: string) => Result
 ): Result {
   const directory = mkdtempSync(join(tmpdir(), "budget-ledger-query-"));
   const database = createLocalLedgerDatabase({
@@ -67,7 +69,7 @@ function withDatabase<Result>(
   });
 
   try {
-    return run(database);
+    return run(database, join(directory, "ledger.sqlite"));
   } finally {
     database.close();
     rmSync(directory, { recursive: true, force: true });
@@ -75,6 +77,256 @@ function withDatabase<Result>(
 }
 
 describe("SQLite ledger queries", () => {
+  it("upgrades historical bookings to an indexed numeric value without rewriting their text", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-booking-upgrade-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      CREATE TABLE transactions (
+        id TEXT PRIMARY KEY, household_id TEXT NOT NULL, account_id TEXT NOT NULL,
+        booked_at_iso TEXT NOT NULL, amount_minor INTEGER NOT NULL, merchant_raw TEXT NOT NULL,
+        category_id TEXT, import_job_id TEXT
+      );
+      INSERT INTO transactions VALUES ('bare', 'hh-ledger-query', 'z-account-checking', '1970-01-01', -100, 'Kiwi Stavanger', 'groceries', NULL);
+      INSERT INTO transactions VALUES ('offset', 'hh-ledger-query', 'z-account-checking', '1969-12-31T23:00:00-01:00', -200, 'Rema 1000', NULL, NULL);
+    `);
+    legacy.close();
+    let ledger: ReturnType<typeof createLocalLedgerDatabase> | undefined;
+    let inspection: DatabaseSync | undefined;
+    try {
+      ledger = createLocalLedgerDatabase({ dbPath });
+      expect(ledger.queryTransactions(HOUSEHOLD.id, {
+        bookedFromIso: "1970-01-01T00:00:00Z", bookedToIso: "1970-01-01T00:00:00.000Z",
+      }).transactions.map(({ id }) => id).sort()).toEqual(["bare", "offset"]);
+      inspection = new DatabaseSync(dbPath);
+      expect(inspection.prepare("SELECT id, booked_at_iso, booked_at_millis FROM transactions ORDER BY id").all())
+        .toEqual([
+          { id: "bare", booked_at_iso: "1970-01-01", booked_at_millis: 0 },
+          { id: "offset", booked_at_iso: "1969-12-31T23:00:00-01:00", booked_at_millis: 0 },
+        ]);
+      inspection.exec(`
+        INSERT INTO transactions (id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw)
+        VALUES ('older-application', 'hh-ledger-query', 'z-account-checking', '1970-01-02', -100, 'Kiwi');
+      `);
+      inspection.close();
+      inspection = undefined;
+      ledger.close();
+      ledger = createLocalLedgerDatabase({ dbPath });
+      expect(ledger.queryTransactions(HOUSEHOLD.id, { bookedFromIso: "1970-01-01", bookedToIso: "1970-01-01" }).totalCount)
+        .toBe(2);
+      expect(ledger.queryTransactions(HOUSEHOLD.id, { bookedFromIso: "1970-01-02", bookedToIso: "1970-01-02" }).transactions)
+        .toMatchObject([{ id: "older-application", bookedAtIso: "1970-01-02" }]);
+    } finally {
+      inspection?.close();
+      ledger?.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back a booking upgrade with unparseable historical data and releases the database", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-booking-upgrade-invalid-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      CREATE TABLE transactions (
+        id TEXT PRIMARY KEY, household_id TEXT NOT NULL, account_id TEXT NOT NULL,
+        booked_at_iso TEXT NOT NULL, amount_minor INTEGER NOT NULL, merchant_raw TEXT NOT NULL,
+        category_id TEXT, import_job_id TEXT
+      );
+      INSERT INTO transactions VALUES ('valid', 'hh-ledger-query', 'z-account-checking', '1970-01-01', -100, 'Kiwi', NULL, NULL);
+      INSERT INTO transactions VALUES ('invalid', 'hh-ledger-query', 'z-account-checking', 'not-a-date', -100, 'Rema', NULL, NULL);
+    `);
+    legacy.close();
+    let inspection: DatabaseSync | undefined;
+    try {
+      expect(() => {
+        const unexpectedLedger = createLocalLedgerDatabase({ dbPath });
+        unexpectedLedger.close();
+      }).toThrow("Invalid transaction booking date");
+      inspection = new DatabaseSync(dbPath);
+      const columns = inspection.prepare("PRAGMA table_info(transactions)").all();
+      expect(columns.some(({ name }) => name === "booked_at_millis")).toBe(false);
+      expect(inspection.prepare("SELECT id, booked_at_iso FROM transactions ORDER BY id").all()).toEqual([
+        { id: "invalid", booked_at_iso: "not-a-date" },
+        { id: "valid", booked_at_iso: "1970-01-01" },
+      ]);
+      inspection.exec("BEGIN EXCLUSIVE; ROLLBACK;");
+    } finally {
+      inspection?.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("updates numeric booking values in append and atomic import paths before reopening", () => {
+    withDatabase([], (ledger, dbPath) => {
+      expect(ledger.appendTransactions([transaction("append", "1970-01-01", -100, "Kiwi")])).toBe(1);
+      expect(ledger.appendImportJobAndTransactions({
+        id: "numeric-import", householdId: HOUSEHOLD.id, sourceType: "csv",
+        sourceName: "synthetic.csv", startedAtIso: "2026-05-23T00:00:00Z",
+      }, [transaction("import", "1969-12-31T23:00:00-01:00", -100, "Rema")])).toBe(1);
+      expect(ledger.queryTransactions(HOUSEHOLD.id, {
+        bookedFromIso: "1970-01-01T00:00:00.000Z", bookedToIso: "1970-01-01T00:00:00.000Z",
+      }).totalCount).toBe(2);
+      const inspection = new DatabaseSync(dbPath);
+      try {
+        expect(inspection.prepare("SELECT id, booked_at_millis FROM transactions ORDER BY id").all()).toEqual([
+          { id: "append", booked_at_millis: 0 }, { id: "import", booked_at_millis: 0 },
+        ]);
+      } finally {
+        inspection.close();
+      }
+    });
+  });
+
+  it.each(["not-a-date", "2026-05-23' OR 1=1 --"])("rejects invalid date bounds without SQL interpolation: %s", (value) => {
+    withDatabase([], (database) => {
+      expect(() => database.queryTransactions(HOUSEHOLD.id, { bookedFromIso: value }))
+        .toThrow("Invalid transaction booking date");
+      expect(() => database.queryTransactions(HOUSEHOLD.id, { bookedToIso: value, datePreset: "thisMonth" }))
+        .toThrow("Invalid transaction booking date");
+    });
+  });
+
+  it("filters pre-epoch timestamps and the final supported calendar day without rollover", () => {
+    withDatabase([
+      transaction("pre-epoch", "1969-12-31T23:59:59.999Z", -100, "Pre epoch"),
+      transaction("negative-offset", "1969-12-31T23:00:00-01:00", -100, "Negative offset"),
+      transaction("fractional", "1970-01-01T00:00:00.0009Z", -100, "Fractional"),
+      transaction("last-year", "9999-12-31T23:59:59.999Z", -100, "Last year"),
+    ], (database) => {
+      expect(database.queryTransactions(HOUSEHOLD.id, {
+        bookedFromIso: "1970-01-01T00:00:00Z", bookedToIso: "1970-01-01T00:00:00.000Z",
+      }).transactions.map(({ id }) => id).sort()).toEqual(["fractional", "negative-offset"]);
+      expect(database.queryTransactions(HOUSEHOLD.id, {
+        bookedFromIso: "9999-12-31", bookedToIso: "9999-12-31",
+      }).transactions.map(({ id }) => id)).toEqual(["last-year"]);
+    });
+  });
+
+  const boundaryTransactions = [
+    transaction("previous", "2026-05-22T23:59:59.999Z", -100, "Previous"),
+    transaction("bare", "2026-05-23", -100, "Bare date"),
+    transaction("midnight", "2026-05-23T00:00:00Z", -100, "Midnight"),
+    transaction("milliseconds", "2026-05-23T00:00:00.000Z", -100, "Milliseconds"),
+    transaction("offset", "2026-05-23T02:00:00+02:00", -100, "Offset"),
+    transaction("afternoon", "2026-05-23T12:00:00.123Z", -100, "Afternoon"),
+    transaction("last", "2026-05-23T23:59:59.999Z", -100, "Last millisecond"),
+    transaction("offset-last", "2026-05-24T01:59:59.999+02:00", -100, "Offset last"),
+    transaction("next-bare", "2026-05-24", -100, "Next bare date"),
+    transaction("next", "2026-05-24T00:00:00Z", -100, "Next"),
+  ];
+
+  it("filters and paginates 10,000 mixed booking representations with exact counts", () => {
+    const transactions = Array.from({ length: 1_000 }, (_, index) =>
+      boundaryTransactions.map((row) => ({ ...row, id: `bulk-${String(index).padStart(4, "0")}-${row.id}` }))
+    ).flat();
+    withDatabase(transactions, (database) => {
+      expect(database.queryTransactions(HOUSEHOLD.id, {
+        bookedFromIso: "2026-05-23", bookedToIso: "2026-05-23",
+      }).totalCount).toBe(7_000);
+      expect(database.queryTransactions(HOUSEHOLD.id, {
+        bookedFromIso: "2026-05-23T00:00:00.000Z", bookedToIso: "2026-05-23T02:00:00+02:00",
+      }).totalCount).toBe(4_000);
+      const page = database.queryTransactions(HOUSEHOLD.id, {
+        bookedFromIso: "2026-05-23", bookedToIso: "2026-05-23",
+        merchant: "Midnight", sortBy: "merchantRaw", sortDirection: "asc", page: 2, pageSize: 100,
+      });
+      expect(page.totalCount).toBe(1_000);
+      expect(page.transactions.map(({ id }) => id)).toEqual(
+        Array.from({ length: 100 }, (_, index) => `bulk-${String(index + 100).padStart(4, "0")}-midnight`)
+      );
+    });
+  });
+
+  it.each<{ name: string; query: TransactionQuery; expected: string[] }>([
+    {
+      name: "inclusive calendar From includes every midnight representation",
+      query: { bookedFromIso: "2026-05-23" },
+      expected: ["afternoon", "bare", "last", "midnight", "milliseconds", "next", "next-bare", "offset", "offset-last"],
+    },
+    {
+      name: "inclusive calendar To excludes next-day bare rows but includes offset instants",
+      query: { bookedToIso: "2026-05-23" },
+      expected: ["afternoon", "bare", "last", "midnight", "milliseconds", "offset", "offset-last", "previous"],
+    },
+    {
+      name: "calendar-day intersection includes only that UTC day",
+      query: { bookedFromIso: "2026-05-23", bookedToIso: "2026-05-23" },
+      expected: ["afternoon", "bare", "last", "midnight", "milliseconds", "offset", "offset-last"],
+    },
+    {
+      name: "timestamp From treats offset and midnight encodings as the same instant",
+      query: { bookedFromIso: "2026-05-23T02:00:00+02:00" },
+      expected: ["afternoon", "bare", "last", "midnight", "milliseconds", "next", "next-bare", "offset", "offset-last"],
+    },
+    {
+      name: "timestamp To with milliseconds includes all same-instant rows",
+      query: { bookedToIso: "2026-05-23T00:00:00.000Z" },
+      expected: ["bare", "midnight", "milliseconds", "offset", "previous"],
+    },
+    {
+      name: "same-instant timestamp range returns every equivalent midnight",
+      query: { bookedFromIso: "2026-05-23T00:00:00Z", bookedToIso: "2026-05-23T02:00:00+02:00" },
+      expected: ["bare", "midnight", "milliseconds", "offset"],
+    },
+    {
+      name: "fractional timestamp range preserves exact millisecond boundaries",
+      query: { bookedFromIso: "2026-05-23T12:00:00.123Z", bookedToIso: "2026-05-23T12:00:00.123Z" },
+      expected: ["afternoon"],
+    },
+    {
+      name: "reversed instant bounds return no rows",
+      query: { bookedFromIso: "2026-05-24", bookedToIso: "2026-05-23" },
+      expected: [],
+    },
+  ])("$name", ({ query, expected }) => {
+    withDatabase(boundaryTransactions, (database) => {
+      const result = database.queryTransactions(HOUSEHOLD.id, query);
+      expect(result.transactions.map(({ id }) => id).sort()).toEqual(expected);
+      expect(result.totalCount).toBe(expected.length);
+      expect(filterTransactions(boundaryTransactions, query).map(({ id }) => id).sort()).toEqual(expected);
+      expect(database.loadLedgerSnapshotData().transactions.map(({ id, bookedAtIso }) => ({ id, bookedAtIso })))
+        .toEqual([...boundaryTransactions].sort((a, b) => a.id.localeCompare(b.id))
+          .map(({ id, bookedAtIso }) => ({ id, bookedAtIso })));
+    });
+  });
+
+  it("counts before paginating timestamp-equivalent rows without changing stored-text ordering", () => {
+    withDatabase(boundaryTransactions, (database) => {
+      const query: TransactionQuery = {
+        bookedFromIso: "2026-05-23T00:00:00.000Z",
+        bookedToIso: "2026-05-23T00:00:00.000Z",
+        sortBy: "bookedAtIso", sortDirection: "asc", page: 2, pageSize: 2,
+      };
+      const page = database.queryTransactions(HOUSEHOLD.id, query);
+      expect(page.totalCount).toBe(4);
+      expect(page.transactions.map(({ id }) => id)).toEqual(["midnight", "offset"]);
+    });
+  });
+
+  it.each([
+    { now: new Date(2024, 1, 15, 12), first: "2024-02-01", last: "2024-02-29", next: "2024-03-01" },
+    { now: new Date(2026, 11, 15, 12), first: "2026-12-01", last: "2026-12-31", next: "2027-01-01" },
+  ])("includes bare-date month boundaries for $first through $last", ({ now, first, last, next }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      withDatabase([
+        transaction("first", first, -100, "First"),
+        transaction("last", last, -100, "Last"),
+        transaction("next", next, -100, "Next"),
+      ], (database) => {
+        expect(database.queryTransactions(HOUSEHOLD.id, { datePreset: "thisMonth" }).transactions.map(({ id }) => id))
+          .toEqual(["last", "first"]);
+        expect(database.queryTransactions(HOUSEHOLD.id, {
+          datePreset: "thisMonth", bookedFromIso: last, bookedToIso: next,
+        }).transactions.map(({ id }) => id)).toEqual(["last"]);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rebuilds NOK history and forecasts from persisted dated rates without changing native ledger amounts", () => {
     withDatabase([
       transaction("april-income", "2026-04-03T08:00:00Z", 10_000, "SYNTHETIC INCOME"),

@@ -514,6 +514,15 @@ test("property entry leaves existing account and transaction records unchanged",
   try {
     const propertyWindow = await propertyApp.firstWindow();
     await propertyWindow.waitForLoadState("domcontentloaded");
+    const ledgerRecordsAfterInitialization = {
+      accounts: ledgerRecordsBefore.accounts,
+      transactions: ledgerRecordsBefore.transactions.map((record) =>
+        record.id === "property-regression-transaction"
+          ? { ...record, booked_at_millis: 1_789_430_400_000 }
+          : record
+      ),
+    };
+    expect(readExistingLedgerRecords(databasePath)).toEqual(ledgerRecordsAfterInitialization);
     const appShell = new AppShellPage(propertyWindow);
     await appShell.openWorkspace("Properties");
     const registry = new PropertyRegistryPage(propertyWindow);
@@ -524,7 +533,7 @@ test("property entry leaves existing account and transaction records unchanged",
       currencyCode: "NOK",
     });
 
-    expect(readExistingLedgerRecords(databasePath)).toEqual(ledgerRecordsBefore);
+    expect(readExistingLedgerRecords(databasePath)).toEqual(ledgerRecordsAfterInitialization);
   } finally {
     await propertyApp.close();
   }

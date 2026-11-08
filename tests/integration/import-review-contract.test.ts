@@ -393,6 +393,15 @@ describe("import review persistence contract", () => {
           sourceType: "csv",
         },
       });
+      expect(testLedger.ledger.queryTransactions(HOUSEHOLD.id, {
+        bookedFromIso: correction.bookedAtIso,
+        bookedToIso: correction.bookedAtIso,
+      }).transactions).toMatchObject([{
+        bookedAtIso: correction.bookedAtIso,
+        amountMinor: correction.amountMinor,
+        importJobId: testLedger.reviewItem.importJobId,
+        sourceType: "csv",
+      }]);
       const repeatedResult = invokeReviewServiceAction(
         "applyImportReviewCorrection",
         testLedger.ledger,
