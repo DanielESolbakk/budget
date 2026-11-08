@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,6 +11,7 @@ import {
 import { runPdfImportWorkflow } from "../../src/app/import/importPdf.js";
 import { defaultParserAdapterRegistry } from "../../src/domain/import/parserAdapterRegistry.js";
 import { parseRogalandStatementText } from "../../src/domain/import/pdfTextParser.js";
+import { writePdfObjects } from "../helpers/pdfObjectWriter.js";
 
 interface PdfTextPlacement {
   x: number;
@@ -40,20 +42,7 @@ function createSyntheticPdf(pages: readonly PdfTextPlacement[][]): Buffer {
     }),
   ];
 
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  for (const [index, object] of objects.entries()) {
-    offsets.push(Buffer.byteLength(pdf, "ascii"));
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  }
-
-  const crossReferenceOffset = Buffer.byteLength(pdf, "ascii");
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const offset of offsets.slice(1)) {
-    pdf += `${offset.toString().padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${crossReferenceOffset}\n%%EOF`;
-  return Buffer.from(pdf, "ascii");
+  return writePdfObjects(objects);
 }
 
 function createColumnOrderedStatement(): Buffer {
@@ -125,6 +114,9 @@ function createPaginatedRogalandStatement(): Buffer {
 }
 
 describe("position-aware PDF extraction", () => {
+  it("preserves representative rotated PDF bytes captured before writer extraction", () => {
+    expect(createHash("sha256").update(createColumnOrderedStatement()).digest("hex")).toBe("06d8cc5c775a0a0202a00d6d76349dfb125bb0fc89a281850be983febac9f908");
+  });
   it("maps malformed rows from a later PDF page back to their original source lines", async () => {
     const sourceDocument = await extractSourceDocumentFromBuffer(createSyntheticPdf([
       createRogalandStatementPage("28.05.2026", "-10,00", "FIRST PAGE SHOP", "1/2 Rogaland Sparebank"),

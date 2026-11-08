@@ -26,7 +26,8 @@ function resolveOptions(options: FixtureTransactionOptions): CsvRowMappingOption
 
 /**
  * Reads a fixture CSV file and returns mapped transactions only when the full
- * fixture passes validation; use importFixtureCsv when validation failures matter.
+ * fixture contains valid booked rows only; use importFixtureCsv for skipped
+ * rows or pending observations.
  */
 export function buildTransactionsFromFixturePath(
   filePath: string,
@@ -38,20 +39,31 @@ export function buildTransactionsFromFixturePath(
 }
 
 /**
- * Maps pre-parsed fixture row objects to transactions only when all rows are valid.
- * Use mapCsvRows when validation failures matter.
+ * Maps valid booked rows only. Invalid, empty or pending input throws with
+ * bounded mapper-index diagnostics (not physical CSV line numbers).
+ * Use mapCsvRows for the full result.
  */
 export function buildTransactionsFromFixtureRows(
   rows: Array<Record<string, string>>,
   options: FixtureTransactionOptions = {}
 ): Transaction[] {
   const result = mapCsvRows(rows, resolveOptions(options));
+  if (result.skipped.length > 0) {
+    const diagnostics = result.skipped.slice(0, 5).map(({ rowIndex, errors }) =>
+      `mapper row ${rowIndex}: ${errors.slice(0, 3).map(({ code, field }) => `${code} (${field})`).join(", ")}`
+    ).join("; ");
+    throw new Error(`Fixture has ${result.skipped.length} invalid rows: ${diagnostics}. Use importFixtureCsv or mapCsvRows for the full result.`);
+  }
+  const pendingCount = result.pendingObservations?.length ?? 0;
+  if (pendingCount > 0) {
+    throw new Error(`Fixture has ${pendingCount} pending observations. Use importFixtureCsv or mapCsvRows for the full result.`);
+  }
   return result.transactions;
 }
 
 /**
- * Reads a fixture CSV file and returns the full CsvImportResult including skipped rows.
- * Use when tests need to inspect both valid transactions and validation failures.
+ * Returns the mapper's full result, including pending observations and skipped
+ * rows. Invalid input retains the mapper's atomic empty-transaction contract.
  */
 export function importFixtureCsv(
   filePath: string,

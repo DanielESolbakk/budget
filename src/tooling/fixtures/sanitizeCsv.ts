@@ -54,6 +54,15 @@ function getColumnKind(columnName: string): string | null {
 }
 
 export function sanitizeFixtureCsv(options: SanitizeCsvOptions): SanitizationResult {
+  if (!options.dryRun) {
+    const paths = [options.inputPath, options.outputPath, options.mapPath].map((path) => {
+      const resolved = resolve(path);
+      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    });
+    if (new Set(paths).size !== paths.length) {
+      throw new Error("Sanitizer input, output and map paths must be distinct.");
+    }
+  }
   const parsed = readFixtureCsv(options.inputPath);
   const map = new Map<string, SanitizationMapEntry>();
 

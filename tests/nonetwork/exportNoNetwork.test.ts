@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { exportCsv, exportCsvToFile, exportLedgerCsvToFile } from "../../src/app/exportCsv.js";
 import { buildCsvOutput } from "../../src/domain/export/buildCsvRows.js";
-import { buildTransactionsFromFixturePath } from "../../src/tooling/fixtures/fixtureTransactions.js";
+import { loadRogalandBookedTransactions } from "../helpers/loadRogalandBookedTransactions.js";
 
 const FIXTURE_PATH = "tests/fixtures/synthetic/rogaland-2026-05-synthetic.csv";
 
@@ -16,7 +16,7 @@ describe("export no-network verification", () => {
   });
 
   it("exportCsv does not invoke fetch", () => {
-    const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+    const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
     let fetchCalled = false;
     (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
       fetchCalled = true;
@@ -30,7 +30,7 @@ describe("export no-network verification", () => {
   });
 
   it("buildCsvOutput does not invoke fetch", () => {
-    const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+    const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
     let fetchCalled = false;
     (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
       fetchCalled = true;
@@ -44,7 +44,7 @@ describe("export no-network verification", () => {
   });
 
   it("exportCsv produces identical results on repeated offline calls (determinism)", () => {
-    const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+    const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
     let fetchCalled = false;
     (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
       fetchCalled = true;
@@ -60,7 +60,7 @@ describe("export no-network verification", () => {
   });
 
   it("exportCsvToFile does not invoke fetch", () => {
-    const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+    const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
     const tempDir = mkdtempSync(join(tmpdir(), "budget-export-no-network-"));
     const outputPath = join(tempDir, "export.csv");
     let fetchCalled = false;
@@ -79,7 +79,7 @@ describe("export no-network verification", () => {
   });
 
   it("exportLedgerCsvToFile does not invoke fetch", () => {
-    const transactions = buildTransactionsFromFixturePath(FIXTURE_PATH);
+    const transactions = loadRogalandBookedTransactions(FIXTURE_PATH);
     const tempDir = mkdtempSync(join(tmpdir(), "budget-ledger-export-no-network-"));
     const outputPath = join(tempDir, "export.csv");
     let fetchCalled = false;

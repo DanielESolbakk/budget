@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { parse } from "csv-parse/sync";
 
 export interface ParsedFixtureCsv {
@@ -47,11 +47,23 @@ export function parseFixtureCsv(text: string): ParsedFixtureCsv {
   return { header, rows };
 }
 
-export function stringifyFixtureCsv(parsed: ParsedFixtureCsv): string {
-  const lines = [parsed.header.join(";")];
+function escapeFixtureCell(value: string): string {
+  return /[;"\r\n]/.test(value) || value.trim() !== value
+    ? `"${value.replace(/"/g, '""')}"`
+    : value;
+}
 
-  for (const row of parsed.rows) {
-    lines.push(row.join(";"));
+export function stringifyFixtureCsv(parsed: ParsedFixtureCsv): string {
+  if (parsed.header.length === 0) {
+    throw new Error("CSV header must contain at least one cell.");
+  }
+  const lines = [parsed.header.map(escapeFixtureCell).join(";")];
+
+  for (const [index, row] of parsed.rows.entries()) {
+    if (row.length !== parsed.header.length) {
+      throw new Error(`Row ${index + 2} has ${row.length} cells, expected ${parsed.header.length}.`);
+    }
+    lines.push(row.map(escapeFixtureCell).join(";"));
   }
 
   return `${lines.join("\n")}\n`;
@@ -59,10 +71,6 @@ export function stringifyFixtureCsv(parsed: ParsedFixtureCsv): string {
 
 export function readFixtureCsv(filePath: string): ParsedFixtureCsv {
   return parseFixtureCsv(readFileSync(filePath, "utf8"));
-}
-
-export function writeFixtureCsv(filePath: string, parsed: ParsedFixtureCsv): void {
-  writeFileSync(filePath, stringifyFixtureCsv(parsed), "utf8");
 }
 
 export function rowsToObjects(parsed: ParsedFixtureCsv): Array<Record<string, string>> {

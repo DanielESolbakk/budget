@@ -1,3 +1,5 @@
+import { writePdfObjects } from "./pdfObjectWriter.js";
+
 interface PdfTextPlacement {
   x: number;
   y: number;
@@ -40,20 +42,7 @@ function createPositionedPdf(pages: readonly PdfTextPlacement[][]): Buffer {
     }),
   ];
 
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  for (const [index, object] of objects.entries()) {
-    offsets.push(Buffer.byteLength(pdf, "ascii"));
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  }
-
-  const crossReferenceOffset = Buffer.byteLength(pdf, "ascii");
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const offset of offsets.slice(1)) {
-    pdf += `${offset.toString().padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${crossReferenceOffset}\n%%EOF`;
-  return Buffer.from(pdf, "ascii");
+  return writePdfObjects(objects);
 }
 
 function createStatementPage(
