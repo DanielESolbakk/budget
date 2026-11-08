@@ -337,8 +337,7 @@ describe("pdf import contract", () => {
       }],
       textLineEvidence: [],
     };
-    const importJobs: ImportJob[] = [];
-    const importedTransactions: Transaction[] = [];
+    const ledger = makeTestLedger();
     let lookedUpContentDigest: string | undefined;
 
     const response = runPdfImportWorkflow({
@@ -356,15 +355,14 @@ describe("pdf import contract", () => {
         lookedUpContentDigest = contentDigest;
         return [];
       },
-      appendImportJob: (importJob) => importJobs.push(importJob),
-      appendTransactions: (transactions) => {
-        importedTransactions.push(...transactions);
-        return transactions.length;
-      },
-      getTransactionsForImportJob: (importJobId) =>
-        importedTransactions.filter((transaction) => transaction.importJobId === importJobId),
+      appendImportJob: () => { throw new Error("Normal PDF import must use atomic persistence."); },
+      appendTransactions: () => { throw new Error("Normal PDF import must use atomic persistence."); },
+      appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
+      getTransactionsForImportJob: ledger.getTransactionsForImportJob,
     });
 
+    const importJobs = ledger.loadLedgerSnapshotData().importJobs;
+    const importedTransactions = ledger.getTransactionsForImportJob("bank-b-import-job");
     expect(response).toMatchObject({ ok: true, adapterId: "bank-b-pdf-v1", transactionCount: 1 });
     expect(importJobs[0]).toMatchObject({
       adapterId: "bank-b-pdf-v1",
@@ -377,6 +375,8 @@ describe("pdf import contract", () => {
     expect(lookedUpContentDigest).toBe(expectedContentDigest);
     expect(importJobs[0]?.provenance?.contentDigest).toBe(expectedContentDigest);
     expect(importedTransactions).toMatchObject([{ merchantRaw: "BANK-B SHOP", sourceType: "pdf" }]);
+    expect(importedTransactions).toHaveLength(1);
+    expect(importedTransactions[0]?.amountMinor).toBe(-1200);
   });
 
   describe("pending bank transaction imports", () => {
