@@ -69,6 +69,9 @@ describe("PDF parser determinism", () => {
       const r1 = defaultParserAdapterRegistry.parse(text, BASE_OPTIONS);
       const r2 = defaultParserAdapterRegistry.parse(text, BASE_OPTIONS);
 
+      expect(r1.ok).toBe(true);
+      expect(r2.ok).toBe(true);
+
       if (!r1.ok || !r2.ok) return;
 
       const dates1 = r1.candidates.map((c) => c.bookedAtIso);

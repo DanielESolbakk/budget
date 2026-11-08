@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: ["tests/integration/**/*.test.ts"],
     environment: "node",
+    maxWorkers: 2,
     coverage: {
       provider: "v8",
       reportsDirectory: "coverage/integration",
