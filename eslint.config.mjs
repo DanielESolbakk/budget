@@ -80,6 +80,10 @@ export default tseslint.config(
           group: ["**/app/**", "**/electron/**", "electron", "node:*", "fs", "fs/**", "path", "sqlite"],
           message: "Shared contracts and composition must not depend on application services or desktop runtime."
         }]
+      }],
+      "no-restricted-syntax": ["error", {
+        selector: "ImportExpression[source.value=/app\\u002F|electron\\u002F|^electron$|^node:|^fs$|^fs\\u002F|^path$|^sqlite$/]",
+        message: "Do not dynamically load application services or desktop runtime in shared modules."
       }]
     }
   },

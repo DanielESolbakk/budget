@@ -83,7 +83,10 @@ Alternative: enable the GitHub Copilot built-in Experimental setting for Impecca
 - `src/domain/types.ts`: shared domain types.
 - `src/domain/import/`: import-specific pure logic such as transaction fingerprinting.
 - `src/domain/merchant/`: merchant normalization and later categorization support.
+- `src/shared/`: runtime-independent contracts, validation, and pure composition consumed by application and renderer code.
 - `src/app/`: thin application-level workflows that compose domain modules.
+- `electron/main.ts`: startup, window and database lifecycle, service construction, and channel registration.
+- `electron/ipc/`: responsibility-grouped IPC handlers and input validation; connection ownership remains in main.
 - `scripts/`: command-line entrypoints only; keep reusable logic in `src/`.
 - `tests/unit/`: pure logic tests.
 - `tests/integration/`: fixture and cross-module contract tests.

@@ -46,6 +46,34 @@ describe("QA lint ownership", () => {
   });
 
   it.each([
+    "node:fs/promises",
+    "../app/backup/localLedgerSqlite.js",
+    "../../electron/ipc/context.js",
+    "electron",
+    "fs",
+    "fs/promises",
+    "path",
+    "sqlite",
+  ])("rejects dynamic desktop dependencies in shared modules: %s", async (specifier) => {
+    const results = await eslint.lintText(`export async function load() { return import("${specifier}"); }`, {
+      filePath: "src/shared/synthetic-boundary.ts",
+    });
+    expect(results.flatMap((result) => result.messages.map((message) => message.ruleId)))
+      .toContain("no-restricted-syntax");
+  });
+
+  it.each([
+    "../domain/money.js",
+    "./dashboard.js",
+  ])("allows dynamic domain and shared dependencies: %s", async (specifier) => {
+    const results = await eslint.lintText(`export async function load() { return import("${specifier}"); }`, {
+      filePath: "src/shared/synthetic-boundary.ts",
+    });
+    expect(results.flatMap((result) => result.messages))
+      .toEqual([]);
+  });
+
+  it.each([
     ".agents/skills/impeccable/scripts/live-browser.js",
     ".github/skills/impeccable/scripts/live-browser.js",
     ".impeccable/review/synthetic-review.mjs",
