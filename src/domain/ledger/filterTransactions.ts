@@ -1,5 +1,6 @@
 import type { Transaction } from "../types.js";
 import { CATEGORY_OPTIONS } from "../categorization/categoryOptions.js";
+import { parseDecimalMinorUnits } from "../money/minorUnits.js";
 
 export type TransactionTypeFilter = "income" | "expenses";
 export type TransactionDatePreset = "thisMonth";
@@ -62,13 +63,7 @@ export function parseNokAmountToMinor(value: string): number | null {
   const match = expression.exec(input);
   if (!match) return null;
 
-  const wholeAmount = BigInt(match[2]!.replace(/[ \u00a0\u202f]/g, ""));
-  const fractionalAmount = BigInt((match[3] ?? "").padEnd(2, "0") || "0");
-  const magnitude = wholeAmount * 100n + fractionalAmount;
-  if (magnitude > BigInt(Number.MAX_SAFE_INTEGER)) return null;
-
-  const signedAmount = match[1] === "-" ? -magnitude : magnitude;
-  return Number(signedAmount);
+  return parseDecimalMinorUnits(input.replace(/[ \u00a0\u202f]/g, "").replace(",", "."));
 }
 
 function localDateString(date: Date): string {

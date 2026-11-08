@@ -12,6 +12,8 @@ import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlit
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
 import type { Transaction } from "../../src/domain/types.js";
+import { minorUnitsToDecimal } from "../../src/domain/money/minorUnits.js";
+import { parseCurrencyAmountMinor } from "../../src/renderer/workspaces/parseCurrencyAmountMinor.js";
 
 const HOUSEHOLD = {
   id: "household-property-test",
@@ -33,6 +35,42 @@ function openLedger(dbPath: string) {
 }
 
 describe("property value history persistence", () => {
+  it("retains an extreme valuation through unchanged correction input and reopen", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-property-exact-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    let ledger = openLedger(dbPath);
+    let id = 0;
+    try {
+      const registry = createPropertyRegistry(ledger, {
+        createId: () => `exact-${++id}`,
+        now: () => new Date("2026-10-02T12:00:00.000Z"),
+      });
+      const property = registry.create({ label: "Synthetic exact valuation" });
+      const original = registry.appendValuation({
+        propertyId: property.id, effectiveDateIso: "2026-10-01",
+        amountMinor: Number.MAX_SAFE_INTEGER - 1, currencyCode: "EUR",
+      });
+      const draft = minorUnitsToDecimal(original.amountMinor);
+      expect(draft).toBe("90071992547409.90");
+      const amountMinor = parseCurrencyAmountMinor(draft);
+      if (amountMinor === null) throw new Error("Exact valuation draft must parse.");
+      registry.appendCorrection({
+        action: "supersede", propertyId: property.id, targetValuationId: original.id,
+        effectiveDateIso: original.effectiveDateIso, amountMinor, currencyCode: original.currencyCode,
+      });
+      ledger.close();
+      ledger = openLedger(dbPath);
+      expect(createPropertyRegistry(ledger).list()[0]?.valuations.map((valuation) => ({
+        amountMinor: valuation.amountMinor, currencyCode: valuation.currencyCode,
+      }))).toEqual([
+        { amountMinor: Number.MAX_SAFE_INTEGER - 1, currencyCode: "EUR" },
+        { amountMinor: Number.MAX_SAFE_INTEGER - 1, currencyCode: "EUR" },
+      ]);
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it("includes properties and valuation snapshots in new backup snapshots", () => {
     const property = {
       id: "property-home",

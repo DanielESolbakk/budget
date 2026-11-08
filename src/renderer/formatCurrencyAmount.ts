@@ -1,20 +1,31 @@
+import { formatMinorUnits } from "../domain/money/minorUnits.js";
+
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 
-export function getCurrencyFormatter(currencyCode: string): Intl.NumberFormat {
-  let formatter = currencyFormatters.get(currencyCode);
+function currencyFormatter(currencyCode: string, display: "symbol" | "code"): Intl.NumberFormat {
+  const key = `${currencyCode}:${display}`;
+  let formatter = currencyFormatters.get(key);
   if (formatter === undefined) {
     formatter = new Intl.NumberFormat("nb-NO", {
       style: "currency",
       currency: currencyCode,
-      currencyDisplay: currencyCode === "NOK" ? "symbol" : "code",
+      currencyDisplay: display,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-    currencyFormatters.set(currencyCode, formatter);
+    currencyFormatters.set(key, formatter);
   }
   return formatter;
 }
 
+export function getCurrencyFormatter(currencyCode: string): Intl.NumberFormat {
+  return currencyFormatter(currencyCode, currencyCode === "NOK" ? "symbol" : "code");
+}
+
 export function formatCurrencyAmount(amountMinor: number, currencyCode: string): string {
-  return getCurrencyFormatter(currencyCode).format(amountMinor / 100);
+  return formatMinorUnits(amountMinor, getCurrencyFormatter(currencyCode));
+}
+
+export function formatCurrencySymbolAmount(amountMinor: number, currencyCode: string): string {
+  return formatMinorUnits(amountMinor, currencyFormatter(currencyCode, "symbol"));
 }

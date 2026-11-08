@@ -16,6 +16,8 @@ import type {
 } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../import/categoryOptions.js";
 import { formatCurrencyAmount, getCurrencyFormatter } from "../formatCurrencyAmount.js";
+import { formatMinorUnits, minorUnitsToDecimal } from "../../domain/money/minorUnits.js";
+import { parseSignedAmountMinor as allocationAmountToMinor } from "../amountInputs.js";
 import {
   TransactionAllocationEditor,
   type AllocationEditorError,
@@ -41,18 +43,7 @@ interface ActiveFilter {
 }
 
 function amountToInput(minorUnits: number | undefined): string {
-  return minorUnits === undefined ? "" : (minorUnits / 100).toFixed(2);
-}
-
-function amountMinorToText(amountMinor: number): string {
-  return (amountMinor / 100).toFixed(2);
-}
-
-function allocationAmountToMinor(value: string): number | null {
-  const normalized = value.trim().replace(",", ".");
-  if (!/^-?\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
-  const amountMinor = Math.round(Number(normalized) * 100);
-  return Number.isSafeInteger(amountMinor) ? amountMinor : null;
+  return minorUnits === undefined ? "" : minorUnitsToDecimal(minorUnits);
 }
 
 function categoryLabel(categoryId: string): string {
@@ -71,9 +62,9 @@ function getActiveFilters(filters: TransactionFilters, accounts: Account[]): Act
   if (filters.merchant !== undefined) activeFilters.push({ field: "merchant", label: "Merchant", value: filters.merchant });
   if (filters.bookedFromIso !== undefined) activeFilters.push({ field: "bookedFromIso", label: "From", value: filters.bookedFromIso.slice(0, 10) });
   if (filters.bookedToIso !== undefined) activeFilters.push({ field: "bookedToIso", label: "To", value: filters.bookedToIso.slice(0, 10) });
-  if (filters.amountMinor !== undefined) activeFilters.push({ field: "amountMinor", label: "Amount", value: nokCurrencyFormatter.format(filters.amountMinor / 100) });
-  if (filters.amountFromMinor !== undefined) activeFilters.push({ field: "amountFromMinor", label: "Minimum", value: nokCurrencyFormatter.format(filters.amountFromMinor / 100) });
-  if (filters.amountToMinor !== undefined) activeFilters.push({ field: "amountToMinor", label: "Maximum", value: nokCurrencyFormatter.format(filters.amountToMinor / 100) });
+  if (filters.amountMinor !== undefined) activeFilters.push({ field: "amountMinor", label: "Amount", value: formatMinorUnits(filters.amountMinor, nokCurrencyFormatter) });
+  if (filters.amountFromMinor !== undefined) activeFilters.push({ field: "amountFromMinor", label: "Minimum", value: formatMinorUnits(filters.amountFromMinor, nokCurrencyFormatter) });
+  if (filters.amountToMinor !== undefined) activeFilters.push({ field: "amountToMinor", label: "Maximum", value: formatMinorUnits(filters.amountToMinor, nokCurrencyFormatter) });
   if (filters.categoryId !== undefined) {
     activeFilters.push({
       field: "categoryId",
@@ -87,7 +78,7 @@ function getActiveFilters(filters: TransactionFilters, accounts: Account[]): Act
   if (filters.largeTransactionsOnly) activeFilters.push({
     field: "largeTransactionsOnly",
     label: "Size",
-    value: `Large transactions (at least ${nokCurrencyFormatter.format(LARGE_TRANSACTION_THRESHOLD_MINOR / 100)})`,
+    value: `Large transactions (at least ${formatMinorUnits(LARGE_TRANSACTION_THRESHOLD_MINOR, nokCurrencyFormatter)})`,
   });
   return activeFilters;
 }
@@ -332,12 +323,12 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
     const allocations = transaction.categoryAllocations?.length
       ? transaction.categoryAllocations.map((allocation) => ({
           categoryId: allocation.categoryId,
-          amountText: amountMinorToText(allocation.amountMinor),
+          amountText: minorUnitsToDecimal(allocation.amountMinor),
         }))
       : [
           {
             categoryId: transaction.categoryId ?? "",
-            amountText: amountMinorToText(transaction.amountMinor),
+            amountText: minorUnitsToDecimal(transaction.amountMinor),
           },
           { categoryId: "", amountText: "" },
         ];
@@ -511,9 +502,9 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   const incompleteAllocationCount = allocationDraft.filter((allocation, index) =>
     allocation.categoryId === "" || allocationAmounts[index] === null
   ).length;
-  const allocationTotalMinor = allocationAmounts.reduce<number>(
-    (total, amount) => total + (amount ?? 0),
-    0
+  const allocationTotalMinor = allocationAmounts.reduce<bigint>(
+    (total, amount) => total + BigInt(amount ?? 0),
+    0n
   );
   const canReorderAllocations = allocationDraft.every((allocation) =>
     allocation.categoryId !== "" && allocationAmountToMinor(allocation.amountText) !== null
@@ -528,10 +519,10 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
   function announceAllocationBalance(): void {
     if (allocationSourceTransaction === undefined) return;
 
-    const remainingMinor = allocationSourceTransaction.amountMinor - allocationTotalMinor;
-    const isOverAllocated = remainingMinor !== 0 &&
+    const remainingMinor = BigInt(allocationSourceTransaction.amountMinor) - allocationTotalMinor;
+    const isOverAllocated = remainingMinor !== 0n &&
       allocationSourceTransaction.amountMinor !== 0 &&
-      Math.sign(remainingMinor) !== Math.sign(allocationSourceTransaction.amountMinor);
+      (remainingMinor < 0n) !== (allocationSourceTransaction.amountMinor < 0);
     const totalLabel = incompleteAllocationCount === 0
       ? "Allocation total"
       : "Current allocation total";
@@ -543,11 +534,11 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
     const incompleteMessage = incompleteAllocationCount === 1
       ? "1 allocation is incomplete"
       : `${incompleteAllocationCount} allocations are incomplete`;
-    const balanceAmount = isOverAllocated ? Math.abs(remainingMinor) : remainingMinor;
+    const balanceAmount = isOverAllocated && remainingMinor < 0n ? -remainingMinor : remainingMinor;
     const message = [
-      `${totalLabel}: ${allocationCurrencyFormatter.format(allocationTotalMinor / 100)}`,
+      `${totalLabel}: ${formatMinorUnits(allocationTotalMinor, allocationCurrencyFormatter)}`,
       ...(incompleteAllocationCount === 0 ? [] : [incompleteMessage]),
-      `${balanceLabel}: ${allocationCurrencyFormatter.format(balanceAmount / 100)}`,
+      `${balanceLabel}: ${formatMinorUnits(balanceAmount, allocationCurrencyFormatter)}`,
     ];
 
     setAllocationStatusMessage(`${message.join(". ")}.`);

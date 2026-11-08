@@ -3,6 +3,7 @@ import { BackupSection } from "../backup/BackupSection.js";
 import { ExportSection } from "../backup/ExportSection.js";
 import { RestoreSnapshotSection } from "../dashboard/RestoreSnapshotSection.js";
 import { parseCurrencyAmountMinor } from "./parseCurrencyAmountMinor.js";
+import { formatMinorUnits, minorUnitsToDecimal } from "../../domain/money/minorUnits.js";
 import { HouseholdShareForm, useHouseholdShareFormStates } from "./HouseholdShareForm.js";
 import { DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS } from "../../domain/householdShareValidation.js";
 import {
@@ -101,7 +102,7 @@ const holdingRecordedAtFormatter = new Intl.DateTimeFormat("nb-NO", {
 });
 
 function formatHoldingAmount(amountMinor: number, currencyCode: string): string {
-  return `${currencyCode} ${holdingAmountFormatter.format(amountMinor / 100)}`;
+  return `${currencyCode} ${formatMinorUnits(amountMinor, holdingAmountFormatter)}`;
 }
 
 function holdingFormField(field: HoldingRecordValidationField): HoldingFormField | undefined {
@@ -130,10 +131,6 @@ function holdingValuationFormField(
   return undefined;
 }
 
-function holdingAmountInput(amountMinor: number): string {
-  return `${Math.floor(amountMinor / 100)}.${String(amountMinor % 100).padStart(2, "0")}`;
-}
-
 function HoldingCorrectionControls({
   holding, disabled, setSaving, onSaved,
 }: {
@@ -145,7 +142,7 @@ function HoldingCorrectionControls({
   const [draft, setDraft] = React.useState<HoldingDraft>(() => ({
     label: holding.label,
     quantity: String(holding.quantity),
-    costBasis: holdingAmountInput(holding.costBasisMinor),
+    costBasis: minorUnitsToDecimal(holding.costBasisMinor),
     currencyCode: holding.currencyCode,
   }));
   const [error, setError] = React.useState<{ message: string; field?: HoldingFormField } | null>(null);
@@ -153,7 +150,7 @@ function HoldingCorrectionControls({
     setDraft({
       label: holding.label,
       quantity: String(holding.quantity),
-      costBasis: holdingAmountInput(holding.costBasisMinor),
+      costBasis: minorUnitsToDecimal(holding.costBasisMinor),
       currencyCode: holding.currencyCode,
     });
   }, [holding.id, holding.label, holding.quantity, holding.costBasisMinor, holding.currencyCode]);
@@ -365,7 +362,7 @@ function HoldingHistory({
                         setError(null);
                         setDraft({
                           effectiveDateIso: valuation.effectiveDateIso,
-                          amount: holdingAmountInput(valuation.amountMinor),
+                          amount: minorUnitsToDecimal(valuation.amountMinor),
                           currencyCode: valuation.currencyCode,
                         });
                       }}>Correct value for {valuation.effectiveDateIso}</button>
@@ -1301,7 +1298,7 @@ export function PropertyRegistrySection({
   function initialCorrectionDraft(valuation: PropertyValuationSnapshot): PropertyValuationDraft {
     return {
       effectiveDateIso: valuation.effectiveDateIso,
-      amount: (valuation.amountMinor / 100).toFixed(2),
+      amount: minorUnitsToDecimal(valuation.amountMinor),
       currencyCode: valuation.currencyCode,
     };
   }
@@ -1480,7 +1477,7 @@ export function PropertyRegistrySection({
     if (isSaving) return;
     const confirmationMessage =
       `Mark ${property.label}'s ${target.effectiveDateIso} ${target.currencyCode} ` +
-      `${propertyAmountFormatter.format(target.amountMinor / 100)} valuation as void? ` +
+      `${formatMinorUnits(target.amountMinor, propertyAmountFormatter)} valuation as void? ` +
       "The entry stays in history but will no longer count as current.";
     if (!window.confirm(confirmationMessage)) return;
 
@@ -1819,7 +1816,7 @@ export function PropertyRegistrySection({
                               <span className="property-valuation-currency">{valuation.currencyCode}</span>
                               {" "}
                               <span className="property-valuation-amount">
-                                {propertyAmountFormatter.format(valuation.amountMinor / 100)}
+                                {formatMinorUnits(valuation.amountMinor, propertyAmountFormatter)}
                               </span>
                               <span className="property-valuation-status">{status}</span>
                               <details className="property-valuation-actions">

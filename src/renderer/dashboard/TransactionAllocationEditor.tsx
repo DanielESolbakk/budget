@@ -1,6 +1,7 @@
 import React from "react";
 import type { Transaction } from "../../domain/types.js";
 import { CATEGORY_OPTIONS } from "../import/categoryOptions.js";
+import { formatMinorUnits } from "../../domain/money/minorUnits.js";
 
 export interface AllocationDraft {
   categoryId: string;
@@ -19,7 +20,7 @@ interface TransactionAllocationEditorProps {
   transaction: Transaction;
   allocations: readonly AllocationDraft[];
   canReorder: boolean;
-  totalMinor: number;
+  totalMinor: bigint;
   incompleteAllocationCount: number;
   currencyFormatter: Intl.NumberFormat;
   error: AllocationEditorError | null;
@@ -54,11 +55,11 @@ export function TransactionAllocationEditor({
   onClear,
   onCancel,
 }: TransactionAllocationEditorProps): React.JSX.Element {
-  const remainingMinor = transaction.amountMinor - totalMinor;
-  const overAllocatedMinor = remainingMinor !== 0 &&
+  const remainingMinor = BigInt(transaction.amountMinor) - totalMinor;
+  const overAllocatedMinor = remainingMinor !== 0n &&
       transaction.amountMinor !== 0 &&
-      Math.sign(remainingMinor) !== Math.sign(transaction.amountMinor)
-    ? Math.abs(remainingMinor)
+      (remainingMinor < 0n) !== (transaction.amountMinor < 0)
+    ? (remainingMinor < 0n ? -remainingMinor : remainingMinor)
     : null;
 
   return (
@@ -78,12 +79,12 @@ export function TransactionAllocationEditor({
       <div className="transaction-allocation-summary">
         <p>
           Source transaction:
-          <strong>{currencyFormatter.format(transaction.amountMinor / 100)}</strong>
+          <strong>{formatMinorUnits(transaction.amountMinor, currencyFormatter)}</strong>
         </p>
         <p>
           {incompleteAllocationCount === 0 ? "Allocation total:" : "Allocated so far:"}
           <strong>
-            {currencyFormatter.format(totalMinor / 100)}
+            {formatMinorUnits(totalMinor, currencyFormatter)}
           </strong>
         </p>
         <p>
@@ -92,7 +93,7 @@ export function TransactionAllocationEditor({
               ? "Remaining to allocate:"
               : "Balance after entered amounts:"
             : "Over-allocated by:"}
-          <strong>{currencyFormatter.format((overAllocatedMinor ?? remainingMinor) / 100)}</strong>
+          <strong>{formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}</strong>
         </p>
         {incompleteAllocationCount > 0 && (
           <p className="transaction-allocation-incomplete">
