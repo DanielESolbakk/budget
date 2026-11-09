@@ -10,6 +10,7 @@ export default tseslint.config(
       ".agents/skills/impeccable/**",
       ".github/skills/impeccable/**",
       ".impeccable/**",
+      ".stryker-tmp/**",
       "coverage/**",
       "dist/**",
       "out/**",

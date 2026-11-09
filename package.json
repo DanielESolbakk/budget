@@ -17,6 +17,7 @@
     "test:coverage:unit": "vitest run --config vitest.unit.config.ts --coverage.enabled true",
     "test:coverage:signal": "npm run test:coverage:unit",
     "test:mutation:signal": "stryker run",
+    "test:mutation:quality:signal": "stryker run stryker.quality.config.json",
     "test:mutation:unit-integration:signal": "stryker run stryker.unit-integration.config.json",
     "test:mutation:import:signal": "stryker run stryker.import.config.json",
     "test:integration": "vitest run --config vitest.integration.config.ts",
@@ -43,8 +44,8 @@
   "devDependencies": {
     "@eslint/js": "^9.13.0",
     "@playwright/test": "^1.61.1",
-    "@stryker-mutator/core": "^9.6.1",
-    "@stryker-mutator/vitest-runner": "^9.6.1",
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",

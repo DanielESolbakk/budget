@@ -3,7 +3,8 @@
   "testRunner": "vitest",
   "vitest": {
     "configFile": "vitest.unit.config.ts",
-    "related": true
+    "related": true,
+    "pool": "forks"
   },
   "mutate": [
     "src/domain/import/csvRowMapper.ts",
