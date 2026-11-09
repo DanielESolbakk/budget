@@ -24,6 +24,60 @@ function injectWriteFault(dbPath: string, statement: string): void {
 }
 
 describe("extracted ledger transaction boundaries", () => {
+  it("undoes only unreconciled pending rows and preserves booked reconciliation evidence across reopen", async () => {
+    await withIsolatedLedger({}, ({ ledger, dbPath }) => {
+      const pending = {
+        id: "pending-matched", householdId: "hh-isolated", accountId: "acc-isolated",
+        transactionDateIso: "2026-05-01", amountMinor: -1200, merchantRaw: "REMA 1000",
+        sourceRowIndex: 1, currencyCode: "NOK", sourceType: "csv" as const,
+        sourceReference: "synthetic-reference", importJobId: "job-pending",
+        status: "reserved" as const, sourceStatus: "Reservert" as const,
+      };
+      ledger.appendImportJobAndTransactions({
+        ...importJob, id: "job-pending", candidateCount: 2,
+      }, [], [], [
+        pending,
+        { ...pending, id: "pending-unmatched", sourceRowIndex: 2,
+          sourceReference: "synthetic-other-reference", amountMinor: -900 },
+      ]);
+      ledger.appendImportJobAndTransactions({
+        ...importJob, id: "job-booked", startedAtIso: "2026-05-02T00:00:00Z",
+      }, [{
+        ...transaction, id: "booked", importJobId: "job-booked",
+        sourceReference: "synthetic-reference",
+      }]);
+      expect(ledger.loadLedgerSnapshotData().pendingObservations).toMatchObject([
+        { id: "pending-matched", reconciledTransactionId: "booked" },
+        { id: "pending-unmatched" },
+      ]);
+      const before = ledger.loadLedgerSnapshotData();
+      expect(ledger.undoImportJob("job-pending")).toEqual({
+        importJobId: "job-pending", removedCount: 1, retainedCount: 1,
+        alreadyUndone: false, retainedTransactions: [],
+      });
+      const reopened = createLocalLedgerDatabase({ dbPath });
+      try {
+        expect(reopened.loadLedgerSnapshotData().transactions).toEqual(before.transactions);
+        expect(reopened.loadLedgerSnapshotData().pendingObservations).toEqual([
+          { ...pending, reconciledTransactionId: "booked", reconciledAtIso: "2026-05-02T00:00:00Z" },
+        ]);
+        expect(reopened.listPendingTransactionObservations("hh-isolated")).toEqual([]);
+        expect(reopened.listImportJobHistory("hh-isolated").find(job => job.id === "job-pending"))
+          .toMatchObject({ undoAvailable: false, undoRemovedCount: 1, undoRetainedCount: 1 });
+        expect(reopened.undoImportJob("job-pending")).toEqual({
+          importJobId: "job-pending", removedCount: 1, retainedCount: 1,
+          alreadyUndone: true, retainedTransactions: [],
+        });
+        expect(reopened.undoImportJob("job-booked")).toMatchObject({
+          removedCount: 1, retainedCount: 0,
+        });
+        expect(reopened.listPendingTransactionObservations("hh-isolated")).toEqual([pending]);
+      } finally {
+        reopened.close();
+      }
+    });
+  });
+
   it("rolls back a commitment update when its decision insert faults and preserves it after reopen", async () => {
     await withIsolatedLedger({}, ({ ledger, dbPath }) => {
       const commitment = {

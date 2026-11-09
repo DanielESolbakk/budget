@@ -171,7 +171,7 @@ jobs:
       - name: Validate required npm scripts
         if: steps.detect.outputs.has_package == 'true'
         run: |
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const required=['lint','typecheck','test:unit']; const full=['test:integration','test:e2e:vitest','test:e2e:playwright:ci','verify:no-network','build','validate:packaged-runtime']; const missing=required.filter((name)=>!has(name)); if(process.env.RUN_FULL==='true') missing.push(...full.filter((name)=>!has(name))); if(process.env.RUN_BENCHMARK==='true'&&!has('benchmark:backup-restore')) missing.push('benchmark:backup-restore'); if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
+          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const scripts=pkg.scripts||{}; const has=(name)=>typeof scripts[name]==='string'&&scripts[name].trim(); const required=['lint','typecheck','test:coverage:unit']; const full=['test:coverage:integration','test:e2e:vitest','test:e2e:playwright:ci','verify:no-network','build','validate:packaged-runtime']; const missing=required.filter((name)=>!has(name)); if(process.env.RUN_FULL==='true') missing.push(...full.filter((name)=>!has(name))); if(process.env.RUN_BENCHMARK==='true'&&!has('benchmark:backup-restore')) missing.push('benchmark:backup-restore'); if(missing.length){ console.error('Missing required npm scripts: '+missing.join(', ')); process.exit(1); }"
         env:
           RUN_FULL: ${{ needs.detect-changes.outputs.run_full }}
           RUN_BENCHMARK: ${{ needs.detect-changes.outputs.run_benchmark }}
@@ -184,13 +184,24 @@ jobs:
         if: steps.detect.outputs.has_package == 'true'
         run: npm run typecheck
 
-      - name: Unit tests
+      - name: Unit tests with coverage
         if: steps.detect.outputs.has_package == 'true'
-        run: npm run test:unit
+        run: npm run test:coverage:unit
 
-      - name: Integration tests
+      - name: Integration tests with coverage
         if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'
-        run: npm run test:integration
+        run: npm run test:coverage:integration
+
+      - name: Upload coverage reports
+        if: always() && steps.detect.outputs.has_package == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-coverage
+          path: |
+            coverage/unit
+            coverage/integration
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Fresh-build static artifact checks (Vitest compatibility lane)
         if: steps.detect.outputs.has_package == 'true' && needs.detect-changes.outputs.run_full == 'true'

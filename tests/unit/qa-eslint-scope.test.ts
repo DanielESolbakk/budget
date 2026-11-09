@@ -77,6 +77,7 @@ describe("QA lint ownership", () => {
     ".agents/skills/impeccable/scripts/live-browser.js",
     ".github/skills/impeccable/scripts/live-browser.js",
     ".impeccable/review/synthetic-review.mjs",
+    ".stryker-tmp/quality/sandbox-synthetic/src/app/synthetic.ts",
   ])("ignores installed or generated tooling at %s", async (filePath) => {
     expect(await eslint.isPathIgnored(filePath)).toBe(true);
   });

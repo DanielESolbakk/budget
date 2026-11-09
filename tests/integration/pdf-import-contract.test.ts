@@ -1057,7 +1057,9 @@ describe("pdf import contract", () => {
           adapterId: ROGALAND_ADAPTER_ID,
         });
         const snapshot = ledger.loadLedgerSnapshotData();
-        expect(snapshot.transactions).toMatchObject([
+        expect([...snapshot.transactions].sort((left, right) =>
+          right.bookedAtIso.localeCompare(left.bookedAtIso)
+        )).toMatchObject([
           {
             bookedAtIso: "2026-05-28T00:00:00Z",
             amountMinor: -9770,

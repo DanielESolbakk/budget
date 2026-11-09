@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.quality.config.ts",
+    "related": true,
+    "pool": "forks"
+  },
+  "mutate": [
+    "src/shared/dashboard.ts",
+    "src/app/backup/importHistoryRepository.ts"
+  ],
+  "reporters": ["clear-text", "json", "html"],
+  "jsonReporter": {
+    "fileName": "reports/mutation-quality/mutation.json"
+  },
+  "htmlReporter": {
+    "fileName": "reports/mutation-quality/mutation.html"
+  },
+  "thresholds": {
+    "break": 0
+  },
+  "allowConsoleColors": false,
+  "timeoutMS": 60000,
+  "timeoutFactor": 1.5,
+  "concurrency": 2,
+  "tempDirName": ".stryker-tmp/quality"
+}

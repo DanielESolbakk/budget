@@ -307,6 +307,28 @@ describe("csv-import-runtime-contract", () => {
       expect(ledger.listMerchantCategoryRules()).toEqual([
         { merchantAlias: "coffee roaster", categoryId: "groceries" },
       ]);
+      const historyAfterUndo = historyStore.listImportJobHistory(SAMPLE_HOUSEHOLD.id);
+      const reopened = openTestLedger(ledger.dbPath);
+      try {
+        expect(reopened.undoImportJob(importJob.id)).toEqual({
+          importJobId: "job-history-undo",
+          removedCount: 1,
+          retainedCount: 1,
+          alreadyUndone: true,
+          retainedTransactions: [{
+            id: "job-history-corrected", bookedAtIso: "2026-10-02T00:00:00Z",
+            amountMinor: -450, merchantRaw: "Coffee Roaster", currencyCode: "NOK",
+            reason: "changed-after-import",
+          }],
+        });
+        expect(reopened.listImportJobHistory(SAMPLE_HOUSEHOLD.id)).toEqual(historyAfterUndo);
+        expect(reopened.loadLedgerSnapshotData().transactions).toEqual([
+          { ...correctedTransaction, categoryId: "groceries" },
+          unrelatedTransaction,
+        ]);
+      } finally {
+        reopened.close();
+      }
     } finally {
       ledger.close();
     }
