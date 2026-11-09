@@ -472,6 +472,48 @@ describe("dated local exchange rates", () => {
   });
 
   it.each([
+    { action: "supersede" as const, expectedAmount: 300_000, expectedDate: "2026-05-01" },
+    { action: "void" as const, expectedAmount: 100_000, expectedDate: "2026-04-01" },
+  ])("excludes the corrected valuation from reports when a $action takes effect", ({
+    action, expectedAmount, expectedDate,
+  }) => {
+    const original = {
+      id: "original", propertyId: "property", effectiveDateIso: "2026-05-10",
+      recordedAtIso: "2026-05-10T00:00:00Z", amountMinor: 200_000, currencyCode: "NOK",
+    };
+    const correctionDate = action === "supersede" ? "2026-05-01" : "2026-05-10";
+    const correction = {
+      ...original, id: "correction", effectiveDateIso: correctionDate,
+      recordedAtIso: "2026-06-01T00:00:00Z",
+      amountMinor: action === "supersede" ? 300_000 : 200_000,
+      correction: { action, targetValuationId: "original" },
+    };
+    const reportAt = (valuationDateIso: string) => buildNokValuationReport({
+      valuationDateIso,
+      properties: [{
+        id: "property", householdId: "hh-rates", label: "Synthetic home",
+        createdAtIso: "2026-01-01T00:00:00Z",
+      }],
+      propertyValuations: [
+        original, correction,
+        { ...original, id: "earlier", effectiveDateIso: "2026-04-01", amountMinor: 100_000 },
+      ],
+      holdings: [], holdingValuations: [], loans: [], loanBalanceSnapshots: [], rates: [],
+    });
+
+    expect(reportAt("2026-04-30").subtotals.properties.nokSubtotalMinor).toBe(100_000);
+    for (const date of [correctionDate, "2026-05-31"]) {
+      const report = reportAt(date);
+      expect(report.properties).toEqual([{
+        id: "property", label: "Synthetic home", valuationDateIso: expectedDate,
+        nativeAmountMinor: expectedAmount, nativeCurrencyCode: "NOK",
+        nokAmountMinor: expectedAmount, exchangeRate: null, isEstimate: false,
+      }]);
+      expect(report.subtotals.properties.nokSubtotalMinor).toBe(expectedAmount);
+    }
+  });
+
+  it.each([
     { order: [0, 1, 2, 3, 4], label: "forward" },
     { order: [4, 3, 2, 1, 0], label: "reversed" },
   ])("selects valuations by effective date, recorded time, then ID ($label input)", ({ order }) => {
