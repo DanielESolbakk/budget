@@ -1,15 +1,15 @@
 import {
   buildDashboardData,
   buildDashboardViewContract,
+  createMonthlyCategoryTarget,
+  createMonthlyCategoryTargetStore,
   queryMonthlyTotals,
+  readMonthlyCategoryTarget,
+  reloadMonthlyCategoryTargets,
+  updateMonthlyCategoryTarget,
 } from "../shared/dashboard.js";
 import { toLocalYearMonth } from "../domain/date/localDateDefaults.js";
-import {
-  validateMonthlyCategoryTargetInput,
-  type Account,
-  type MonthlyCategoryTarget,
-  type Transaction,
-} from "../domain/types.js";
+import type { Account, Transaction } from "../domain/types.js";
 import type { BudgetApi } from "./preload.js";
 
 const PREVIEW_HOUSEHOLD_ID = "browser-preview-household";
@@ -53,28 +53,8 @@ function createPreviewTransactions(yearMonths: string[]): Transaction[] {
   });
 }
 
-function desktopOnlyAction(): never {
+async function desktopOnlyAction(): Promise<never> {
   throw new Error(DESKTOP_ONLY_MESSAGE);
-}
-
-const unavailablePath = new Proxy(
-  () => Promise.reject(new Error(DESKTOP_ONLY_MESSAGE)),
-  {
-    get: (_target, property, receiver) => property === "then" ? undefined : receiver,
-    apply: () => Promise.reject(new Error(DESKTOP_ONLY_MESSAGE)),
-  }
-);
-
-function withDesktopOnlyFallback<T extends object>(value: T): T {
-  return new Proxy(value, {
-    get: (target, property, receiver) => {
-      if (!Reflect.has(target, property)) return unavailablePath;
-      const propertyValue = Reflect.get(target, property, receiver);
-      return propertyValue !== null && typeof propertyValue === "object"
-        ? withDesktopOnlyFallback(propertyValue)
-        : propertyValue;
-    },
-  });
 }
 
 export interface RendererBudgetApiResolution {
@@ -108,12 +88,12 @@ export function resolveRendererBudgetApi(
       totalMinor: queryMonthlyTotals(transactions, yearMonth).netMinor,
     })),
   });
-  const targets = new Map<string, MonthlyCategoryTarget>();
+  const targets = createMonthlyCategoryTargetStore();
 
   const previewApi = {
     setup: {
       isRequired: async () => false,
-      create: async () => desktopOnlyAction(),
+      create: desktopOnlyAction,
     },
     dashboard: {
       getData: async () => dashboardData,
@@ -121,6 +101,7 @@ export function resolveRendererBudgetApi(
         buildDashboardViewContract({
           transactions,
           selectedYearMonth: yearMonth,
+          monthlyCategoryTargetStore: targets,
           accounts: [previewAccount],
           rates: [],
         }),
@@ -133,21 +114,57 @@ export function resolveRendererBudgetApi(
         accounts: [previewAccount],
       }),
     },
+    forecast: {
+      getEntries: desktopOnlyAction,
+    },
+    spendableCash: {
+      getEstimate: desktopOnlyAction,
+    },
+    cashflowScenarios: {
+      evaluate: desktopOnlyAction,
+    },
     accountCoverage: {
       listPeriods: async () => [],
-      savePeriod: async () => desktopOnlyAction(),
+      savePeriod: desktopOnlyAction,
       listCheckpoints: async () => [],
-      appendCheckpoint: async () => desktopOnlyAction(),
-      getAssessment: async () => desktopOnlyAction(),
+      appendCheckpoint: desktopOnlyAction,
+      getAssessment: desktopOnlyAction,
     },
     categoryTargets: {
-      upsert: async (input) => {
-        const target = validateMonthlyCategoryTargetInput(input);
-        targets.set(`${target.yearMonth}:${target.categoryId}`, target);
-        return target;
+      upsert: async (input) => readMonthlyCategoryTarget(targets, input) === null
+        ? createMonthlyCategoryTarget(targets, input)
+        : updateMonthlyCategoryTarget(targets, input),
+      listByMonth: async (yearMonth) => reloadMonthlyCategoryTargets(targets, yearMonth),
+    },
+    export: {
+      writeLedgerCsv: desktopOnlyAction,
+    },
+    import: {
+      cancelPreview: desktopOnlyAction,
+      // Imports never start in the preview, so there is no progress source to retain.
+      onPreflightProgress: () => () => {},
+      history: {
+        list: desktopOnlyAction,
+        undo: desktopOnlyAction,
       },
-      listByMonth: async (yearMonth) =>
-        [...targets.values()].filter((target) => target.yearMonth === yearMonth),
+      profiles: {
+        list: desktopOnlyAction,
+        save: desktopOnlyAction,
+        delete: desktopOnlyAction,
+      },
+      previewCsv: desktopOnlyAction,
+      importCsv: desktopOnlyAction,
+      addManualTransaction: desktopOnlyAction,
+      previewPdf: desktopOnlyAction,
+      importPdf: desktopOnlyAction,
+      review: {
+        list: desktopOnlyAction,
+        correct: desktopOnlyAction,
+        dismiss: desktopOnlyAction,
+      },
+    },
+    pending: {
+      list: desktopOnlyAction,
     },
     recurringCommitments: {
       getSchedule: async (evaluatedAtIso?: string) => ({
@@ -157,27 +174,81 @@ export function resolveRendererBudgetApi(
         paymentCandidates: [],
         priceChanges: [],
       }),
-        create: async () => desktopOnlyAction(),
-        update: async () => desktopOnlyAction(),
-        confirm: async () => desktopOnlyAction(),
-        pause: async () => desktopOnlyAction(),
-        resume: async () => desktopOnlyAction(),
-        end: async () => desktopOnlyAction(),
-        linkPayment: async () => desktopOnlyAction(),
-        confirmPriceChange: async () => desktopOnlyAction(),
+      create: desktopOnlyAction,
+      update: desktopOnlyAction,
+      confirm: desktopOnlyAction,
+      pause: desktopOnlyAction,
+      resume: desktopOnlyAction,
+      end: desktopOnlyAction,
+      linkPayment: desktopOnlyAction,
+      confirmPriceChange: desktopOnlyAction,
     },
-  } satisfies Pick<
-    BudgetApi,
-    | "setup"
-    | "dashboard"
-    | "accounts"
-    | "accountCoverage"
-    | "categoryTargets"
-    | "recurringCommitments"
-  >;
+    review: {
+      list: desktopOnlyAction,
+      updateCategory: desktopOnlyAction,
+      history: {
+        corrections: desktopOnlyAction,
+        propagations: desktopOnlyAction,
+      },
+      propagation: {
+        preview: desktopOnlyAction,
+        apply: desktopOnlyAction,
+        undo: desktopOnlyAction,
+      },
+    },
+    ledger: {
+      list: desktopOnlyAction,
+      updateCategoryAllocations: desktopOnlyAction,
+      savedViews: {
+        list: desktopOnlyAction,
+        save: desktopOnlyAction,
+        delete: desktopOnlyAction,
+      },
+    },
+    exchangeRates: {
+      list: desktopOnlyAction,
+      record: desktopOnlyAction,
+      importFromFile: desktopOnlyAction,
+      getMonthlyReport: desktopOnlyAction,
+      getValuationReport: desktopOnlyAction,
+    },
+    propertyRegistry: {
+      list: desktopOnlyAction,
+      create: desktopOnlyAction,
+      renameProperty: desktopOnlyAction,
+      updateOwnershipShare: desktopOnlyAction,
+      appendValuation: desktopOnlyAction,
+      appendCorrection: desktopOnlyAction,
+    },
+    holdingRegistry: {
+      list: desktopOnlyAction,
+      create: desktopOnlyAction,
+      appendValuation: desktopOnlyAction,
+      correctHolding: desktopOnlyAction,
+      correctValuation: desktopOnlyAction,
+    },
+    loanRegistry: {
+      list: desktopOnlyAction,
+      create: desktopOnlyAction,
+      updateResponsibilityShare: desktopOnlyAction,
+      appendBalance: desktopOnlyAction,
+    },
+    backup: {
+      create: desktopOnlyAction,
+      inspect: desktopOnlyAction,
+      listSnapshots: desktopOnlyAction,
+      restore: desktopOnlyAction,
+    },
+    dialogs: {
+      chooseImportStatementPath: desktopOnlyAction,
+      chooseCsvExportPath: desktopOnlyAction,
+      chooseBackupOutputPath: desktopOnlyAction,
+      chooseRestoreSnapshotPath: desktopOnlyAction,
+    },
+  } satisfies BudgetApi;
 
   return {
-    api: withDesktopOnlyFallback(previewApi) as unknown as BudgetApi,
+    api: previewApi,
     isBrowserPreview: true,
   };
 }

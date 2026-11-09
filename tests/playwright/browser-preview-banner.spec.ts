@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { CategoryTargetPage } from "./pom/CategoryTargetPage.js";
+import { DashboardTargetPage } from "./pom/DashboardTargetPage.js";
 
 function linearizeColorChannel(channel: string | undefined): number {
   if (channel === undefined) {
@@ -52,4 +54,31 @@ test("browser-preview notice text meets WCAG AA contrast on its dark header", as
   for (const { foregroundColor, backgroundColor } of textColors) {
     expect(contrastRatio(foregroundColor, backgroundColor)).toBeGreaterThanOrEqual(4.5);
   }
+});
+
+test("synthetic preview target edits refresh comparisons and monthly checks", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-05-15T12:00:00Z"));
+  await page.goto("/");
+
+  const targets = new CategoryTargetPage(page);
+  const comparison = new DashboardTargetPage(page);
+  await expect(page.getByRole("combobox", { name: "Select month" })).toHaveValue("2026-05");
+  await page.getByText("Manage category targets", { exact: true }).click();
+  await targets.addTargetButton.click();
+  await targets.categorySelect.selectOption("groceries");
+  await targets.targetAmountInput.fill("6000");
+  await targets.saveButton.click();
+
+  await expect(targets.savedTargetItem("groceries")).toContainText(/6\s*000,00/);
+  await expect(comparison.targetCell("groceries")).toHaveText(/6\s*000,00/);
+  await expect(comparison.deltaCell("groceries")).toContainText("over target");
+  await expect(page.getByRole("link", { name: "Review 1 category over target" })).toBeVisible();
+
+  await targets.editTargetButton("groceries").click();
+  await targets.targetAmountInput.fill("7500");
+  await targets.saveButton.click();
+
+  await expect(comparison.targetCell("groceries")).toHaveText(/7\s*500,00/);
+  await expect(comparison.deltaCell("groceries")).toContainText("under target");
+  await expect(page.getByRole("link", { name: "Review 1 category over target" })).toHaveCount(0);
 });

@@ -29,7 +29,13 @@ This starts Electron in development mode and opens the desktop window. The ledge
 npm run start:browser
 ```
 
-Open `http://127.0.0.1:5173/` in the VS Code integrated browser. This preview uses synthetic data; category targets are kept only in the browser session, and actions that require the desktop app are unavailable. The command binds to loopback and fails clearly if port 5173 is already in use.
+Open `http://127.0.0.1:5173/` in the VS Code integrated browser. The command binds to loopback and fails clearly if port 5173 is already in use.
+
+The preview supports the synthetic monthly dashboard, sample household/account context, and category-target edits. Saved targets update Target vs Actual and monthly checks using the same shared calculations as the desktop app. Targets stay in memory for that preview instance and reset on page reload; they never change a desktop ledger. Statement coverage and recurring commitments start empty.
+
+Import, manual transaction entry, ledger/review operations, registries, exchange-rate management, backup, export, and file dialogs require the desktop app. Unsupported calls reject with "This action requires the desktop app." Import progress subscription returns safe cleanup but emits no events because preview imports cannot start.
+
+**Preview maintenance:** Avoid building a second implementation of every desktop feature. Reuse shared validation and calculations for supported synthetic interactions, keep desktop-only actions explicit, and check the complete preview object against `BudgetApi` so API additions require a deliberate preview decision.
 
 ### Bring in transactions
 
