@@ -763,9 +763,7 @@ describe("pending transaction lifecycle persistence", () => {
       ].join("\n");
       const dependencies = {
         parserRegistry: defaultParserAdapterRegistry,
-        appendImportJob: ledger.appendImportJob,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
-        appendTransactions: ledger.appendTransactions,
         getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       };
       const response = runPdfImportWorkflow(

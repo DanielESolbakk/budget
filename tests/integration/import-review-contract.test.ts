@@ -320,8 +320,6 @@ describe("import review persistence contract", () => {
         finishedAtIso: timestamp,
       }, {
         parserRegistry: defaultParserAdapterRegistry,
-        appendImportJob: ledger.appendImportJob,
-        appendTransactions: ledger.appendTransactions,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
         getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       });

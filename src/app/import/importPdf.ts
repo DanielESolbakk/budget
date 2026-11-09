@@ -101,7 +101,6 @@ export interface PdfImportWorkflowInput extends PdfImportRequest {
 
 export interface PdfImportWorkflowDependencies {
   parserRegistry: Pick<ParserAdapterRegistry, "parse">;
-  appendImportJob: (importJob: ImportJob) => void;
   hasImportJob?: (importJobId: string) => boolean;
   getTransactionsForImportJob: (importJobId: string) => Transaction[];
   getAccountCurrencyCode?: (accountId: string) => CurrencyCode | undefined;
@@ -109,13 +108,12 @@ export interface PdfImportWorkflowDependencies {
     sourceType: ImportJob["sourceType"], sourceName: string, accountId: string, sourceIdentity?: string
   ) => Transaction[];
   getExistingTransactionsForAccount?: (accountId: string) => Transaction[];
-  appendImportJobAndTransactions?: (
+  appendImportJobAndTransactions: (
     importJob: ImportJob,
     transactions: Transaction[],
     reviewItems?: ImportReviewItem[],
     pendingObservations?: PendingTransactionObservation[]
   ) => number;
-  appendTransactions: (transactions: Transaction[]) => number | void;
   onTransactionsPersisted?: (transactions: Transaction[]) => void;
 }
 
@@ -458,21 +456,12 @@ export function runPdfImportWorkflow(
     },
   };
 
-  let insertedCount: number;
-  if (dependencies.appendImportJobAndTransactions === undefined) {
-    if (reviewItems.length > 0 || pendingObservations.length > 0) {
-      throw new Error("PDF review and pending rows require atomic import-job, transaction, and observation persistence.");
-    }
-    dependencies.appendImportJob(importJob);
-    insertedCount = dependencies.appendTransactions(pendingTransactions) ?? pendingTransactions.length;
-  } else {
-    insertedCount = dependencies.appendImportJobAndTransactions(
-      importJob,
-      pendingTransactions,
-      reviewItems,
-      pendingObservations
-    );
-  }
+  const insertedCount = dependencies.appendImportJobAndTransactions(
+    importJob,
+    pendingTransactions,
+    reviewItems,
+    pendingObservations
+  );
   const reportedDuplicateCount = input.duplicateDecisions === undefined
     ? transactions.length - insertedCount
     : duplicateCount;

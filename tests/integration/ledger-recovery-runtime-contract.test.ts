@@ -119,9 +119,7 @@ function runDeferredPdfImport(
         }],
       }),
     },
-    appendImportJob: database.appendImportJob,
     appendImportJobAndTransactions: database.appendImportJobAndTransactions,
-    appendTransactions: database.appendTransactions,
     getTransactionsForImportJob: database.getTransactionsForImportJob,
   });
 }
