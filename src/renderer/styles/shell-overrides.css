@@ -1,0 +1,76 @@
+.app-header {
+  border-color: var(--navigation-hover);
+  color: var(--navigation-text);
+  background: var(--navigation);
+}
+
+.brand-stamp {
+  border-color: #87c6c2;
+  color: #b6e0d9;
+}
+
+.brand-lockup h1,
+.brand-lockup p,
+.header-meta {
+  color: var(--navigation-text);
+}
+
+.header-status {
+  color: #b9e5d1;
+}
+
+.header-status.is-loading {
+  color: #ffdfa3;
+}
+
+.header-status.is-error {
+  color: #ffd1cc;
+}
+
+.primary-navigation {
+  border-top: 0;
+  padding: 1.5rem 0.75rem;
+  background: var(--navigation);
+}
+
+.primary-navigation .workspace-link {
+  color: var(--navigation-text);
+}
+
+.primary-navigation .workspace-link:hover:not(:disabled) {
+  border-color: var(--navigation-hover);
+  color: var(--on-accent);
+  background: var(--navigation-hover);
+}
+
+.primary-navigation .workspace-link.is-current,
+.primary-navigation .workspace-link.is-current:hover:not(:disabled) {
+  border-color: #afd8d4;
+  color: var(--navigation);
+  background: #e3f2ef;
+  box-shadow: inset 0 0 0 1px #afd8d4;
+}
+
+.workspace-subnavigation[aria-label="Household tools"] {
+  gap: 0.35rem;
+  border-color: var(--line);
+  margin-bottom: 0.75rem;
+}
+
+.workspace-subnavigation[aria-label="Household tools"] button {
+  border-color: var(--line-strong);
+  color: var(--paper-muted);
+  background: var(--panel);
+}
+
+.workspace-subnavigation[aria-label="Household tools"] button[aria-current="page"] {
+  border-color: var(--orange);
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+.workspace-subnavigation[aria-label="Household tools"] button:hover:not(:disabled) {
+  border-color: var(--orange);
+  color: var(--orange);
+  background: var(--orange-soft);
+}

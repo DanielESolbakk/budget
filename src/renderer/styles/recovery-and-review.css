@@ -1,0 +1,657 @@
+.snapshot-catalog {
+  margin-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.65rem;
+}
+
+.snapshot-catalog:not([open]) > :not(summary) {
+  display: none;
+}
+
+.snapshot-catalog > summary {
+  min-height: 44px;
+  padding: 0.5rem 0;
+  color: var(--paper);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.snapshot-catalog > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.snapshot-catalog-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snapshot-catalog-item {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.75rem;
+}
+
+.snapshot-catalog-item > strong {
+  color: var(--paper);
+  font-size: 0.86rem;
+}
+
+.snapshot-catalog-item > p {
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.snapshot-catalog-item > code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--paper-muted);
+  font-size: 0.74rem;
+}
+
+fieldset[aria-label="CSV column mapping"] {
+  margin: 1rem 0 0;
+  border: 1px solid var(--line);
+  padding: 0.9rem;
+}
+
+fieldset[aria-label="CSV column mapping"] legend {
+  padding: 0 0.35rem;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+section[aria-label="CSV Import"] [role="alert"],
+section[aria-label="Manual Entry"] [role="alert"],
+section[aria-label="PDF Import"] [role="alert"],
+section[aria-label="Backup"] [role="alert"],
+section[aria-label="Restore Snapshot"] [role="alert"],
+section[aria-label="Category Target Entry"] [role="alert"] {
+  border: 1px solid var(--error);
+  padding: 0.7rem;
+  color: var(--error);
+}
+
+section[aria-label="CSV Import"] [role="status"],
+section[aria-label="Manual Entry"] [role="status"],
+section[aria-label="PDF Import"] [role="status"],
+section[aria-label="Backup"] [role="status"],
+section[aria-label="Restore Snapshot"] [role="status"],
+section[aria-label="Category Target Entry"] [role="status"] {
+  border: 1px solid var(--success);
+  padding: 0.7rem;
+  color: var(--success);
+}
+
+section[aria-label="CSV Import"] .import-reconciliation-status.is-unmatched,
+section[aria-label="PDF Import"] .import-reconciliation-status.is-unmatched {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+section[aria-label="CSV Import"] .import-reconciliation-status.is-accounted,
+section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
+  border-color: var(--field-border);
+  color: var(--paper);
+}
+
+.work-bin {
+  margin-top: 4.5rem;
+  border-top: 3px solid var(--orange);
+  padding-top: 1.1rem;
+}
+
+.work-bin-heading {
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.work-bin-heading > p {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.section-kicker,
+.group-step {
+  margin: 0 0 0.35rem;
+  color: var(--orange);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.work-bin-heading h2 {
+  font-size: 1.8rem;
+}
+
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.workflow-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4.4rem;
+  border-right: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+  color: var(--paper-muted);
+}
+
+.workflow-step:last-child {
+  border-right: 0;
+}
+
+.workflow-step-number {
+  display: grid;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex: 0 0 1.7rem;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--paper-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.7rem;
+}
+
+.workflow-step.is-current {
+  color: var(--paper);
+  background: var(--panel-soft);
+}
+
+.workflow-step.is-current .workflow-step-number {
+  border-color: var(--orange);
+  color: var(--ink);
+  background: var(--orange);
+}
+
+.workflow-step strong,
+.workflow-step small {
+  display: block;
+}
+
+.workflow-step strong {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.05rem;
+}
+
+.workflow-step small {
+  margin-top: 0.15rem;
+  color: inherit;
+  font-size: 0.75rem;
+}
+
+.workflow-groups {
+  display: grid;
+  gap: 2.25rem;
+  margin-top: 2.25rem;
+}
+
+.workflow-group {
+  border-top: 1px solid var(--line-strong);
+  padding-top: 1.15rem;
+}
+
+.workflow-group-heading {
+  max-width: 58ch;
+  margin-bottom: 1rem;
+}
+
+.workflow-group-heading h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.workflow-group-heading > p:last-child {
+  margin: 0.45rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.45;
+}
+
+.workflow-import-grid,
+.workflow-recovery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.workflow-import-grid section[aria-label],
+.workflow-recovery-grid section[aria-label] {
+  min-width: 0;
+}
+
+.workflow-group-review > section[aria-label="Categorization Review"] {
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+}
+
+.section-intro {
+  margin: -0.35rem 0 1.15rem;
+  color: var(--paper-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.section-intro strong {
+  color: var(--paper);
+}
+
+.preview-summary {
+  border: 1px solid var(--line-strong);
+  padding: 0.7rem 0.8rem;
+  background: var(--panel-soft);
+}
+
+.preview-summary strong {
+  color: var(--paper);
+}
+
+.preview-table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.import-duplicate-bulk-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem 1rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 0.75rem;
+}
+
+.import-duplicate-bulk-copy {
+  min-width: 0;
+}
+
+.import-duplicate-bulk-copy p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.import-duplicate-bulk-warning {
+  margin-top: 0.25rem !important;
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+}
+
+.import-duplicate-bulk-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.import-duplicate-bulk-buttons button {
+  margin: 0;
+}
+
+.import-duplicate-decision {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+.import-duplicate-decision > small,
+.import-duplicate-match {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.import-duplicate-match-details {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.import-duplicate-match-details > summary {
+  max-width: 100%;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-underline-offset: 0.2em;
+}
+
+.import-duplicate-match-details > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.import-duplicate-match-details .import-duplicate-match {
+  margin-top: 0.25rem;
+}
+
+.import-duplicate-decision fieldset {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.import-duplicate-decision fieldset label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.import-duplicate-decision fieldset input[type="radio"] {
+  flex: 0 0 auto;
+  width: 1rem;
+  margin: 0;
+}
+
+.import-preview-cell-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.import-preview-table {
+  min-width: 34rem;
+  font-size: 0.82rem;
+}
+
+.import-preview-table caption {
+  margin-bottom: 0.5rem;
+  color: var(--paper-muted);
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.review-queue-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-block-size: min(32rem, 70vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-inline-end: 0.6rem;
+}
+
+.currency-warning {
+  padding: 0.85rem;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-soft);
+  overflow-wrap: anywhere;
+}
+
+.native-currency-subtotals p {
+  color: var(--paper-muted);
+}
+
+.snapshot-error {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.snapshot-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.review-queue-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 0.9fr);
+  gap: 1.25rem;
+  align-items: end;
+  border-top: 1px solid var(--line);
+  padding: 1rem 0;
+}
+
+.review-queue-item:first-child {
+  border-top-color: var(--line-strong);
+}
+
+.review-queue-details strong,
+.review-queue-details span {
+  display: block;
+}
+
+.review-queue-details strong {
+  overflow-wrap: anywhere;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.2rem;
+}
+
+.review-queue-details span {
+  margin-top: 0.3rem;
+  color: var(--paper-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.review-queue-details .standardized-merchant {
+  font-family: inherit;
+}
+
+.review-queue-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.review-queue-action label > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--paper-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.review-queue-action button {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.review-queue-action select,
+.review-queue-action button {
+  min-height: 44px;
+}
+
+.review-propagation-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  border: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+  background: var(--panel-soft);
+}
+
+.review-propagation-action p {
+  margin: 0;
+  color: var(--paper-muted);
+}
+
+.review-propagation-action button,
+.review-propagation-undo {
+  margin: 0.6rem 0 0;
+}
+
+.review-propagation-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: min(80vh, 46rem);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  padding: 1.25rem;
+  color: var(--paper);
+  background: var(--panel);
+}
+
+.review-propagation-dialog::backdrop {
+  background: rgb(0 0 0 / 68%);
+}
+
+.review-propagation-dialog h3 {
+  margin: 0;
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.4rem;
+}
+
+.review-propagation-dialog > p {
+  color: var(--paper-muted);
+}
+
+.review-propagation-confirmation-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.85rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-propagation-confirmation-list li {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.55rem;
+}
+
+.review-propagation-confirmation-list strong,
+.review-propagation-confirmation-list span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.review-propagation-confirmation-list span {
+  margin-top: 0.3rem;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+}
+
+.review-propagation-candidates {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-propagation-candidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: start;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.review-propagation-candidate > label {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+}
+
+.review-propagation-candidate-details strong,
+.review-propagation-candidate-details span {
+  display: block;
+}
+
+.review-propagation-candidate-details strong {
+  overflow-wrap: anywhere;
+}
+
+.review-propagation-candidate-details span {
+  margin-top: 0.3rem;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+}
+
+.review-propagation-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.review-propagation-dialog-actions button {
+  margin: 0;
+}
+
+@media (max-width: 38rem) {
+  .review-propagation-dialog {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    padding: 0.9rem;
+  }
+
+  .review-propagation-candidate {
+    grid-template-columns: 1fr;
+  }
+}
+
+.empty-state {
+  border: 1px dashed var(--line-strong);
+  padding: 1rem;
+  background: var(--panel-soft);
+}
+
+.empty-state strong {
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 1.1rem;
+}
+
+.empty-state p {
+  margin: 0.35rem 0 0;
+}
+
+.category-review-empty-details summary {
+  min-height: 32px;
+  padding-block: 0.35rem;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.category-review-empty-details p {
+  max-width: 72ch;
+  margin: 0.5rem 0 0;
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+}

@@ -224,6 +224,22 @@ The schema, snapshot format (versions 1-10), public ledger methods, query orderi
 
 ## Renderer feature ownership
 
+`src/renderer/app.css` is the ordered stylesheet entry point. Its imports under
+`src/renderer/styles/` preserve the existing cascade: foundation, shell, import,
+ledger, review/planning, recovery/review, responsive rules, registry bases, shell
+overrides, household registries, then workflow overrides. Edit the relevant owner
+file rather than appending new overrides to the entry point. The two registry
+layers live together under `styles/registries/`; base layout and household-scoped
+presentation remain separate because moving them across the intervening shell
+layer can change precedence. Keep media/container queries with their current
+layer; do not collect or reorder them merely because selectors repeat.
+
+The stylesheet unit check parses the complete local import graph and rejects
+missing, cyclic, repeated, conditional, external, or late imports, as well as
+unreferenced renderer stylesheets. The fresh-build artifact check compares the
+flattened ordered rules/declarations with the shipped CSS. These checks do not
+replace desktop/narrow-window visual and focus checks when consolidating rules.
+
 - Registry sections, create forms, history views, and draft/formatting helpers live under [holding](src/renderer/workspaces/holding/), [property](src/renderer/workspaces/property/), and [loan](src/renderer/workspaces/loan/). Registry sections retain loading, saving, drafts, focus refs, and refresh ownership; extracted presentation components receive typed props. [Data safety](src/renderer/workspaces/DataSafetyWorkspace.tsx) contains backup, export, and restore only.
 - [Import preflight](src/renderer/import/useImportPreflight.ts) owns preview request identity, progress subscriptions, cancellation, and finalization. File selection, account, or CSV mapping changes invalidate and cancel pending previews; late responses and progress cannot overwrite newer context, and unmount removes the subscription and cancels pending work. Explicit cancellation failures remain visible; failures during obsolete-request cleanup are logged locally.
 - [Shared preflight status](src/renderer/import/ImportPreflightStatus.tsx) preserves the existing progress/cancel presentation. CSV profiles/mapping and PDF parser evidence/exclusions remain in their format-specific sections. Mapping changes release only pending preview state; CSV mapping is locked while a confirmed import is saving. Import confirmation, persistence, styling, and registry validation policies otherwise remain unchanged.
