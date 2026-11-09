@@ -31,6 +31,7 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Integration coverage report: `npm run test:coverage:integration`
 - Integration tests: `npm run test:integration`
 - Unit mutation signal: `npm run test:mutation:signal`
+- Shared financial/import recovery mutation signal (advisory): `npm run test:mutation:quality:signal`
 - Unit and integration mutation signal (advisory): `npm run test:mutation:unit-integration:signal`
 - Fresh-build static artifact checks (not native E2E): `npm run test:artifacts`
 - Compatibility alias for that artifact lane: `npm run test:e2e:vitest`

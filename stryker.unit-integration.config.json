@@ -3,7 +3,8 @@
   "testRunner": "vitest",
   "vitest": {
     "configFile": "vitest.mutation.config.ts",
-    "related": true
+    "related": true,
+    "pool": "forks"
   },
   "mutate": [
     "src/domain/import/csvRowMapper.ts",
@@ -18,8 +19,11 @@
     "src/app/ledgerOperationCoordinator.ts",
     "src/app/backup/createBackupSnapshot.ts",
     "src/app/backup/localLedgerSqlite.ts",
+    "src/app/backup/ledgerSchema.ts",
+    "src/app/backup/importLedgerRepository.ts",
+    "src/app/backup/importHistoryRepository.ts",
     "src/app/backup/restoreBackupSnapshot.ts",
-    "src/app/dashboardApi.ts",
+    "src/shared/dashboard.ts",
     "src/app/exportCsv.ts"
   ],
   "reporters": [

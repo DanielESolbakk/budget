@@ -443,6 +443,67 @@ describe("dated local exchange rates", () => {
     }]);
   });
 
+  it("rejects a combined NOK subtotal overflow when native currency subtotals are safe", () => {
+    const transaction = {
+      id: "eur", householdId: "hh-rates", accountId: "account",
+      bookedAtIso: "2026-05-10", amountMinor: 4_000_000_000_000_000,
+      merchantRaw: "Synthetic amount", currencyCode: "EUR",
+    };
+    const report = (amountMinor: number) => buildNokMonthlyReport({
+      transactions: [
+        { ...transaction, amountMinor },
+        { ...transaction, id: "usd", currencyCode: "USD", amountMinor },
+      ],
+      accounts: [{ id: "account", householdId: "hh-rates", name: "Synthetic account", currencyCode: "NOK" }],
+      rates: [
+        { ...datedRate, rateNokPerUnit: "2" },
+        { ...datedRate, id: "usd", currencyCode: "USD", rateNokPerUnit: "2" },
+      ],
+      yearMonth: "2026-05",
+    });
+
+    expect(report(2_000_000_000_000_000).nokSubtotalMinor).toBe(8_000_000_000_000_000);
+    expect(() => report(4_000_000_000_000_000)).toThrow(
+      new RangeError("NOK report subtotal exceeds the safe integer range.")
+    );
+    expect(() => report(-4_000_000_000_000_000)).toThrow(
+      new RangeError("NOK report subtotal exceeds the safe integer range.")
+    );
+  });
+
+  it.each([
+    { order: [0, 1, 2, 3, 4], label: "forward" },
+    { order: [4, 3, 2, 1, 0], label: "reversed" },
+  ])("selects valuations by effective date, recorded time, then ID ($label input)", ({ order }) => {
+    const base = {
+      id: "0-older-date", propertyId: "property", effectiveDateIso: "2026-04-30",
+      recordedAtIso: "2026-06-01T00:00:00Z", amountMinor: 100, currencyCode: "NOK",
+    };
+    const valuations = [
+      base,
+      { ...base, id: "0-older-recording", effectiveDateIso: "2026-05-01",
+        recordedAtIso: "2026-05-01T00:00:00Z", amountMinor: 200 },
+      { ...base, id: "z-tied", effectiveDateIso: "2026-05-01",
+        recordedAtIso: "2026-05-02T00:00:00Z", amountMinor: 300 },
+      { ...base, id: "a-tied", effectiveDateIso: "2026-05-01",
+        recordedAtIso: "2026-05-02T00:00:00Z", amountMinor: 400 },
+      { ...base, id: "future", effectiveDateIso: "2026-06-01", amountMinor: 500 },
+    ];
+    const report = buildNokValuationReport({
+      valuationDateIso: "2026-05-31",
+      properties: [{ id: "property", householdId: "hh-rates", label: "Synthetic home",
+        createdAtIso: "2026-01-01T00:00:00Z" }],
+      propertyValuations: order.map(index => valuations[index]!),
+      holdings: [], holdingValuations: [], loans: [], loanBalanceSnapshots: [], rates: [],
+    });
+    expect(report.properties).toEqual([{
+      id: "property", label: "Synthetic home", valuationDateIso: "2026-05-01",
+      nativeAmountMinor: 400, nativeCurrencyCode: "NOK", nokAmountMinor: 400,
+      exchangeRate: null, isEstimate: false,
+    }]);
+    expect(report.subtotals.properties.nokSubtotalMinor).toBe(400);
+  });
+
   it("rounds positive and negative NOK minor units symmetrically at half-unit boundaries", () => {
     const halfMinorRate = { ...datedRate, rateNokPerUnit: "0.5" };
     const input = {
