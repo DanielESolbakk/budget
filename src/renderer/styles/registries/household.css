@@ -1,0 +1,461 @@
+.household-workspace {
+  --household-ink: var(--paper);
+  --household-muted: var(--paper-muted);
+  --household-canvas: var(--ink);
+  --household-paper: var(--panel);
+  --household-border: var(--line);
+  --household-oxblood: var(--orange);
+  --household-oxblood-hover: #075957;
+  --household-focus: var(--focus);
+  --household-success: var(--success);
+  --household-error: var(--error);
+  color-scheme: light;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: var(--household-ink);
+  background: var(--household-canvas);
+}
+
+.household-workspace .destination-heading {
+  align-items: flex-start;
+  border-color: var(--household-border);
+  padding-bottom: 1.3rem;
+}
+
+.household-workspace .destination-heading h2 {
+  color: var(--household-ink);
+  font-family: var(--display);
+  font-size: 2rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.household-workspace .destination-heading p {
+  color: var(--household-muted);
+}
+
+.household-workspace .property-registry-section,
+.household-workspace .holding-registry-section,
+.household-workspace .loan-registry-section {
+  margin-top: 1.35rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.household-workspace .registry-empty-state {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1.25rem;
+  background: var(--panel);
+}
+
+.household-workspace .registry-empty-state > p:first-child {
+  margin: 0 0 0.85rem;
+  color: var(--paper);
+}
+
+.household-workspace .property-registry-empty,
+.household-workspace .holding-local-note,
+.household-workspace .holding-registry-empty,
+.household-workspace .holding-summary dt,
+.household-workspace .loan-required-note,
+.household-workspace .loan-field-hint,
+.household-workspace .loan-balance-history-guidance,
+.household-workspace .property-correction-note,
+.household-workspace .property-valuation-status {
+  color: var(--household-muted);
+}
+
+.household-workspace button {
+  min-height: 44px;
+  border-color: var(--household-oxblood);
+  border-radius: 6px;
+  color: var(--on-accent);
+  background: var(--household-oxblood);
+}
+
+.household-workspace button:hover:not(:disabled) {
+  border-color: var(--household-oxblood-hover);
+  color: var(--on-accent);
+  background: var(--household-oxblood-hover);
+}
+
+.household-workspace button.action-secondary {
+  border-color: var(--line-strong);
+  color: var(--household-ink);
+  background: var(--household-paper);
+}
+
+.household-workspace button.action-secondary:hover:not(:disabled) {
+  border-color: var(--household-oxblood);
+  color: var(--household-oxblood);
+  background: var(--orange-soft);
+}
+
+.household-workspace button:focus-visible,
+.household-workspace input:focus-visible,
+.household-workspace select:focus-visible,
+.household-workspace summary:focus-visible {
+  outline: 3px solid var(--household-focus);
+  outline-offset: 2px;
+}
+
+.household-workspace input,
+.household-workspace select {
+  border-color: var(--field-border);
+  color: var(--household-ink);
+  background-color: var(--household-paper);
+}
+
+.household-workspace input::placeholder {
+  color: var(--placeholder);
+}
+
+.household-workspace select {
+  background-image: linear-gradient(45deg, transparent 50%, var(--household-oxblood) 50%),
+    linear-gradient(135deg, var(--household-oxblood) 50%, transparent 50%);
+}
+
+.household-workspace .property-label-editor > summary,
+.household-workspace .property-valuation-actions > summary,
+.household-workspace .loan-record-details > summary {
+  color: var(--household-oxblood);
+  text-underline-offset: 0.2em;
+}
+
+.household-workspace .property-registry-message[role="alert"],
+.household-workspace .holding-registry-message[role="alert"],
+.household-workspace .loan-field-error,
+.household-workspace .loan-form-errors {
+  color: var(--household-error);
+}
+
+.household-workspace .property-registry-message[role="status"],
+.household-workspace .holding-registry-message[role="status"] {
+  color: var(--household-success);
+}
+
+.property-workspace-grid,
+.holding-workspace-grid,
+.loan-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.72fr) minmax(0, 1.8fr);
+  align-items: start;
+  gap: clamp(1rem, 2vw, 1.6rem);
+  margin-top: 1.15rem;
+}
+
+.property-record-navigation,
+.holding-record-navigation,
+.loan-record-navigation {
+  display: grid;
+  border-top: 1px solid var(--household-border);
+}
+
+.household-workspace .property-record-navigation button,
+.household-workspace .holding-record-navigation button,
+.household-workspace .loan-record-navigation button {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 0.3rem;
+  border: 0;
+  border-bottom: 1px solid var(--household-border);
+  padding: 0.8rem 0.75rem;
+  color: var(--household-ink);
+  background: transparent;
+  text-align: left;
+}
+
+.household-workspace .property-record-navigation button:hover:not(:disabled),
+.household-workspace .holding-record-navigation button:hover:not(:disabled),
+.household-workspace .loan-record-navigation button:hover:not(:disabled) {
+  color: var(--household-oxblood);
+  background: var(--orange-soft);
+}
+
+.household-workspace .property-record-navigation button[aria-current="page"],
+.household-workspace .holding-record-navigation button[aria-current="page"],
+.household-workspace .loan-record-navigation button[aria-current="page"] {
+  color: var(--household-oxblood);
+  background: var(--household-paper);
+  font-weight: 700;
+}
+
+.property-record-navigation span,
+.loan-record-navigation span {
+  overflow-wrap: anywhere;
+}
+
+.household-workspace .property-record-navigation small,
+.household-workspace .loan-record-navigation small {
+  color: var(--household-muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.property-record-detail,
+.loan-record-detail {
+  min-width: 0;
+  border: 1px solid var(--household-border);
+  padding: clamp(0.9rem, 2vw, 1.4rem);
+  background: var(--household-paper);
+}
+
+.property-record-detail > .property-record,
+.loan-record-detail > .loan-record {
+  border: 0;
+  padding: 0;
+  color: var(--household-ink);
+  background: var(--household-paper);
+}
+
+.household-workspace .holding-record {
+  border-color: var(--household-border);
+  color: var(--household-ink);
+  background: var(--household-paper);
+}
+
+.holding-correction {
+  margin-top: 1rem;
+}
+
+.household-workspace .holding-correction > summary {
+  color: var(--household-oxblood);
+  cursor: pointer;
+  text-underline-offset: 0.2em;
+}
+
+.holding-correction ul {
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.holding-record-navigation button {
+  overflow-wrap: anywhere;
+}
+
+.household-workspace .property-record h4,
+.household-workspace .holding-record h3,
+.household-workspace .loan-record-heading h4 {
+  color: var(--household-ink);
+  font-family: var(--display);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.household-workspace .loan-record-heading span {
+  color: var(--household-muted);
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.household-workspace .property-valuation-form,
+.household-workspace .holding-create-form,
+.household-workspace .holding-valuation-form,
+.household-workspace .loan-create-form,
+.household-workspace .loan-balance-form {
+  margin-top: 0.85rem;
+}
+
+.household-workspace .property-create-form,
+.household-workspace .property-valuation-form,
+.household-workspace .loan-create-form,
+.household-workspace .loan-balance-form,
+.household-workspace .property-label-editor form,
+.household-workspace .property-correction-form {
+  color: var(--household-ink);
+}
+
+.household-workspace .property-create-form label,
+.household-workspace .property-valuation-form label,
+.household-workspace .holding-create-form label,
+.household-workspace .holding-valuation-form label,
+.household-workspace .property-label-editor form label,
+.household-workspace .property-correction-form label,
+.household-workspace .loan-field {
+  color: var(--household-muted);
+}
+
+.household-workspace .loan-create-group {
+  border-color: var(--household-border);
+}
+
+.household-workspace .loan-create-group legend {
+  color: var(--household-oxblood);
+}
+
+.household-workspace .loan-terms dt,
+.household-workspace .property-history-table-wrap th,
+.household-workspace .holding-history-table-wrap th,
+.household-workspace .loan-balance-table-wrap th {
+  color: var(--household-muted);
+}
+
+.household-workspace .loan-terms dd,
+.household-workspace .property-history-table-wrap td,
+.household-workspace .holding-summary dd,
+.household-workspace .holding-history-table-wrap td,
+.household-workspace .loan-balance-table-wrap td {
+  color: var(--household-ink);
+}
+
+.household-workspace .property-history-table-wrap th,
+.household-workspace .property-history-table-wrap td,
+.household-workspace .holding-history-table-wrap th,
+.household-workspace .holding-history-table-wrap td,
+.household-workspace .loan-balance-table-wrap th,
+.household-workspace .loan-balance-table-wrap td {
+  border-color: var(--household-border);
+}
+
+.household-workspace .property-valuation-currency,
+.household-workspace .loan-balance-value {
+  color: var(--household-oxblood);
+}
+
+.household-workspace .property-history-table-wrap,
+.household-workspace .loan-balance-table-wrap {
+  scrollbar-color: var(--household-oxblood) var(--panel-soft);
+}
+
+.household-workspace .property-detail-back,
+.household-workspace .loan-detail-back,
+.household-workspace .property-create-form button[type="button"],
+.household-workspace .property-valuation-form button[type="button"],
+.household-workspace .loan-create-actions button[type="button"],
+.household-workspace .loan-balance-form button[type="button"] {
+  border-color: var(--line-strong);
+  color: var(--household-oxblood);
+  background: var(--household-paper);
+}
+
+.household-workspace .property-detail-back,
+.household-workspace .loan-detail-back {
+  display: none;
+}
+
+.household-workspace .property-detail-back:hover:not(:disabled),
+.household-workspace .loan-detail-back:hover:not(:disabled),
+.household-workspace .property-create-form button[type="button"]:hover:not(:disabled),
+.household-workspace .property-valuation-form button[type="button"]:hover:not(:disabled),
+.household-workspace .loan-create-actions button[type="button"]:hover:not(:disabled) {
+  border-color: var(--household-oxblood);
+  color: var(--household-oxblood);
+  background: var(--orange-soft);
+}
+
+.household-workspace .loan-view-property {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  margin-left: 0.4rem;
+  border: 0;
+  padding: 0 0.2rem;
+  color: var(--household-oxblood);
+  background: transparent;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.household-workspace .loan-view-property:hover:not(:disabled) {
+  border: 0;
+  color: var(--household-oxblood-hover);
+  background: transparent;
+}
+
+@media (max-width: 1050px) {
+  .property-workspace-grid,
+  .holding-workspace-grid,
+  .loan-workspace-grid {
+    grid-template-columns: minmax(11rem, 0.68fr) minmax(0, 1.5fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .workspace-subnavigation[aria-label="Household tools"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .household-workspace .destination-heading {
+    align-items: flex-start;
+  }
+
+  .household-workspace .destination-heading h2 {
+    font-size: 1.9rem;
+  }
+
+  .property-workspace-grid,
+  .holding-workspace-grid,
+  .loan-workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  .property-workspace-grid.is-compact-detail-open .property-record-navigation,
+  .loan-workspace-grid.is-compact-detail-open .loan-record-navigation {
+    display: none;
+  }
+
+  .property-workspace-grid:not(.is-compact-detail-open) .property-record-detail,
+  .loan-workspace-grid:not(.is-compact-detail-open) .loan-record-detail {
+    display: none;
+  }
+
+  .household-workspace .property-detail-back,
+  .household-workspace .loan-detail-back {
+    display: inline-flex;
+    margin-bottom: 0.8rem;
+  }
+
+  .household-workspace .property-history-table-wrap table,
+  .household-workspace .loan-balance-table-wrap table {
+    min-width: 100%;
+    table-layout: fixed;
+  }
+
+  .household-workspace .property-history-table-wrap th,
+  .household-workspace .property-history-table-wrap td,
+  .household-workspace .loan-balance-table-wrap th,
+  .household-workspace .loan-balance-table-wrap td {
+    padding: 0.4rem 0.25rem;
+    font-size: 0.7rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .household-workspace .property-history-table-wrap th:nth-child(1),
+  .household-workspace .property-history-table-wrap td:nth-child(1) {
+    width: 26%;
+  }
+
+  .household-workspace .property-history-table-wrap th:nth-child(2),
+  .household-workspace .property-history-table-wrap td:nth-child(2) {
+    width: 32%;
+  }
+
+  .household-workspace .property-history-table-wrap th:nth-child(3),
+  .household-workspace .property-history-table-wrap td:nth-child(3) {
+    width: 42%;
+  }
+
+  .household-workspace .loan-balance-table-wrap th:nth-child(1),
+  .household-workspace .loan-balance-table-wrap td:nth-child(1) {
+    width: 26%;
+  }
+
+  .household-workspace .loan-balance-table-wrap th:nth-child(2),
+  .household-workspace .loan-balance-table-wrap td:nth-child(2) {
+    width: 38%;
+  }
+
+  .household-workspace .loan-balance-table-wrap th:nth-child(3),
+  .household-workspace .loan-balance-table-wrap td:nth-child(3) {
+    width: 36%;
+  }
+}

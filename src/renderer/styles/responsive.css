@@ -1,0 +1,706 @@
+@media (max-width: 1050px) {
+  .app-shell .app-frame {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .app-frame > .workspace {
+    min-width: 0;
+  }
+
+  .primary-navigation {
+    position: static;
+    min-height: 0;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .monthly-attention-content {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .monthly-attention-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .review-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "totals"
+      "attention"
+      "category"
+      "target"
+      "target-entry";
+  }
+
+  .account-coverage-forms,
+  .exchange-rate-form {
+    grid-template-columns: 1fr;
+  }
+
+  .account-coverage-period-list {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-allocation-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .review-support {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workflow-import-grid,
+  .workflow-recovery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ledger-primary-filters,
+  .ledger-secondary-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .app-header,
+  .review-intro,
+  .work-bin-heading,
+  .destination-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-header {
+    align-items: center;
+    flex-direction: row;
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .brand-lockup {
+    gap: 0.55rem;
+  }
+
+  .brand-stamp {
+    width: 2.3rem;
+    height: 2.3rem;
+  }
+
+  .brand-lockup h1 {
+    font-size: 0.82rem;
+  }
+
+  .brand-lockup p {
+    font-size: 0.75rem;
+  }
+
+  .header-meta {
+    display: grid;
+    width: auto;
+    max-width: 47%;
+    min-width: 0;
+    justify-items: end;
+    gap: 0.2rem;
+    font-size: 0.75rem;
+  }
+
+  .header-status {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    white-space: normal;
+  }
+
+  .app-frame {
+    width: 100%;
+    gap: 0.75rem;
+    padding-top: 0;
+  }
+
+  .workspace {
+    padding: 1.25rem 0.85rem 3rem;
+  }
+
+  .header-actions {
+    gap: 0.5rem;
+  }
+
+  .header-actions .header-meta {
+    display: none;
+  }
+
+  .header-import-action {
+    padding: 0.5rem 0.65rem;
+    font-size: 0.78rem;
+  }
+
+  .primary-navigation {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.2rem;
+  }
+
+  button {
+    min-height: 2.75rem;
+  }
+
+  .workspace-link {
+    min-height: 2.8rem;
+    justify-items: center;
+    padding: 0.45rem 0.2rem;
+    text-align: center;
+  }
+
+  .workspace-link span {
+    font-size: 0.8rem;
+  }
+
+  .workspace-link small {
+    display: none;
+  }
+
+  .review-intro h2 {
+    font-size: 1.5rem;
+  }
+
+  .monthly-attention-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  section[aria-label="Monthly Totals"] dl {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  section[aria-label="Monthly Totals"] .monthly-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 0.75rem 0;
+  }
+
+  section[aria-label="Monthly Totals"] .monthly-total:last-child {
+    border-bottom: 0;
+  }
+
+  section[aria-label="Monthly Totals"] dt {
+    margin-bottom: 0;
+  }
+
+  .pending-list-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pending-observation-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+  }
+
+  .pending-observation-status,
+  .pending-observation-amount {
+    justify-self: start;
+  }
+
+  .pending-observation-reference {
+    grid-column: auto;
+  }
+
+  .review-intro {
+    align-items: center;
+    flex-direction: row;
+    gap: 0.6rem;
+    padding-bottom: 0.85rem;
+  }
+
+  .review-intro > div:first-child {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .workspace-subnavigation {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .workspace-subnavigation button {
+    min-height: 52px;
+    padding-inline: 0.45rem;
+  }
+
+  .ledger-quick-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ledger-quick-filters > button {
+    width: 100%;
+    padding-inline: 0.5rem;
+  }
+
+  .ledger-transaction-type-filters {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .account-coverage-form,
+  .exchange-rate-form,
+  .converted-report-form {
+    grid-template-columns: 1fr;
+  }
+
+  .account-coverage-account-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .account-coverage-form > button,
+  .account-coverage-form > p {
+    grid-column: auto;
+  }
+
+  .account-coverage-form-heading {
+    grid-column: auto;
+  }
+
+  .account-coverage-statuses {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-allocation-summary {
+    position: sticky;
+    top: 0.5rem;
+    z-index: 3;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    background: var(--panel-soft);
+  }
+
+  .transaction-allocation-summary p {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  section[aria-label="Ledger"],
+  section.transaction-allocation-editor {
+    overflow: clip;
+    min-width: 0;
+  }
+
+  .ledger-allocation-panel {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .saved-rate-table-scroll {
+    overflow: visible;
+  }
+
+  .saved-exchange-rates table,
+  .saved-exchange-rates tbody,
+  .saved-exchange-rates tr,
+  .saved-exchange-rates td {
+    display: block;
+    width: 100%;
+  }
+
+  .saved-exchange-rates thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .saved-exchange-rates tbody {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .saved-exchange-rates tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 0.75rem;
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.25rem 0 0.55rem;
+  }
+
+  .saved-exchange-rates td {
+    display: grid;
+    gap: 0.15rem;
+    border: 0;
+    padding: 0.45rem 0;
+    overflow-wrap: anywhere;
+  }
+
+  .saved-exchange-rates td::before {
+    content: attr(data-label);
+    color: var(--paper-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .saved-exchange-rates td[data-label="Effective date"],
+  .saved-exchange-rates td[data-label="Source"] {
+    grid-column: 1 / -1;
+  }
+
+  section[aria-label="Target vs Actual"] table {
+    min-width: 0;
+  }
+
+  .target-vs-actual-table,
+  .target-vs-actual-table tbody,
+  .target-vs-actual-table tr,
+  .target-vs-actual-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .target-vs-actual-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .target-vs-actual-table tbody {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .target-vs-actual-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.25rem 0.75rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.55rem;
+  }
+
+  .target-vs-actual-table td {
+    display: grid;
+    min-width: 0;
+    gap: 0.15rem;
+    border: 0;
+    padding: 0.35rem 0;
+    overflow-wrap: anywhere;
+  }
+
+  .target-vs-actual-table td::before {
+    content: attr(data-label);
+    color: var(--paper-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .target-vs-actual-table td:first-child {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--line);
+    color: var(--paper);
+    font-weight: 700;
+  }
+
+  .review-intro .intro-copy {
+    display: none;
+  }
+
+  .month-picker {
+    width: 128px;
+    max-width: 128px;
+    min-width: 0;
+    flex: 0 0 128px;
+    gap: 0.3rem;
+  }
+
+  .month-picker-code {
+    display: none;
+  }
+
+  .monthly-attention {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-attention {
+    gap: 0.6rem;
+  }
+
+  .destination-heading h2 {
+    font-size: 2.2rem;
+  }
+
+  .month-picker {
+    width: 100%;
+    flex-basis: auto;
+  }
+
+  .month-frames {
+    grid-auto-columns: 112px;
+  }
+
+  .month-frame-button {
+    min-width: 112px;
+    grid-template-columns: 1fr;
+  }
+
+  .frame-code,
+  .frame-state {
+    white-space: nowrap;
+  }
+
+  .frame-flag {
+    justify-self: start;
+  }
+
+  .review-support,
+  .workflow-import-grid,
+  .workflow-recovery-grid,
+  .workflow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .review-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "totals"
+      "attention"
+      "category"
+      "target"
+      "target-entry";
+  }
+
+  .import-stage-progress ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .import-workspace-switcher {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .import-workspace-switcher button {
+    min-height: 52px;
+    padding: 0.45rem;
+    overflow-wrap: anywhere;
+  }
+
+  .csv-import-profile-list li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-stage-progress li:nth-child(2) {
+    border-right: 0;
+  }
+
+  .import-stage-progress li:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .ledger-primary-filters,
+  .ledger-secondary-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-format-options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .import-format-choice,
+  .import-format-choice:hover:not(:disabled) {
+    min-height: 4rem;
+    align-content: start;
+    padding: 0.55rem;
+  }
+
+  .workflow-step {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .workflow-step:last-child {
+    border-bottom: 0;
+  }
+
+  .review-queue-item {
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
+  }
+
+  .review-queue-action {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .review-queue-action p {
+    margin: 0;
+  }
+
+  .review-queue-action select,
+  .review-queue-action button {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .preview-table-wrap {
+    overflow: visible;
+  }
+
+  .import-preview-table {
+    min-width: 0;
+  }
+
+  .import-preview-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .import-preview-table,
+  .import-preview-table tbody,
+  .import-preview-table tr,
+  .import-preview-table td {
+    display: block;
+  }
+
+  .import-preview-table tr {
+    border-top: 1px solid var(--line);
+    padding: 0.65rem 0;
+  }
+
+  .import-preview-table tr:first-child {
+    border-top-color: var(--line-strong);
+  }
+
+  .import-preview-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.25rem 0;
+    text-align: right;
+  }
+
+  .import-preview-table td::before {
+    color: var(--paper-muted);
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-align: left;
+  }
+
+  section[aria-label="Category Breakdown"] li,
+  section[aria-label="Category Target Entry"] li,
+  section[aria-label="Forecast"] li {
+    align-items: start;
+  }
+}
+
+@media (max-width: 38rem) {
+  .import-file-source {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-history-table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .import-history-table caption {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.5rem;
+    text-align: left;
+  }
+
+  .import-history-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .import-history-table,
+  .import-history-table tbody,
+  .import-history-table tr,
+  .import-history-table td {
+    display: block;
+  }
+
+  .import-history-table tr:not(.import-history-detail-row) {
+    border-top: 1px solid var(--line);
+    padding: 0.5rem 0;
+  }
+
+  .import-history-table tr:not(.import-history-detail-row) td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.3rem 0;
+    text-align: right;
+  }
+
+  .import-history-table tr:not(.import-history-detail-row) td::before {
+    color: var(--paper-muted);
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-align: left;
+  }
+
+  .import-history-table .import-history-detail-row {
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.4rem 0;
+  }
+
+  .import-history-table .import-history-detail-row td {
+    display: block;
+    padding: 0.6rem;
+  }
+
+  .import-review-row,
+  .import-review-actions form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-review-actions form button {
+    grid-column: 1;
+    justify-self: stretch;
+  }
+
+  .import-duplicate-bulk-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-duplicate-bulk-buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-preview-table caption {
+    display: block;
+    width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+}

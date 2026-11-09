@@ -1,0 +1,712 @@
+.property-registry-section {
+  margin-top: 1rem;
+  border: 1px solid var(--line-strong);
+  padding: clamp(1rem, 2vw, 1.5rem);
+  background: var(--panel);
+}
+
+.holding-registry-section {
+  min-width: 0;
+  margin-top: 1rem;
+  border: 1px solid var(--line-strong);
+  padding: clamp(1rem, 2vw, 1.5rem);
+  background: var(--panel);
+}
+
+.holding-local-note,
+.holding-registry-empty,
+.holding-summary dt {
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.holding-create-form,
+.holding-valuation-form {
+  display: grid;
+  min-width: 0;
+  align-items: end;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.holding-create-form {
+  grid-template-columns: minmax(8rem, 1.3fr) minmax(6rem, 0.65fr)
+    minmax(8rem, 1fr) minmax(6rem, 0.6fr) auto;
+}
+
+.holding-valuation-form {
+  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 1fr) minmax(7rem, 0.7fr) auto;
+}
+
+.holding-create-form label,
+.holding-valuation-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.holding-create-form input,
+.holding-valuation-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.holding-create-form button,
+.holding-valuation-form button {
+  min-height: 2.8rem;
+}
+
+.holding-registry-message {
+  margin: 0.75rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.holding-registry-message[role="alert"] {
+  color: var(--error);
+}
+
+.holding-registry-message[role="status"] {
+  color: var(--success);
+}
+
+.holding-record {
+  min-width: 0;
+  border-top: 1px solid var(--line-strong);
+  padding: 1rem 0;
+}
+
+.holding-record h3 {
+  margin: 0;
+  color: var(--paper);
+  overflow-wrap: anywhere;
+}
+
+.holding-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0.8rem 0;
+}
+
+.holding-summary div {
+  min-width: 0;
+}
+
+.holding-summary dt,
+.holding-summary dd {
+  margin: 0;
+}
+
+.holding-summary dd {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.holding-history-table-wrap {
+  max-width: 100%;
+  margin-top: 0.9rem;
+  overflow-x: auto;
+}
+
+.holding-history-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.holding-history-table-wrap th,
+.holding-history-table-wrap td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.65rem 0.75rem;
+  white-space: nowrap;
+}
+
+.holding-history-table-wrap th {
+  color: var(--paper-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.holding-history-table-wrap td {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+
+.holding-registry-section :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.property-registry-empty {
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.property-create-form,
+.property-valuation-form {
+  display: grid;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.household-share-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.household-share-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--household-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.household-share-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.household-share-form .household-share-hint,
+.household-share-form .property-registry-message {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.household-workspace .household-share-hint {
+  color: var(--household-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.property-create-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 1rem;
+}
+
+.property-valuation-form {
+  grid-template-columns: minmax(10rem, 1.3fr) minmax(8rem, 1fr) minmax(7rem, 0.65fr) auto;
+  margin-top: 0.8rem;
+}
+
+.property-create-form label,
+.property-valuation-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.property-create-form input,
+.property-valuation-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.property-create-form button,
+.property-valuation-form button {
+  min-height: 2.8rem;
+}
+
+.property-registry-message {
+  margin: 0.75rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.property-registry-message[role="alert"] {
+  color: var(--error);
+}
+
+.property-registry-message[role="status"] {
+  color: var(--success);
+}
+
+.property-registry-empty {
+  margin: 0.85rem 0 0;
+}
+
+.property-correction-note {
+  max-width: 62ch;
+  margin: 0.5rem 0;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.property-record {
+  min-width: 0;
+  border-top: 1px solid var(--line-strong);
+  padding: 1rem 0;
+}
+
+.property-record-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.property-record h4 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--paper);
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.property-label-editor,
+.property-valuation-actions {
+  min-width: 0;
+}
+
+.property-label-editor > summary,
+.property-valuation-actions > summary {
+  min-height: 44px;
+  padding: 0.55rem 0;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.property-label-editor > summary:focus-visible,
+.property-valuation-actions > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.property-label-editor:not([open]) > :not(summary),
+.property-valuation-actions:not([open]) > :not(summary) {
+  display: none;
+}
+
+.property-label-editor form,
+.property-correction-form {
+  display: grid;
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.property-label-editor form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 0.5rem;
+}
+
+.property-correction-form {
+  grid-template-columns: repeat(3, minmax(7rem, 1fr)) auto;
+  margin: 0.5rem 0;
+}
+
+.property-label-editor form label,
+.property-correction-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.property-label-editor form input,
+.property-correction-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.property-label-editor form button,
+.property-correction-form button,
+.property-valuation-actions > button {
+  min-height: 2.8rem;
+}
+
+.property-history-table-wrap {
+  max-width: 100%;
+  margin-top: 0.9rem;
+  overflow-x: auto;
+}
+
+.property-history-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.property-history-table-wrap th,
+.property-history-table-wrap td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.65rem 0.75rem;
+  white-space: nowrap;
+}
+
+.property-history-table-wrap th {
+  color: var(--paper-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.property-history-table-wrap td {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+
+.property-history-table-wrap td.property-valuation-value,
+.property-history-table-wrap td:last-child {
+  white-space: normal;
+}
+
+.property-valuation-currency {
+  color: var(--paper-muted);
+}
+
+.property-valuation-amount {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.property-valuation-status {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--paper-muted);
+  font-size: 0.75rem;
+}
+
+.property-registry-section :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 680px) {
+  .property-create-form,
+  .property-valuation-form,
+  .household-share-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .property-record-heading {
+    flex-direction: column;
+  }
+
+  .property-label-editor,
+  .property-valuation-actions {
+    width: 100%;
+  }
+
+  .property-label-editor form,
+  .property-correction-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .property-history-table-wrap th,
+  .property-history-table-wrap td {
+    padding: 0.45rem 0.35rem;
+    font-size: 0.78rem;
+  }
+
+  .property-history-table-wrap td.property-valuation-value {
+    min-width: 8rem;
+  }
+
+  .property-create-form button,
+  .property-valuation-form button,
+  .property-label-editor form button,
+  .property-correction-form button,
+  .property-valuation-actions > button {
+    justify-self: start;
+  }
+}
+
+.loan-registry-section :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 680px) {
+  .holding-create-form,
+  .holding-valuation-form,
+  .holding-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .holding-create-form button,
+  .holding-valuation-form button {
+    justify-self: start;
+  }
+
+  .holding-history-table-wrap th,
+  .holding-history-table-wrap td {
+    padding: 0.45rem 0.35rem;
+    font-size: 0.78rem;
+  }
+}
+
+.loan-create-form {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.loan-balance-form {
+  display: grid;
+  align-items: end;
+  grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 1fr) auto;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.loan-required-note {
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+}
+
+.loan-create-group {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 0.75rem 0 0;
+}
+
+.loan-create-group legend {
+  padding: 0 0.4rem 0 0;
+  color: var(--paper);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.loan-create-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.loan-create-fields-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.loan-field {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.loan-field input,
+.loan-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+.loan-field-hint {
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.loan-field-error,
+.loan-form-errors {
+  color: var(--error);
+}
+
+.loan-field-error {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.loan-form-errors {
+  margin: 0.75rem 0 0;
+}
+
+.loan-balance-history-guidance {
+  max-width: 70ch;
+  margin: 0.75rem 0 0;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.loan-create-form button,
+.loan-balance-form button {
+  min-height: 2.8rem;
+  justify-self: start;
+}
+
+.loan-record-list {
+  margin-top: 1.1rem;
+}
+
+.loan-record {
+  min-width: 0;
+  border-top: 1px solid var(--line-strong);
+  padding: 1rem 0;
+}
+
+.loan-record-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.loan-record-heading h4 {
+  min-width: 0;
+  margin: 0;
+  color: var(--paper);
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.loan-record-heading span {
+  max-width: 60%;
+  color: var(--paper-muted);
+  font-size: 0.75rem;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.loan-record-details {
+  min-width: 0;
+  margin-top: 0.75rem;
+}
+
+.loan-record-details > summary {
+  min-height: 2.75rem;
+  padding: 0.55rem 0;
+  color: var(--paper-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.loan-details-summary-content {
+  display: inline-flex;
+  width: calc(100% - 1rem);
+  vertical-align: middle;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.loan-record-details[open] > summary {
+  margin-bottom: 0.65rem;
+  color: var(--paper);
+}
+
+.loan-terms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0.85rem 0 0;
+}
+
+.loan-terms div {
+  min-width: 0;
+}
+
+.loan-terms dt {
+  color: var(--paper-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.loan-terms dd {
+  margin: 0.25rem 0 0;
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.loan-balance-table-wrap {
+  max-width: 100%;
+  margin-top: 0.9rem;
+  overflow-x: auto;
+}
+
+.loan-balance-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.loan-balance-table-wrap th,
+.loan-balance-table-wrap td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.65rem 0.75rem;
+  white-space: nowrap;
+}
+
+.loan-balance-table-wrap th {
+  color: var(--paper-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.loan-balance-table-wrap td {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+
+.loan-balance-value {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+@media (max-width: 680px) {
+  .loan-create-fields,
+  .loan-balance-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .loan-record-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .loan-record-heading span {
+    max-width: none;
+    text-align: left;
+  }
+
+  .loan-record-details > summary {
+    min-height: 2.75rem;
+  }
+
+  .loan-details-summary-content {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .loan-create-form button,
+  .loan-balance-form button {
+    justify-self: start;
+  }
+
+  .loan-balance-table-wrap th,
+  .loan-balance-table-wrap td {
+    padding: 0.45rem 0.35rem;
+    font-size: 0.78rem;
+  }
+}
