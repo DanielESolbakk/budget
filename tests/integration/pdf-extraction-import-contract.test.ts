@@ -86,9 +86,7 @@ function importDocument(
     finishedAtIso: timestamp,
   }, {
     parserRegistry: defaultParserAdapterRegistry,
-    appendImportJob: ledger.appendImportJob,
     appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
-    appendTransactions: ledger.appendTransactions,
     getTransactionsForImportJob: ledger.getTransactionsForImportJob,
     getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
     getExistingTransactionsForAccount: ledger.getTransactionsForAccount,
@@ -122,9 +120,7 @@ describe("PDF extraction import contract", () => {
         finishedAtIso: timestamp,
       }, {
         parserRegistry: defaultParserAdapterRegistry,
-        appendImportJob: ledgerResult.ledger.appendImportJob,
         appendImportJobAndTransactions: ledgerResult.ledger.appendImportJobAndTransactions,
-        appendTransactions: ledgerResult.ledger.appendTransactions,
         getTransactionsForImportJob: ledgerResult.ledger.getTransactionsForImportJob,
       });
 

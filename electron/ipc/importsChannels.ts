@@ -527,9 +527,7 @@ export function registerImportsChannels({
           getAccountCurrencyCode: (accountId) =>
             localLedgerDatabase.getAccountsForHousehold(householdId)
               .find((account) => account.id === accountId)?.currencyCode,
-          appendImportJob: localLedgerDatabase.appendImportJob,
           appendImportJobAndTransactions: localLedgerDatabase.appendImportJobAndTransactions,
-          appendTransactions: localLedgerDatabase.appendTransactions,
         });
       } catch (error) {
         importPreviewRegistry.release(parsedInput.previewId!);

@@ -185,9 +185,7 @@ describe("position-aware PDF extraction", () => {
         finishedAtIso: "2026-06-01T12:00:01Z",
       }, {
         parserRegistry: defaultParserAdapterRegistry,
-        appendImportJob: ledger.appendImportJob,
         appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
-        appendTransactions: ledger.appendTransactions,
         getTransactionsForImportJob: ledger.getTransactionsForImportJob,
         getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
         getExistingTransactionsForAccount: ledger.getTransactionsForAccount,

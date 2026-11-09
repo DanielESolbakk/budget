@@ -205,8 +205,6 @@ describe("import reconciliation integration contract", () => {
         },
         {
           parserRegistry: defaultParserAdapterRegistry,
-          appendImportJob: ledger.appendImportJob,
-          appendTransactions: ledger.appendTransactions,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           getTransactionsForImportJob: ledger.getTransactionsForImportJob,
           getExistingTransactionsForAccount: ledger.getTransactionsForAccount,
@@ -313,8 +311,6 @@ describe("import reconciliation integration contract", () => {
     });
     const dependencies = {
       parserRegistry: defaultParserAdapterRegistry,
-      appendImportJob: ledger.appendImportJob,
-      appendTransactions: ledger.appendTransactions,
       appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
       getTransactionsForImportJob: ledger.getTransactionsForImportJob,
       getImportedTransactionsForSource: ledger.getImportedTransactionsForSource,
@@ -385,8 +381,6 @@ describe("import reconciliation integration contract", () => {
               sourceRows: [{ lineNumber: 1, amountMinor: -125, currencyCode: "NOK" }],
             }),
           },
-          appendImportJob: ledger.appendImportJob,
-          appendTransactions: ledger.appendTransactions,
           appendImportJobAndTransactions: ledger.appendImportJobAndTransactions,
           getTransactionsForImportJob: ledger.getTransactionsForImportJob,
           getAccountCurrencyCode: () => ACCOUNT.currencyCode,
