@@ -82,6 +82,7 @@ Avoid inventing near-duplicates for the same concept.
 
 - Model the domain first. UI naming and storage naming should match.
 - Keep registry UI changes in the relevant `src/renderer/workspaces/holding/`, `property/`, or `loan/` feature. Preserve section-owned drafts, focus, saving/loading, and refresh behavior. Reuse `src/renderer/import/useImportPreflight.ts` for preview identity/progress/cancellation without merging CSV mapping/profiles with PDF evidence/exclusions. See [Renderer feature ownership](../README.md#renderer-feature-ownership) for context invalidation and validation boundaries.
+- Avoid building a second implementation of every desktop feature. Keep the synthetic browser preview scoped to supported UI-development interactions, reuse shared validation/calculations, and explicitly reject desktop-only operations. Check the complete preview object against `BudgetApi` without catch-all proxies or assertions that hide missing methods; event subscriptions must preserve synchronous cleanup contracts. See [Browser preview](../README.md#start-the-browser-preview) for supported behavior.
 - Prefer deterministic business rules over opaque automation for categorization.
 - Low-confidence categorization must surface in the product for review.
 - User corrections should refine future categorization behavior through local rules or clearly auditable logic.
