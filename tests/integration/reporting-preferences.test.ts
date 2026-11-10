@@ -41,6 +41,43 @@ describe("reporting period preference persistence", () => {
     }
   });
 
+  it("persists weekday-occurrence and two-date rules through restart and backup restore", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-reporting-schedules-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    let ledger = createLocalLedgerDatabase({ dbPath });
+
+    try {
+      const { household: createdHousehold } = ledger.createInitialHouseholdAndAccount({
+        householdName: household.name,
+        accountName: "Everyday",
+        currencyCode: "NOK",
+      });
+      const rules = [
+        { type: "weekday-occurrence", weekday: 3, occurrence: 2 },
+        { type: "two-fixed-days", firstDayOfMonth: 15, secondDayOfMonth: 31 },
+      ] as const;
+
+      rules.forEach((rule, index) => {
+        const snapshotPath = join(directory, `reporting-schedule-${index}.json`);
+        ledger.saveReportingPeriodRule(createdHousehold.id, rule);
+        expect(ledger.getReportingPeriodRule(createdHousehold.id)).toEqual(rule);
+        createBackupSnapshot({
+          ...ledger.loadLedgerSnapshotData(),
+          createdAtIso: "2026-06-01T12:00:00Z",
+          outputPath: snapshotPath,
+        });
+        expect(restoreBackupSnapshot({ snapshotPath }).reportingPeriodRule).toEqual(rule);
+
+        ledger.close();
+        ledger = createLocalLedgerDatabase({ dbPath });
+        expect(ledger.getReportingPeriodRule(createdHousehold.id)).toEqual(rule);
+      });
+    } finally {
+      ledger.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("restores a saved preference while legacy snapshots default to calendar months", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-reporting-backup-"));
     const dbPath = join(directory, "ledger.sqlite");

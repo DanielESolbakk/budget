@@ -99,6 +99,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   const [useCalendarReportingMode, setUseCalendarReportingMode] = React.useState(false);
   const hasLoadedInitialState = React.useRef(false);
   const selectedYearMonthRef = React.useRef(initialYearMonth);
+  const selectedPeriodStartDateIsoRef = React.useRef<string | undefined>(undefined);
   const latestViewRequestRef = React.useRef(0);
   const workspaceRef = React.useRef<HTMLElement>(null);
   const previousWorkspaceRef = React.useRef(activeWorkspace);
@@ -154,18 +155,25 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
           const activeRule = useCalendarReportingMode
             ? CALENDAR_MONTH_RULE
             : storedReportingPeriodRule;
-          const selectedYearMonth = isInitialLoad && activeRule.type !== "calendar-month"
+          const currentReportingPeriod = isInitialLoad && activeRule.type !== "calendar-month"
             ? resolveCurrentReportingPeriod(activeRule, toLocalIsoDate(new Date()))
-              .startDateIso.slice(0, 7)
+            : null;
+          const selectedYearMonth = currentReportingPeriod !== null
+            ? currentReportingPeriod.startDateIso.slice(0, 7)
             : requestedYearMonth;
+          const selectedPeriodStartDateIso = activeRule.type === "two-fixed-days"
+            ? currentReportingPeriod?.startDateIso ?? selectedPeriodStartDateIsoRef.current
+            : undefined;
           const viewContract = await window.budgetApi.dashboard.getViewData(
             selectedYearMonth,
-            activeRule
+            activeRule,
+            selectedPeriodStartDateIso
           );
           return {
             dashboardData,
             viewContract,
             selectedYearMonth,
+            selectedPeriodStartDateIso,
             storedReportingPeriodRule,
           };
         });
@@ -176,6 +184,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
           dashboardData,
           viewContract,
           selectedYearMonth,
+          selectedPeriodStartDateIso,
           storedReportingPeriodRule,
         } = loadedData;
         hasLoadedInitialState.current = true;
@@ -186,6 +195,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
         if (!availableMonths.includes(requestedYearMonth)) availableMonths.unshift(requestedYearMonth);
         if (!availableMonths.includes(selectedYearMonth)) availableMonths.unshift(selectedYearMonth);
         selectedYearMonthRef.current = selectedYearMonth;
+        selectedPeriodStartDateIsoRef.current = selectedPeriodStartDateIso;
         setAppState({
           status: "ready",
           dashboardData,
@@ -211,7 +221,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     };
   }, [refreshCounter, useCalendarReportingMode]);
 
-  function handleMonthChange(yearMonth: string): void {
+  function handleMonthChange(selection: string): void {
     if (appState.status !== "ready") return;
 
     const requestId = latestViewRequestRef.current + 1;
@@ -221,8 +231,14 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     const activeRule = useCalendarReportingMode
       ? CALENDAR_MONTH_RULE
       : savedReportingPeriodRule ?? CALENDAR_MONTH_RULE;
+    const selectedPeriodStartDateIso = activeRule.type === "two-fixed-days"
+      ? selection
+      : undefined;
+    const yearMonth = selectedPeriodStartDateIso === undefined
+      ? selection
+      : selection.slice(0, 7);
     window.budgetApi.dashboard
-      .getViewData(yearMonth, activeRule)
+      .getViewData(yearMonth, activeRule, selectedPeriodStartDateIso)
       .then((viewContract) => {
         if (requestId !== latestViewRequestRef.current) return;
         window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, yearMonth);
@@ -231,6 +247,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
           return { ...prev, viewContract, selectedYearMonth: yearMonth };
         });
         selectedYearMonthRef.current = yearMonth;
+        selectedPeriodStartDateIsoRef.current = selectedPeriodStartDateIso;
         setIsChangingMonth(false);
       })
       .catch(() => {
@@ -243,12 +260,19 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   }
 
   function handleReportingModeChange(mode: "calendar-month" | "payday-period"): void {
-    const selectedYearMonth = mode === "payday-period" && savedReportingPeriodRule !== null
+    const currentReportingPeriod = mode === "payday-period" && savedReportingPeriodRule !== null
       ? resolveCurrentReportingPeriod(savedReportingPeriodRule, toLocalIsoDate(new Date()))
-        .startDateIso.slice(0, 7)
+      : null;
+    const selectedYearMonth = currentReportingPeriod !== null
+      ? currentReportingPeriod.startDateIso.slice(0, 7)
       : appState.status === "ready"
         ? appState.selectedYearMonth
         : initialYearMonth;
+    selectedPeriodStartDateIsoRef.current =
+      currentReportingPeriod?.startDateIso !== undefined &&
+        savedReportingPeriodRule?.type === "two-fixed-days"
+        ? currentReportingPeriod.startDateIso
+        : undefined;
     setUseCalendarReportingMode(mode === "calendar-month");
     selectedYearMonthRef.current = selectedYearMonth;
     window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, selectedYearMonth);
@@ -258,8 +282,11 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   function handleReportingPeriodPreferenceSaved(rule: ReportingPeriodRule): void {
     setSavedReportingPeriodRule(rule);
     setUseCalendarReportingMode(false);
-    const selectedYearMonth = resolveCurrentReportingPeriod(rule, toLocalIsoDate(new Date()))
-      .startDateIso.slice(0, 7);
+    const currentReportingPeriod = resolveCurrentReportingPeriod(rule, toLocalIsoDate(new Date()));
+    const selectedYearMonth = currentReportingPeriod.startDateIso.slice(0, 7);
+    selectedPeriodStartDateIsoRef.current = rule.type === "two-fixed-days"
+      ? currentReportingPeriod.startDateIso
+      : undefined;
     selectedYearMonthRef.current = selectedYearMonth;
     window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, selectedYearMonth);
     setRefreshCounter((counter) => counter + 1);

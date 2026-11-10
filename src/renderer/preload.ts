@@ -95,7 +95,8 @@ export interface DashboardApi {
   getData: () => Promise<DashboardData>;
   getViewData: (
     yearMonth: string,
-    reportingPeriodRule?: ReportingPeriodRule
+    reportingPeriodRule?: ReportingPeriodRule,
+    selectedPeriodStartDateIso?: string
   ) => Promise<DashboardViewContract>;
 }
 
@@ -306,9 +307,15 @@ const budgetApi: BudgetApi = {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),
     getViewData: (
       yearMonth: string,
-      reportingPeriodRule?: ReportingPeriodRule
+      reportingPeriodRule?: ReportingPeriodRule,
+      selectedPeriodStartDateIso?: string
     ): Promise<DashboardViewContract> =>
-      ipcRenderer.invoke("dashboard:getViewData", yearMonth, reportingPeriodRule),
+      ipcRenderer.invoke(
+        "dashboard:getViewData",
+        yearMonth,
+        reportingPeriodRule,
+        selectedPeriodStartDateIso
+      ),
   },
   reportingPreferences: {
     getPeriodRule: (): Promise<ReportingPeriodRule> =>

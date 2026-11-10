@@ -4,7 +4,8 @@ import type { ReportingPeriodRule } from "../src/shared/applicationPreferences.j
 export type DashboardDataGetter = () => DashboardData;
 export type DashboardViewDataGetter = (
   yearMonth: string,
-  reportingPeriodRule?: ReportingPeriodRule
+  reportingPeriodRule?: ReportingPeriodRule,
+  selectedPeriodStartDateIso?: string
 ) => DashboardViewContract;
 
 export interface DashboardTestOverrides {
@@ -12,7 +13,8 @@ export interface DashboardTestOverrides {
   getViewData: (
     yearMonth: string,
     getViewData: DashboardViewDataGetter,
-    reportingPeriodRule?: ReportingPeriodRule
+    reportingPeriodRule?: ReportingPeriodRule,
+    selectedPeriodStartDateIso?: string
   ) => Promise<DashboardViewContract>;
 }
 
@@ -20,7 +22,8 @@ export interface DashboardProvider {
   getData: () => DashboardData;
   getViewData: (
     yearMonth: string,
-    reportingPeriodRule?: ReportingPeriodRule
+    reportingPeriodRule?: ReportingPeriodRule,
+    selectedPeriodStartDateIso?: string
   ) => Promise<DashboardViewContract>;
 }
 
@@ -36,9 +39,14 @@ export function createDashboardProvider(options: DashboardProviderOptions): Dash
       options.testOverrides === undefined
         ? options.getData()
         : options.testOverrides.getData(options.getData),
-    getViewData: async (yearMonth, reportingPeriodRule) =>
+    getViewData: async (yearMonth, reportingPeriodRule, selectedPeriodStartDateIso) =>
       options.testOverrides === undefined
-        ? options.getViewData(yearMonth, reportingPeriodRule)
-        : options.testOverrides.getViewData(yearMonth, options.getViewData, reportingPeriodRule),
+        ? options.getViewData(yearMonth, reportingPeriodRule, selectedPeriodStartDateIso)
+        : options.testOverrides.getViewData(
+          yearMonth,
+          options.getViewData,
+          reportingPeriodRule,
+          selectedPeriodStartDateIso
+        ),
   };
 }

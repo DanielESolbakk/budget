@@ -9,6 +9,7 @@ import {
   isIsoCalendarDate,
 } from "../domain/date/calendarDate.js";
 import {
+  resolveReportingPeriodStartingOn,
   resolveReportingPeriod,
   type ReportingPeriodRange,
 } from "../domain/date/reportingPeriods.js";
@@ -182,6 +183,7 @@ export interface NokValuationReport {
 export interface DashboardViewContractInput {
   transactions: Transaction[];
   selectedYearMonth: string;
+  selectedPeriodStartDateIso?: string;
   reportingPeriodRule?: ReportingPeriodRule;
   accounts?: readonly Account[];
   rates?: readonly ExchangeRate[];
@@ -515,10 +517,19 @@ export function queryMonthlyDashboardSnapshot(
   selectedYearMonth: string,
   monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
   currencyContext?: Pick<NokMonthlyReportInput, "accounts" | "rates">,
-  reportingPeriodRule?: ReportingPeriodRule
+  reportingPeriodRule?: ReportingPeriodRule,
+  selectedPeriodStartDateIso?: string
 ): MonthlyDashboardSnapshot {
   const rule = validateReportingPeriodRule(reportingPeriodRule ?? { type: "calendar-month" });
-  const reportingPeriodRange = resolveReportingPeriod(rule, selectedYearMonth);
+  if (
+    selectedPeriodStartDateIso !== undefined &&
+    selectedPeriodStartDateIso.slice(0, 7) !== selectedYearMonth
+  ) {
+    throw new RangeError("Reporting period start must belong to the selected month.");
+  }
+  const reportingPeriodRange = selectedPeriodStartDateIso === undefined
+    ? resolveReportingPeriod(rule, selectedYearMonth)
+    : resolveReportingPeriodStartingOn(rule, selectedPeriodStartDateIso);
   const reportingTransactions = transactions.filter((transaction) => {
     if (rule.type === "calendar-month") {
       return transaction.bookedAtIso.startsWith(selectedYearMonth);
@@ -785,6 +796,7 @@ export function buildDashboardViewContract(input: DashboardViewContractInput): D
   const {
     transactions,
     selectedYearMonth,
+    selectedPeriodStartDateIso,
     reportingPeriodRule,
     monthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
     accounts,
@@ -801,7 +813,8 @@ export function buildDashboardViewContract(input: DashboardViewContractInput): D
     selectedYearMonth,
     monthlyCategoryTargetStore,
     accounts === undefined ? undefined : { accounts, rates },
-    reportingPeriodRule
+    reportingPeriodRule,
+    selectedPeriodStartDateIso
   );
 
   if (snapshot.categoryBreakdown.entries.length === 0 && !snapshot.currencyReport?.transactions.length) {

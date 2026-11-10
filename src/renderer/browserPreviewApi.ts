@@ -103,10 +103,15 @@ export function resolveRendererBudgetApi(
     },
     dashboard: {
       getData: async () => dashboardData,
-      getViewData: async (yearMonth: string, requestedRule?: ReportingPeriodRule) =>
+      getViewData: async (
+        yearMonth: string,
+        requestedRule?: ReportingPeriodRule,
+        selectedPeriodStartDateIso?: string
+      ) =>
         buildDashboardViewContract({
           transactions,
           selectedYearMonth: yearMonth,
+          ...(selectedPeriodStartDateIso === undefined ? {} : { selectedPeriodStartDateIso }),
           reportingPeriodRule: requestedRule ?? reportingPeriodRule,
           monthlyCategoryTargetStore: targets,
           accounts: [previewAccount],

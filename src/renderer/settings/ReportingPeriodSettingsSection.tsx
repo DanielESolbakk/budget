@@ -7,6 +7,7 @@ import {
   validateReportingPeriodRule,
   type LastWeekdayReportingRule,
   type ReportingPeriodRule,
+  type WeekdayOccurrenceReportingRule,
 } from "../../shared/applicationPreferences.js";
 import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 import { formatReportingDate, formatReportingPeriodRange } from "../reportingPeriodDisplay.js";
@@ -14,7 +15,8 @@ import { formatReportingDate, formatReportingPeriodRange } from "../reportingPer
 const reportingPeriodOptions = [
   { value: "calendar-month", label: "Calendar month" },
   { value: "fixed-day", label: "Payday on a fixed day" },
-  { value: "last-weekday", label: "Payday on the last weekday" },
+  { value: "weekday-occurrence", label: "Payday on a weekday occurrence" },
+  { value: "two-fixed-days", label: "Two dates each month" },
 ] as const;
 
 const weekdays: Array<{ value: LastWeekdayReportingRule["weekday"]; label: string }> = [
@@ -39,29 +41,46 @@ export function ReportingPeriodSettingsSection({
   const [reportingPeriodType, setReportingPeriodType] =
     React.useState<ReportingPeriodRule["type"]>("calendar-month");
   const [dayOfMonth, setDayOfMonth] = React.useState("25");
+  const [firstDayOfMonth, setFirstDayOfMonth] = React.useState("15");
+  const [secondDayOfMonth, setSecondDayOfMonth] = React.useState("31");
   const [weekday, setWeekday] = React.useState<LastWeekdayReportingRule["weekday"]>(4);
+  const [occurrence, setOccurrence] =
+    React.useState<WeekdayOccurrenceReportingRule["occurrence"]>("last");
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
 
   const loadPreference = React.useCallback((): void => {
     setIsLoading(true);
     setError(null);
+    setLoadError(null);
     setStatusMessage(null);
     window.budgetApi.reportingPreferences.getPeriodRule()
       .then((rule) => {
         const validatedRule = validateReportingPeriodRule(rule);
-        setReportingPeriodType(validatedRule.type);
+        setReportingPeriodType(validatedRule.type === "last-weekday"
+          ? "weekday-occurrence"
+          : validatedRule.type);
         if (validatedRule.type === "fixed-day") {
           setDayOfMonth(String(validatedRule.dayOfMonth));
         }
         if (validatedRule.type === "last-weekday") {
           setWeekday(validatedRule.weekday);
+          setOccurrence("last");
+        }
+        if (validatedRule.type === "weekday-occurrence") {
+          setWeekday(validatedRule.weekday);
+          setOccurrence(validatedRule.occurrence);
+        }
+        if (validatedRule.type === "two-fixed-days") {
+          setFirstDayOfMonth(String(validatedRule.firstDayOfMonth));
+          setSecondDayOfMonth(String(validatedRule.secondDayOfMonth));
         }
       })
       .catch((loadError: unknown) => {
-        setError(messageFromError(loadError, "Unable to load reporting preferences."));
+        setLoadError(messageFromError(loadError, "Unable to load reporting preferences."));
       })
       .finally(() => setIsLoading(false));
   }, []);
@@ -70,7 +89,7 @@ export function ReportingPeriodSettingsSection({
     loadPreference();
   }, [loadPreference]);
 
-  function buildDraftRule(): ReportingPeriodRule | null {
+  const draftRule = React.useMemo((): ReportingPeriodRule | null => {
     if (reportingPeriodType === "calendar-month") {
       return { type: "calendar-month" };
     }
@@ -81,14 +100,44 @@ export function ReportingPeriodSettingsSection({
       }
       return { type: "fixed-day", dayOfMonth: parsedDay };
     }
-    return { type: "last-weekday", weekday };
-  }
+    if (reportingPeriodType === "weekday-occurrence") {
+      return { type: "weekday-occurrence", weekday, occurrence };
+    }
+    if (reportingPeriodType === "two-fixed-days") {
+      const firstDay = Number(firstDayOfMonth);
+      const secondDay = Number(secondDayOfMonth);
+      if (
+        firstDayOfMonth.trim() === "" ||
+        secondDayOfMonth.trim() === "" ||
+        !Number.isInteger(firstDay) ||
+        !Number.isInteger(secondDay) ||
+        firstDay < 1 ||
+        firstDay > 27 ||
+        secondDay <= firstDay ||
+        secondDay > 31
+      ) {
+        return null;
+      }
+      return {
+        type: "two-fixed-days",
+        firstDayOfMonth: firstDay,
+        secondDayOfMonth: secondDay,
+      };
+    }
+    return null;
+  }, [
+    reportingPeriodType,
+    dayOfMonth,
+    firstDayOfMonth,
+    secondDayOfMonth,
+    weekday,
+    occurrence,
+  ]);
 
   async function savePreference(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
     setStatusMessage(null);
-    const draftRule = buildDraftRule();
     if (draftRule === null) {
       setError("Enter a day of the month from 1 through 31.");
       return;
@@ -100,6 +149,14 @@ export function ReportingPeriodSettingsSection({
       setReportingPeriodType(validatedRule.type);
       if (validatedRule.type === "fixed-day") setDayOfMonth(String(validatedRule.dayOfMonth));
       if (validatedRule.type === "last-weekday") setWeekday(validatedRule.weekday);
+      if (validatedRule.type === "weekday-occurrence") {
+        setWeekday(validatedRule.weekday);
+        setOccurrence(validatedRule.occurrence);
+      }
+      if (validatedRule.type === "two-fixed-days") {
+        setFirstDayOfMonth(String(validatedRule.firstDayOfMonth));
+        setSecondDayOfMonth(String(validatedRule.secondDayOfMonth));
+      }
       setStatusMessage("Reporting period saved.");
       onSaved(validatedRule);
     } catch (saveError: unknown) {
@@ -109,20 +166,17 @@ export function ReportingPeriodSettingsSection({
     }
   }
 
-  const draftRule = buildDraftRule();
   const localDateIso = toLocalIsoDate(new Date());
   const preview = React.useMemo(
-    () => draftRule === null
-      ? null
-      : {
-          current: resolveCurrentReportingPeriod(draftRule, localDateIso),
-          next: getAdjacentReportingPeriod(
-            draftRule,
-            resolveCurrentReportingPeriod(draftRule, localDateIso).startDateIso,
-            "next"
-          ),
-        },
-    [draftRule?.type, reportingPeriodType, dayOfMonth, weekday, localDateIso]
+    () => {
+      if (draftRule === null) return null;
+      const current = resolveCurrentReportingPeriod(draftRule, localDateIso);
+      return {
+        current,
+        next: getAdjacentReportingPeriod(draftRule, current.startDateIso, "next"),
+      };
+    },
+    [draftRule, localDateIso]
   );
 
   if (isLoading) {
@@ -134,12 +188,12 @@ export function ReportingPeriodSettingsSection({
     );
   }
 
-  if (error !== null && reportingPeriodType === "calendar-month") {
+  if (loadError !== null) {
     return (
       <section className="reporting-preferences-section" aria-labelledby="reporting-period-heading">
         <h3 id="reporting-period-heading">Reporting period</h3>
         <p className="reporting-preference-message is-error" role="alert">
-          Could not load the saved reporting preference. {error}
+          Could not load the saved reporting preference. {loadError}
         </p>
         <button type="button" className="action-secondary" onClick={loadPreference}>
           Try again
@@ -197,7 +251,35 @@ export function ReportingPeriodSettingsSection({
             />
           </label>
         )}
-        {reportingPeriodType === "last-weekday" && (
+        {reportingPeriodType === "weekday-occurrence" && (
+          <label>
+            Occurrence
+            <select
+              value={occurrence}
+              disabled={isSaving}
+              onChange={(event) => {
+                const nextOccurrence = event.currentTarget.value === "last"
+                  ? "last"
+                  : Number(event.currentTarget.value);
+                if (
+                  nextOccurrence === "last" ||
+                  (Number.isInteger(nextOccurrence) && nextOccurrence >= 1 && nextOccurrence <= 4)
+                ) {
+                  setOccurrence(nextOccurrence as WeekdayOccurrenceReportingRule["occurrence"]);
+                  setError(null);
+                  setStatusMessage(null);
+                }
+              }}
+            >
+              <option value="1">First</option>
+              <option value="2">Second</option>
+              <option value="3">Third</option>
+              <option value="4">Fourth</option>
+              <option value="last">Last</option>
+            </select>
+          </label>
+        )}
+        {reportingPeriodType === "weekday-occurrence" && (
           <label>
             Weekday
             <select
@@ -220,27 +302,69 @@ export function ReportingPeriodSettingsSection({
             </select>
           </label>
         )}
+        {reportingPeriodType === "two-fixed-days" && (
+          <>
+            <label>
+              Earlier date
+              <input
+                type="number"
+                min="1"
+                max="27"
+                step="1"
+                required
+                disabled={isSaving}
+                value={firstDayOfMonth}
+                onChange={(event) => {
+                  setFirstDayOfMonth(event.currentTarget.value);
+                  setError(null);
+                  setStatusMessage(null);
+                }}
+              />
+            </label>
+            <label>
+              Later date
+              <input
+                type="number"
+                min={String(Math.min(Number(firstDayOfMonth) + 1, 31))}
+                max="31"
+                step="1"
+                required
+                disabled={isSaving}
+                value={secondDayOfMonth}
+                onChange={(event) => {
+                  setSecondDayOfMonth(event.currentTarget.value);
+                  setError(null);
+                  setStatusMessage(null);
+                }}
+              />
+            </label>
+          </>
+        )}
         <div className="reporting-period-preview" aria-label="Reporting period preview">
           {preview === null ? (
-            <p>Enter a payday from 1 through 31 to preview the reporting periods.</p>
+            <p>
+              {reportingPeriodType === "two-fixed-days"
+                ? "Choose an earlier date from 1 through 27 and a later date after it."
+                : "Enter a payday from 1 through 31 to preview the reporting periods."}
+            </p>
           ) : (
             <>
               <div>
                 <strong>Current period</strong>
                 <span>{formatReportingPeriodRange(preview.current)}</span>
-                <small>Next payday: {formatReportingDate(preview.current.endDateExclusiveIso)}</small>
+                <small>Next boundary: {formatReportingDate(preview.current.endDateExclusiveIso)}</small>
               </div>
               <div>
                 <strong>Next period</strong>
                 <span>{formatReportingPeriodRange(preview.next)}</span>
-                <small>Next payday: {formatReportingDate(preview.next.endDateExclusiveIso)}</small>
+                <small>Next boundary: {formatReportingDate(preview.next.endDateExclusiveIso)}</small>
               </div>
             </>
           )}
         </div>
         <p className="reporting-period-guidance">
-          Payday rules are reporting boundaries, not guaranteed deposit dates. Weekends, holidays,
-          and employer exceptions can move an actual payment. Reporting currency is <strong>NOK</strong>;
+          These rules set reporting boundaries, not guaranteed deposit dates. Weekends, holidays,
+          and employer exceptions can move actual payments. Reporting currency is <strong>NOK</strong>;
           transaction amounts remain in their recorded currencies.
         </p>
         <div className="reporting-preferences-actions">

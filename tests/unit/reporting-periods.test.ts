@@ -43,6 +43,76 @@ describe("reporting period boundaries", () => {
     });
   });
 
+  it("resolves first, second, third, fourth, and last weekday occurrences", () => {
+    const occurrenceRule = { type: "weekday-occurrence", weekday: 3 } as const;
+    expect(resolveReportingPeriod({ ...occurrenceRule, occurrence: 1 }, "2026-10").startDateIso)
+      .toBe("2026-10-07");
+    expect(resolveReportingPeriod({ ...occurrenceRule, occurrence: 2 }, "2026-10").startDateIso)
+      .toBe("2026-10-14");
+    expect(resolveReportingPeriod({ ...occurrenceRule, occurrence: 3 }, "2026-10").startDateIso)
+      .toBe("2026-10-21");
+    expect(resolveReportingPeriod({ ...occurrenceRule, occurrence: 4 }, "2026-10").startDateIso)
+      .toBe("2026-10-28");
+    expect(resolveReportingPeriod({ ...occurrenceRule, occurrence: "last" }, "2026-10").startDateIso)
+      .toBe("2026-10-28");
+    expect(resolveReportingPeriod(
+      { type: "weekday-occurrence", weekday: 5, occurrence: "last" },
+      "2026-01"
+    ).startDateIso).toBe("2026-01-30");
+  });
+
+  it("splits two-date reporting periods at each monthly boundary", () => {
+    const rule = { type: "two-fixed-days", firstDayOfMonth: 15, secondDayOfMonth: 31 } as const;
+    expect(resolveReportingPeriod(rule, "2026-01")).toEqual({
+      startDateIso: "2026-01-15",
+      endDateExclusiveIso: "2026-01-31",
+    });
+    expect(resolveReportingPeriod(rule, "2026-01", 1)).toEqual({
+      startDateIso: "2026-01-31",
+      endDateExclusiveIso: "2026-02-15",
+    });
+    expect(resolveReportingPeriod(rule, "2026-02")).toEqual({
+      startDateIso: "2026-02-15",
+      endDateExclusiveIso: "2026-02-28",
+    });
+    expect(resolveReportingPeriod(rule, "2026-02", 1)).toEqual({
+      startDateIso: "2026-02-28",
+      endDateExclusiveIso: "2026-03-15",
+    });
+  });
+
+  it("selects and navigates both two-date periods without gaps or overlaps", () => {
+    const rule = { type: "two-fixed-days", firstDayOfMonth: 15, secondDayOfMonth: 31 } as const;
+    expect(resolveCurrentReportingPeriod(rule, "2026-02-10")).toEqual({
+      startDateIso: "2026-01-31",
+      endDateExclusiveIso: "2026-02-15",
+    });
+    expect(resolveCurrentReportingPeriod(rule, "2026-02-15")).toEqual({
+      startDateIso: "2026-02-15",
+      endDateExclusiveIso: "2026-02-28",
+    });
+    expect(getAdjacentReportingPeriod(rule, "2026-01-31", "next")).toEqual({
+      startDateIso: "2026-02-15",
+      endDateExclusiveIso: "2026-02-28",
+    });
+    expect(getAdjacentReportingPeriod(rule, "2026-02-28", "next")).toEqual({
+      startDateIso: "2026-03-15",
+      endDateExclusiveIso: "2026-03-31",
+    });
+    expect(getAdjacentReportingPeriod(rule, "2026-02-15", "previous")).toEqual({
+      startDateIso: "2026-01-31",
+      endDateExclusiveIso: "2026-02-15",
+    });
+    expect(getAdjacentReportingPeriod(rule, "2026-12-31", "next")).toEqual({
+      startDateIso: "2027-01-15",
+      endDateExclusiveIso: "2027-01-31",
+    });
+    expect(getAdjacentReportingPeriod(rule, "2027-01-15", "previous")).toEqual({
+      startDateIso: "2026-12-31",
+      endDateExclusiveIso: "2027-01-15",
+    });
+  });
+
   it("selects the preceding payday period before the current month's boundary", () => {
     expect(resolveCurrentReportingPeriod({ type: "last-weekday", weekday: 4 }, "2026-11-10")).toEqual({
       startDateIso: "2026-10-29",
@@ -72,10 +142,18 @@ describe("reporting period boundaries", () => {
       { type: "fixed-day", dayOfMonth: 32 },
       { type: "fixed-day", dayOfMonth: 1.5 },
       { type: "last-weekday", weekday: 8 },
+      { type: "weekday-occurrence", weekday: 3, occurrence: 5 },
+      { type: "two-fixed-days", firstDayOfMonth: 28, secondDayOfMonth: 29 },
+      { type: "two-fixed-days", firstDayOfMonth: 15, secondDayOfMonth: 15 },
       { type: "unknown" },
     ]) {
       expect(() => validateReportingPeriodRule(invalidRule)).toThrow();
     }
+    expect(validateReportingPeriodRule({
+      type: "two-fixed-days",
+      firstDayOfMonth: 15,
+      secondDayOfMonth: 31,
+    })).toEqual({ type: "two-fixed-days", firstDayOfMonth: 15, secondDayOfMonth: 31 });
   });
 
   it("rejects invalid dates and empty or reversed reporting ranges", () => {
@@ -212,6 +290,87 @@ describe("reporting period boundaries", () => {
       { categoryId: "salary", label: "salary", totalMinor: 50_000, transactionCount: 1 },
       { categoryId: "groceries", label: "groceries", totalMinor: 10_000, transactionCount: 1 },
     ]);
+  });
+
+  it("uses the selected half-month range for dashboard totals and categories", () => {
+      const transactions: Transaction[] = [
+        {
+          id: "before", householdId: "hh-1", accountId: "acc-1",
+          bookedAtIso: "2026-02-14T00:00:00Z", amountMinor: -1_000,
+          merchantRaw: "Before", categoryId: "groceries",
+        },
+        {
+          id: "first-start", householdId: "hh-1", accountId: "acc-1",
+          bookedAtIso: "2026-02-15T00:00:00Z", amountMinor: -2_000,
+          merchantRaw: "First start", categoryId: "groceries",
+        },
+        {
+          id: "first-end", householdId: "hh-1", accountId: "acc-1",
+          bookedAtIso: "2026-02-27T00:00:00Z", amountMinor: -3_000,
+          merchantRaw: "First end", categoryId: "groceries",
+        },
+        {
+          id: "second-start", householdId: "hh-1", accountId: "acc-1",
+          bookedAtIso: "2026-02-28T00:00:00Z", amountMinor: 40_000,
+          merchantRaw: "Second start", categoryId: "income",
+        },
+        {
+          id: "second-end", householdId: "hh-1", accountId: "acc-1",
+          bookedAtIso: "2026-03-14T00:00:00Z", amountMinor: -5_000,
+          merchantRaw: "Second end", categoryId: "groceries",
+        },
+        {
+          id: "next-start", householdId: "hh-1", accountId: "acc-1",
+          bookedAtIso: "2026-03-15T00:00:00Z", amountMinor: -6_000,
+          merchantRaw: "Next start", categoryId: "groceries",
+        },
+      ];
+      const rule: ReportingPeriodRule = {
+        type: "two-fixed-days",
+        firstDayOfMonth: 15,
+        secondDayOfMonth: 31,
+      };
+
+      const first = buildDashboardViewContract({
+        transactions,
+        selectedYearMonth: "2026-02",
+        reportingPeriodRule: rule,
+        selectedPeriodStartDateIso: "2026-02-15",
+      });
+      const second = buildDashboardViewContract({
+        transactions,
+        selectedYearMonth: "2026-02",
+        reportingPeriodRule: rule,
+        selectedPeriodStartDateIso: "2026-02-28",
+      });
+
+      expect(first.state).toBe("ready");
+      if (first.state !== "ready") return;
+      expect(first.snapshot.reportingPeriodRange).toEqual({
+        startDateIso: "2026-02-15",
+        endDateExclusiveIso: "2026-02-28",
+      });
+      expect(first.snapshot.monthlyTotals).toMatchObject({
+        incomeMinor: 0,
+        expenseMinor: 5_000,
+        netMinor: -5_000,
+      });
+
+      expect(second.state).toBe("ready");
+      if (second.state !== "ready") return;
+      expect(second.snapshot.reportingPeriodRange).toEqual({
+        startDateIso: "2026-02-28",
+        endDateExclusiveIso: "2026-03-15",
+      });
+      expect(second.snapshot.monthlyTotals).toMatchObject({
+        incomeMinor: 40_000,
+        expenseMinor: 5_000,
+        netMinor: 35_000,
+      });
+      expect(second.snapshot.categoryBreakdown.entries).toEqual([
+        { categoryId: "income", label: "income", totalMinor: 40_000, transactionCount: 1 },
+        { categoryId: "groceries", label: "groceries", totalMinor: 5_000, transactionCount: 1 },
+      ]);
   });
 
   it("uses the transaction-date FX rate and preserves missing-rate native subtotals", () => {

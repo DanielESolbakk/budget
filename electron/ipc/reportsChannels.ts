@@ -53,16 +53,23 @@ export function registerReportsChannels({
     return dashboardProvider.getData();
   });
 
-  ipcMain.handle("dashboard:getViewData", (event, yearMonth: unknown, reportingPeriodRule: unknown) => {
+  ipcMain.handle("dashboard:getViewData", (
+    event,
+    yearMonth: unknown,
+    reportingPeriodRule: unknown,
+    selectedPeriodStartDateIso: unknown
+  ) => {
     assertTrustedRenderer(event);
     return dashboardProvider.getViewData(
       parseNonEmptyString(yearMonth, "yearMonth"),
       reportingPeriodRule === undefined
         ? undefined
-        : validateReportingPeriodRule(reportingPeriodRule)
+        : validateReportingPeriodRule(reportingPeriodRule),
+      selectedPeriodStartDateIso === undefined
+        ? undefined
+        : parseNonEmptyString(selectedPeriodStartDateIso, "selectedPeriodStartDateIso")
     );
-  }
-  );
+  });
 
   ipcMain.handle("reportingPreferences:getPeriodRule", (event) => {
     assertTrustedRenderer(event);

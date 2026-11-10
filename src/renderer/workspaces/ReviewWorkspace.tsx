@@ -1,6 +1,9 @@
 import React from "react";
 import { getMonthlyAttentionSummary, type DashboardViewContract } from "../../shared/dashboard.js";
-import { getAdjacentReportingPeriod } from "../../domain/date/reportingPeriods.js";
+import {
+  getAdjacentReportingPeriod,
+  resolveReportingPeriod,
+} from "../../domain/date/reportingPeriods.js";
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 import { CategoryBreakdownSection } from "../dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySection.js";
@@ -71,6 +74,17 @@ export function ReviewWorkspace({
     ? null
     : viewContract.snapshot;
   const isCalendarMonth = snapshot?.reportingPeriodRule.type === "calendar-month";
+  const isTwoFixedDayRule = snapshot?.reportingPeriodRule.type === "two-fixed-days";
+  const twoFixedDayPeriodOptions = isTwoFixedDayRule && state.status === "ready" && snapshot !== null
+    ? [...new Set([...state.availableMonths, state.selectedYearMonth])].sort()
+      .flatMap((yearMonth) => [
+        resolveReportingPeriod(snapshot.reportingPeriodRule, yearMonth, 0),
+        resolveReportingPeriod(snapshot.reportingPeriodRule, yearMonth, 1),
+      ])
+      .filter((period, index, periods) =>
+        periods.findIndex((candidate) => candidate.startDateIso === period.startDateIso) === index
+      )
+    : [];
   const hasSavedPaydayRule = savedReportingPeriodRule !== null &&
     savedReportingPeriodRule.type !== "calendar-month";
   const previousPeriod = snapshot === null || snapshot.reportingPeriodRange.startDateIso.startsWith("0000-01")
@@ -93,6 +107,10 @@ export function ReviewWorkspace({
 
   function openPlanningTools(): void {
     if (planningToolsRef.current !== null) planningToolsRef.current.open = true;
+  }
+
+  function navigateToPeriod(startDateIso: string): void {
+    onMonthChange(isTwoFixedDayRule ? startDateIso : startDateIso.slice(0, 7));
   }
 
   return (
@@ -120,26 +138,40 @@ export function ReviewWorkspace({
                 aria-label="Previous period"
                 disabled={isPeriodSelectionDisabled || previousPeriod === null}
                 onClick={() => {
-                  if (previousPeriod !== null) onMonthChange(previousPeriod.startDateIso.slice(0, 7));
+                  if (previousPeriod !== null) navigateToPeriod(previousPeriod.startDateIso);
                 }}
               >
                 Previous
               </button>
               <div className="month-picker">
-                <label htmlFor="month-select">Period starting</label>
+                <label htmlFor="month-select">
+                  {isTwoFixedDayRule ? "Choose reporting period" : "Period starting"}
+                </label>
                 <select
                   id="month-select"
-                  aria-label="Select month"
-                  value={state.selectedYearMonth}
+                  aria-label={isTwoFixedDayRule ? "Select period" : "Select month"}
+                  value={isTwoFixedDayRule
+                    ? snapshot?.reportingPeriodRange.startDateIso ?? ""
+                    : state.selectedYearMonth}
                   disabled={isPeriodSelectionDisabled}
                   aria-describedby={isTargetFormOpen ? "target-draft-help" : undefined}
                   onChange={(event) => onMonthChange(event.target.value)}
                 >
-                  {state.availableMonths.map((month) => (
-                    <option key={month} value={month}>{formatYearMonth(month)}</option>
-                  ))}
+                  {isTwoFixedDayRule
+                    ? twoFixedDayPeriodOptions.map((period) => (
+                      <option key={period.startDateIso} value={period.startDateIso}>
+                        {formatReportingPeriodRange(period)}
+                      </option>
+                    ))
+                    : state.availableMonths.map((month) => (
+                      <option key={month} value={month}>{formatYearMonth(month)}</option>
+                    ))}
                 </select>
-                <span className="month-picker-code">{state.selectedYearMonth}</span>
+                <span className="month-picker-code">
+                  {isTwoFixedDayRule && snapshot !== null
+                    ? formatReportingDate(snapshot.reportingPeriodRange.startDateIso)
+                    : state.selectedYearMonth}
+                </span>
               </div>
               <button
                 type="button"
@@ -147,7 +179,7 @@ export function ReviewWorkspace({
                 aria-label="Next period"
                 disabled={isPeriodSelectionDisabled || nextPeriod === null}
                 onClick={() => {
-                  if (nextPeriod !== null) onMonthChange(nextPeriod.startDateIso.slice(0, 7));
+                  if (nextPeriod !== null) navigateToPeriod(nextPeriod.startDateIso);
                 }}
               >
                 Next

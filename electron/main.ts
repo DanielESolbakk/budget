@@ -220,14 +220,16 @@ function getDashboardData(): DashboardData {
 
 function getViewData(
   yearMonth: string,
-  reportingPeriodRule?: ReportingPeriodRule
+  reportingPeriodRule?: ReportingPeriodRule,
+  selectedPeriodStartDateIso?: string
 ): DashboardViewContract {
   return queryHouseholdDashboardView(
     localLedgerDatabase,
     sampleHousehold.id,
     yearMonth,
     reportingPeriodRule,
-    sampleTargetStore
+    sampleTargetStore,
+    selectedPeriodStartDateIso
   );
 }
 

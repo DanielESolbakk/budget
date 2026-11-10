@@ -135,11 +135,12 @@ test("saves a last-weekday payday rule and reviews its exact range", async ({
   await reportingPeriod.focus();
   await reportingPeriod.press("ArrowDown");
   await reportingPeriod.press("ArrowDown");
-  await expect(reportingPeriod).toHaveValue("last-weekday");
-  const weekday = settings
-    .getByRole("region", { name: "Reporting period" })
-    .getByRole("combobox")
-    .nth(1);
+  await expect(reportingPeriod).toHaveValue("weekday-occurrence");
+  const occurrence = settings.getByRole("combobox").nth(1);
+  await occurrence.focus();
+  await occurrence.press("End");
+  await expect(occurrence).toHaveValue("last");
+  const weekday = settings.getByRole("combobox").nth(2);
   await weekday.focus();
   await weekday.press("ArrowUp");
   await weekday.press("ArrowDown");
@@ -287,8 +288,10 @@ test("keeps payday actuals in range with native amounts and transaction-date FX"
 
     const reportingPeriodSection = settings.getByRole("region", { name: "Reporting period" });
     const reportingPeriod = reportingPeriodSection.getByRole("combobox").first();
-    await reportingPeriod.selectOption("last-weekday");
+    await reportingPeriod.selectOption("weekday-occurrence");
     await reportingPeriodSection.getByRole("combobox").nth(1)
+      .selectOption("last");
+    await reportingPeriodSection.getByRole("combobox").nth(2)
       .selectOption("4");
     await reportingPeriodSection.getByRole("button", { name: "Save reporting preference" }).click();
     await expect(reportingPeriodSection.getByRole("status")).toContainText("Reporting period saved.");
@@ -329,6 +332,7 @@ test("supports keyboard payday setup without horizontal overflow at compact size
   await electronApp.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
   });
+  await window.clock.install({ time: new Date("2026-10-10T12:00:00") });
 
   const householdButton = appShell.destination("Household");
   await householdButton.focus();
@@ -349,7 +353,7 @@ test("supports keyboard payday setup without horizontal overflow at compact size
   await expect(reportingPeriod).toHaveValue("fixed-day");
   await settings.getByLabel("Day of month").fill("25");
   await expect(settings.getByLabel("Reporting period preview")).toContainText(
-    "25 October 2026 - 24 November 2026"
+    "25 September 2026 - 24 October 2026"
   );
   const saveButton = settings.getByRole("button", { name: "Save reporting preference" });
   await saveButton.focus();
@@ -362,13 +366,27 @@ test("supports keyboard payday setup without horizontal overflow at compact size
   const review = window.getByRole("region", { name: "Review workspace" });
   await expect(review.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(review.getByLabel("Active reporting range")).toHaveText(
-    "25 October 2026 - 24 November 2026"
+    "25 September 2026 - 24 October 2026"
   );
   const dimensions = await window.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
   }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+
+  await appShell.openWorkspace("Settings");
+  const reportingSettings = settings.getByRole("region", { name: "Reporting period" });
+  await reportingSettings.getByRole("combobox").first().selectOption("two-fixed-days");
+  await reportingSettings.getByLabel("Earlier date", { exact: true }).fill("15");
+  await reportingSettings.getByLabel("Later date", { exact: true }).fill("31");
+  await expect(reportingSettings.getByLabel("Reporting period preview"))
+    .toContainText("30 September 2026 - 14 October 2026");
+  const compactSettingsDimensions = await window.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(compactSettingsDimensions.scrollWidth)
+    .toBeLessThanOrEqual(compactSettingsDimensions.clientWidth);
 });
 
 test("previews independent fixed-day clamping across February and March", async ({
@@ -393,7 +411,134 @@ test("previews independent fixed-day clamping across February and March", async 
   const preview = settings.getByLabel("Reporting period preview");
   await expect(preview).toContainText("31 January 2026 - 27 February 2026");
   await expect(preview).toContainText("28 February 2026 - 30 March 2026");
-  await expect(preview).toContainText("Next payday: 31 March 2026");
+  await expect(preview).toContainText("Next boundary: 31 March 2026");
+});
+
+test("chooses a weekday occurrence and previews the selected boundary", async ({
+  appShell,
+  electronApp,
+  window,
+}) => {
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
+  });
+  await window.clock.install({ time: new Date("2026-10-10T12:00:00") });
+  await appShell.openWorkspace("Settings");
+
+  const settings = window.getByRole("region", { name: "Settings workspace" });
+  const reportingSettings = settings.getByRole("region", { name: "Reporting period" });
+  await reportingSettings.getByRole("combobox").first().selectOption("weekday-occurrence");
+  await reportingSettings.getByRole("combobox").nth(1).selectOption("2");
+  await reportingSettings.getByRole("combobox").nth(2).selectOption("3");
+
+  const preview = reportingSettings.getByLabel("Reporting period preview");
+  await expect(preview).toContainText("9 September 2026 - 13 October 2026");
+  await expect(preview).toContainText("14 October 2026 - 10 November 2026");
+  await reportingSettings.getByRole("button", {
+    name: "Save reporting preference",
+  }).click();
+  await expect(reportingSettings.getByRole("status"))
+    .toContainText("Reporting period saved.");
+
+  await appShell.openWorkspace("Review");
+  const review = window.getByRole("region", { name: "Review workspace" });
+  await expect(review.getByLabel("Active reporting range"))
+    .toHaveText("9 September 2026 - 13 October 2026");
+});
+
+test("reviews and navigates two fixed reporting dates within one month", async ({
+  appShell,
+  electronApp,
+  manualEntry,
+  window,
+}) => {
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
+  });
+  await window.clock.install({ time: new Date("2026-02-10T12:00:00") });
+
+  const transactions: ManualEntryValues[] = [
+    {
+      accountId: "sample-acc",
+      bookedAtIso: "2026-02-15",
+      amountNok: "-100,00",
+      merchantRaw: "First two-date period",
+      categoryId: "groceries",
+    },
+    {
+      accountId: "sample-acc",
+      bookedAtIso: "2026-02-24",
+      amountNok: "-50,00",
+      merchantRaw: "First two-date period end",
+      categoryId: "groceries",
+    },
+    {
+      accountId: "sample-acc",
+      bookedAtIso: "2026-02-25",
+      amountNok: "-200,00",
+      merchantRaw: "Second two-date period",
+      categoryId: "groceries",
+    },
+    {
+      accountId: "sample-acc",
+      bookedAtIso: "2026-03-14",
+      amountNok: "-300,00",
+      merchantRaw: "Second two-date period end",
+      categoryId: "groceries",
+    },
+    {
+      accountId: "sample-acc",
+      bookedAtIso: "2026-03-15",
+      amountNok: "-400,00",
+      merchantRaw: "Next period start",
+      categoryId: "groceries",
+    },
+  ];
+  for (const transaction of transactions) {
+    await manualEntry.submitEntry(transaction);
+    await expect(manualEntry.successStatus).toHaveText(
+      `Added ${transaction.merchantRaw} to your ledger.`
+    );
+  }
+
+  await appShell.openWorkspace("Settings");
+  const settings = window.getByRole("region", { name: "Settings workspace" });
+  const reportingSettings = settings.getByRole("region", { name: "Reporting period" });
+  await reportingSettings.getByRole("combobox").first().selectOption("two-fixed-days");
+  const earlierDate = reportingSettings.getByLabel("Earlier date", { exact: true });
+  const laterDate = reportingSettings.getByLabel("Later date", { exact: true });
+  const savePreference = reportingSettings.getByRole("button", {
+    name: "Save reporting preference",
+  });
+  await earlierDate.fill("28");
+  await expect(reportingSettings.getByLabel("Reporting period preview"))
+    .toContainText("Choose an earlier date from 1 through 27 and a later date after it.");
+  await expect(savePreference).toBeDisabled();
+  await earlierDate.fill("15");
+  await laterDate.fill("25");
+  const preview = reportingSettings.getByLabel("Reporting period preview");
+  await expect(preview).toContainText("25 January 2026 - 14 February 2026");
+  await expect(preview).toContainText("15 February 2026 - 24 February 2026");
+  await savePreference.click();
+  await expect(reportingSettings.getByRole("status"))
+    .toContainText("Reporting period saved.");
+
+  await appShell.openWorkspace("Review");
+  const review = window.getByRole("region", { name: "Review workspace" });
+  await expect(review.getByLabel("Active reporting range"))
+    .toHaveText("25 January 2026 - 14 February 2026");
+  const totals = review.getByRole("region", { name: "Payday-period totals" });
+  const nextPeriod = review.getByRole("button", { name: "Next period" });
+  await nextPeriod.click();
+  await expect(review.getByLabel("Active reporting range"))
+    .toHaveText("15 February 2026 - 24 February 2026");
+  await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/150,00/);
+  await review.getByRole("combobox", { name: "Select period" })
+    .selectOption("2026-02-25");
+  await expect(review.getByLabel("Active reporting range"))
+    .toHaveText("25 February 2026 - 14 March 2026");
+  await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/500,00/);
+  await expect(totals.getByLabel("Income", { exact: true })).toContainText(/0,00/);
 });
 
 test("a failed local preference save keeps the draft without activating it", async ({
@@ -430,6 +575,54 @@ test("a failed local preference save keeps the draft without activating it", asy
   } finally {
     database.close();
   }
+});
+
+test("a failed calendar save preserves the draft and keeps the saved payday rule active", async ({
+  appShell,
+  databasePath,
+  window,
+}) => {
+  const database = new DatabaseSync(databasePath);
+  try {
+    database.prepare(`
+      INSERT INTO household_preferences (household_id, reporting_period_rule_json)
+      VALUES (?, ?)
+      ON CONFLICT(household_id) DO UPDATE
+      SET reporting_period_rule_json = excluded.reporting_period_rule_json
+    `).run("sample-hh", JSON.stringify({ type: "fixed-day", dayOfMonth: 25 }));
+  } finally {
+    database.close();
+  }
+
+  await window.reload();
+  await appShell.openWorkspace("Settings");
+  const settings = window.getByRole("region", { name: "Settings workspace" });
+  const reportingPeriod = settings
+    .getByRole("region", { name: "Reporting period" })
+    .getByRole("combobox")
+    .first();
+  await expect(reportingPeriod).toHaveValue("fixed-day");
+  await reportingPeriod.selectOption("calendar-month");
+
+  const lockedDatabase = new DatabaseSync(databasePath);
+  try {
+    lockedDatabase.exec("BEGIN IMMEDIATE");
+    await settings.getByRole("button", { name: "Save reporting preference" }).click();
+    await expect(settings.getByRole("alert"))
+      .toContainText("Unable to save reporting preference.");
+    await expect(reportingPeriod).toHaveValue("calendar-month");
+    await expect(settings.getByRole("button", { name: "Save reporting preference" }))
+      .toBeVisible();
+    await expect(settings.getByText("Reporting period saved.", { exact: true }))
+      .toHaveCount(0);
+    lockedDatabase.exec("ROLLBACK");
+  } finally {
+    lockedDatabase.close();
+  }
+
+  await appShell.openWorkspace("Review");
+  await expect(window.getByRole("region", { name: "Review workspace" })
+    .getByLabel("Reporting mode")).toHaveValue("payday-period");
 });
 
 test("shows a visible error when a saved reporting preference is malformed", async ({

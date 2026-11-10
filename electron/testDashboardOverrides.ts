@@ -36,7 +36,8 @@ function getData(getDashboardData: DashboardDataGetter): DashboardData {
 async function getViewData(
   yearMonth: string,
   getDashboardViewData: DashboardViewDataGetter,
-  reportingPeriodRule?: ReportingPeriodRule
+  reportingPeriodRule?: ReportingPeriodRule,
+  selectedPeriodStartDateIso?: string
 ): Promise<DashboardViewContract> {
   const delayMs = getDashboardViewDelayMs(yearMonth);
   if (delayMs > 0) {
@@ -47,7 +48,7 @@ async function getViewData(
     throw new Error("Synthetic dashboard refresh failure.");
   }
 
-  return getDashboardViewData(yearMonth, reportingPeriodRule);
+  return getDashboardViewData(yearMonth, reportingPeriodRule, selectedPeriodStartDateIso);
 }
 
 export function createTestDashboardOverrides(): DashboardTestOverrides {

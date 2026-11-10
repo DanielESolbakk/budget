@@ -1,6 +1,9 @@
 import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
 import type { AccountCoverageAssessment, AccountCoverageAssessmentInput } from "../domain/types.js";
-import { resolveReportingPeriod } from "../domain/date/reportingPeriods.js";
+import {
+  resolveReportingPeriod,
+  resolveReportingPeriodStartingOn,
+} from "../domain/date/reportingPeriods.js";
 import { validateReportingPeriodRule, type ReportingPeriodRule } from "../shared/applicationPreferences.js";
 import {
   buildDashboardData,
@@ -93,12 +96,21 @@ export function queryHouseholdDashboardView(
   householdId: string,
   selectedYearMonth: string,
   reportingPeriodRule?: ReportingPeriodRule,
-  monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore()
+  monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
+  selectedPeriodStartDateIso?: string
 ): DashboardViewContract {
   const rule = validateReportingPeriodRule(
     reportingPeriodRule ?? database.getReportingPeriodRule(householdId)
   );
-  const range = resolveReportingPeriod(rule, selectedYearMonth);
+  if (
+    selectedPeriodStartDateIso !== undefined &&
+    selectedPeriodStartDateIso.slice(0, 7) !== selectedYearMonth
+  ) {
+    throw new RangeError("Reporting period start must belong to the selected month.");
+  }
+  const range = selectedPeriodStartDateIso === undefined
+    ? resolveReportingPeriod(rule, selectedYearMonth)
+    : resolveReportingPeriodStartingOn(rule, selectedPeriodStartDateIso);
   return buildDashboardViewContract({
     transactions: database.getTransactionsForDateRange(
       householdId,
@@ -106,6 +118,7 @@ export function queryHouseholdDashboardView(
       range.endDateExclusiveIso
     ),
     selectedYearMonth,
+    ...(selectedPeriodStartDateIso === undefined ? {} : { selectedPeriodStartDateIso }),
     reportingPeriodRule: rule,
     accounts: database.getAccountsForHousehold(householdId),
     rates: database.listExchangeRates(),

@@ -4,7 +4,6 @@ import {
   getAdjacentReportingPeriod,
   type ReportingPeriodRange,
 } from "../../domain/date/reportingPeriods.js";
-import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 import { formatCurrencyAmount } from "../formatCurrencyAmount.js";
 import { formatReportingPeriodRange } from "../reportingPeriodDisplay.js";
 

@@ -211,11 +211,32 @@ describe("Electron channel registration and live ledger wiring", () => {
     })).toEqual({ type: "last-weekday", weekday: 4 });
     expect(invoke("reportingPreferences:getPeriodRule"))
       .toEqual({ type: "last-weekday", weekday: 4 });
+    const twoDateRule = {
+      type: "two-fixed-days",
+      firstDayOfMonth: 15,
+      secondDayOfMonth: 31,
+    };
+    expect(await invoke("reportingPreferences:savePeriodRule", twoDateRule)).toEqual(twoDateRule);
+    expect(invoke("reportingPreferences:getPeriodRule")).toEqual(twoDateRule);
+    expect(await invoke(
+      "dashboard:getViewData",
+      "2026-02",
+      twoDateRule,
+      "2026-02-28"
+    )).toMatchObject({
+      state: "empty",
+      snapshot: {
+        reportingPeriodRange: {
+          startDateIso: "2026-02-28",
+          endDateExclusiveIso: "2026-03-15",
+        },
+      },
+    });
     await expect(Promise.resolve().then(() => invoke("reportingPreferences:savePeriodRule", {
-      type: "fixed-day", dayOfMonth: 32,
+      type: "two-fixed-days", firstDayOfMonth: 28, secondDayOfMonth: 29,
     }))).rejects.toThrow("Reporting period preference is malformed.");
     expect(invoke("reportingPreferences:getPeriodRule"))
-      .toEqual({ type: "last-weekday", weekday: 4 });
+      .toEqual(twoDateRule);
   });
 
   it("preserves cancellation results for every chooser without creating files", async () => {

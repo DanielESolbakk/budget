@@ -12,10 +12,24 @@ export interface LastWeekdayReportingRule {
   weekday: 1 | 2 | 3 | 4 | 5 | 6 | 7;
 }
 
+export interface WeekdayOccurrenceReportingRule {
+  type: "weekday-occurrence";
+  weekday: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  occurrence: 1 | 2 | 3 | 4 | "last";
+}
+
+export interface TwoFixedDaysReportingRule {
+  type: "two-fixed-days";
+  firstDayOfMonth: number;
+  secondDayOfMonth: number;
+}
+
 export type ReportingPeriodRule =
   | CalendarMonthReportingRule
   | FixedDayReportingRule
-  | LastWeekdayReportingRule;
+  | LastWeekdayReportingRule
+  | WeekdayOccurrenceReportingRule
+  | TwoFixedDaysReportingRule;
 
 export const DEFAULT_REPORTING_PERIOD_RULE = {
   type: "calendar-month",
@@ -47,10 +61,47 @@ export function validateReportingPeriodRule(value: unknown): ReportingPeriodRule
   ) {
     return { type: "last-weekday", weekday: record.weekday };
   }
+  if (
+    record.type === "weekday-occurrence" &&
+    Object.keys(record).length === 3 &&
+    isIsoWeekday(record.weekday) &&
+    isWeekdayOccurrence(record.occurrence)
+  ) {
+    return {
+      type: "weekday-occurrence",
+      weekday: record.weekday,
+      occurrence: record.occurrence,
+    };
+  }
+  if (
+    record.type === "two-fixed-days" &&
+    Object.keys(record).length === 3 &&
+    isMonthDay(record.firstDayOfMonth) &&
+    isMonthDay(record.secondDayOfMonth) &&
+    record.firstDayOfMonth < record.secondDayOfMonth &&
+    Math.min(record.firstDayOfMonth, record.secondDayOfMonth) < 28
+  ) {
+    return {
+      type: "two-fixed-days",
+      firstDayOfMonth: record.firstDayOfMonth,
+      secondDayOfMonth: record.secondDayOfMonth,
+    };
+  }
 
   throw new RangeError("Reporting period preference is malformed.");
 }
 
 function isIsoWeekday(value: unknown): value is LastWeekdayReportingRule["weekday"] {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 7;
+}
+
+function isWeekdayOccurrence(
+  value: unknown
+): value is WeekdayOccurrenceReportingRule["occurrence"] {
+  return value === "last" ||
+    (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 4);
+}
+
+function isMonthDay(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 31;
 }
