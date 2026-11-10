@@ -1,4 +1,5 @@
 import type { CategoryBreakdown, CategoryBreakdownEntry, Transaction } from "../types.js";
+import { isIsoCalendarDate } from "../date/calendarDate.js";
 
 export const UNCATEGORIZED_LABEL = "Uncategorized";
 
@@ -19,10 +20,40 @@ export function computeCategoryBreakdown(
   flow: CategoryBreakdownFlow = "all"
 ): CategoryBreakdown {
   const monthTxs = transactions.filter(tx => tx.bookedAtIso.startsWith(yearMonth));
+  return buildCategoryBreakdown(monthTxs, yearMonth, flow);
+}
 
+export function computeCategoryBreakdownForDateRange(
+  transactions: Transaction[],
+  startDateIso: string,
+  endDateExclusiveIso: string,
+  flow: CategoryBreakdownFlow = "all"
+): CategoryBreakdown {
+  if (!isIsoCalendarDate(startDateIso) || !isIsoCalendarDate(endDateExclusiveIso)) {
+    throw new RangeError("Reporting range boundaries must be valid calendar dates.");
+  }
+  if (startDateIso >= endDateExclusiveIso) {
+    throw new RangeError("Reporting range end must be after its start.");
+  }
+
+  const rangeTxs = transactions.filter((tx) => {
+    const bookedDateIso = tx.bookedAtIso.slice(0, 10);
+    if (!isIsoCalendarDate(bookedDateIso)) {
+      throw new RangeError(`Transaction has an invalid booked date: ${tx.id}`);
+    }
+    return bookedDateIso >= startDateIso && bookedDateIso < endDateExclusiveIso;
+  });
+  return buildCategoryBreakdown(rangeTxs, startDateIso.slice(0, 7), flow);
+}
+
+function buildCategoryBreakdown(
+  transactions: Transaction[],
+  yearMonth: string,
+  flow: CategoryBreakdownFlow
+): CategoryBreakdown {
   const byCategory = new Map<string | null, { totalMinor: number; transactionIds: Set<string> }>();
 
-  for (const tx of monthTxs) {
+  for (const tx of transactions) {
     const categoryAmounts = tx.categoryAllocations?.length
       ? tx.categoryAllocations.filter((allocation) => includesFlow(allocation.amountMinor, flow))
       : includesFlow(tx.amountMinor, flow)

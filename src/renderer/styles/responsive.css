@@ -169,12 +169,14 @@
     flex-direction: column;
   }
 
-  section[aria-label="Monthly Totals"] dl {
+  section[aria-label="Monthly Totals"] dl,
+  section[aria-label="Payday-period totals"] dl {
     grid-template-columns: 1fr;
     gap: 0;
   }
 
-  section[aria-label="Monthly Totals"] .monthly-total {
+  section[aria-label="Monthly Totals"] .monthly-total,
+  section[aria-label="Payday-period totals"] .monthly-total {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
@@ -184,11 +186,13 @@
     padding: 0.75rem 0;
   }
 
-  section[aria-label="Monthly Totals"] .monthly-total:last-child {
+  section[aria-label="Monthly Totals"] .monthly-total:last-child,
+  section[aria-label="Payday-period totals"] .monthly-total:last-child {
     border-bottom: 0;
   }
 
-  section[aria-label="Monthly Totals"] dt {
+  section[aria-label="Monthly Totals"] dt,
+  section[aria-label="Payday-period totals"] dt {
     margin-bottom: 0;
   }
 
@@ -212,15 +216,55 @@
   }
 
   .review-intro {
-    align-items: center;
-    flex-direction: row;
-    gap: 0.6rem;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.85rem;
     padding-bottom: 0.85rem;
   }
 
   .review-intro > div:first-child {
     min-width: 0;
-    flex: 1 1 0;
+    width: 100%;
+    flex: initial;
+  }
+
+  .reporting-period-toolbar {
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .reporting-period-navigation {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .reporting-period-navigation .action-secondary {
+    min-width: 0;
+    padding-inline: 0.55rem;
+  }
+
+  .reporting-period-current {
+    width: 100%;
+    text-align: left;
+  }
+
+  .reporting-period-mode {
+    justify-content: space-between;
+  }
+
+  .reporting-period-mode select {
+    min-width: 0;
+  }
+
+  .reporting-period-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reporting-preferences-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reporting-preferences-actions button {
+    width: 100%;
   }
 
   .workspace-subnavigation {

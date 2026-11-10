@@ -7,6 +7,7 @@ import { createRegistryRepository } from "./registryRepository.js";
 import { createAccountCoverageRepository } from "./accountCoverageRepository.js";
 import { createExchangeRateRepository } from "./exchangeRateRepository.js";
 import { createRecurringCommitmentRepository } from "./recurringCommitmentRepository.js";
+import { createReportingPreferencesRepository } from "./reportingPreferencesRepository.js";
 import { ensureSchema } from "./ledgerSchema.js";
 import { insertLedgerSnapshot, loadLedgerSnapshotData as readLedgerSnapshot } from "./ledgerSnapshot.js";
 import { randomUUID } from "node:crypto";
@@ -115,6 +116,7 @@ export function createLocalLedgerDatabase(
   const {
     listMonthlyTotals,
     getTransactionsForMonth,
+    getTransactionsForDateRange,
     getTransactionsForAccount,
     listPendingTransactionObservations,
     getTransactionById,
@@ -192,6 +194,8 @@ export function createLocalLedgerDatabase(
     createRecurringCommitmentDecision,
     listRecurringCommitmentDecisions,
   } = createRecurringCommitmentRepository(db, { getTransactionById, getAccountsForHousehold });
+  const { getReportingPeriodRule, saveReportingPeriodRule } =
+    createReportingPreferencesRepository(db);
 
   function loadRuntimeMetadata(): LocalLedgerRuntimeMetadata | null {
     const householdRow = db
@@ -224,13 +228,19 @@ export function createLocalLedgerDatabase(
   backfillImportJobHistory();
 
   function loadLedgerSnapshotData(): LedgerSnapshotData {
-    return readLedgerSnapshot(db, { listExchangeRates, listHoldingRecords, listLoanRecords });
+    return readLedgerSnapshot(db, {
+      listExchangeRates,
+      listHoldingRecords,
+      listLoanRecords,
+      getReportingPeriodRule,
+    });
   }
 
   function replaceLedgerSnapshotData(snapshot: LedgerSnapshotData): void {
     db.exec("BEGIN");
     try {
       db.exec(`
+        DELETE FROM household_preferences;
         DELETE FROM import_job_transaction_baselines;
         DELETE FROM import_job_operations;
         DELETE FROM same_merchant_propagation_changes;
@@ -431,9 +441,12 @@ export function createLocalLedgerDatabase(
   return {
     hasHousehold: () => hasHousehold(db),
     createInitialHouseholdAndAccount: (input) => createInitialHouseholdAndAccount(db, input),
+    getReportingPeriodRule,
+    saveReportingPeriodRule,
     loadRuntimeMetadata,
     listMonthlyTotals,
     getTransactionsForMonth,
+    getTransactionsForDateRange,
     getTransactionsForAccount,
     listPendingTransactionObservations,
     getTransactionById,

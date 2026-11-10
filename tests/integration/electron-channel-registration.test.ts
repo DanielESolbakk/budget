@@ -202,6 +202,22 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect(await invoke("dashboard:getViewData", "2026-05")).toMatchObject({ state: "empty" });
   });
 
+  it("loads and saves validated reporting-period preferences through trusted IPC", async () => {
+    createHousehold();
+    expect(invoke("reportingPreferences:getPeriodRule")).toEqual({ type: "calendar-month" });
+    expect(await invoke("reportingPreferences:savePeriodRule", {
+      type: "last-weekday",
+      weekday: 4,
+    })).toEqual({ type: "last-weekday", weekday: 4 });
+    expect(invoke("reportingPreferences:getPeriodRule"))
+      .toEqual({ type: "last-weekday", weekday: 4 });
+    await expect(Promise.resolve().then(() => invoke("reportingPreferences:savePeriodRule", {
+      type: "fixed-day", dayOfMonth: 32,
+    }))).rejects.toThrow("Reporting period preference is malformed.");
+    expect(invoke("reportingPreferences:getPeriodRule"))
+      .toEqual({ type: "last-weekday", weekday: 4 });
+  });
+
   it("preserves cancellation results for every chooser without creating files", async () => {
     const filesBefore = readdirSync(directory).sort();
     harness.dialogs.mockResolvedValue({ canceled: true, filePaths: [], filePath: "" });

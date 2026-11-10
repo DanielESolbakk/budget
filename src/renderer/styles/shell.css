@@ -427,12 +427,14 @@ section[aria-label].destination-workspace {
 }
 
 @container (max-width: 42rem) {
-  .review-primary section[aria-label="Monthly Totals"] dl {
+  .review-primary section[aria-label="Monthly Totals"] dl,
+  .review-primary section[aria-label="Payday-period totals"] dl {
     grid-template-columns: 1fr;
     gap: 0.45rem;
   }
 
-  .review-primary section[aria-label="Monthly Totals"] .monthly-total {
+  .review-primary section[aria-label="Monthly Totals"] .monthly-total,
+  .review-primary section[aria-label="Payday-period totals"] .monthly-total {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -441,16 +443,19 @@ section[aria-label].destination-workspace {
     padding-bottom: 0.35rem;
   }
 
-  .review-primary section[aria-label="Monthly Totals"] .monthly-total:last-child {
+  .review-primary section[aria-label="Monthly Totals"] .monthly-total:last-child,
+  .review-primary section[aria-label="Payday-period totals"] .monthly-total:last-child {
     border-bottom: 0;
     padding-bottom: 0;
   }
 
-  .review-primary section[aria-label="Monthly Totals"] dt {
+  .review-primary section[aria-label="Monthly Totals"] dt,
+  .review-primary section[aria-label="Payday-period totals"] dt {
     margin: 0;
   }
 
-  .review-primary section[aria-label="Monthly Totals"] dd {
+  .review-primary section[aria-label="Monthly Totals"] dd,
+  .review-primary section[aria-label="Payday-period totals"] dd {
     min-width: 0;
     overflow-wrap: anywhere;
     font-size: 1.15rem;

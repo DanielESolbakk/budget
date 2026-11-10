@@ -89,7 +89,7 @@ export class AppShellPage {
     ) {
       await this.page
         .getByRole("navigation", { name: "Household tools" })
-        .getByRole("button", { name: name === "Settings" ? "Exchange rates" : name, exact: true })
+        .getByRole("button", { name, exact: true })
         .click();
     }
   }

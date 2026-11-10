@@ -16,6 +16,11 @@ describe("CategoryBreakdownSection", () => {
       state: "ready",
       snapshot: {
         selectedYearMonth: "2026-05",
+        reportingPeriodRule: { type: "calendar-month" },
+        reportingPeriodRange: {
+          startDateIso: "2026-05-01",
+          endDateExclusiveIso: "2026-06-01",
+        },
         categoryReviewCount: 0,
         monthlyTotals: {
           yearMonth: "2026-05",
@@ -48,6 +53,11 @@ describe("CategoryBreakdownSection", () => {
       state: "ready",
       snapshot: {
         selectedYearMonth: "2026-05",
+        reportingPeriodRule: { type: "calendar-month" },
+        reportingPeriodRange: {
+          startDateIso: "2026-05-01",
+          endDateExclusiveIso: "2026-06-01",
+        },
         categoryReviewCount: 0,
         monthlyTotals: {
           yearMonth: "2026-05",

@@ -12,6 +12,10 @@ import {
 import { DatabaseSync } from "node:sqlite";
 import type { LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
+import {
+  validateReportingPeriodRule,
+  DEFAULT_REPORTING_PERIOD_RULE,
+} from "../../shared/applicationPreferences.js";
 import { transactionBookingTimeMillis } from "../../domain/ledger/filterTransactions.js";
 import type {
   CategorizationDecision,
@@ -33,12 +37,19 @@ type LedgerSnapshotReaders = Pick<LocalLedgerDatabase,
   | "listExchangeRates"
   | "listHoldingRecords"
   | "listLoanRecords"
+  | "getReportingPeriodRule"
 >;
 
 export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): void {
   db.prepare(
     "INSERT INTO households (id, name, created_at_iso) VALUES (?, ?, ?)"
   ).run(snapshot.household.id, snapshot.household.name, snapshot.household.createdAtIso);
+  const reportingPeriodRule = validateReportingPeriodRule(
+    snapshot.reportingPeriodRule ?? DEFAULT_REPORTING_PERIOD_RULE
+  );
+  db.prepare(
+    "INSERT INTO household_preferences (household_id, reporting_period_rule_json) VALUES (?, ?)"
+  ).run(snapshot.household.id, JSON.stringify(reportingPeriodRule));
 
   const insertAccount = db.prepare(
     "INSERT INTO accounts (id, household_id, name, currency_code) VALUES (?, ?, ?, ?)"
@@ -345,7 +356,7 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
 }
 
 export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshotReaders): LedgerSnapshotData {
-  const { listExchangeRates, listHoldingRecords, listLoanRecords } = readers;
+  const { listExchangeRates, listHoldingRecords, listLoanRecords, getReportingPeriodRule } = readers;
   const householdRow = db
     .prepare("SELECT id, name, created_at_iso FROM households ORDER BY id LIMIT 1")
     .get() as { id: string; name: string; created_at_iso: string } | undefined;
@@ -565,5 +576,6 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
     recurringCommitments,
     recurringCommitmentPaymentLinks,
     recurringCommitmentDecisions,
+    reportingPeriodRule: getReportingPeriodRule(householdRow.id),
   };
 }

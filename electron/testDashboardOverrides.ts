@@ -1,4 +1,5 @@
 import { buildDashboardData, type DashboardData, type DashboardViewContract } from "../src/app/dashboardApi.js";
+import type { ReportingPeriodRule } from "../src/shared/applicationPreferences.js";
 import type {
   DashboardDataGetter,
   DashboardTestOverrides,
@@ -34,7 +35,8 @@ function getData(getDashboardData: DashboardDataGetter): DashboardData {
 
 async function getViewData(
   yearMonth: string,
-  getDashboardViewData: DashboardViewDataGetter
+  getDashboardViewData: DashboardViewDataGetter,
+  reportingPeriodRule?: ReportingPeriodRule
 ): Promise<DashboardViewContract> {
   const delayMs = getDashboardViewDelayMs(yearMonth);
   if (delayMs > 0) {
@@ -45,7 +47,7 @@ async function getViewData(
     throw new Error("Synthetic dashboard refresh failure.");
   }
 
-  return getDashboardViewData(yearMonth);
+  return getDashboardViewData(yearMonth, reportingPeriodRule);
 }
 
 export function createTestDashboardOverrides(): DashboardTestOverrides {

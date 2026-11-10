@@ -1,5 +1,7 @@
 import React from "react";
 import { getMonthlyAttentionSummary, type DashboardViewContract } from "../../shared/dashboard.js";
+import { getAdjacentReportingPeriod } from "../../domain/date/reportingPeriods.js";
+import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 import { CategoryBreakdownSection } from "../dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySection.js";
 import { CashflowScenarioSection } from "../dashboard/CashflowScenarioSection.js";
@@ -9,6 +11,7 @@ import { RecurringCommitmentsSection } from "../dashboard/RecurringCommitmentsSe
 import { SpendableCashSection } from "../dashboard/SpendableCashSection.js";
 import { TargetVsActualSection } from "../dashboard/TargetVsActualSection.js";
 import { AccountCoverageSummary } from "../dashboard/AccountCoverageSummary.js";
+import { formatReportingDate, formatReportingPeriodRange } from "../reportingPeriodDisplay.js";
 import type { ReviewState } from "./types.js";
 
 const monthFormatter = new Intl.DateTimeFormat("nb-NO", {
@@ -37,7 +40,9 @@ interface ReviewWorkspaceProps {
   refreshKey: number;
   monthChangeError: string | null;
   refreshError: string | null;
+  savedReportingPeriodRule: ReportingPeriodRule | null;
   onMonthChange: (yearMonth: string) => void;
+  onReportingModeChange: (mode: "calendar-month" | "payday-period") => void;
   onOpenTransactions: () => void;
   onOpenCoverage: () => void;
   onTargetSaved: () => void;
@@ -52,7 +57,9 @@ export function ReviewWorkspace({
   refreshKey,
   monthChangeError,
   refreshError,
+  savedReportingPeriodRule,
   onMonthChange,
+  onReportingModeChange,
   onOpenTransactions,
   onOpenCoverage,
   onTargetSaved,
@@ -60,8 +67,29 @@ export function ReviewWorkspace({
 }: ReviewWorkspaceProps): React.JSX.Element {
   const viewContract: DashboardViewContract | null = state.status === "ready" ? state.viewContract : null;
   const monthlyAttention = viewContract === null ? null : getMonthlyAttentionSummary(viewContract);
+  const snapshot = viewContract === null || viewContract.state === "loading"
+    ? null
+    : viewContract.snapshot;
+  const isCalendarMonth = snapshot?.reportingPeriodRule.type === "calendar-month";
+  const hasSavedPaydayRule = savedReportingPeriodRule !== null &&
+    savedReportingPeriodRule.type !== "calendar-month";
+  const previousPeriod = snapshot === null || snapshot.reportingPeriodRange.startDateIso.startsWith("0000-01")
+    ? null
+    : getAdjacentReportingPeriod(
+        snapshot.reportingPeriodRule,
+        snapshot.reportingPeriodRange.startDateIso,
+        "previous"
+      );
+  const nextPeriod = snapshot === null || snapshot.reportingPeriodRange.startDateIso.startsWith("9999-12")
+    ? null
+    : getAdjacentReportingPeriod(
+        snapshot.reportingPeriodRule,
+        snapshot.reportingPeriodRange.startDateIso,
+        "next"
+      );
   const planningToolsRef = React.useRef<HTMLDetailsElement>(null);
   const [isTargetFormOpen, setIsTargetFormOpen] = React.useState(false);
+  const isPeriodSelectionDisabled = isTargetFormOpen || isChangingMonth || isRefreshing;
 
   function openPlanningTools(): void {
     if (planningToolsRef.current !== null) planningToolsRef.current.open = true;
@@ -76,25 +104,82 @@ export function ReviewWorkspace({
     >
       <div className="review-intro">
         <div>
-          <h2>Monthly review</h2>
-          <p className="intro-copy">See the month clearly, then act on what needs attention.</p>
+          <h2>{isCalendarMonth === false ? "Payday-period review" : "Monthly review"}</h2>
+          <p className="intro-copy">
+            {isCalendarMonth === false
+              ? "See activity between reporting boundaries, then act on what needs attention."
+              : "See the month clearly, then act on what needs attention."}
+          </p>
         </div>
         {state.status === "ready" && (
-          <div className="month-picker">
-            <label htmlFor="month-select">Reviewing</label>
-            <select
-              id="month-select"
-              aria-label="Select month"
-              value={state.selectedYearMonth}
-              disabled={isTargetFormOpen}
-              aria-describedby={isTargetFormOpen ? "target-draft-help" : undefined}
-              onChange={(event) => onMonthChange(event.target.value)}
-            >
-              {state.availableMonths.map((month) => (
-                <option key={month} value={month}>{formatYearMonth(month)}</option>
-              ))}
-            </select>
-            <span className="month-picker-code">{state.selectedYearMonth}</span>
+          <div className="reporting-period-toolbar">
+            <div className="reporting-period-navigation">
+              <button
+                type="button"
+                className="action-secondary"
+                aria-label="Previous period"
+                disabled={isPeriodSelectionDisabled || previousPeriod === null}
+                onClick={() => {
+                  if (previousPeriod !== null) onMonthChange(previousPeriod.startDateIso.slice(0, 7));
+                }}
+              >
+                Previous
+              </button>
+              <div className="month-picker">
+                <label htmlFor="month-select">Period starting</label>
+                <select
+                  id="month-select"
+                  aria-label="Select month"
+                  value={state.selectedYearMonth}
+                  disabled={isPeriodSelectionDisabled}
+                  aria-describedby={isTargetFormOpen ? "target-draft-help" : undefined}
+                  onChange={(event) => onMonthChange(event.target.value)}
+                >
+                  {state.availableMonths.map((month) => (
+                    <option key={month} value={month}>{formatYearMonth(month)}</option>
+                  ))}
+                </select>
+                <span className="month-picker-code">{state.selectedYearMonth}</span>
+              </div>
+              <button
+                type="button"
+                className="action-secondary"
+                aria-label="Next period"
+                disabled={isPeriodSelectionDisabled || nextPeriod === null}
+                onClick={() => {
+                  if (nextPeriod !== null) onMonthChange(nextPeriod.startDateIso.slice(0, 7));
+                }}
+              >
+                Next
+              </button>
+            </div>
+            {snapshot !== null && (
+              <div className="reporting-period-current">
+                <div className="reporting-period-mode">
+                  <span>Reporting mode</span>
+                  {hasSavedPaydayRule ? (
+                    <select
+                      aria-label="Reporting mode"
+                      value={isCalendarMonth ? "calendar-month" : "payday-period"}
+                      onChange={(event) => onReportingModeChange(
+                        event.currentTarget.value === "calendar-month"
+                          ? "calendar-month"
+                          : "payday-period"
+                      )}
+                    >
+                      <option value="calendar-month">Calendar month</option>
+                      <option value="payday-period">Payday period</option>
+                    </select>
+                  ) : (
+                    <strong>Calendar month</strong>
+                  )}
+                </div>
+                <p className="reporting-period-range" aria-label="Active reporting range">
+                  {formatReportingPeriodRange(snapshot.reportingPeriodRange)}
+                </p>
+                <small>Next boundary: {formatReportingDate(snapshot.reportingPeriodRange.endDateExclusiveIso)}</small>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -103,7 +188,7 @@ export function ReviewWorkspace({
         <section className="status-panel status-loading" aria-live="polite">
           <div className="status-heading">
             <span className="status-marker" aria-hidden="true" />
-            <h3>Loading your monthly review</h3>
+            <h3>Loading your household review</h3>
           </div>
           <div className="skeleton-line skeleton-line-wide" />
           <div className="skeleton-line skeleton-line-short" />
@@ -134,11 +219,18 @@ export function ReviewWorkspace({
             </section>
           )}
 
-          {isChangingMonth && <p className="rail-status" role="status">Updating month...</p>}
+          {isChangingMonth && <p className="rail-status" role="status">Updating reporting period...</p>}
           {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
           {state.viewContract.state === "empty" && (
             <p className="rail-status is-empty-month" role="status" aria-label="Monthly activity">
-              No activity has been recorded for this month.
+              No activity has been recorded for {isCalendarMonth === false ? "this period." : "this month."}
+            </p>
+          )}
+
+          {isCalendarMonth === false && (
+            <p className="calendar-basis-note" role="note">
+              Category targets, forecasts, spendable cash, and cashflow scenarios remain based on
+              calendar months. Switch to Calendar month to compare actuals with those targets.
             </p>
           )}
 
@@ -151,7 +243,7 @@ export function ReviewWorkspace({
             />
             </div>
             <aside className="monthly-attention review-overview-attention" aria-label="Monthly attention">
-                <h3>Monthly checks</h3>
+                <h3>{isCalendarMonth === false ? "Period checks" : "Monthly checks"}</h3>
                 {monthlyAttention === null ? (
                   <p role="status">Calculating monthly exceptions...</p>
                 ) : (
@@ -159,7 +251,9 @@ export function ReviewWorkspace({
                     {monthlyAttention.categoryReviewCount > 0 && (
                       <div className="monthly-attention-item">
                         <p>{monthlyAttention.categoryReviewCount} category {monthlyAttention.categoryReviewCount === 1
-                          ? "decision needs" : "decisions need"} review this month.</p>
+                          ? "decision needs" : "decisions need"} review {isCalendarMonth === false
+                            ? "in this period."
+                            : "this month."}</p>
                       </div>
                     )}
                     {monthlyAttention.overTargetCategoryCount > 0 && (
@@ -176,7 +270,9 @@ export function ReviewWorkspace({
                         (state.viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0) ? (
                         <p role="status">Budget checks are incomplete until missing dated rates are recorded.</p>
                       ) : monthlyAttention.categoryReviewCount === 0 && monthlyAttention.overTargetCategoryCount === 0 ? (
-                        <p>No category reviews or over-target categories this month.</p>
+                        <p>No category reviews or over-target categories {isCalendarMonth === false
+                          ? "in this period."
+                          : "this month."}</p>
                       ) : null}
                       <button type="button" onClick={onOpenTransactions}>
                         Review all transactions
@@ -195,9 +291,19 @@ export function ReviewWorkspace({
                 <CategoryBreakdownSection viewContract={state.viewContract} />
               </div>
             )}
-            <div className="review-primary review-target-vs-actual">
-              <TargetVsActualSection viewContract={state.viewContract} />
-            </div>
+            {isCalendarMonth === false ? (
+              <div className="review-primary review-target-vs-actual">
+                <h3>Calendar-month targets</h3>
+                <p role="note">
+                  Target comparisons are shown only in Calendar month mode. Switch to Calendar month to
+                  compare actuals with those targets.
+                </p>
+              </div>
+            ) : (
+              <div className="review-primary review-target-vs-actual">
+                <TargetVsActualSection viewContract={state.viewContract} />
+              </div>
+            )}
             <details
               className="review-category-target review-maintenance-disclosure"
               aria-label="Category target management"
@@ -211,7 +317,9 @@ export function ReviewWorkspace({
               <div className="review-primary">
               <CategoryTargetEntrySection
                 selectedYearMonth={state.selectedYearMonth}
-                selectedMonthLabel={formatYearMonth(state.selectedYearMonth)}
+                selectedMonthLabel={`${formatYearMonth(state.selectedYearMonth)}${isCalendarMonth === false
+                  ? " calendar month"
+                  : ""}`}
                 onTargetSaved={onTargetSaved}
                 onFormOpenChange={setIsTargetFormOpen}
               />
@@ -225,7 +333,9 @@ export function ReviewWorkspace({
           >
             <summary>
               <span>Plan ahead</span>
-              <small>Forecast, recurring commitments, spendable cash, and cashflow scenarios</small>
+              <small>{isCalendarMonth === false
+                ? "Calendar-month forecast, recurring commitments, spendable cash, and cashflow scenarios"
+                : "Forecast, recurring commitments, spendable cash, and cashflow scenarios"}</small>
             </summary>
             <div className="review-planning-content">
               <ForecastSection dashboardData={state.dashboardData} />

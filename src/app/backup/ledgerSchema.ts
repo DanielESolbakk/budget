@@ -9,6 +9,11 @@ export function ensureSchema(db: DatabaseSync): void {
       created_at_iso TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS household_preferences (
+      household_id TEXT PRIMARY KEY REFERENCES households(id) ON DELETE CASCADE,
+      reporting_period_rule_json TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
       household_id TEXT NOT NULL,

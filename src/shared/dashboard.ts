@@ -1,7 +1,21 @@
-import { computeCategoryBreakdown, type CategoryBreakdownFlow } from "../domain/aggregation/computeCategoryBreakdown.js";
-import { computeMonthlyTotals } from "../domain/aggregation/computeMonthlyTotals.js";
+import {
+  computeCategoryBreakdown,
+  computeCategoryBreakdownForDateRange,
+  type CategoryBreakdownFlow,
+} from "../domain/aggregation/computeCategoryBreakdown.js";
+import { computeDateRangeTotals, computeMonthlyTotals } from "../domain/aggregation/computeMonthlyTotals.js";
 import { needsCategorizationReview } from "../domain/categorization/reviewQueue.js";
-import { isIsoCalendarDate } from "../domain/date/calendarDate.js";
+import {
+  isIsoCalendarDate,
+} from "../domain/date/calendarDate.js";
+import {
+  resolveReportingPeriod,
+  type ReportingPeriodRange,
+} from "../domain/date/reportingPeriods.js";
+import {
+  validateReportingPeriodRule,
+  type ReportingPeriodRule,
+} from "./applicationPreferences.js";
 import { simpleForecast } from "../domain/forecast/simpleForecast.js";
 import { convertCurrencyAmount } from "../domain/money/convertCurrencyAmount.js";
 import type {
@@ -55,6 +69,8 @@ export interface DashboardData extends MonthSeries {
 
 export interface MonthlyDashboardSnapshot {
   selectedYearMonth: string;
+  reportingPeriodRule: ReportingPeriodRule;
+  reportingPeriodRange: ReportingPeriodRange;
   categoryReviewCount: number;
   hasUncategorizedTransactions?: boolean;
   monthlyTotals: MonthlyBreakdown;
@@ -98,6 +114,7 @@ export interface NokMonthlyReportInput {
   accounts: readonly Account[];
   rates: readonly ExchangeRate[];
   yearMonth: string;
+  reportingPeriodRange?: ReportingPeriodRange;
   monthlyReferenceRateIds?: Readonly<Record<string, string>>;
   useLatestRateScenario?: boolean;
 }
@@ -123,6 +140,7 @@ export interface NokCurrencySubtotals {
 
 export interface NokMonthlyReport extends NokCurrencySubtotals {
   yearMonth: string;
+  reportingPeriodRange?: ReportingPeriodRange;
   transactions: NokMonthlyReportTransaction[];
 }
 
@@ -164,6 +182,7 @@ export interface NokValuationReport {
 export interface DashboardViewContractInput {
   transactions: Transaction[];
   selectedYearMonth: string;
+  reportingPeriodRule?: ReportingPeriodRule;
   accounts?: readonly Account[];
   rates?: readonly ExchangeRate[];
   monthlyCategoryTargetStore?: MonthlyCategoryTargetStore;
@@ -413,10 +432,26 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
   if (!isYearMonth(input.yearMonth)) {
     throw new Error(`Invalid NOK report yearMonth: ${input.yearMonth}`);
   }
+  if (input.reportingPeriodRange !== undefined &&
+    (!isIsoCalendarDate(input.reportingPeriodRange.startDateIso) ||
+      !isIsoCalendarDate(input.reportingPeriodRange.endDateExclusiveIso) ||
+      input.reportingPeriodRange.startDateIso >= input.reportingPeriodRange.endDateExclusiveIso)) {
+    throw new Error("Invalid NOK report date range.");
+  }
 
   const accountsById = new Map(input.accounts.map((account) => [account.id, account]));
   const monthlyTransactions = input.transactions
-    .filter((transaction) => transaction.bookedAtIso.startsWith(input.yearMonth))
+    .filter((transaction) => {
+      if (input.reportingPeriodRange === undefined) {
+        return transaction.bookedAtIso.startsWith(input.yearMonth);
+      }
+      const bookedDate = transaction.bookedAtIso.slice(0, 10);
+      if (!isIsoCalendarDate(bookedDate)) {
+        throw new Error(`Invalid transaction date in NOK report: ${transaction.bookedAtIso}`);
+      }
+      return bookedDate >= input.reportingPeriodRange.startDateIso &&
+        bookedDate < input.reportingPeriodRange.endDateExclusiveIso;
+    })
     .sort((left, right) =>
       left.bookedAtIso.localeCompare(right.bookedAtIso) ||
       left.id.localeCompare(right.id)
@@ -459,6 +494,9 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
 
   return {
     yearMonth: input.yearMonth,
+    ...(input.reportingPeriodRange === undefined ? {} : {
+      reportingPeriodRange: input.reportingPeriodRange,
+    }),
     ...subtotals,
     transactions,
   };
@@ -476,19 +514,34 @@ export function queryMonthlyDashboardSnapshot(
   transactions: Transaction[],
   selectedYearMonth: string,
   monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
-  currencyContext?: Pick<NokMonthlyReportInput, "accounts" | "rates">
+  currencyContext?: Pick<NokMonthlyReportInput, "accounts" | "rates">,
+  reportingPeriodRule?: ReportingPeriodRule
 ): MonthlyDashboardSnapshot {
-  if (currencyContext === undefined && transactions.some((transaction) =>
+  const rule = validateReportingPeriodRule(reportingPeriodRule ?? { type: "calendar-month" });
+  const reportingPeriodRange = resolveReportingPeriod(rule, selectedYearMonth);
+  const reportingTransactions = transactions.filter((transaction) => {
+    if (rule.type === "calendar-month") {
+      return transaction.bookedAtIso.startsWith(selectedYearMonth);
+    }
+    const bookedDate = transaction.bookedAtIso.slice(0, 10);
+    if (!isIsoCalendarDate(bookedDate)) {
+      throw new Error(`Invalid transaction date in reporting period: ${transaction.bookedAtIso}`);
+    }
+    return bookedDate >= reportingPeriodRange.startDateIso &&
+      bookedDate < reportingPeriodRange.endDateExclusiveIso;
+  });
+  if (currencyContext === undefined && reportingTransactions.some((transaction) =>
     transaction.currencyCode !== undefined && transaction.currencyCode !== "NOK"
   )) {
     throw new Error("Account and exchange-rate context is required for foreign-currency dashboard transactions.");
   }
   const currencyReport = currencyContext === undefined ? undefined : buildNokMonthlyReport({
-    transactions,
+    transactions: reportingTransactions,
     ...currencyContext,
     yearMonth: selectedYearMonth,
+    ...(rule.type === "calendar-month" ? {} : { reportingPeriodRange }),
   });
-  const sourceById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
+  const sourceById = new Map(reportingTransactions.map((transaction) => [transaction.id, transaction]));
   const nokTransactions: Transaction[] = currencyReport === undefined ? transactions :
     currencyReport.transactions.flatMap((entry): Transaction[] => {
       if (entry.nokAmountMinor === null) return [];
@@ -519,26 +572,58 @@ export function queryMonthlyDashboardSnapshot(
         ...(categoryAllocations === undefined ? {} : { categoryAllocations }),
       }];
     });
+  const dateRangeTotals = rule.type === "calendar-month" ? undefined :
+    computeDateRangeTotals(
+      nokTransactions,
+      reportingPeriodRange.startDateIso,
+      reportingPeriodRange.endDateExclusiveIso
+    );
   return {
     selectedYearMonth,
-    categoryReviewCount: transactions.filter((transaction) =>
-      transaction.bookedAtIso.startsWith(selectedYearMonth) && needsCategorizationReview(transaction)
-    ).length,
-    monthlyTotals: queryMonthlyTotals(nokTransactions, selectedYearMonth),
-    categoryBreakdown: queryCategoryBreakdown(nokTransactions, selectedYearMonth),
+    reportingPeriodRule: rule,
+    reportingPeriodRange,
+    categoryReviewCount: reportingTransactions.filter(needsCategorizationReview).length,
+    monthlyTotals: dateRangeTotals === undefined
+      ? queryMonthlyTotals(nokTransactions, selectedYearMonth)
+      : {
+        yearMonth: selectedYearMonth,
+        incomeMinor: dateRangeTotals.incomeMinor,
+        expenseMinor: dateRangeTotals.expenseMinor,
+        netMinor: dateRangeTotals.netMinor,
+      },
+    categoryBreakdown: rule.type === "calendar-month"
+      ? queryCategoryBreakdown(nokTransactions, selectedYearMonth)
+      : computeCategoryBreakdownForDateRange(
+        nokTransactions,
+        reportingPeriodRange.startDateIso,
+        reportingPeriodRange.endDateExclusiveIso
+      ),
     categoryBreakdownByFlow: {
-      inflows: queryCategoryBreakdown(nokTransactions, selectedYearMonth, "inflows"),
-      spending: queryCategoryBreakdown(nokTransactions, selectedYearMonth, "spending"),
+      inflows: rule.type === "calendar-month"
+        ? queryCategoryBreakdown(nokTransactions, selectedYearMonth, "inflows")
+        : computeCategoryBreakdownForDateRange(
+          nokTransactions,
+          reportingPeriodRange.startDateIso,
+          reportingPeriodRange.endDateExclusiveIso,
+          "inflows"
+        ),
+      spending: rule.type === "calendar-month"
+        ? queryCategoryBreakdown(nokTransactions, selectedYearMonth, "spending")
+        : computeCategoryBreakdownForDateRange(
+          nokTransactions,
+          reportingPeriodRange.startDateIso,
+          reportingPeriodRange.endDateExclusiveIso,
+          "spending"
+        ),
     },
     targetVsActualCategoryRows: queryTargetVsActualCategoryRows(
-      nokTransactions,
-      monthlyCategoryTargetStore,
+      rule.type === "calendar-month" ? nokTransactions : [],
+      rule.type === "calendar-month" ? monthlyCategoryTargetStore : createMonthlyCategoryTargetStore(),
       selectedYearMonth
     ),
     ...(currencyReport === undefined ? {} : {
       currencyReport,
-      hasUncategorizedTransactions: transactions.some((transaction) =>
-        transaction.bookedAtIso.startsWith(selectedYearMonth) &&
+      hasUncategorizedTransactions: reportingTransactions.some((transaction) =>
         transaction.categoryId === undefined && !transaction.categoryAllocations?.length
       ),
     }),
@@ -700,6 +785,7 @@ export function buildDashboardViewContract(input: DashboardViewContractInput): D
   const {
     transactions,
     selectedYearMonth,
+    reportingPeriodRule,
     monthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
     accounts,
     rates = [],
@@ -714,7 +800,8 @@ export function buildDashboardViewContract(input: DashboardViewContractInput): D
     transactions,
     selectedYearMonth,
     monthlyCategoryTargetStore,
-    accounts === undefined ? undefined : { accounts, rates }
+    accounts === undefined ? undefined : { accounts, rates },
+    reportingPeriodRule
   );
 
   if (snapshot.categoryBreakdown.entries.length === 0 && !snapshot.currencyReport?.transactions.length) {

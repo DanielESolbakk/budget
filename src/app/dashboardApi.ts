@@ -1,10 +1,16 @@
 import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
 import type { AccountCoverageAssessment, AccountCoverageAssessmentInput } from "../domain/types.js";
+import { resolveReportingPeriod } from "../domain/date/reportingPeriods.js";
+import { validateReportingPeriodRule, type ReportingPeriodRule } from "../shared/applicationPreferences.js";
 import {
   buildDashboardData,
   buildNokValuationReport,
+  buildDashboardViewContract,
+  createMonthlyCategoryTargetStore,
   queryMonthlyDashboardSnapshot,
   type DashboardData,
+  type DashboardViewContract,
+  type MonthlyCategoryTargetStore,
   type NokValuationReport,
 } from "../shared/dashboard.js";
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
@@ -75,6 +81,36 @@ export function queryHouseholdDashboardData(
       .filter((snapshot) => snapshot.currencyReport?.incompleteCurrencies.length)
       .map((snapshot) => snapshot.selectedYearMonth),
   };
+}
+
+export function queryHouseholdDashboardView(
+  database: Pick<LocalLedgerDatabase,
+    | "getReportingPeriodRule"
+    | "getTransactionsForDateRange"
+    | "getAccountsForHousehold"
+    | "listExchangeRates"
+  >,
+  householdId: string,
+  selectedYearMonth: string,
+  reportingPeriodRule?: ReportingPeriodRule,
+  monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore()
+): DashboardViewContract {
+  const rule = validateReportingPeriodRule(
+    reportingPeriodRule ?? database.getReportingPeriodRule(householdId)
+  );
+  const range = resolveReportingPeriod(rule, selectedYearMonth);
+  return buildDashboardViewContract({
+    transactions: database.getTransactionsForDateRange(
+      householdId,
+      range.startDateIso,
+      range.endDateExclusiveIso
+    ),
+    selectedYearMonth,
+    reportingPeriodRule: rule,
+    accounts: database.getAccountsForHousehold(householdId),
+    rates: database.listExchangeRates(),
+    monthlyCategoryTargetStore,
+  });
 }
 
 export function queryNokValuationReport(

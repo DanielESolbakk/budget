@@ -2,6 +2,11 @@ import type { BackupSnapshot } from "../../domain/backup/snapshotContract.js";
 import { SNAPSHOT_VERSION } from "../../domain/backup/snapshotContract.js";
 import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
 import {
+  validateReportingPeriodRule,
+  type ReportingPeriodRule,
+  DEFAULT_REPORTING_PERIOD_RULE,
+} from "../../shared/applicationPreferences.js";
+import {
   isRecord,
   validateHousehold,
   validateAccounts,
@@ -40,6 +45,8 @@ const snapshotCapabilities = {
   "7": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections, ...holdingCollections], requiresHouseholdShares: false },
   "8": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections, ...holdingCollections], requiresHouseholdShares: false },
   "9": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections, ...holdingCollections], requiresHouseholdShares: true },
+  "10": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+    ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
   [SNAPSHOT_VERSION]: { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
 };
@@ -60,6 +67,17 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     );
   }
   const capabilities = snapshotCapabilities[metadata.version];
+  if (metadata.version === SNAPSHOT_VERSION && value.reportingPeriodRule === undefined) {
+    throw new Error(`Invalid snapshot reportingPeriodRule: ${snapshotPath}`);
+  }
+  let reportingPeriodRule: ReportingPeriodRule;
+  try {
+    reportingPeriodRule = value.reportingPeriodRule === undefined
+      ? DEFAULT_REPORTING_PERIOD_RULE
+      : validateReportingPeriodRule(value.reportingPeriodRule);
+  } catch (error) {
+    throw new Error(`Invalid snapshot reportingPeriodRule: ${snapshotPath}`, { cause: error });
+  }
 
   if (
     typeof metadata.createdAtIso !== "string" ||
@@ -238,5 +256,6 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     recurringCommitments,
     recurringCommitmentPaymentLinks,
     recurringCommitmentDecisions,
+    reportingPeriodRule,
   };
 }

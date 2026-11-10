@@ -12,6 +12,7 @@ import { parseExchangeRateCsv } from "../../src/app/exchangeRateImport.js";
 import { validateCashflowScenarioRequest } from "../../src/domain/forecast/cashflowScenarios.js";
 import { validateExchangeRate } from "../../src/domain/money/exchangeRates.js";
 import { isCurrencyCode, validateMonthlyCategoryTargetInput } from "../../src/domain/types.js";
+import { validateReportingPeriodRule } from "../../src/shared/applicationPreferences.js";
 import type { LedgerChannelContext } from "./context.js";
 import {
   parseAccountBalanceCheckpointInput,
@@ -25,6 +26,7 @@ export function registerReportsChannels({
   ipcMain,
   assertTrustedRenderer,
   localLedgerDatabase,
+  sampleHousehold,
   sampleTargetStore,
   spendableCashService,
   cashflowScenarioService,
@@ -36,6 +38,7 @@ export function registerReportsChannels({
   | "ipcMain"
   | "assertTrustedRenderer"
   | "localLedgerDatabase"
+  | "sampleHousehold"
   | "sampleTargetStore"
   | "spendableCashService"
   | "cashflowScenarioService"
@@ -50,11 +53,29 @@ export function registerReportsChannels({
     return dashboardProvider.getData();
   });
 
-  ipcMain.handle("dashboard:getViewData", (event, yearMonth: unknown) => {
+  ipcMain.handle("dashboard:getViewData", (event, yearMonth: unknown, reportingPeriodRule: unknown) => {
     assertTrustedRenderer(event);
-    return dashboardProvider.getViewData(parseNonEmptyString(yearMonth, "yearMonth"));
+    return dashboardProvider.getViewData(
+      parseNonEmptyString(yearMonth, "yearMonth"),
+      reportingPeriodRule === undefined
+        ? undefined
+        : validateReportingPeriodRule(reportingPeriodRule)
+    );
   }
   );
+
+  ipcMain.handle("reportingPreferences:getPeriodRule", (event) => {
+    assertTrustedRenderer(event);
+    return localLedgerDatabase.getReportingPeriodRule(sampleHousehold.id);
+  });
+
+  ipcMain.handle("reportingPreferences:savePeriodRule", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const rule = validateReportingPeriodRule(input);
+    return ledgerOperationCoordinator.runExclusive(() =>
+      localLedgerDatabase.saveReportingPeriodRule(sampleHousehold.id, rule)
+    );
+  });
 
   ipcMain.handle("forecast:getEntries", (event) => {
     assertTrustedRenderer(event);
