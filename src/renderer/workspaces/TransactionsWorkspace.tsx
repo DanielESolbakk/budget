@@ -39,7 +39,6 @@ export function TransactionsWorkspace({
       </div>
       {filterRequest !== null && filterRequest !== undefined && (
         <div className="ledger-report-context">
-          <p>Opened from report: {filterRequest.description}. Ledger filters below can be changed.</p>
           <button type="button" className="action-secondary" onClick={onBackToReview}>
             Back to period review
           </button>

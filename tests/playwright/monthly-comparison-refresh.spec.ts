@@ -7,7 +7,10 @@ test("qualifies an in-progress period instead of claiming spending improved agai
   await window.clock.setFixedTime(new Date("2026-05-15T12:00:00"));
   await dashboard.selectMonth("2026-05");
   await expect(dashboard.monthlyTotalsSection.getByText("In progress", { exact: true })).toBeVisible();
-  await expect(dashboard.monthlyComparison).toContainText("full previous period");
+  await expect(dashboard.monthlyComparison.getByRole("group", { name: "Selected period spending" })).toContainText("In progress");
+  await expect(dashboard.monthlyComparison.getByRole("group", { name: "Previous period spending" })).toContainText("Ended");
+  await expect(dashboard.monthlyComparison.getByRole("group", { name: "Selected period spending" })).toContainText("1 May 2026 - 31 May 2026");
+  await expect(dashboard.monthlyComparison.getByRole("group", { name: "Previous period spending" })).toContainText("1 April 2026 - 30 April 2026");
   await expect(dashboard.monthlyComparison).toContainText("not a like-for-like comparison");
   await expect(dashboard.monthlyComparison).not.toContainText(/Spending (increased|decreased)/);
 });

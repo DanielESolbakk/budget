@@ -245,6 +245,12 @@ export function parseTransactionQuery(input: unknown): TransactionQuery {
 
   const record = input as Record<string, unknown>;
   const query: TransactionQuery = {};
+  if (record.dateBasis !== undefined) {
+    if (record.dateBasis !== "booking-date") {
+      throw new Error("dateBasis must be 'booking-date' when provided.");
+    }
+    query.dateBasis = record.dateBasis;
+  }
   const stringFields = ["accountId", "bookedFromIso", "bookedToIso", "merchant", "categoryId"] as const;
   for (const field of stringFields) {
     if (record[field] !== undefined) {
@@ -341,6 +347,7 @@ export function parseTransactionFilters(input: unknown): TransactionFilters {
     ...(query.accountId === undefined ? {} : { accountId: query.accountId }),
     ...(query.bookedFromIso === undefined ? {} : { bookedFromIso: query.bookedFromIso }),
     ...(query.bookedToIso === undefined ? {} : { bookedToIso: query.bookedToIso }),
+    ...(query.dateBasis === undefined ? {} : { dateBasis: query.dateBasis }),
     ...(query.merchant === undefined ? {} : { merchant: query.merchant }),
     ...(query.amountMinor === undefined ? {} : { amountMinor: query.amountMinor }),
     ...(query.amountFromMinor === undefined ? {} : { amountFromMinor: query.amountFromMinor }),

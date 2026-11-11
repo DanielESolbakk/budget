@@ -11,6 +11,7 @@ import {
   queryHouseholdDashboardData,
 } from "../../src/app/dashboardApi.js";
 import { filterTransactions, type TransactionQuery } from "../../src/domain/ledger/filterTransactions.js";
+import { queryLedger } from "../../src/app/queryLedger.js";
 
 const HOUSEHOLD = {
   id: "hh-ledger-query",
@@ -77,6 +78,76 @@ function withDatabase<Result>(
 }
 
 describe("SQLite ledger queries", () => {
+  it("matches the report's cross-month dated FX and missing-rate subtotals", () => {
+    const entries: Transaction[] = [
+      transaction("salary", "2026-01-25T00:15:00+02:00", 300000, "Synthetic salary"),
+      transaction("kiwi", "2026-02-01", -50000, "Kiwi Stavanger"),
+      { ...transaction("eur", "2026-02-24T23:30:00-02:00", -10000, "Rema 1000"), currencyCode: "EUR" },
+      { ...transaction("sek", "2026-02-24", -10000, "Synthetic SEK"), currencyCode: "SEK" },
+      transaction("outside", "2026-02-25", -90000, "Outside range"),
+      transaction("before", "2026-01-24T23:30:00-02:00", -70000, "Before range"),
+    ];
+    withDatabase(entries, (database) => {
+      database.upsertExchangeRate({
+        id: "eur", currencyCode: "EUR", rateNokPerUnit: "11.50",
+        effectiveDate: "2026-01-01", kind: "dated", source: "Synthetic", provenance: "manual",
+      });
+      database.upsertExchangeRate({
+        id: "later-eur", currencyCode: "EUR", rateNokPerUnit: "12",
+        effectiveDate: "2026-02-25", kind: "dated", source: "Synthetic", provenance: "manual",
+      });
+      const report = buildDashboardViewContract({
+        transactions: entries,
+        accounts: database.getAccountsForHousehold(HOUSEHOLD.id),
+        rates: database.listExchangeRates(),
+        selectedYearMonth: "2026-01",
+        reportingPeriodRule: { type: "fixed-day", dayOfMonth: 25 },
+      });
+      if (report.state === "loading") throw new Error("Expected a resolved report.");
+      const filters = { bookedFromIso: "2026-01-25", bookedToIso: "2026-02-24", dateBasis: "booking-date" as const };
+      database.saveLedgerView({ id: "report", name: "Report dates", filters });
+      const saved = database.listSavedLedgerViews()[0];
+      expect(saved?.filters).toEqual(filters);
+      const result = queryLedger(database, HOUSEHOLD.id, { ...saved?.filters, pageSize: 2 });
+      expect(result.transactions).toHaveLength(2);
+      expect(result.totalCount).toBe(4);
+      expect(result.summary).toMatchObject({
+        incomeMinor: 300000, expenseMinor: 165000, netMinor: 135000,
+        incompleteCurrencies: ["SEK"],
+      });
+      expect(result.summary).toMatchObject({
+        incomeMinor: report.snapshot.monthlyTotals.incomeMinor,
+        expenseMinor: report.snapshot.monthlyTotals.expenseMinor,
+        netMinor: report.snapshot.monthlyTotals.netMinor,
+        nativeSubtotals: report.snapshot.currencyReport?.nativeSubtotals,
+        incompleteCurrencies: report.snapshot.currencyReport?.incompleteCurrencies,
+      });
+    });
+  });
+
+  it("reconciles all filtered pages with report totals and excludes other dates and households", () => {
+    const entries = Array.from({ length: 125 }, (_, index) =>
+      transaction(`kiwi-${index}`, "2026-05-15", -100, "Kiwi Stavanger"));
+    withDatabase([
+      ...entries,
+      transaction("salary", "2026-05-01", 300000, "Synthetic salary"),
+      transaction("outside", "2026-06-01", -90000, "Kiwi Stavanger"),
+      { ...transaction("other-household", "2026-05-15", -70000, "Kiwi Stavanger"), householdId: "other-household" },
+    ], (database) => {
+      const filters = { bookedFromIso: "2026-05-01", bookedToIso: "2026-05-31" };
+      for (const page of [1, 2, 3]) {
+        const result = queryLedger(database, HOUSEHOLD.id, { ...filters, page, pageSize: 50, sortBy: "amountMinor", sortDirection: page === 2 ? "asc" : "desc" });
+        expect(result.totalCount).toBe(126);
+        expect(result.summary).toMatchObject({ incomeMinor: 300000, expenseMinor: 12500, netMinor: 287500, incompleteCurrencies: [] });
+      }
+      const filtered = queryLedger(database, HOUSEHOLD.id, { ...filters, merchant: "Kiwi", pageSize: 50 });
+      expect(filtered.totalCount).toBe(125);
+      expect(filtered.summary).toMatchObject({ incomeMinor: 0, expenseMinor: 12500, netMinor: -12500 });
+      expect(queryLedger(database, HOUSEHOLD.id, { ...filters, merchant: "absent" }).summary)
+        .toMatchObject({ incomeMinor: 0, expenseMinor: 0, netMinor: 0 });
+    });
+  });
+
   it("upgrades historical bookings to an indexed numeric value without rewriting their text", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-booking-upgrade-"));
     const dbPath = join(directory, "ledger.sqlite");

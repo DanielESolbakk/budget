@@ -441,7 +441,6 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
     throw new Error("Invalid NOK report date range.");
   }
 
-  const accountsById = new Map(input.accounts.map((account) => [account.id, account]));
   const monthlyTransactions = input.transactions
     .filter((transaction) => {
       if (input.reportingPeriodRange === undefined) {
@@ -453,14 +452,25 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
       }
       return bookedDate >= input.reportingPeriodRange.startDateIso &&
         bookedDate < input.reportingPeriodRange.endDateExclusiveIso;
-    })
-    .sort((left, right) =>
+    });
+  return {
+    yearMonth: input.yearMonth,
+    ...(input.reportingPeriodRange === undefined ? {} : { reportingPeriodRange: input.reportingPeriodRange }),
+    ...buildNokTransactionReport({ ...input, transactions: monthlyTransactions }),
+  };
+}
+
+export function buildNokTransactionReport(
+  input: Pick<NokMonthlyReportInput, "transactions" | "accounts" | "rates" | "monthlyReferenceRateIds" | "useLatestRateScenario">
+): NokCurrencySubtotals & { transactions: NokMonthlyReportTransaction[] } {
+  const accountsById = new Map(input.accounts.map((account) => [account.id, account]));
+  const sortedTransactions = [...input.transactions].sort((left, right) =>
       left.bookedAtIso.localeCompare(right.bookedAtIso) ||
       left.id.localeCompare(right.id)
     );
   const transactions: NokMonthlyReportTransaction[] = [];
 
-  for (const transaction of monthlyTransactions) {
+  for (const transaction of sortedTransactions) {
     const account = accountsById.get(transaction.accountId);
     if (account === undefined) {
       throw new Error(`Account not found for transaction ${transaction.id}.`);
@@ -495,10 +505,6 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
   const subtotals = buildNokCurrencySubtotals(transactions);
 
   return {
-    yearMonth: input.yearMonth,
-    ...(input.reportingPeriodRange === undefined ? {} : {
-      reportingPeriodRange: input.reportingPeriodRange,
-    }),
     ...subtotals,
     transactions,
   };

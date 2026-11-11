@@ -124,6 +124,7 @@ export function MonthlyTotalsSection({
         <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
       </div>
       <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
+      <p className="comparison-basis-note">Recorded transactions only. Statement coverage may be incomplete.</p>
       {currencyReport?.nativeSubtotals.some((subtotal) => subtotal.currencyCode !== "NOK") && (
         <div className="native-currency-subtotals">
           <h3>Native net subtotals</h3>
@@ -188,7 +189,7 @@ function MonthlyComparisonSummary({
 
   React.useEffect(() => {
     let isActive = true;
-    if (previousYearMonth === null) {
+    if (previousYearMonth === null || viewContract.state === "empty" || isFuturePeriod) {
       return () => {
         isActive = false;
       };
@@ -219,18 +220,20 @@ function MonthlyComparisonSummary({
     return () => {
       isActive = false;
     };
-  }, [previousPeriodStartDateIso, previousYearMonth, reportingPeriodRule, refreshKey, retryCount]);
+  }, [previousPeriodStartDateIso, previousYearMonth, reportingPeriodRule, refreshKey, retryCount, viewContract.state, isFuturePeriod]);
   const comparisonIsCurrent = previousYearMonth !== null &&
     comparison.previousYearMonth === previousYearMonth;
   const isLoading = previousYearMonth !== null &&
     (!comparisonIsCurrent || comparison.status === "loading");
+
+  if (viewContract.state === "empty" && !isFuturePeriod) return null;
 
   return (
     <div
       className="monthly-comparison"
       role="group"
       aria-label={isPaydayPeriod ? "Payday period comparison" : "Monthly comparison"}
-      aria-busy={isLoading}
+      aria-busy={!isFuturePeriod && isLoading}
     >
       <h3>{isPaydayPeriod ? "Previous payday period" : "Month-to-month spending"}</h3>
       {isFuturePeriod ? (
@@ -254,27 +257,34 @@ function MonthlyComparisonSummary({
             No recorded activity {viewContract.state === "empty" ? "in the selected period" : `for ${previousPeriodLabel}`}.
             {" "}A spending change cannot be established from missing activity.
           </p>
-        ) : isInProgress ? (
-          <p role="status">
-            This period is in progress. Recorded spending is {formatCurrencyAmount(currentExpenseMinor, "NOK")};
-            {" "}the full previous period ({previousPeriodLabel}) has {formatCurrencyAmount(comparison.previousExpenseMinor, "NOK")}.
-            {" "}This is not a like-for-like comparison.
-          </p>
         ) : (
-          <p role="status">
-            {currentExpenseMinor === comparison.previousExpenseMinor
+          <>
+            <dl className="period-spending-comparison">
+              <div role="group" aria-label="Selected period spending">
+                <dt>Selected period · {isInProgress ? "In progress" : "Ended"}</dt>
+                <dd className="comparison-amount">{formatCurrencyAmount(currentExpenseMinor, "NOK")}</dd>
+                <dd className="comparison-dates">{formatReportingPeriodRange(currentRange)}</dd>
+              </div>
+              <div role="group" aria-label="Previous period spending">
+                <dt>Previous period · Ended</dt>
+                <dd className="comparison-amount">{formatCurrencyAmount(comparison.previousExpenseMinor, "NOK")}</dd>
+                <dd className="comparison-dates">{previousRange === null ? "" : formatReportingPeriodRange(previousRange)}</dd>
+              </div>
+            </dl>
+            <p role="status">
+              {isInProgress
+                ? "An unfinished period is not a like-for-like comparison with an ended period."
+                : currentExpenseMinor === comparison.previousExpenseMinor
               ? `Spending was unchanged at ${formatCurrencyAmount(currentExpenseMinor, "NOK")} compared with ${previousPeriodLabel}.`
               : `Spending ${currentExpenseMinor > comparison.previousExpenseMinor ? "increased" : "decreased"} by ${
                 formatCurrencyAmount(Math.abs(currentExpenseMinor - comparison.previousExpenseMinor), "NOK")
-              } compared with ${previousPeriodLabel} (from ${
-                formatCurrencyAmount(comparison.previousExpenseMinor, "NOK")
-              } to ${formatCurrencyAmount(currentExpenseMinor, "NOK")}).`}
-          </p>
+              } compared with ${previousPeriodLabel}.`}
+            </p>
+          </>
         )
       ) : (
         <p role="status">Loading {isPaydayPeriod ? "previous-period" : "previous-month"} comparison...</p>
       )}
-      {!isFuturePeriod && <p className="comparison-basis-note">Recorded transactions only. Statement coverage may be incomplete.</p>}
     </div>
   );
 }

@@ -341,6 +341,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
       filters: {
         bookedFromIso: range.startDateIso,
         bookedToIso: inclusiveEnd.toISOString().slice(0, 10),
+        dateBasis: "booking-date",
       },
       description: `${rule.type === "calendar-month" ? "Calendar month" : "Payday period"}: ${formatReportingPeriodRange(range)}`,
     }));

@@ -37,7 +37,8 @@ test.describe("Current local date defaults", () => {
     await expect(dashboard.monthSelector).toHaveValue(CURRENT_LOCAL_MONTH);
     await expect(dashboard.monthSelector).toHaveAttribute("type", "month");
     await expect(dashboard.zeroActivityStatus).toContainText("No activity has been recorded for this month.");
-    await expect(window.getByRole("group", { name: "Monthly comparison" })).toContainText("No recorded activity");
+    await expect(window.getByRole("group", { name: "Monthly comparison" })).not.toBeVisible();
+    await expect(dashboard.zeroActivityStatus).toContainText("Zero recorded totals do not establish that there was no spending.");
     await expect(dashboard.incomeValue).toContainText("0,00");
     await expect(dashboard.expenseValue).toContainText("0,00");
     await expect(dashboard.netValue).toContainText("0,00");
@@ -91,8 +92,9 @@ test.describe("Current local date defaults", () => {
     await expect(dashboard.monthlyTotalsSection.getByLabel("Active reporting range"))
       .toHaveText("1 June 2026 - 30 June 2026");
     await expect(dashboard.expenseValue).toContainText("0,00");
-    await expect(dashboard.monthlyComparison).toContainText("No recorded activity");
-    await expect(dashboard.monthlyComparison).not.toContainText("Spending decreased");
+    await expect(dashboard.zeroActivityStatus).toContainText("No activity has been recorded");
+    await expect(dashboard.monthlyComparison).not.toBeVisible();
+    await expect(dashboard.monthlyTotalsSection).not.toContainText("Spending decreased");
     await dashboard.monthlyTotalsSection.getByRole("button", { name: "Current month", exact: true }).click();
     await expect(dashboard.monthSelector).toHaveValue(CURRENT_LOCAL_MONTH);
     await expect(dashboard.monthlyTotalsSection.getByRole("button", { name: /^Next month/ })).toBeEnabled();

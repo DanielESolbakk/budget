@@ -427,8 +427,8 @@ section[aria-label].destination-workspace {
 }
 
 @container (max-width: 42rem) {
-  .review-primary section[aria-label="Monthly Totals"] dl,
-  .review-primary section[aria-label="Payday-period totals"] dl {
+  .review-primary section[aria-label="Monthly Totals"] > dl,
+  .review-primary section[aria-label="Payday-period totals"] > dl {
     grid-template-columns: 1fr;
     gap: 0.45rem;
   }
@@ -449,13 +449,13 @@ section[aria-label].destination-workspace {
     padding-bottom: 0;
   }
 
-  .review-primary section[aria-label="Monthly Totals"] dt,
-  .review-primary section[aria-label="Payday-period totals"] dt {
+  .review-primary section[aria-label="Monthly Totals"] > dl dt,
+  .review-primary section[aria-label="Payday-period totals"] > dl dt {
     margin: 0;
   }
 
-  .review-primary section[aria-label="Monthly Totals"] dd,
-  .review-primary section[aria-label="Payday-period totals"] dd {
+  .review-primary section[aria-label="Monthly Totals"] > dl dd,
+  .review-primary section[aria-label="Payday-period totals"] > dl dd {
     min-width: 0;
     overflow-wrap: anywhere;
     font-size: 1.15rem;

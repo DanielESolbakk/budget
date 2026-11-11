@@ -42,6 +42,15 @@ describe("review period navigation", () => {
     expect(markup).toContain("View transactions for these dates");
   });
 
+  it("explains an empty report once without an additional missing-activity comparison", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-11T12:00:00"));
+    const markup = renderReview("2026-10", []);
+    expect(markup).toContain("Statement coverage may be incomplete.");
+    expect(markup).not.toContain("Loading previous-month comparison");
+    expect(markup.match(/No activity has been recorded/g)).toHaveLength(1);
+  });
+
   it("disables period controls while a period query is in progress", () => {
     const reportingPeriodRule: ReportingPeriodRule = { type: "last-weekday", weekday: 4 };
     const viewContract = buildDashboardViewContract({

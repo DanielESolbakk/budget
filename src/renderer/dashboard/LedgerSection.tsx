@@ -1,4 +1,5 @@
 import React from "react";
+import { haveSameTransactionFilters, type LedgerSummary } from "../../shared/ledgerSummary.js";
 import {
   DEFAULT_TRANSACTION_PAGE_SIZE,
   LARGE_TRANSACTION_THRESHOLD_MINOR,
@@ -62,6 +63,7 @@ function getActiveFilters(filters: TransactionFilters, accounts: Account[]): Act
   if (filters.merchant !== undefined) activeFilters.push({ field: "merchant", label: "Merchant", value: filters.merchant });
   if (filters.bookedFromIso !== undefined) activeFilters.push({ field: "bookedFromIso", label: "From", value: filters.bookedFromIso.slice(0, 10) });
   if (filters.bookedToIso !== undefined) activeFilters.push({ field: "bookedToIso", label: "To", value: filters.bookedToIso.slice(0, 10) });
+  if (filters.dateBasis === "booking-date") activeFilters.push({ field: "dateBasis", label: "Date basis", value: "Recorded booking dates" });
   if (filters.amountMinor !== undefined) activeFilters.push({ field: "amountMinor", label: "Amount", value: formatMinorUnits(filters.amountMinor, nokCurrencyFormatter) });
   if (filters.amountFromMinor !== undefined) activeFilters.push({ field: "amountFromMinor", label: "Minimum", value: formatMinorUnits(filters.amountFromMinor, nokCurrencyFormatter) });
   if (filters.amountToMinor !== undefined) activeFilters.push({ field: "amountToMinor", label: "Maximum", value: formatMinorUnits(filters.amountToMinor, nokCurrencyFormatter) });
@@ -116,6 +118,10 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
   const [savedViewName, setSavedViewName] = React.useState("");
   const [savedViewMessage, setSavedViewMessage] = React.useState<string | null>(null);
   const [totalCount, setTotalCount] = React.useState(0);
+  const [summary, setSummary] = React.useState<LedgerSummary | null>(null);
+  const [loadedQuery, setLoadedQuery] = React.useState<TransactionQuery | null>(null);
+  const [loadedRefreshKey, setLoadedRefreshKey] = React.useState<number | null>(null);
+  const [loadedRetryKey, setLoadedRetryKey] = React.useState<number | null>(null);
   const [hasLoaded, setHasLoaded] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isFilterPending, setIsFilterPending] = React.useState(false);
@@ -129,9 +135,11 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
   const hasMountedFilterEffect = React.useRef(false);
   const firstAllocationCategoryRef = React.useRef<HTMLSelectElement>(null);
   const allocationTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const merchantInputRef = React.useRef<HTMLInputElement>(null);
 
   function updateFilters(action: React.SetStateAction<TransactionFilters>): void {
     latestFilterRevision.current += 1;
+    setIsFilterPending(true);
     setFilterState(action);
   }
 
@@ -162,22 +170,24 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
     window.budgetApi.ledger
       .list(query)
       .then((result) => {
-        if (!active) return;
+        if (!active || requestFilterRevision !== latestFilterRevision.current) return;
         setTransactions(result.transactions);
         setAccounts(result.accounts);
         setTotalCount(result.totalCount);
+        setSummary(result.summary);
+        setLoadedQuery(query);
+        setLoadedRefreshKey(refreshKey);
+        setLoadedRetryKey(retryKey);
         setHasLoaded(true);
       })
       .catch((loadError: unknown) => {
-        if (!active) return;
+        if (!active || requestFilterRevision !== latestFilterRevision.current) return;
         setError(loadError instanceof Error ? loadError.message : "Unable to load ledger.");
       })
       .finally(() => {
-        if (active) {
+        if (active && requestFilterRevision === latestFilterRevision.current) {
           setIsLoading(false);
-          if (requestFilterRevision === latestFilterRevision.current) {
-            setIsFilterPending(false);
-          }
+          setIsFilterPending(false);
         }
       });
 
@@ -406,6 +416,7 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
         current.map((item) => item.id === result.transaction.id ? result.transaction : item)
       );
       setAllocationStatusMessage(`Allocations saved for ${transaction.merchantRaw}.`);
+      setRetryKey((current) => current + 1);
       closeAllocationEditor();
     } catch (saveError: unknown) {
       setAllocationError(
@@ -438,6 +449,7 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
       setTransactions((current) =>
         current.map((item) => item.id === result.transaction.id ? result.transaction : item)
       );
+      setRetryKey((current) => current + 1);
       setAllocationStatusMessage(`Split removed for ${transaction.merchantRaw}.`);
       closeAllocationEditor();
     } catch (clearError: unknown) {
@@ -496,6 +508,13 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
   }
 
   const currentPage = query.page ?? 1;
+  const reportFiltersChanged = filterRequest !== null && filterRequest !== undefined &&
+    (amountRangeError !== null || !haveSameTransactionFilters(filters, filterRequest.filters));
+  const resultsAreCurrent = loadedQuery === query && loadedRefreshKey === refreshKey &&
+    loadedRetryKey === retryKey &&
+    !isLoading && !isFilterPending && amountRangeError === null && error === null &&
+    haveSameTransactionFilters(filters, query) &&
+    (filterRequest === null || filterRequest === undefined || lastFilterRequestId.current === filterRequest.id);
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
   const activeFilters = getActiveFilters(filters, accounts);
@@ -564,6 +583,26 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
   return (
     <section aria-label="Ledger" aria-busy={isLoading || isFilterPending}>
       <h2>Ledger</h2>
+      {filterRequest !== null && filterRequest !== undefined && (
+        <div className="ledger-report-context">
+          <div>
+            <p role="status" aria-label="Report filter context">
+              <strong>{reportFiltersChanged ? "Filters changed" : "Report dates applied"}</strong>
+              {" · "}{filterRequest.description}
+              {reportFiltersChanged && ". These results no longer represent the original report."}
+            </p>
+            {reportFiltersChanged && <small id="restore-report-filter-help">Restores the report's dates and clears other filters.</small>}
+          </div>
+          {reportFiltersChanged && (
+            <button type="button" className="action-secondary" aria-describedby="restore-report-filter-help" onClick={() => {
+              restoreFilterControls(filterRequest.filters);
+              merchantInputRef.current?.focus();
+            }}>
+              Restore report dates
+            </button>
+          )}
+        </div>
+      )}
       <p
         id="transaction-allocation-status"
         className="visually-hidden"
@@ -602,7 +641,7 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
         <div className="ledger-primary-filters">
           <label>
             Merchant
-            <input aria-label="Filter merchant" value={filters.merchant ?? ""} onChange={(event) => setFilter("merchant", event.target.value || undefined)} />
+            <input ref={merchantInputRef} aria-label="Filter merchant" value={filters.merchant ?? ""} onChange={(event) => setFilter("merchant", event.target.value || undefined)} />
           </label>
           <label>
             From date
@@ -718,7 +757,39 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
           </button>
         </div>
       )}
-      {hasLoaded && !isLoading && !isFilterPending && error === null && (
+      {resultsAreCurrent && summary !== null && (
+        <div role="region" aria-label="Filtered transaction totals" className="ledger-filtered-totals">
+          <h3>Filtered transaction totals</h3>
+          <p>{totalCount} matching transactions · All pages</p>
+          {filterRequest !== null && filterRequest !== undefined && !reportFiltersChanged && (
+            <p>These transactions produce the selected report's {summary.incompleteCurrencies.length > 0 ? "partial NOK subtotals" : "totals"}.</p>
+          )}
+          {summary.incompleteCurrencies.length > 0 && (
+            <p className="currency-warning" role="status">
+              <strong>Partial NOK totals.</strong> Missing dated rates: {summary.incompleteCurrencies.join(", ")}.
+              {" "}These currencies are excluded from income, expenses and net. Record local rates in Household &gt; Settings &gt; Exchange rates.
+            </p>
+          )}
+          <dl className="ledger-summary-amounts">
+            <div><dt>Income</dt><dd aria-label="Filtered income">{formatCurrencyAmount(summary.incomeMinor, "NOK")}</dd></div>
+            <div><dt>Expenses</dt><dd aria-label="Filtered expenses">{formatCurrencyAmount(summary.expenseMinor, "NOK")}</dd></div>
+            <div><dt>Net</dt><dd aria-label="Filtered net">{formatCurrencyAmount(summary.netMinor, "NOK")}</dd></div>
+          </dl>
+          {totalCount === 0 && <p>No transactions recorded for these filters. Zero recorded totals do not establish that there was no spending.</p>}
+          {summary.nativeSubtotals.some((entry) => entry.currencyCode !== "NOK") && (
+            <details>
+              <summary>Native net subtotals</summary>
+              <p>Original amounts, kept separate by currency. Never added across currencies.</p>
+              <ul className="financial-rows" aria-label="Filtered native currency subtotals">
+                {summary.nativeSubtotals.map((entry) => (
+                  <li key={entry.currencyCode}><span>{entry.currencyCode}</span><span className="financial-row-value">{formatCurrencyAmount(entry.totalMinor, entry.currencyCode)}</span></li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+      {resultsAreCurrent && (
         <p className="ledger-result-summary" role="status">{totalCount} ledger transactions</p>
       )}
       {hasLoaded && !isLoading && !isFilterPending && error === null && totalCount === 0 && (

@@ -256,6 +256,93 @@
   font-size: 0.875rem;
 }
 
+.monthly-comparison .period-spending-comparison,
+.ledger-summary-amounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 1rem;
+  margin: 0.35rem 0;
+}
+
+.monthly-comparison .period-spending-comparison dt,
+.ledger-summary-amounts dt {
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+}
+
+.monthly-comparison .period-spending-comparison dd {
+  margin: 0;
+}
+
+.ledger-summary-amounts dd {
+  margin: 0.25rem 0 0;
+}
+
+.period-spending-comparison .comparison-amount,
+.ledger-summary-amounts dd {
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.period-spending-comparison .comparison-dates {
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.monthly-comparison + .comparison-basis-note {
+  margin: 0.25rem 0 0;
+}
+
+.ledger-filtered-totals {
+  margin: 1rem 0;
+  padding: 1rem 0;
+  border-block: 1px solid var(--line);
+}
+
+.ledger-filtered-totals h3 {
+  margin: 0 0 0.35rem;
+}
+
+.ledger-filtered-totals p {
+  margin: 0.35rem 0;
+  max-width: 65ch;
+}
+
+.ledger-report-context > div {
+  flex: 1 1 25rem;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .review-overview-attention {
+    padding-block: 0.5rem;
+  }
+
+  .monthly-comparison:has(.period-spending-comparison) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 0.25rem 1rem;
+    padding-top: 0.5rem;
+  }
+
+  .monthly-comparison:has(.period-spending-comparison) > h3 {
+    margin: 0;
+  }
+
+  .monthly-comparison:has(.period-spending-comparison) > dl {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin: 0;
+  }
+
+  .monthly-comparison:has(.period-spending-comparison) > p {
+    grid-column: 1;
+    font-size: 0.875rem;
+  }
+}
+
 .reporting-period-navigation {
   display: grid;
   max-width: 42rem;
@@ -1330,8 +1417,8 @@ section[aria-label] dd {
   font-weight: 700;
 }
 
-section[aria-label="Monthly Totals"] dl,
-section[aria-label="Payday-period totals"] dl {
+section[aria-label="Monthly Totals"] > dl,
+section[aria-label="Payday-period totals"] > dl {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
@@ -1350,16 +1437,16 @@ section[aria-label="Payday-period totals"] .monthly-total:last-child {
   border-right: 0;
 }
 
-section[aria-label="Monthly Totals"] dd,
-section[aria-label="Payday-period totals"] dd {
+section[aria-label="Monthly Totals"] > dl dd,
+section[aria-label="Payday-period totals"] > dl dd {
   font-size: clamp(1.25rem, 2.3vw, 2rem);
   font-weight: 600;
   letter-spacing: -0.035em;
   overflow-wrap: anywhere;
 }
 
-section[aria-label="Monthly Totals"] dt,
-section[aria-label="Payday-period totals"] dt {
+section[aria-label="Monthly Totals"] > dl dt,
+section[aria-label="Payday-period totals"] > dl dt {
   margin-bottom: 0.45rem;
   color: var(--paper-muted);
   font-size: 0.875rem;
