@@ -35,6 +35,23 @@ export const DEFAULT_REPORTING_PERIOD_RULE = {
   type: "calendar-month",
 } as const satisfies ReportingPeriodRule;
 
+export function haveSameReportingPeriodRule(left: ReportingPeriodRule, right: ReportingPeriodRule): boolean {
+  switch (left.type) {
+    case "calendar-month":
+      return right.type === left.type;
+    case "fixed-day":
+      return right.type === left.type && left.dayOfMonth === right.dayOfMonth;
+    case "last-weekday":
+      return right.type === left.type && left.weekday === right.weekday;
+    case "weekday-occurrence":
+      return right.type === left.type && left.weekday === right.weekday &&
+        left.occurrence === right.occurrence;
+    case "two-fixed-days":
+      return right.type === left.type && left.firstDayOfMonth === right.firstDayOfMonth &&
+        left.secondDayOfMonth === right.secondDayOfMonth;
+  }
+}
+
 export function validateReportingPeriodRule(value: unknown): ReportingPeriodRule {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new RangeError("Reporting period preference must be an object.");

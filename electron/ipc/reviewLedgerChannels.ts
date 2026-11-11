@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { queryLedger } from "../../src/app/queryLedger.js";
 import { submitManualEntry, type ManualEntryResponse } from "../../src/app/import/manualEntry.js";
 import { applySameMerchantPropagation, previewSameMerchantPropagation, undoSameMerchantPropagation } from "../../src/app/reviewQueue.js";
 import {
@@ -210,9 +211,9 @@ export function registerReviewLedgerChannels({
   ipcMain.handle("transaction:list", async (event, input: unknown = {}) => {
     assertTrustedRenderer(event);
     await applyTransactionListTestControl("ledger");
-    const result = localLedgerDatabase.queryTransactions(sampleHousehold.id, parseTransactionQuery(input));
-    const accounts = localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id);
-    return { ...result, accounts };
+    return ledgerOperationCoordinator.runExclusive(() =>
+      queryLedger(localLedgerDatabase, sampleHousehold.id, parseTransactionQuery(input))
+    );
   });
 
   ipcMain.handle("pending:list", (event) => {

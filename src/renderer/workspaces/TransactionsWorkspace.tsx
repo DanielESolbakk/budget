@@ -8,6 +8,8 @@ interface TransactionsWorkspaceProps {
   reviewQueueFocusRequest: number;
   onCategorySaved: () => void;
   filterRequest?: LedgerFilterRequest | null;
+  isReportCurrent: boolean;
+  isReportSelected: boolean;
   onBackToReview?: () => void;
 }
 
@@ -17,6 +19,8 @@ export function TransactionsWorkspace({
   reviewQueueFocusRequest,
   onCategorySaved,
   filterRequest = null,
+  isReportCurrent,
+  isReportSelected,
   onBackToReview,
 }: TransactionsWorkspaceProps): React.JSX.Element {
   const [uncategorizedQueueState, setUncategorizedQueueState] = React.useState<UncategorizedQueueState>({
@@ -39,7 +43,6 @@ export function TransactionsWorkspace({
       </div>
       {filterRequest !== null && filterRequest !== undefined && (
         <div className="ledger-report-context">
-          <p>Opened from report: {filterRequest.description}. Ledger filters below can be changed.</p>
           <button type="button" className="action-secondary" onClick={onBackToReview}>
             Back to period review
           </button>
@@ -64,6 +67,8 @@ export function TransactionsWorkspace({
         <LedgerSection
           refreshKey={refreshKey}
           filterRequest={filterRequest}
+          isReportCurrent={isReportCurrent}
+          isReportSelected={isReportSelected}
         />
         <CategoryReviewSection
           refreshKey={refreshKey}

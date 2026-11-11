@@ -119,17 +119,13 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(appShell.destination("Household")).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(changePeriod).toBeFocused();
-    const cashPlanning = window.getByRole("navigation", { name: "Cash planning" });
+    await window.keyboard.press("Tab");
+    await expect(dashboard.monthlyComparison.getByText("Comparison details", { exact: true })).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(dashboard.monthlyTotalsSection.getByRole("button", {
-      name: "View transactions for these dates",
+      name: "View transactions for this period",
     })).toBeFocused();
-    await window.keyboard.press("Tab");
-    await expect(cashPlanning.getByRole("link", { name: "Estimate spendable cash" })).toBeFocused();
-    await window.keyboard.press("Tab");
-    await expect(cashPlanning.getByRole("link", { name: "Compare cashflow scenarios" })).toBeFocused();
-    await window.keyboard.press("Tab");
-    await expect(dashboard.reviewQueueAction).toBeFocused();
+    await expect(dashboard.reviewQueueAction).toHaveCount(0);
     await expect(dashboard.targetVsActualSection).toHaveAttribute("tabindex", "0");
     await window.keyboard.press("Tab");
     await expect(window.getByRole("button", { name: "Review account coverage", exact: true }))

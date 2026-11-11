@@ -33,6 +33,17 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
 
   const { rows } = viewContract.snapshot.targetVsActualCategoryRows;
   const isIncomplete = (viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0;
+  if (rows.length > 0 && rows.every((row) => row.targetMinor === null)) {
+    return (
+      <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>
+        <h2>Target vs Actual</h2>
+        <p>No targets set for this month. Use Manage category targets below to add one.</p>
+        {isIncomplete && (
+          <p className="field-help">Recorded category amounts remain incomplete until missing dated rates are recorded.</p>
+        )}
+      </section>
+    );
+  }
   if (rows.length === 0) {
     return (
       <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>

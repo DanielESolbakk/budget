@@ -8,6 +8,56 @@ import { LedgerPage } from "./pom/LedgerPage.js";
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
 test.describe("Ledger search and filter workflow", () => {
+  test("keeps matching rows visible when allocation edits shrink the last page", async ({ databasePath }) => {
+    const householdId = "household-page-shrink";
+    const accountId = "account-page-shrink";
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: { id: householdId, name: "Synthetic household", createdAtIso: "2026-01-01T00:00:00Z" },
+        accounts: [{ id: accountId, householdId, name: "Brukskonto", currencyCode: "NOK" }],
+        transactions: Array.from({ length: 51 }, (_, index) => ({
+          id: `page-shrink-${index}`, householdId, accountId, bookedAtIso: "2026-05-10",
+          amountMinor: -100, merchantRaw: `Kiwi synthetic ${index}`, categoryId: "housing",
+          categoryAllocations: [
+            { categoryId: "groceries", amountMinor: -50 },
+            { categoryId: "transport", amountMinor: -50 },
+          ],
+        })),
+        importJobs: [], monthlyCategoryTargets: [], merchantCategoryRules: [],
+      },
+    });
+    database.close();
+    const app = await electron.launch({
+      args: [MAIN_ENTRY],
+      env: { ...process.env, NODE_ENV: "test", BUDGET_DB_PATH: databasePath },
+    });
+    try {
+      const window = await app.firstWindow();
+      await window.waitForLoadState("domcontentloaded");
+      await new AppShellPage(window).openWorkspace("Transactions");
+      const ledger = new LedgerPage(window);
+      const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+      await ledger.openMoreFilters();
+      await ledger.categoryInput.selectOption("groceries");
+      await expect(summary).toContainText("51 matching transactions");
+      await ledger.goToNextPage();
+      await expect(ledger.paginationStatus).toHaveText("Page 2 of 2");
+      await ledger.table.getByRole("row").nth(1).getByRole("button").click();
+      const editor = window.getByRole("region", { name: /^Transaction category allocations for/ });
+      await editor.getByLabel("Allocation category 1", { exact: true }).selectOption("housing");
+      await editor.getByRole("button", { name: /^Save allocations for/ }).click();
+      await expect(editor).not.toBeVisible();
+      await expect(summary).toContainText("50 matching transactions");
+      await expect(ledger.paginationStatus).toHaveText("Page 1 of 1");
+      await expect(ledger.table.getByRole("row")).toHaveCount(51);
+      await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("50,00");
+      await expect(ledger.section).toHaveAttribute("aria-busy", "false");
+    } finally {
+      await app.close();
+    }
+  });
+
   test("@performance keeps the Electron ledger responsive with 10,001 rows while sorting and paging", async ({
     databasePath,
   }) => {
@@ -50,6 +100,10 @@ test.describe("Ledger search and filter workflow", () => {
 
       await expect(ledger.resultStatus).toHaveText("10001 ledger transactions");
       await expect(ledger.table.getByRole("row")).toHaveCount(51);
+      const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+      await expect(summary.getByLabel("Filtered income", { exact: true })).toContainText(/6\s?251,25/);
+      await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText(/6\s?250,00/);
+      await expect(summary.getByLabel("Filtered net", { exact: true })).toContainText("1,25");
 
       const sortStartedAt = Date.now();
       await ledger.sortByMerchant();
@@ -64,6 +118,8 @@ test.describe("Ledger search and filter workflow", () => {
       await expect(ledger.table.getByRole("row").nth(1)).toContainText("Merchant 00050");
       expect(Date.now() - pageChangeStartedAt).toBeLessThan(5_000);
       await expect(ledger.table.getByRole("row")).toHaveCount(51);
+      await expect(summary.getByLabel("Filtered income", { exact: true })).toContainText(/6\s?251,25/);
+      await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText(/6\s?250,00/);
     } finally {
       await app.close();
     }
@@ -362,6 +418,50 @@ test.describe("Ledger search and filter workflow", () => {
     await expect(ledger.amountToInput).toHaveAttribute("aria-invalid", "true");
   });
 
+  test("rejects reversed date drafts without presenting empty financial results", async ({ ledger, window }) => {
+    await expect(ledger.resultStatus).toHaveText("4 ledger transactions");
+    const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+    await ledger.fromDateInput.fill("2026-05-31");
+    await ledger.toDateInput.fill("2026-05-01");
+    await expect(window.getByRole("alert", { name: "Date range error" })).toContainText("From date must not be after To date.");
+    await expect(ledger.fromDateInput).toHaveAttribute("aria-invalid", "true");
+    await expect(ledger.toDateInput).toHaveAttribute("aria-describedby", "ledger-date-range-error");
+    await expect(summary).not.toBeVisible();
+    await expect(ledger.table).not.toContainText("No transactions");
+    await ledger.openSavedViews();
+    await ledger.savedViewNameInput.fill("Invalid date range");
+    await expect(ledger.saveViewButton).toBeDisabled();
+    await ledger.fromDateInput.fill("2026-05-01");
+    await ledger.toDateInput.fill("2026-05-31");
+    await expect(summary).toContainText("2 matching transactions");
+    await expect(ledger.fromDateInput).toHaveAttribute("aria-invalid", "false");
+    await expect(ledger.saveViewButton).toBeEnabled();
+    await ledger.fromDateInput.fill("2026-06-01");
+    await expect(summary).not.toBeVisible();
+    await ledger.clearFiltersButton.click();
+    await expect(summary).toContainText("4 matching transactions");
+    await expect(window.getByRole("alert", { name: "Date range error" })).not.toBeVisible();
+  });
+
+  test("secondary actions meet the hit-area floor and summary typography is component-owned", async ({ ledger, window }) => {
+    await expect(ledger.resultStatus).toHaveText("4 ledger transactions");
+    await ledger.quickFilter("Income").click();
+    const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+    await expect(summary).toBeVisible();
+    for (const width of [1280, 390]) {
+      await window.setViewportSize({ width, height: 844 });
+      for (const control of [ledger.clearFiltersButton, ledger.savedViewsSummary, ledger.table.getByRole("button", { name: "Sort by date", exact: true })]) {
+        const box = await control.boundingBox();
+        expect(box?.height).toBeGreaterThanOrEqual(44);
+        expect(box?.width).toBeGreaterThanOrEqual(44);
+      }
+      expect(await summary.locator("dd").first().evaluate(el => {
+        const style = getComputedStyle(el);
+        return { size: parseFloat(style.fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize), weight: style.fontWeight };
+      })).toEqual({ size: 1.15, weight: "600" });
+    }
+  });
+
   test("shows a loading state before the initial ledger query completes", async ({
     appShell,
     electronApp,
@@ -375,8 +475,39 @@ test.describe("Ledger search and filter workflow", () => {
     await appShell.openWorkspace("Transactions");
 
     await expect(ledger.loadingStatus).toBeVisible();
+    await expect(window.getByRole("region", { name: "Filtered transaction totals", exact: true })).not.toBeVisible();
     await expect(ledger.transaction("Kiwi")).toBeVisible();
     await expect(ledger.loadingStatus).not.toBeVisible();
+    await expect(window.getByRole("region", { name: "Filtered transaction totals", exact: true })).toBeVisible();
+  });
+
+  test("settles an in-flight query invalidated by reversed dates and recovers after correction", async ({
+    electronApp, ledger, window,
+  }) => {
+    await expect(ledger.resultStatus).toHaveText("4 ledger transactions");
+    const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+    await electronApp.evaluate(() => {
+      process.env["BUDGET_TEST_LEDGER_LIST_DELAY_MS"] = "700";
+    });
+    await ledger.sortByMerchant();
+    await expect(ledger.section).toHaveAttribute("aria-busy", "true");
+    await ledger.fromDateInput.fill("2026-05-31");
+    await ledger.toDateInput.fill("2026-05-01");
+    await expect(window.getByRole("alert", { name: "Date range error" })).toBeVisible();
+    // A real IPC barrier outlasts the delayed request without replacing the renderer's query.
+    await window.evaluate(() => globalThis.window.budgetApi.ledger.list({}));
+    await expect(ledger.section).toHaveAttribute("aria-busy", "false");
+    await expect(ledger.updatingStatus).not.toBeVisible();
+    await expect(summary).not.toBeVisible();
+    await expect(ledger.table.getByRole("row")).toHaveCount(5);
+    await ledger.fromDateInput.fill("2026-05-01");
+    await ledger.toDateInput.fill("2026-05-31");
+    await expect(summary).toContainText("2 matching transactions");
+    await ledger.fromDateInput.fill("2026-06-01");
+    await expect(summary).not.toBeVisible();
+    await ledger.clearFiltersButton.click();
+    await expect(summary).toContainText("4 matching transactions");
+    await expect(ledger.section).toHaveAttribute("aria-busy", "false");
   });
 
   test("keeps saving disabled until debounced filter results match", async ({
@@ -393,13 +524,14 @@ test.describe("Ledger search and filter workflow", () => {
     await ledger.sortByMerchant();
     await expect(ledger.updatingStatus).toBeVisible();
 
-    const enabledBeforeMatchingResults = window.evaluate(() => new Promise<boolean>((resolve) => {
+    const prematureResults = window.evaluate(() => new Promise<{ enabledBeforeMatch: boolean; summaryBeforeMatch: boolean }>((resolve) => {
       const section = document.querySelector<HTMLElement>('section[aria-label="Ledger"]')!;
       const merchantInput = section.querySelector<HTMLInputElement>('input[aria-label="Filter merchant"]')!;
       const saveButton = section.querySelector<HTMLButtonElement>('.ledger-save-view-form button')!;
       let filterEntered = false;
       let pendingWasObserved = false;
       let enabledBeforeMatch = false;
+      let summaryBeforeMatch = false;
 
       const hasMatchingEmptyResult = (): boolean => {
         const resultSummary = section.querySelector(".ledger-result-summary")?.textContent?.trim();
@@ -411,16 +543,18 @@ test.describe("Ledger search and filter workflow", () => {
           !isUpdating;
       };
 
-      const finish = (result: boolean): void => {
+      const finish = (): void => {
         observer.disconnect();
         merchantInput.removeEventListener("input", handleInput);
-        resolve(result);
+        resolve({ enabledBeforeMatch, summaryBeforeMatch });
       };
       const check = (): void => {
         if (!filterEntered) return;
         if (saveButton.disabled) pendingWasObserved = true;
         else if (pendingWasObserved && !hasMatchingEmptyResult()) enabledBeforeMatch = true;
-        if (hasMatchingEmptyResult()) finish(enabledBeforeMatch);
+        if (pendingWasObserved && !hasMatchingEmptyResult() &&
+          section.querySelector('[aria-label="Filtered transaction totals"]') !== null) summaryBeforeMatch = true;
+        if (hasMatchingEmptyResult()) finish();
       };
       const handleInput = (): void => {
         filterEntered = merchantInput.value === "no matching merchant";
@@ -440,12 +574,15 @@ test.describe("Ledger search and filter workflow", () => {
 
     await ledger.merchantInput.fill("no matching merchant");
     await expect(ledger.saveViewButton).toBeDisabled();
-    expect(await enabledBeforeMatchingResults).toBe(false);
+    expect(await prematureResults).toEqual({ enabledBeforeMatch: false, summaryBeforeMatch: false });
+    await expect(window.getByRole("region", { name: "Filtered transaction totals", exact: true }))
+      .toContainText("0 matching transactions");
   });
 
   test("preserves prior rows and offers retry after a filtered ledger query fails", async ({
     electronApp,
     ledger,
+    window,
   }) => {
     await expect(ledger.transaction("Kiwi")).toBeVisible();
     await electronApp.evaluate(() => {
@@ -457,6 +594,7 @@ test.describe("Ledger search and filter workflow", () => {
     await expect(ledger.errorAlert).toContainText("Synthetic ledger list failure.");
     await expect(ledger.transaction("Kiwi")).toBeVisible();
     await expect(ledger.retryButton).toBeVisible();
+    await expect(window.getByRole("region", { name: "Filtered transaction totals", exact: true })).not.toBeVisible();
 
     await electronApp.evaluate(() => {
       delete process.env["BUDGET_TEST_LEDGER_LIST_FAILURE"];
@@ -465,6 +603,8 @@ test.describe("Ledger search and filter workflow", () => {
 
     await expect(ledger.transaction("Rema 1000")).toBeVisible();
     await expect(ledger.transaction("Kiwi")).not.toBeVisible();
+    const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+    await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("85,00");
   });
 
   test("filters transactions by merchant and category", async ({ ledger }) => {

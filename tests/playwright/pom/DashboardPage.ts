@@ -112,7 +112,7 @@ export class DashboardPage {
   }
 
   get reviewQueueAction() {
-    return this.monthlyAttention.getByRole("button", { name: "Review all transactions" });
+    return this.monthlyAttention.getByRole("button", { name: "Review categories" });
   }
 
   get overTargetLink() {

@@ -1,6 +1,7 @@
 import type { Transaction } from "../types.js";
 import { CATEGORY_OPTIONS } from "../categorization/categoryOptions.js";
 import { parseDecimalMinorUnits } from "../money/minorUnits.js";
+import { isIsoCalendarDate } from "../date/calendarDate.js";
 
 export type TransactionTypeFilter = "income" | "expenses";
 export type TransactionDatePreset = "thisMonth";
@@ -10,6 +11,8 @@ export interface TransactionFilters {
   /** Calendar dates cover a UTC day; timestamp bounds are inclusive instants. Stored bookings are unchanged. */
   bookedFromIso?: string;
   bookedToIso?: string;
+  /** Report drill-down compares the recorded booking date instead of UTC instants. */
+  dateBasis?: "booking-date";
   merchant?: string;
   amountMinor?: number;
   amountFromMinor?: number;
@@ -80,9 +83,13 @@ function thisMonthRange(now = new Date()): { from: string; to: string } {
 }
 
 export function resolveTransactionDateBounds(
-  query: Pick<TransactionQuery, "bookedFromIso" | "bookedToIso" | "datePreset">,
+  query: Pick<TransactionQuery, "bookedFromIso" | "bookedToIso" | "datePreset" | "dateBasis">,
   now = new Date()
 ): { bookedFromMs: number | undefined; bookedToMs: number | undefined } {
+  if (query.dateBasis === "booking-date" &&
+    [query.bookedFromIso, query.bookedToIso].some((bound) => bound !== undefined && !isIsoCalendarDate(bound))) {
+    throw new RangeError("Booking-date bounds must be calendar dates.");
+  }
   const currentMonth = query.datePreset === "thisMonth" ? thisMonthRange(now) : undefined;
   const bookedFromIso = currentMonth === undefined
     ? query.bookedFromIso
@@ -165,8 +172,14 @@ export function filterTransactions(
 
   return transactions
     .filter((transaction) => query.accountId === undefined || transaction.accountId === query.accountId)
-    .filter((transaction) => bookedFromMs === undefined || transactionBookingTimeMillis(transaction.bookedAtIso) >= bookedFromMs)
-    .filter((transaction) => bookedToMs === undefined || transactionBookingTimeMillis(transaction.bookedAtIso) <= bookedToMs)
+    .filter((transaction) => {
+      if (bookedFromMs === undefined && bookedToMs === undefined) return true;
+      const bookedMs = transactionBookingTimeMillis(query.dateBasis === "booking-date"
+        ? transaction.bookedAtIso.slice(0, 10)
+        : transaction.bookedAtIso);
+      return (bookedFromMs === undefined || bookedMs >= bookedFromMs) &&
+        (bookedToMs === undefined || bookedMs <= bookedToMs);
+    })
     .filter((transaction) => query.amountMinor === undefined || transaction.amountMinor === query.amountMinor)
     .filter((transaction) => query.amountFromMinor === undefined || transaction.amountMinor >= query.amountFromMinor)
     .filter((transaction) => query.amountToMinor === undefined || transaction.amountMinor <= query.amountToMinor)

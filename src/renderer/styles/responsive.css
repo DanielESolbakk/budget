@@ -169,8 +169,8 @@
     flex-direction: column;
   }
 
-  section[aria-label="Monthly Totals"] dl,
-  section[aria-label="Payday-period totals"] dl {
+  section[aria-label="Monthly Totals"] > dl,
+  section[aria-label="Payday-period totals"] > dl {
     grid-template-columns: 1fr;
     gap: 0;
   }
@@ -191,8 +191,8 @@
     border-bottom: 0;
   }
 
-  section[aria-label="Monthly Totals"] dt,
-  section[aria-label="Payday-period totals"] dt {
+  section[aria-label="Monthly Totals"] > dl dt,
+  section[aria-label="Payday-period totals"] > dl dt {
     margin-bottom: 0;
   }
 
@@ -282,6 +282,7 @@
 
   .ledger-quick-filters {
     display: grid;
+    grid-auto-rows: 5rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

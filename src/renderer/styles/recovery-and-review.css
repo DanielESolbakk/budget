@@ -642,8 +642,8 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
 }
 
 .category-review-empty-details summary {
-  min-height: 32px;
-  padding-block: 0.35rem;
+  min-height: 44px;
+  padding-block: 0.65rem;
   color: var(--paper-muted);
   cursor: pointer;
   font-size: 0.875rem;

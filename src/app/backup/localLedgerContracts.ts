@@ -108,6 +108,7 @@ export interface LocalLedgerDatabase {
   listBackupSnapshots: () => BackupSnapshotCatalogEntry[];
   deleteBackupSnapshot: (snapshotPath: string) => boolean;
   queryTransactions: (householdId: string, query: TransactionQuery) => TransactionPage;
+  getFilteredTransactions: (householdId: string, query: TransactionQuery) => Transaction[];
   listUncategorizedTransactions: (householdId: string) => Transaction[];
   saveLedgerView: (savedLedgerView: SavedLedgerView) => void;
   listSavedLedgerViews: () => SavedLedgerView[];

@@ -44,6 +44,7 @@ type TransactionRepository = Pick<LocalLedgerDatabase,
   | "getTransactionById"
   | "updateTransactionCategoryAllocations"
   | "queryTransactions"
+  | "getFilteredTransactions"
   | "listUncategorizedTransactions"
   | "getAccountsForHousehold"
   | "getTransactionsForImportJob"
@@ -223,6 +224,14 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
   }
 
   function queryTransactions(householdId: string, query: TransactionQuery): TransactionPage {
+    return executeTransactionQuery(householdId, query, false);
+  }
+
+  function getFilteredTransactions(householdId: string, query: TransactionQuery): Transaction[] {
+    return executeTransactionQuery(householdId, query, true).transactions;
+  }
+
+  function executeTransactionQuery(householdId: string, query: TransactionQuery, allPages: boolean): TransactionPage {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
     if (!Number.isSafeInteger(page) || page < 1) {
@@ -235,17 +244,24 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
     const predicates = ["t.household_id = ?"];
     const parameters: Array<string | number> = [householdId];
     const dateBounds = resolveTransactionDateBounds(query);
+    const bookingColumn = query.dateBasis === "booking-date"
+      ? "substr(t.booked_at_iso, 1, 10)"
+      : "t.booked_at_millis";
     if (query.accountId !== undefined) {
       predicates.push("t.account_id = ?");
       parameters.push(query.accountId);
     }
     if (dateBounds.bookedFromMs !== undefined) {
-      predicates.push("t.booked_at_millis >= ?");
-      parameters.push(dateBounds.bookedFromMs);
+      predicates.push(`${bookingColumn} >= ?`);
+      parameters.push(query.dateBasis === "booking-date"
+        ? new Date(dateBounds.bookedFromMs).toISOString().slice(0, 10)
+        : dateBounds.bookedFromMs);
     }
     if (dateBounds.bookedToMs !== undefined) {
-      predicates.push("t.booked_at_millis <= ?");
-      parameters.push(dateBounds.bookedToMs);
+      predicates.push(`${bookingColumn} <= ?`);
+      parameters.push(query.dateBasis === "booking-date"
+        ? new Date(dateBounds.bookedToMs).toISOString().slice(0, 10)
+        : dateBounds.bookedToMs);
     }
     if (query.amountMinor !== undefined) {
       predicates.push("t.amount_minor = ?");
@@ -301,8 +317,8 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
       ${fromClause}
       WHERE ${whereClause}
       ORDER BY ${transactionSortColumns[sortBy]} ${sortDirection.toUpperCase()}, t.id ASC
-      LIMIT ? OFFSET ?
-    `).all(...parameters, ...orderParameters, pageSize, (page - 1) * pageSize) as unknown as TransactionRow[];
+      ${allPages ? "" : "LIMIT ? OFFSET ?"}
+    `).all(...parameters, ...orderParameters, ...(allPages ? [] : [pageSize, (page - 1) * pageSize])) as unknown as TransactionRow[];
 
     return {
       transactions: transactionRows.map((row) => ({
@@ -394,6 +410,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
     getTransactionById,
     updateTransactionCategoryAllocations,
     queryTransactions,
+    getFilteredTransactions,
     listUncategorizedTransactions,
     getAccountsForHousehold,
     getTransactionsForImportJob,

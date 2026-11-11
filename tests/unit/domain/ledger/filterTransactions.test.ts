@@ -24,6 +24,20 @@ const transactions: Transaction[] = [
 ];
 
 describe("filterTransactions", () => {
+  it("uses recorded booking dates for report drill-down without changing default UTC bounds", () => {
+    const rows = [
+      { ...transactions[0]!, id: "start", bookedAtIso: "2026-05-01T00:15:00+02:00" },
+      { ...transactions[0]!, id: "end", bookedAtIso: "2026-05-31T23:30:00-02:00" },
+      { ...transactions[0]!, id: "outside", bookedAtIso: "2026-04-30T23:30:00-02:00" },
+    ];
+    const bounds = { bookedFromIso: "2026-05-01", bookedToIso: "2026-05-31" };
+    expect(filterTransactions(rows, { ...bounds, dateBasis: "booking-date" }).map(({ id }) => id).sort())
+      .toEqual(["end", "start"]);
+    expect(filterTransactions(rows, bounds).map(({ id }) => id)).toEqual(["outside"]);
+    expect(() => filterTransactions(rows, { ...bounds, dateBasis: "booking-date", bookedFromIso: "2026-05-01T00:00:00Z" }))
+      .toThrow("Booking-date bounds must be calendar dates.");
+  });
+
   it.each(["not-a-date", "2026-05-23' OR 1=1 --"])("rejects an invalid booking bound: %s", (value) => {
     expect(() => filterTransactions([], { bookedFromIso: value })).toThrow("Invalid transaction booking date");
     expect(() => filterTransactions([], { bookedToIso: value, datePreset: "thisMonth" }))

@@ -62,7 +62,7 @@ export class LedgerPage {
   }
 
   get amountFormatHint() {
-    return this.filterForm.getByText("Enter kroner, for example 100,50.", { exact: true });
+    return this.filterForm.getByText("Enter kroner, for example 100,50. Foreign amounts use dated NOK conversions.", { exact: true });
   }
 
   get savedViewNameInput() {

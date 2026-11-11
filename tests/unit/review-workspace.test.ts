@@ -6,11 +6,37 @@ import {
   buildDashboardViewContract,
 } from "../../src/shared/dashboard.js";
 import { ReviewWorkspace } from "../../src/renderer/workspaces/ReviewWorkspace.js";
+import { TargetVsActualSection } from "../../src/renderer/dashboard/TargetVsActualSection.js";
 import type { ReviewState } from "../../src/renderer/workspaces/types.js";
 import type { ReportingPeriodRule } from "../../src/shared/applicationPreferences.js";
 
 describe("review period navigation", () => {
   afterEach(() => vi.useRealTimers());
+
+  it("keeps the review focused on recorded results with planning outside the totals", () => {
+    const markup = renderReview("2026-10", []);
+    expect(markup).not.toContain("See the month clearly");
+    expect(markup).not.toContain('aria-label="Cash planning"');
+    expect(markup).not.toContain("Review all transactions");
+    expect(markup).toContain("View transactions for this period");
+    expect(markup).toContain('aria-label="Planning tools"');
+    expect(markup).toContain("Plan ahead");
+  });
+
+  it("does not repeat category spending in a target table when no targets are configured", () => {
+    const viewContract = buildDashboardViewContract({
+      selectedYearMonth: "2026-10",
+      transactions: [{
+        id: "synthetic-expense", householdId: "household", accountId: "account",
+        bookedAtIso: "2026-10-10", amountMinor: -5000, merchantRaw: "SYNTHETIC KIWI",
+        categoryId: "groceries", currencyCode: "NOK",
+      }],
+    });
+    const markup = renderToStaticMarkup(React.createElement(TargetVsActualSection, { viewContract }));
+    expect(markup).not.toContain("<table");
+    expect(markup).toContain("No targets set for this month");
+    expect(markup).toContain("Manage category targets");
+  });
 
   it("keeps a navigated month selected even when it has no recorded activity", () => {
     vi.useFakeTimers();
@@ -39,7 +65,22 @@ describe("review period navigation", () => {
     vi.setSystemTime(new Date("2026-11-11T12:00:00"));
     const markup = renderReview("2026-11", []);
     expect(markup).toContain("In progress");
-    expect(markup).toContain("View transactions for these dates");
+    expect(markup).toContain("View transactions for this period");
+  });
+
+  it("explains an empty report once without an additional missing-activity comparison", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-11T12:00:00"));
+    const markup = renderReview("2026-10", []);
+    expect(markup).toContain("Statement coverage may be incomplete.");
+    expect(markup).not.toContain("Loading previous-month comparison");
+    expect(markup.match(/No activity has been recorded/g)).toHaveLength(1);
+  });
+
+  it("blocks transaction drill-down when the displayed report failed to refresh", () => {
+    const markup = renderReview("2026-05", [], "Synthetic refresh failure.");
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>View transactions for this period<\/button>/);
+    expect(markup).toContain("Refresh the report before opening its contributing transactions.");
   });
 
   it("disables period controls while a period query is in progress", () => {
@@ -74,6 +115,7 @@ describe("review period navigation", () => {
       onOpenTransactions: () => undefined,
       onOpenPeriodTransactions: () => undefined,
       onOpenCoverage: () => undefined,
+      onOpenExchangeRates: () => undefined,
       onTargetSaved: () => undefined,
       onRetry: () => undefined,
     }));
@@ -84,7 +126,11 @@ describe("review period navigation", () => {
   });
 });
 
-function renderReview(selectedYearMonth: string, availableMonths: string[]): string {
+function renderReview(
+  selectedYearMonth: string,
+  availableMonths: string[],
+  refreshError: string | null = null,
+): string {
   return renderToStaticMarkup(React.createElement(ReviewWorkspace, {
     state: {
       status: "ready",
@@ -98,13 +144,14 @@ function renderReview(selectedYearMonth: string, availableMonths: string[]): str
     isRefreshing: false,
     refreshKey: 0,
     monthChangeError: null,
-    refreshError: null,
+    refreshError,
     savedReportingPeriodRule: { type: "calendar-month" },
     onMonthChange: () => undefined,
     onReportingModeChange: () => undefined,
     onOpenTransactions: () => undefined,
     onOpenPeriodTransactions: () => undefined,
     onOpenCoverage: () => undefined,
+    onOpenExchangeRates: () => undefined,
     onTargetSaved: () => undefined,
     onRetry: () => undefined,
   }));

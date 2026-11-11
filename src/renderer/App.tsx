@@ -6,6 +6,7 @@ import {
 } from "../domain/date/reportingPeriods.js";
 import {
   DEFAULT_REPORTING_PERIOD_RULE,
+  haveSameReportingPeriodRule,
   type ReportingPeriodRule,
 } from "../shared/applicationPreferences.js";
 import { toLocalIsoDate, toLocalYearMonth } from "../domain/date/localDateDefaults.js";
@@ -64,6 +65,12 @@ interface AppProps {
   isBrowserPreview?: boolean;
 }
 
+interface ReportLedgerFilterRequest extends LedgerFilterRequest {
+  yearMonth: string;
+  range: ReportingPeriodRange;
+  rule: ReportingPeriodRule;
+}
+
 function primaryWorkspaceFor(workspace: WorkspaceId): PrimaryWorkspaceId {
   if (workspace === "transactions" || workspace === "pending" || workspace === "import") {
     return "activity";
@@ -91,7 +98,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     () => new Set(["review"])
   );
   const [reviewQueueFocusRequest, setReviewQueueFocusRequest] = React.useState(0);
-  const [ledgerFilterRequest, setLedgerFilterRequest] = React.useState<LedgerFilterRequest | null>(null);
+  const [ledgerFilterRequest, setLedgerFilterRequest] = React.useState<ReportLedgerFilterRequest | null>(null);
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [propertyRegistryRevision, setPropertyRegistryRevision] = React.useState(0);
   const [requestedPropertyId, setRequestedPropertyId] = React.useState<string | null>(null);
@@ -101,7 +108,8 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   const [refreshError, setRefreshError] = React.useState<string | null>(null);
   const [savedReportingPeriodRule, setSavedReportingPeriodRule] =
     React.useState<ReportingPeriodRule | null>(null);
-  const [useCalendarReportingMode, setUseCalendarReportingMode] = React.useState(false);
+  const [reportingPeriodRuleOverride, setReportingPeriodRuleOverride] =
+    React.useState<ReportingPeriodRule | null>(null);
   const hasLoadedInitialState = React.useRef(false);
   const selectedYearMonthRef = React.useRef(initialYearMonth);
   const selectedPeriodStartDateIsoRef = React.useRef<string | undefined>(undefined);
@@ -110,6 +118,14 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   const previousWorkspaceRef = React.useRef(activeWorkspace);
   const focusDestinationRef = React.useRef(false);
   const [workspaceAnnouncement, setWorkspaceAnnouncement] = React.useState("");
+  const reportSnapshot = appState.status === "ready" && appState.viewContract.state !== "loading"
+    ? appState.viewContract.snapshot
+    : null;
+  const isLedgerReportSelected = ledgerFilterRequest !== null && reportSnapshot !== null &&
+    ledgerFilterRequest.yearMonth === reportSnapshot.selectedYearMonth &&
+    ledgerFilterRequest.range.startDateIso === reportSnapshot.reportingPeriodRange.startDateIso &&
+    ledgerFilterRequest.range.endDateExclusiveIso === reportSnapshot.reportingPeriodRange.endDateExclusiveIso &&
+    haveSameReportingPeriodRule(ledgerFilterRequest.rule, reportSnapshot.reportingPeriodRule);
 
   function focusWorkspaceHeading(): void {
     const heading = workspaceRef.current?.querySelector<HTMLHeadingElement>(
@@ -157,9 +173,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
           loadDashboardData(window.budgetApi),
           window.budgetApi.reportingPreferences.getPeriodRule(),
         ] as const).then(async ([dashboardData, storedReportingPeriodRule]) => {
-          const activeRule = useCalendarReportingMode
-            ? CALENDAR_MONTH_RULE
-            : storedReportingPeriodRule;
+          const activeRule = reportingPeriodRuleOverride ?? storedReportingPeriodRule;
           const currentReportingPeriod = isInitialLoad && activeRule.type !== "calendar-month"
             ? resolveCurrentReportingPeriod(activeRule, toLocalIsoDate(new Date()))
             : null;
@@ -224,7 +238,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     return () => {
       isActive = false;
     };
-  }, [refreshCounter, useCalendarReportingMode]);
+  }, [refreshCounter, reportingPeriodRuleOverride]);
 
   function handleMonthChange(selection: string): void {
     if (appState.status !== "ready") return;
@@ -233,9 +247,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     latestViewRequestRef.current = requestId;
     setIsChangingMonth(true);
     setMonthChangeError(null);
-    const activeRule = useCalendarReportingMode
-      ? CALENDAR_MONTH_RULE
-      : savedReportingPeriodRule ?? CALENDAR_MONTH_RULE;
+    const activeRule = reportingPeriodRuleOverride ?? savedReportingPeriodRule ?? CALENDAR_MONTH_RULE;
     const selectedPeriodStartDateIso = activeRule.type === "two-fixed-days"
       ? selection
       : undefined;
@@ -277,7 +289,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
       mode === "payday-period" && savedReportingPeriodRule?.type === "two-fixed-days"
         ? resolveReportingPeriod(savedReportingPeriodRule, selectedYearMonth).startDateIso
         : undefined;
-    setUseCalendarReportingMode(mode === "calendar-month");
+    setReportingPeriodRuleOverride(mode === "calendar-month" ? CALENDAR_MONTH_RULE : null);
     selectedYearMonthRef.current = selectedYearMonth;
     window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, selectedYearMonth);
     setRefreshCounter((counter) => counter + 1);
@@ -289,7 +301,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   }
 
   function showCurrentReportingPeriod(rule: ReportingPeriodRule): void {
-    setUseCalendarReportingMode(false);
+    setReportingPeriodRuleOverride(null);
     const currentReportingPeriod = resolveCurrentReportingPeriod(rule, toLocalIsoDate(new Date()));
     const selectedYearMonth = currentReportingPeriod.startDateIso.slice(0, 7);
     selectedPeriodStartDateIsoRef.current = rule.type === "two-fixed-days"
@@ -334,17 +346,36 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   }
 
   function openPeriodTransactions(range: ReportingPeriodRange, rule: ReportingPeriodRule): void {
+    if (appState.status !== "ready") return;
     const inclusiveEnd = new Date(`${range.endDateExclusiveIso}T00:00:00.000Z`);
     inclusiveEnd.setUTCDate(inclusiveEnd.getUTCDate() - 1);
     setLedgerFilterRequest((previous) => ({
       id: (previous?.id ?? 0) + 1,
+      yearMonth: appState.selectedYearMonth,
+      range,
+      rule,
       filters: {
         bookedFromIso: range.startDateIso,
         bookedToIso: inclusiveEnd.toISOString().slice(0, 10),
+        dateBasis: "booking-date",
       },
       description: `${rule.type === "calendar-month" ? "Calendar month" : "Payday period"}: ${formatReportingPeriodRange(range)}`,
     }));
     openWorkspace("transactions", true);
+  }
+
+  function returnToReport(): void {
+    if (ledgerFilterRequest !== null && (!isLedgerReportSelected || isChangingMonth || isRefreshing)) {
+      latestViewRequestRef.current += 1;
+      selectedYearMonthRef.current = ledgerFilterRequest.yearMonth;
+      selectedPeriodStartDateIsoRef.current = ledgerFilterRequest.rule.type === "two-fixed-days"
+        ? ledgerFilterRequest.range.startDateIso
+        : undefined;
+      window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, ledgerFilterRequest.yearMonth);
+      setReportingPeriodRuleOverride(ledgerFilterRequest.rule);
+      setRefreshCounter((counter) => counter + 1);
+    }
+    openWorkspace("review", true);
   }
 
   function handleSetupComplete(): void {
@@ -515,6 +546,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
             onOpenTransactions={openReviewQueue}
             onOpenPeriodTransactions={openPeriodTransactions}
             onOpenCoverage={() => openWorkspace("coverage")}
+            onOpenExchangeRates={() => openWorkspace("settings", true)}
             onTargetSaved={() => setRefreshCounter((counter) => counter + 1)}
             onRetry={() => setRefreshCounter((counter) => counter + 1)}
             savedReportingPeriodRule={savedReportingPeriodRule}
@@ -526,7 +558,9 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
               refreshKey={refreshCounter}
               reviewQueueFocusRequest={reviewQueueFocusRequest}
               filterRequest={ledgerFilterRequest}
-              onBackToReview={() => openWorkspace("review", true)}
+              isReportSelected={isLedgerReportSelected}
+              isReportCurrent={!isChangingMonth && !isRefreshing && refreshError === null}
+              onBackToReview={returnToReport}
               onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
             />
           )}

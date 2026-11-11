@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { LedgerQueryResult } from "../shared/ledgerSummary.js";
 import type {
   DashboardData,
   DashboardViewContract,
@@ -78,7 +79,6 @@ import type {
   RestoreSnapshotResult,
 } from "../domain/backup/snapshotContract.js";
 import type {
-  TransactionPage,
   SavedLedgerView,
   TransactionFilters,
   TransactionQuery,
@@ -187,7 +187,7 @@ export interface CategoryUpdateResult {
 }
 
 export interface LedgerApi {
-  list: (query: TransactionQuery) => Promise<TransactionPage & { accounts: Account[] }>;
+  list: (query: TransactionQuery) => Promise<LedgerQueryResult>;
   updateCategoryAllocations: (
     input: { transactionId: string; allocations: TransactionCategoryAllocation[] }
   ) => Promise<TransactionCategoryAllocationUpdateResult>;
@@ -403,7 +403,7 @@ const budgetApi: BudgetApi = {
     },
   },
   ledger: {
-    list: (query: TransactionQuery): Promise<TransactionPage & { accounts: Account[] }> =>
+    list: (query: TransactionQuery): Promise<LedgerQueryResult> =>
       ipcRenderer.invoke("transaction:list", query),
     updateCategoryAllocations: (
       input: { transactionId: string; allocations: TransactionCategoryAllocation[] }

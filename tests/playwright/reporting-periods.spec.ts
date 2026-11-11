@@ -73,7 +73,7 @@ function addSyntheticForeignCurrencyReportingActivity(databasePath: string): voi
       "tx-reporting-eur",
       "sample-hh",
       "acc-reporting-eur",
-      "2026-11-25T00:00:00Z",
+      "2026-11-25T23:30:00-02:00",
       -10_000,
       "Synthetic EUR reporting expense",
       "SYNTHETIC EUR REPORTING EXPENSE",
@@ -182,10 +182,10 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   await expect(totals.getByLabel("Income", { exact: true })).toContainText(/3\s?000,00/);
   await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/500,00/);
   await expect(totals.getByLabel("Period net", { exact: true })).toContainText(/2\s?500,00/);
-  await expect(totals).toContainText("Period net is this reporting period's income minus expenses");
+  await expect(totals).toContainText("Income minus expenses; not spendable cash until your next income.");
   await expect(review.getByRole("group", { name: "Spending by category" })).toContainText(/500,00/);
   const paydayComparison = review.getByRole("group", { name: "Payday period comparison" });
-  await expect(paydayComparison.getByRole("heading", { name: "Previous payday period" })).toBeVisible();
+  await paydayComparison.getByText("Comparison details", { exact: true }).click();
   await expect(paydayComparison).toContainText("24 September 2026 - 28 October 2026");
   await expect(review.getByRole("region", { name: "Target vs Actual" })).toHaveCount(0);
   await expect(review.getByText(
@@ -258,7 +258,7 @@ test("saves a last-weekday rule and ignores a superseded period response", async
     delete process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"];
   });
   const calendarComparison = review.getByRole("group", { name: "Monthly comparison" });
-  await expect(calendarComparison.getByRole("heading", { name: "Month-to-month spending" })).toBeVisible();
+  await expect(calendarComparison).toBeVisible();
   await expect(calendarComparison).toContainText("No recorded activity");
   await expect(calendarComparison).not.toContainText("Spending increased");
 
@@ -381,6 +381,178 @@ test("separates current-period navigation from the saved reporting basis without
   );
 });
 
+test("requires a fresh report before claiming its ledger totals reconcile after a failed refresh", async ({
+  appShell,
+  dashboard,
+  electronApp,
+  manualEntry,
+  window,
+}) => {
+  await appShell.openWorkspace("Review");
+  await dashboard.selectMonth("2026-05");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  const drilldown = dashboard.monthlyTotalsSection.getByRole("button", {
+    name: "View transactions for this period", exact: true,
+  });
+  await drilldown.click();
+  const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("85,00");
+  await expect(summary).toContainText("These transactions produce the selected report's totals.");
+
+  await electronApp.evaluate(() => {
+    process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+  });
+  await appShell.openWorkspace("Import");
+  await manualEntry.submitEntry({
+    accountId: "sample-acc",
+    bookedAtIso: "2026-05-10",
+    amountNok: "-100,00",
+    merchantRaw: "SYNTHETIC REFRESH FAILURE EXPENSE",
+    categoryId: "groceries",
+  });
+  await expect(manualEntry.successStatus).toContainText("Added");
+  await appShell.openWorkspace("Review");
+  const review = window.getByRole("region", { name: "Review workspace", exact: true });
+  const refreshFailure = review.getByRole("alert").filter({ hasText: "Review refresh failed" });
+  await expect(refreshFailure).toBeVisible();
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  await expect(drilldown).toBeDisabled();
+  await expect(dashboard.monthlyTotalsSection).toContainText(
+    "Refresh the report before opening its contributing transactions."
+  );
+
+  await appShell.openWorkspace("Transactions");
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("185,00");
+  await expect(summary).not.toContainText("These transactions produce the selected report's totals.");
+  await expect(summary).toContainText("Refresh the report to verify these totals against it.");
+  await expect(window.getByRole("status", { name: "Report filter context" })).toContainText("Report dates applied");
+
+  await electronApp.evaluate(() => {
+    delete process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"];
+  });
+  await window.getByRole("alert").filter({ hasText: "Review refresh failed" })
+    .getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(summary).toContainText("These transactions produce the selected report's totals.");
+  await expect(summary).not.toContainText("Refresh the report to verify these totals against it.");
+  await window.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await expect(dashboard.expenseValue).toContainText("185,00");
+  await expect(drilldown).toBeEnabled();
+  await drilldown.click();
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("185,00");
+});
+
+test("returns to the originating report after a different Review month is selected", async ({
+  appShell,
+  dashboard,
+  ledger,
+  window,
+}) => {
+  await appShell.openWorkspace("Review");
+  await dashboard.selectMonth("2026-05");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  await dashboard.monthlyTotalsSection.getByRole("button", {
+    name: "View transactions for this period", exact: true,
+  }).click();
+  const summary = ledger.workspace.getByRole("region", { name: "Filtered transaction totals", exact: true });
+  await expect(summary).toContainText("These transactions produce the selected report's totals.");
+  await appShell.openWorkspace("Review");
+  await dashboard.selectMonth("2026-04");
+  await expect(dashboard.expenseValue).toContainText("72,00");
+  await appShell.openWorkspace("Activity");
+  await expect(ledger.fromDateInput).toHaveValue("2026-05-01");
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("85,00");
+  await expect(summary).not.toContainText("These transactions produce the selected report's totals.");
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" }))
+    .toContainText("Review period changed");
+  const back = window.getByRole("button", { name: "Back to period review", exact: true });
+  await back.focus();
+  await back.press("Enter");
+  await expect(dashboard.monthlyTotalsSection.getByLabel("Active reporting range"))
+    .toHaveText("1 May 2026 - 31 May 2026");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  await expect(window.getByRole("heading", { name: "Monthly review", exact: true })).toBeFocused();
+  await appShell.openWorkspace("Activity");
+  await expect(summary).toContainText("These transactions produce the selected report's totals.");
+});
+
+test("returning to the originating report supersedes an in-flight period selection", async ({
+  appShell,
+  dashboard,
+  electronApp,
+  window,
+}) => {
+  await appShell.openWorkspace("Review");
+  await dashboard.selectMonth("2026-05");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  await dashboard.monthlyTotalsSection.getByRole("button", {
+    name: "View transactions for this period", exact: true,
+  }).click();
+  await appShell.openWorkspace("Review");
+  await electronApp.evaluate(() => {
+    process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-04";
+    process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "750";
+  });
+  await dashboard.monthSelector.fill("2026-04");
+  const review = window.getByRole("region", { name: "Review workspace", exact: true });
+  await expect(review).toHaveAttribute("aria-busy", "true");
+  await appShell.openWorkspace("Activity");
+  await window.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await window.evaluate(() => globalThis.window.budgetApi.dashboard.getViewData("2026-04"));
+  await expect(review).toHaveAttribute("aria-busy", "false");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("1 May 2026 - 31 May 2026");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+});
+
+test("restores the originating two-date period and basis without rewriting a changed saved preference", async ({
+  appShell,
+  ledger,
+  window,
+}) => {
+  await window.clock.setFixedTime(new Date("2026-11-10T12:00:00"));
+  await appShell.openWorkspace("Settings");
+  const settings = window.getByRole("region", { name: "Settings workspace" });
+  const rule = settings.getByRole("region", { name: "Reporting period" }).getByRole("combobox").first();
+  await rule.selectOption("two-fixed-days");
+  await settings.getByLabel("Earlier date", { exact: true }).fill("10");
+  await settings.getByLabel("Later date", { exact: true }).fill("25");
+  await settings.getByRole("button", { name: "Save reporting preference" }).click();
+  await expect(settings.getByRole("status")).toContainText("Reporting period saved.");
+  await appShell.openWorkspace("Review");
+  const review = window.getByRole("region", { name: "Review workspace", exact: true });
+  await review.getByText("Change period", { exact: true }).click();
+  await review.getByLabel("Select month", { exact: true }).fill("2026-10");
+  await review.getByLabel("Select period", { exact: true }).selectOption("2026-10-25");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("25 October 2026 - 9 November 2026");
+  await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
+  await expect(ledger.fromDateInput).toHaveValue("2026-10-25");
+  await appShell.openWorkspace("Review");
+  await review.getByLabel("Select period", { exact: true }).selectOption("2026-10-10");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("10 October 2026 - 24 October 2026");
+  await appShell.openWorkspace("Activity");
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" }))
+    .toContainText("Review period changed");
+  await window.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await expect(review.getByLabel("Active reporting range")).toHaveText("25 October 2026 - 9 November 2026");
+
+  await appShell.openWorkspace("Settings");
+  await rule.selectOption("calendar-month");
+  await settings.getByRole("button", { name: "Save reporting preference" }).click();
+  await expect(settings.getByRole("status")).toContainText("Reporting period saved.");
+  await appShell.openWorkspace("Review");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("1 November 2026 - 30 November 2026");
+  await appShell.openWorkspace("Activity");
+  const summary = ledger.workspace.getByRole("region", { name: "Filtered transaction totals", exact: true });
+  await expect(summary).not.toContainText("These transactions produce the selected report's totals.");
+  await window.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await expect(review.getByLabel("Active reporting range")).toHaveText("25 October 2026 - 9 November 2026");
+  await expect(review.getByRole("heading", { name: "Payday-period review", exact: true })).toBeFocused();
+  const savedRule = await window.evaluate(() => globalThis.window.budgetApi.reportingPreferences.getPeriodRule());
+  expect(savedRule).toEqual({ type: "calendar-month" });
+  await review.getByText("Reporting basis", { exact: true }).click();
+  await review.getByRole("button", { name: "Use saved calendar months", exact: true }).click();
+  await expect(review.getByLabel("Active reporting range")).toHaveText("1 October 2026 - 31 October 2026");
+});
+
 test("opens only the report's exact transactions and replaces old ledger filters on repeated drill-down", async ({
   appShell,
   ledger,
@@ -401,7 +573,7 @@ test("opens only the report's exact transactions and replaces old ledger filters
   await expect(settings.getByRole("status")).toContainText("Reporting period saved.");
   await appShell.openWorkspace("Review");
   const review = window.getByRole("region", { name: "Review workspace" });
-  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
   await expect(ledger.fromDateInput).toHaveValue("2026-10-29");
   await expect(ledger.toDateInput).toHaveValue("2026-11-28");
   await expect(ledger.table).toContainText("Reporting boundary start");
@@ -410,8 +582,32 @@ test("opens only the report's exact transactions and replaces old ledger filters
   await expect(ledger.table).not.toContainText("Synthetic year-rollover activity");
   await expect(ledger.workspace).toContainText("29 October 2026 - 28 November 2026");
   await expect(ledger.workspace.getByRole("heading", { name: "Transactions", exact: true })).toBeFocused();
+  const summary = ledger.workspace.getByRole("region", { name: "Filtered transaction totals", exact: true });
+  await expect(summary).toContainText("All pages");
+  await expect(summary.getByLabel("Filtered income", { exact: true })).toContainText("3 000,00");
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("700,00");
+  await expect(summary.getByLabel("Filtered net", { exact: true })).toContainText("2 300,00");
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" })).toContainText("Report dates applied");
   await ledger.merchantInput.fill("no matching merchant");
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" })).toContainText("Filters changed");
   await expect(ledger.resultStatus).toHaveText("0 ledger transactions");
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("0,00");
+  await ledger.workspace.getByRole("button", { name: "Restore report dates", exact: true }).click();
+  await expect(ledger.merchantInput).toHaveValue("");
+  await expect(ledger.table).toContainText("Reporting boundary start");
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("700,00");
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" })).toContainText("Report dates applied");
+  await ledger.openMoreFilters();
+  await ledger.amountFromInput.fill("not an amount");
+  await expect(summary).not.toBeVisible();
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" })).toContainText("Filters changed");
+  await ledger.workspace.getByRole("button", { name: "Restore report dates", exact: true }).click();
+  await expect(ledger.amountFromInput).toHaveValue("");
+  await expect(ledger.merchantInput).toBeFocused();
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("700,00");
+  await ledger.sortByMerchant();
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("700,00");
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" })).toContainText("Report dates applied");
   await ledger.workspace.getByRole("button", { name: "Back to period review", exact: true }).click();
   await expect(review.getByRole("heading", { name: "Payday-period review", exact: true })).toBeFocused();
   await expect(review.getByLabel("Active reporting range")).toHaveText(
@@ -423,7 +619,7 @@ test("opens only the report's exact transactions and replaces old ledger filters
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "29 September 2026 - 28 October 2026"
   );
-  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
   await expect(ledger.fromDateInput).toHaveValue("2026-09-29");
   await expect(ledger.toDateInput).toHaveValue("2026-10-28");
   await expect(ledger.merchantInput).toHaveValue("");
@@ -436,7 +632,7 @@ test("opens only the report's exact transactions and replaces old ledger filters
   await expect(review.getByLabel("Active reporting range")).toHaveText("1 September 2026 - 30 September 2026");
   await review.getByLabel("Select month", { exact: true }).fill("2026-10");
   await expect(review.getByLabel("Active reporting range")).toHaveText("1 October 2026 - 31 October 2026");
-  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
   await expect(ledger.fromDateInput).toHaveValue("2026-10-01");
   await expect(ledger.toDateInput).toHaveValue("2026-10-31");
   await expect(ledger.table).toContainText("Reporting boundary before");
@@ -511,6 +707,34 @@ test("keeps payday actuals in range with native amounts and transaction-date FX"
       .toContainText("100,00");
     await expect(nativeSubtotals.getByRole("listitem").filter({ hasText: "SEK" }))
       .toContainText("50,00");
+    await review.getByRole("button", { name: "Record exchange rates", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await expect(settings.getByRole("heading", { name: "Exchange rates", exact: true })).toBeVisible();
+    await window.getByRole("button", { name: "Review", exact: true }).click();
+
+    await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
+    const ledgerWorkspace = window.getByRole("region", { name: "Transactions workspace", exact: true });
+    const ledgerSummary = ledgerWorkspace.getByRole("region", { name: "Filtered transaction totals", exact: true });
+    await expect(ledgerSummary.getByLabel("Filtered expenses", { exact: true })).toContainText(/1\s?150,00/);
+    await expect(ledgerSummary).toContainText("Missing dated rates: SEK");
+    await expect(ledgerSummary).toContainText("partial NOK subtotals");
+    await ledgerSummary.getByText("Native net subtotals", { exact: true }).click();
+    await expect(ledgerSummary.getByRole("list", { name: "Filtered native currency subtotals" })).toContainText("EUR");
+    await expect(ledgerSummary.getByRole("list", { name: "Filtered native currency subtotals" })).toContainText("SEK");
+    await ledgerWorkspace.getByRole("button", { name: "More filters", exact: true }).click();
+    await ledgerWorkspace.getByLabel("Minimum amount (NOK)", { exact: true }).fill("-1200");
+    await ledgerWorkspace.getByLabel("Maximum amount (NOK)", { exact: true }).fill("-1100");
+    await expect(ledgerSummary).toContainText("1 matching transactions");
+    await expect(ledgerSummary.getByLabel("Filtered expenses", { exact: true })).toContainText(/1\s?150,00/);
+    await expect(ledgerWorkspace.getByRole("status", { name: "Amount filter exclusions" })).toContainText("SEK");
+    await ledgerWorkspace.getByLabel("Minimum amount (NOK)", { exact: true }).fill("-200");
+    await ledgerWorkspace.getByLabel("Maximum amount (NOK)", { exact: true }).fill("-50");
+    await expect(ledgerSummary).toContainText("0 matching transactions");
+    await expect(ledgerWorkspace.getByRole("status", { name: "Amount filter exclusions" })).toContainText("1 transaction excluded");
+    await ledgerWorkspace.getByRole("button", { name: "Restore report dates", exact: true }).click();
+    await expect(ledgerSummary).toContainText("partial NOK subtotals");
+    await expect(ledgerWorkspace.getByRole("status", { name: "Amount filter exclusions" })).not.toBeVisible();
+    await ledgerWorkspace.getByRole("button", { name: "Back to period review", exact: true }).click();
 
     const reportingMode = review.getByLabel("Reporting mode");
     await review.getByText("Change period", { exact: true }).click();
@@ -768,9 +992,10 @@ test("reviews and navigates two fixed reporting dates within one month", async (
   await expect(review.getByLabel("Active reporting range"))
     .toHaveText("15 February 2026 - 24 February 2026");
   const comparison = review.getByRole("group", { name: "Payday period comparison" });
+  await comparison.getByText("Comparison details", { exact: true }).click();
   await expect(comparison).toContainText("25 January 2026 - 14 February 2026");
-  await expect(comparison).toContainText(/Recorded spending is 150,00/);
-  await expect(comparison).toContainText(/full previous period .*100,00/);
+  await expect(comparison.getByRole("group", { name: "Selected period spending" })).toContainText("150,00");
+  await expect(comparison.getByRole("group", { name: "Previous period spending" })).toContainText("100,00");
   await expect(comparison).toContainText("not a like-for-like comparison");
   const totals = review.getByRole("region", { name: "Payday-period totals" });
   const nextPeriod = review.getByRole("button", { name: /^Next period/ });
@@ -785,7 +1010,7 @@ test("reviews and navigates two fixed reporting dates within one month", async (
     .toHaveText("25 February 2026 - 14 March 2026");
   await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/500,00/);
   await expect(totals.getByLabel("Income", { exact: true })).toContainText(/0,00/);
-  await totals.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await totals.getByRole("button", { name: "View transactions for this period", exact: true }).click();
   await expect(ledger.fromDateInput).toHaveValue("2026-02-25");
   await expect(ledger.toDateInput).toHaveValue("2026-03-14");
   await expect(ledger.table).toContainText("Second two-date period");
