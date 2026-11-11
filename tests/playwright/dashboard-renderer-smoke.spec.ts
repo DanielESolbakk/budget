@@ -458,20 +458,24 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.incomeValue).toContainText("510");
   });
 
-  test("Regression: the latest month response wins when requests resolve out of order", async ({ dashboard, electronApp, window }) => {
+  test("reporting period navigation stays disabled while the selected report updates", async ({ dashboard, electronApp, window }) => {
     await electronApp.evaluate(() => {
       process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-04";
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
     });
 
     await dashboard.monthSelector.selectOption("2026-04");
-    await expect(window.getByRole("status").filter({ hasText: "Updating month..." })).toBeVisible();
-    await dashboard.monthSelector.selectOption("2026-05");
+    const updatingStatus = window.getByRole("status").filter({ hasText: "Updating reporting period..." });
+    await expect(updatingStatus).toBeVisible();
+    await expect(dashboard.monthSelector).toBeDisabled();
 
+    await expect(updatingStatus).toBeHidden();
+    await expect(dashboard.monthSelector).toBeEnabled();
+    await expect(dashboard.monthSelector).toHaveValue("2026-04");
+    await expect(dashboard.incomeValue).toContainText("510");
+
+    await dashboard.monthSelector.selectOption("2026-05");
     await expect(dashboard.monthSelector).toHaveValue("2026-05", { timeout: 10_000 });
-    await expect(dashboard.incomeValue).toContainText("540");
-    await window.evaluate(() => globalThis.window.budgetApi.dashboard.getViewData("2026-04"));
-    await expect(dashboard.monthSelector).toHaveValue("2026-05");
     await expect(dashboard.incomeValue).toContainText("540");
   });
 
