@@ -164,8 +164,12 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   await reviewButton.focus();
   await reviewButton.press("Enter");
   const review = window.getByRole("region", { name: "Review workspace" });
-  await review.getByText("Change period", { exact: true }).click();
-  await review.getByText("Reporting basis", { exact: true }).click();
+  const changePeriod = review.getByText("Change period", { exact: true });
+  await changePeriod.focus();
+  await changePeriod.press("Enter");
+  const reportingBasis = review.getByText("Reporting basis", { exact: true });
+  await reportingBasis.focus();
+  await reportingBasis.press("Enter");
   await expect(review.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "29 October 2026 - 25 November 2026"
@@ -265,8 +269,12 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   );
   await window.reload();
   const reloadedReview = window.getByRole("region", { name: "Review workspace" });
-  await reloadedReview.getByText("Change period", { exact: true }).click();
-  await reloadedReview.getByText("Reporting basis", { exact: true }).click();
+  const reloadedChangePeriod = reloadedReview.getByText("Change period", { exact: true });
+  await reloadedChangePeriod.focus();
+  await reloadedChangePeriod.press("Enter");
+  const reloadedReportingBasis = reloadedReview.getByText("Reporting basis", { exact: true });
+  await reloadedReportingBasis.focus();
+  await reloadedReportingBasis.press("Enter");
   await expect(reloadedReview.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(reloadedReview.getByLabel("Active reporting range")).toHaveText(
     "29 October 2026 - 25 November 2026"
@@ -564,7 +572,9 @@ test("supports keyboard payday setup without horizontal overflow at compact size
   expect(disclosureBounds?.height ?? 0).toBeGreaterThanOrEqual(44);
   await changePeriod.focus();
   await changePeriod.press("Enter");
-  await review.getByText("Reporting basis", { exact: true }).click();
+  const reportingBasis = review.getByText("Reporting basis", { exact: true });
+  await reportingBasis.focus();
+  await reportingBasis.press("Enter");
   await expect(review.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "25 September 2026 - 24 October 2026"
