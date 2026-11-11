@@ -188,23 +188,10 @@ test("@visual Visual: property records remain composed for desktop and compact w
   await window.evaluate(() => globalThis.scrollTo(0, 0));
   expect(await window.evaluate(() => globalThis.scrollY)).toBe(0);
 
-  await expect(window).toHaveScreenshot("property-records-desktop.png", {
-    animations: "disabled",
-    mask: [window.locator('time[datetime*="T"]')],
-    maskColor: "#fffdfa",
-    maxDiffPixelRatio: 0.01,
-  });
-
   await window.setViewportSize({ width: 390, height: 844 });
   await expect(registry.backToPropertyListButton).toBeVisible();
   await window.evaluate(() => globalThis.scrollTo(0, 0));
   expect(await window.evaluate(() => globalThis.scrollY)).toBe(0);
-  await expect(window).toHaveScreenshot("property-records-compact.png", {
-    animations: "disabled",
-    mask: [window.locator('time[datetime*="T"]')],
-    maskColor: "#fffdfa",
-    maxDiffPixelRatio: 0.01,
-  });
 });
 
 test("Household record pages do not repeat their registry title", async ({ appShell, window }) => {

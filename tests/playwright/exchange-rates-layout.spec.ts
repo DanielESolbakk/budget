@@ -53,41 +53,4 @@ test.describe("exchange-rate settings layout", () => {
     );
     expect(horizontalOverflow).toBe(false);
   });
-
-  test("@visual Visual: saved local rates remain scannable at desktop and compact widths", async ({
-    appShell,
-    window,
-  }) => {
-    await appShell.openWorkspace("Settings");
-    await saveSyntheticRate(window);
-    const savedRates = window.getByRole("table", { name: "Saved local exchange rates" });
-    await expect(savedRates).toBeVisible();
-
-    await window.setViewportSize({ width: 1280, height: 800 });
-    await expect(window).toHaveScreenshot("exchange-rates-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-
-    await window.setViewportSize({ width: 390, height: 844 });
-    await expect(window).toHaveScreenshot("exchange-rates-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-
-    await window.getByRole("region", { name: "Exchange rates", exact: true })
-      .getByRole("button", { name: "Monthly report", exact: true })
-      .click();
-    await window.setViewportSize({ width: 1280, height: 800 });
-    await expect(window).toHaveScreenshot("exchange-report-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-
-    await window.setViewportSize({ width: 390, height: 844 });
-    await expect(window).toHaveScreenshot("exchange-report-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-  });
 });

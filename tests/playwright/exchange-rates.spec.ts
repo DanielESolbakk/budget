@@ -12,7 +12,6 @@ import {
   installMainProcessNetworkProbe,
   mainProcessNetworkRequests,
 } from "./helpers/networkProbe.js";
-import { assertVisualScreenshot } from "./visualScreenshot.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -396,21 +395,11 @@ test.describe("local dated exchange-rate workflow", () => {
           })
         );
       expect(await propertySubtotalValuesHaveInset()).toBe(true);
-      await assertVisualScreenshot("valuation-report-desktop.png", () =>
-        expect(report).toHaveScreenshot("valuation-report-desktop.png", {
-          animations: "disabled",
-          maxDiffPixelRatio: 0.01,
-        }));
 
       await window.setViewportSize({ width: 390, height: 844 });
       await expect(report).toBeVisible();
       expect(await propertySubtotalValuesFit()).toBe(true);
       expect(await propertySubtotalValuesHaveInset()).toBe(true);
-      await assertVisualScreenshot("valuation-report-mobile.png", () =>
-        expect(report).toHaveScreenshot("valuation-report-mobile.png", {
-          animations: "disabled",
-          maxDiffPixelRatio: 0.01,
-        }));
       const horizontalOverflow = await window.evaluate(() =>
         document.documentElement.scrollWidth > document.documentElement.clientWidth
       );
@@ -659,7 +648,6 @@ test.describe("local dated exchange-rate workflow", () => {
   }) => {
     const {
       ratesApp,
-      window,
       rates,
       rateBookTab,
       monthlyReportTab,
@@ -692,16 +680,6 @@ test.describe("local dated exchange-rate workflow", () => {
       const euroTransaction = report.getByRole("group", { name: "Synthetic EUR income" });
       const sekTransaction = report.getByRole("group", { name: "Synthetic SEK expense" });
       await expect(sekTransaction).toContainText("NOK conversion incomplete");
-      await expect(report).toHaveScreenshot("exchange-report-missing-desktop.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
-      await window.setViewportSize({ width: 390, height: 844 });
-      await expect(report).toHaveScreenshot("exchange-report-missing-mobile.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
-      await window.setViewportSize({ width: 1280, height: 800 });
 
       await rateBookTab.click();
       await rateCurrency.selectOption("SEK");
@@ -714,29 +692,10 @@ test.describe("local dated exchange-rate workflow", () => {
       await monthlyReportTab.click();
       await loadReportButton.click();
       await expect(sekTransaction).toContainText("estimate");
-      await expect(report).toHaveScreenshot("exchange-report-estimate-desktop.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
-      await window.setViewportSize({ width: 390, height: 844 });
-      await expect(report).toHaveScreenshot("exchange-report-estimate-mobile.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
-      await window.setViewportSize({ width: 1280, height: 800 });
 
       await rates.getByLabel("Use latest rate scenario").check();
       await expect(euroTransaction).toContainText("Scenario NOK 1 200,00");
       await expect(euroTransaction).toContainText("NOK 1 150,00");
-      await expect(report).toHaveScreenshot("exchange-report-scenario-desktop.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
-      await window.setViewportSize({ width: 390, height: 844 });
-      await expect(report).toHaveScreenshot("exchange-report-scenario-mobile.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
     } finally {
       await ratesApp.close();
     }

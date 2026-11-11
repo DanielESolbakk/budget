@@ -23,6 +23,10 @@ When writing tests or automation that fetch content from external sources (e.g.,
 
 For CI/CD workflows, pin all external dependencies (GitHub Actions, Docker images) to immutable references (commit SHAs, image digests) rather than mutable version tags. See [ci-github-actions.md](ci/ci-github-actions.md) and [docker-and-containers.md](ci/docker-and-containers.md) for pinning guidance.
 
+## Budget Planner Repository Policy
+
+Keep this repository's Playwright suite functional-only. Do not add screenshot or pixel-comparison assertions, screenshot baselines, or CI jobs that compare images. Preserve functional assertions when removing visual checks.
+
 ## Golden Rules
 
 1. **`getByRole()` over CSS/XPath** — resilient to markup changes, mirrors how users see the page

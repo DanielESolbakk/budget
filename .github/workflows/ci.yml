@@ -264,8 +264,7 @@ jobs:
         env:
           PLAYWRIGHT_OUTPUT_DIR: test-results/windows
           PLAYWRIGHT_REPORT_DIR: playwright-report/windows
-          PLAYWRIGHT_SKIP_VISUAL_SNAPSHOTS: 'true'
-        # Exclude @visual-only cases; mixed functional cases skip only screenshot comparisons.
+        # Exclude @visual-only layout checks; this required lane is functional-only.
         run: npm run test:e2e:playwright:ci -- --workers=2 --grep-invert '@visual'
 
       - name: Upload Playwright Windows artifacts

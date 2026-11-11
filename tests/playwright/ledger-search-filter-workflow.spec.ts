@@ -647,17 +647,6 @@ test.describe("Ledger search and filter workflow", () => {
     await expect(ledger.accountInput).toContainText("Brukskonto");
   });
 
-  test("@visual Visual: desktop transaction filters preserve ledger hierarchy", async ({ window, electronApp, ledger }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
-    });
-    await expect(ledger.table).toBeVisible();
-    await expect(window).toHaveScreenshot("ledger-filters-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-  });
-
   test("@visual Visual: compact transaction filters avoid page overflow", async ({ window: page, electronApp, ledger }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
@@ -674,10 +663,6 @@ test.describe("Ledger search and filter workflow", () => {
     expect(dimensions.compactBreakpoint).toBe(true);
     expect(dimensions.appFrameColumns.trim().split(/\s+/)).toHaveLength(1);
     expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
-      await expect(page).toHaveScreenshot("ledger-filters-compact.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.015,
-    });
   });
 
   test("keyboard horizontal scrolling can reach the final compact ledger column", async ({ window, electronApp, ledger }) => {
@@ -731,10 +716,6 @@ test.describe("Ledger search and filter workflow", () => {
       expect(advancedLayout.children[2]!.y).toBeGreaterThan(advancedLayout.children[1]!.y);
       expect(advancedLayout.children[2]!.x).toBe(advancedLayout.children[0]!.x);
       expect(advancedLayout.children.at(-1)?.width).toBeGreaterThan(advancedLayout.children[0]!.width);
-      await expect(window).toHaveScreenshot("ledger-filters-expanded-desktop.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
     });
 
     test("@visual Visual: advanced filters stack cleanly on compact screens", async ({ window: page, electronApp, ledger }) => {
@@ -751,9 +732,5 @@ test.describe("Ledger search and filter workflow", () => {
       expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
       await page.evaluate(() => window.scrollTo(0, 0));
       expect(await page.evaluate(() => window.scrollY)).toBe(0);
-      await expect(page).toHaveScreenshot("ledger-filters-expanded-compact.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.015,
-      });
     });
 });
