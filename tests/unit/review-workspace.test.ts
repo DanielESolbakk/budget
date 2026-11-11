@@ -77,6 +77,12 @@ describe("review period navigation", () => {
     expect(markup.match(/No activity has been recorded/g)).toHaveLength(1);
   });
 
+  it("blocks transaction drill-down when the displayed report failed to refresh", () => {
+    const markup = renderReview("2026-05", [], "Synthetic refresh failure.");
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>View transactions for this period<\/button>/);
+    expect(markup).toContain("Refresh the report before opening its contributing transactions.");
+  });
+
   it("disables period controls while a period query is in progress", () => {
     const reportingPeriodRule: ReportingPeriodRule = { type: "last-weekday", weekday: 4 };
     const viewContract = buildDashboardViewContract({
@@ -120,7 +126,11 @@ describe("review period navigation", () => {
   });
 });
 
-function renderReview(selectedYearMonth: string, availableMonths: string[]): string {
+function renderReview(
+  selectedYearMonth: string,
+  availableMonths: string[],
+  refreshError: string | null = null,
+): string {
   return renderToStaticMarkup(React.createElement(ReviewWorkspace, {
     state: {
       status: "ready",
@@ -134,7 +144,7 @@ function renderReview(selectedYearMonth: string, availableMonths: string[]): str
     isRefreshing: false,
     refreshKey: 0,
     monthChangeError: null,
-    refreshError: null,
+    refreshError,
     savedReportingPeriodRule: { type: "calendar-month" },
     onMonthChange: () => undefined,
     onReportingModeChange: () => undefined,

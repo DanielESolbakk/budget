@@ -26,6 +26,7 @@ export interface MonthlyTotalsSectionProps {
   periodControls?: React.ReactNode;
   onOpenTransactions?: () => void;
   isChangingPeriod?: boolean;
+  isReportStale?: boolean;
 }
 
 type LoadedDashboardViewContract = Exclude<DashboardViewContract, { state: "loading" }>;
@@ -36,6 +37,7 @@ export function MonthlyTotalsSection({
   periodControls,
   onOpenTransactions,
   isChangingPeriod = false,
+  isReportStale = false,
 }: MonthlyTotalsSectionProps): React.JSX.Element {
   const isPaydayPeriod = viewContract.state !== "loading" &&
     viewContract.snapshot.reportingPeriodRule.type !== "calendar-month";
@@ -98,11 +100,17 @@ export function MonthlyTotalsSection({
           <button
             type="button"
             className="action-secondary"
-            disabled={isChangingPeriod}
+            disabled={isChangingPeriod || isReportStale}
+            aria-describedby={isReportStale ? "report-refresh-required" : undefined}
             onClick={onOpenTransactions}
           >
             View transactions for this period
           </button>
+        )}
+        {isReportStale && (
+          <p id="report-refresh-required" className="field-help">
+            Refresh the report before opening its contributing transactions.
+          </p>
         )}
       </div>
       <p className="comparison-basis-note">Recorded transactions only. Statement coverage may be incomplete.</p>

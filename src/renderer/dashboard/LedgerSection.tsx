@@ -88,6 +88,7 @@ function getActiveFilters(filters: TransactionFilters, accounts: Account[]): Act
 interface LedgerSectionProps {
   refreshKey: number;
   filterRequest?: LedgerFilterRequest | null;
+  isReportCurrent: boolean;
 }
 
 export interface LedgerFilterRequest {
@@ -96,7 +97,7 @@ export interface LedgerFilterRequest {
   description: string;
 }
 
-export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps): React.JSX.Element {
+export function LedgerSection({ refreshKey, filterRequest, isReportCurrent }: LedgerSectionProps): React.JSX.Element {
   const [amountFrom, setAmountFrom] = React.useState("");
   const [amountTo, setAmountTo] = React.useState("");
   const [filters, setFilterState] = React.useState<TransactionFilters>(filterRequest?.filters ?? {});
@@ -784,7 +785,11 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
             </p>
           )}
           {filterRequest !== null && filterRequest !== undefined && !reportFiltersChanged && (
-            <p>These transactions produce the selected report's {summary.incompleteCurrencies.length > 0 ? "partial NOK subtotals" : "totals"}.</p>
+            isReportCurrent ? (
+              <p>These transactions produce the selected report's {summary.incompleteCurrencies.length > 0 ? "partial NOK subtotals" : "totals"}.</p>
+            ) : (
+              <p role="status">Refresh the report to verify these totals against it.</p>
+            )
           )}
           {summary.incompleteCurrencies.length > 0 && (
             <p className="currency-warning" role="status">

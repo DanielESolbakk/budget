@@ -186,6 +186,7 @@ export function ReviewWorkspace({
                 );
               }}
               isChangingPeriod={isChangingMonth || isRefreshing}
+              isReportStale={refreshError !== null}
               periodControls={snapshot !== null && (
                 <div className="reporting-period-toolbar">
                   <div className="reporting-period-readout">

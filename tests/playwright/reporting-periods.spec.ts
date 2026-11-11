@@ -373,6 +373,66 @@ test("separates current-period navigation from the saved reporting basis without
   );
 });
 
+test("requires a fresh report before claiming its ledger totals reconcile after a failed refresh", async ({
+  appShell,
+  dashboard,
+  electronApp,
+  manualEntry,
+  window,
+}) => {
+  await appShell.openWorkspace("Review");
+  await dashboard.selectMonth("2026-05");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  const drilldown = dashboard.monthlyTotalsSection.getByRole("button", {
+    name: "View transactions for this period", exact: true,
+  });
+  await drilldown.click();
+  const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("85,00");
+  await expect(summary).toContainText("These transactions produce the selected report's totals.");
+
+  await electronApp.evaluate(() => {
+    process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
+  });
+  await appShell.openWorkspace("Import");
+  await manualEntry.submitEntry({
+    accountId: "sample-acc",
+    bookedAtIso: "2026-05-10",
+    amountNok: "-100,00",
+    merchantRaw: "SYNTHETIC REFRESH FAILURE EXPENSE",
+    categoryId: "groceries",
+  });
+  await expect(manualEntry.successStatus).toContainText("Added");
+  await appShell.openWorkspace("Review");
+  const review = window.getByRole("region", { name: "Review workspace", exact: true });
+  const refreshFailure = review.getByRole("alert").filter({ hasText: "Review refresh failed" });
+  await expect(refreshFailure).toBeVisible();
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  await expect(drilldown).toBeDisabled();
+  await expect(dashboard.monthlyTotalsSection).toContainText(
+    "Refresh the report before opening its contributing transactions."
+  );
+
+  await appShell.openWorkspace("Transactions");
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("185,00");
+  await expect(summary).not.toContainText("These transactions produce the selected report's totals.");
+  await expect(summary).toContainText("Refresh the report to verify these totals against it.");
+  await expect(window.getByRole("status", { name: "Report filter context" })).toContainText("Report dates applied");
+
+  await electronApp.evaluate(() => {
+    delete process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"];
+  });
+  await window.getByRole("alert").filter({ hasText: "Review refresh failed" })
+    .getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(summary).toContainText("These transactions produce the selected report's totals.");
+  await expect(summary).not.toContainText("Refresh the report to verify these totals against it.");
+  await window.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await expect(dashboard.expenseValue).toContainText("185,00");
+  await expect(drilldown).toBeEnabled();
+  await drilldown.click();
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("185,00");
+});
+
 test("opens only the report's exact transactions and replaces old ledger filters on repeated drill-down", async ({
   appShell,
   ledger,

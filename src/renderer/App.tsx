@@ -528,6 +528,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
               refreshKey={refreshCounter}
               reviewQueueFocusRequest={reviewQueueFocusRequest}
               filterRequest={ledgerFilterRequest}
+              isReportCurrent={!isRefreshing && refreshError === null}
               onBackToReview={() => openWorkspace("review", true)}
               onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
             />
