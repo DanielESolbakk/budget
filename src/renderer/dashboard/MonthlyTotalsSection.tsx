@@ -100,7 +100,7 @@ export function MonthlyTotalsSection({
       <p className="monthly-net-meaning">
         {isPaydayPeriod
           ? "Period net is this reporting period's income minus expenses; it is not spendable cash until your next income."
-          : "Monthly net is this month&apos;s income minus expenses; it is not spendable cash until your next income."}
+          : "Monthly net is this month's income minus expenses; it is not spendable cash until your next income."}
       </p>
       <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
       <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
