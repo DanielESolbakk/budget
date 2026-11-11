@@ -234,10 +234,10 @@
   }
 
   .reporting-period-navigation {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .reporting-period-navigation .action-secondary {
+  .reporting-period-stepper .action-secondary {
     min-width: 0;
     padding-inline: 0.55rem;
   }

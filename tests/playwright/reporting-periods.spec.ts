@@ -161,6 +161,13 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "29 October 2026 - 25 November 2026"
   );
+  const monthPicker = review.getByRole("combobox", { name: "Select month" });
+  await expect(monthPicker.getByRole("option", {
+    name: "29 October 2026 - 25 November 2026",
+    exact: true,
+  })).toBeAttached();
+  const monthPickerBounds = await monthPicker.boundingBox();
+  expect(monthPickerBounds?.width ?? 0).toBeGreaterThan(260);
   const totals = review.getByRole("region", { name: "Payday-period totals" });
   await expect(totals.getByLabel("Income", { exact: true })).toContainText(/3\s?000,00/);
   await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/500,00/);
@@ -176,7 +183,7 @@ test("saves a last-weekday rule and ignores a superseded period response", async
     { exact: true }
   )).toBeVisible();
   await expect(review.getByText(
-    "Calendar-month forecast, recurring commitments, spendable cash, and cashflow scenarios",
+    "Calendar-month basis: forecast, recurring commitments, spendable cash, and cashflow scenarios",
     { exact: true }
   )).toBeVisible();
   const desktopDimensions = await window.evaluate(() => ({
@@ -260,6 +267,35 @@ test("saves a last-weekday rule and ignores a superseded period response", async
     reloadedReview.getByRole("region", { name: "Payday-period totals" })
       .getByLabel("Expenses", { exact: true })
   ).toContainText(/500,00/);
+});
+
+test("shows a visible reporting-mode label in payday review", async ({
+  appShell,
+  electronApp,
+  window,
+}) => {
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
+  });
+  await window.clock.install({ time: new Date("2026-11-10T12:00:00") });
+  await appShell.openWorkspace("Settings");
+
+  const settings = window.getByRole("region", { name: "Settings workspace" });
+  const reportingPeriod = settings
+    .getByRole("region", { name: "Reporting period" })
+    .getByRole("combobox")
+    .first();
+  await reportingPeriod.selectOption("fixed-day");
+  await settings.getByLabel("Day of month", { exact: true }).fill("25");
+  await settings.getByRole("button", { name: "Save reporting preference" }).click();
+  await expect(settings.getByRole("status")).toContainText("Reporting period saved.");
+
+  await appShell.openWorkspace("Review");
+  const review = window.getByRole("region", { name: "Review workspace" });
+  const reportingModeLabel = review.getByText("Reporting mode", { exact: true });
+  await expect(reportingModeLabel).toHaveAttribute("for", "reporting-mode-select");
+  const labelBounds = await reportingModeLabel.boundingBox();
+  expect(labelBounds?.width ?? 0).toBeGreaterThan(1);
 });
 
 test("keeps payday actuals in range with native amounts and transaction-date FX", async ({
@@ -387,6 +423,23 @@ test("supports keyboard payday setup without horizontal overflow at compact size
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "25 September 2026 - 24 October 2026"
   );
+  const monthPicker = review.getByRole("combobox", { name: "Select month" });
+  await expect(monthPicker.getByRole("option", {
+    name: "25 September 2026 - 24 October 2026",
+    exact: true,
+  })).toBeAttached();
+  const monthPickerBounds = await monthPicker.boundingBox();
+  expect(monthPickerBounds?.width ?? 0).toBeGreaterThan(260);
+  await expect(review.getByRole("note").filter({
+    hasText: "Category targets, forecasts, spendable cash, and cashflow scenarios",
+  })).toHaveCount(0);
+  await expect(review.getByRole("note").filter({
+    hasText: "Target comparisons are shown only in Calendar month mode.",
+  })).toBeVisible();
+  await expect(review.getByText(
+    "Calendar-month basis: forecast, recurring commitments, spendable cash, and cashflow scenarios",
+    { exact: true }
+  )).toBeVisible();
   const dimensions = await window.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,

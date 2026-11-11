@@ -169,21 +169,29 @@
 
 .reporting-period-navigation {
   display: grid;
-  grid-template-columns: auto minmax(0, 13.75rem) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: end;
   gap: 0.5rem;
 }
 
-.reporting-period-navigation .month-picker {
-  width: 100%;
-  min-width: 0;
-  flex: initial;
+.reporting-period-stepper {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.5rem;
 }
 
-.reporting-period-navigation .action-secondary {
+.reporting-period-stepper .action-secondary {
   min-width: 4.75rem;
   padding-inline: 0.65rem;
   white-space: nowrap;
+}
+
+.reporting-period-navigation .month-picker {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  flex: initial;
 }
 
 .reporting-period-current {
@@ -206,8 +214,9 @@
   font-size: 0.875rem;
 }
 
-.reporting-period-mode > span {
+.reporting-period-mode > label {
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .reporting-period-mode select {
@@ -235,14 +244,6 @@
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
-}
-
-.calendar-basis-note {
-  border-block: 1px solid var(--line);
-  margin: 0.9rem 0 0;
-  padding-block: 0.75rem;
-  color: var(--paper-muted);
-  line-height: 1.5;
 }
 
 .review-grid {

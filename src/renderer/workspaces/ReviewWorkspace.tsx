@@ -132,17 +132,30 @@ export function ReviewWorkspace({
         {state.status === "ready" && (
           <div className="reporting-period-toolbar">
             <div className="reporting-period-navigation">
-              <button
-                type="button"
-                className="action-secondary"
-                aria-label="Previous period"
-                disabled={isPeriodSelectionDisabled || previousPeriod === null}
-                onClick={() => {
-                  if (previousPeriod !== null) navigateToPeriod(previousPeriod.startDateIso);
-                }}
-              >
-                Previous
-              </button>
+              <div className="reporting-period-stepper" role="group" aria-label="Reporting period navigation">
+                <button
+                  type="button"
+                  className="action-secondary"
+                  aria-label="Previous period"
+                  disabled={isPeriodSelectionDisabled || previousPeriod === null}
+                  onClick={() => {
+                    if (previousPeriod !== null) navigateToPeriod(previousPeriod.startDateIso);
+                  }}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="action-secondary"
+                  aria-label="Next period"
+                  disabled={isPeriodSelectionDisabled || nextPeriod === null}
+                  onClick={() => {
+                    if (nextPeriod !== null) navigateToPeriod(nextPeriod.startDateIso);
+                  }}
+                >
+                  Next
+                </button>
+              </div>
               <div className="month-picker">
                 <label htmlFor="month-select">
                   {isTwoFixedDayRule ? "Choose reporting period" : "Period starting"}
@@ -164,7 +177,13 @@ export function ReviewWorkspace({
                       </option>
                     ))
                     : state.availableMonths.map((month) => (
-                      <option key={month} value={month}>{formatYearMonth(month)}</option>
+                      <option key={month} value={month}>
+                        {isCalendarMonth === false && snapshot !== null
+                          ? formatReportingPeriodRange(
+                            resolveReportingPeriod(snapshot.reportingPeriodRule, month)
+                          )
+                          : formatYearMonth(month)}
+                      </option>
                     ))}
                 </select>
                 <span className="month-picker-code">
@@ -173,35 +192,26 @@ export function ReviewWorkspace({
                     : state.selectedYearMonth}
                 </span>
               </div>
-              <button
-                type="button"
-                className="action-secondary"
-                aria-label="Next period"
-                disabled={isPeriodSelectionDisabled || nextPeriod === null}
-                onClick={() => {
-                  if (nextPeriod !== null) navigateToPeriod(nextPeriod.startDateIso);
-                }}
-              >
-                Next
-              </button>
             </div>
             {snapshot !== null && (
               <div className="reporting-period-current">
                 <div className="reporting-period-mode">
-                  <span className="visually-hidden">Reporting mode</span>
                   {hasSavedPaydayRule ? (
-                    <select
-                      aria-label="Reporting mode"
-                      value={isCalendarMonth ? "calendar-month" : "payday-period"}
-                      onChange={(event) => onReportingModeChange(
-                        event.currentTarget.value === "calendar-month"
-                          ? "calendar-month"
-                          : "payday-period"
-                      )}
-                    >
-                      <option value="calendar-month">Calendar month</option>
-                      <option value="payday-period">Payday period</option>
-                    </select>
+                    <>
+                      <label htmlFor="reporting-mode-select">Reporting mode</label>
+                      <select
+                        id="reporting-mode-select"
+                        value={isCalendarMonth ? "calendar-month" : "payday-period"}
+                        onChange={(event) => onReportingModeChange(
+                          event.currentTarget.value === "calendar-month"
+                            ? "calendar-month"
+                            : "payday-period"
+                        )}
+                      >
+                        <option value="calendar-month">Calendar month</option>
+                        <option value="payday-period">Payday period</option>
+                      </select>
+                    </>
                   ) : (
                     <strong>Calendar month</strong>
                   )}
@@ -256,13 +266,6 @@ export function ReviewWorkspace({
           {state.viewContract.state === "empty" && (
             <p className="rail-status is-empty-month" role="status" aria-label="Monthly activity">
               No activity has been recorded for {isCalendarMonth === false ? "this period." : "this month."}
-            </p>
-          )}
-
-          {isCalendarMonth === false && (
-            <p className="calendar-basis-note" role="note">
-              Category targets, forecasts, spendable cash, and cashflow scenarios remain based on
-              calendar months. Switch to Calendar month to compare actuals with those targets.
             </p>
           )}
 
@@ -366,7 +369,7 @@ export function ReviewWorkspace({
             <summary>
               <span>Plan ahead</span>
               <small>{isCalendarMonth === false
-                ? "Calendar-month forecast, recurring commitments, spendable cash, and cashflow scenarios"
+                ? "Calendar-month basis: forecast, recurring commitments, spendable cash, and cashflow scenarios"
                 : "Forecast, recurring commitments, spendable cash, and cashflow scenarios"}</small>
             </summary>
             <div className="review-planning-content">
