@@ -16,7 +16,7 @@ import { MonthlyTotalsSection } from "../dashboard/MonthlyTotalsSection.js";
 import { RecurringCommitmentsSection } from "../dashboard/RecurringCommitmentsSection.js";
 import { SpendableCashSection } from "../dashboard/SpendableCashSection.js";
 import { TargetVsActualSection } from "../dashboard/TargetVsActualSection.js";
-import { AccountCoverageSummary } from "../dashboard/AccountCoverageSummary.js";
+import { ReviewAttentionSection } from "../dashboard/ReviewAttentionSection.js";
 import { formatReportingPeriodRange } from "../reportingPeriodDisplay.js";
 import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 import type { ReviewState } from "./types.js";
@@ -53,6 +53,7 @@ interface ReviewWorkspaceProps {
   onOpenTransactions: () => void;
   onOpenPeriodTransactions: (range: ReportingPeriodRange, rule: ReportingPeriodRule) => void;
   onOpenCoverage: () => void;
+  onOpenExchangeRates: () => void;
   onTargetSaved: () => void;
   onRetry: () => void;
 }
@@ -71,6 +72,7 @@ export function ReviewWorkspace({
   onOpenTransactions,
   onOpenPeriodTransactions,
   onOpenCoverage,
+  onOpenExchangeRates,
   onTargetSaved,
   onRetry,
 }: ReviewWorkspaceProps): React.JSX.Element {
@@ -111,17 +113,12 @@ export function ReviewWorkspace({
         snapshot.reportingPeriodRange.startDateIso,
         "next"
       );
-  const planningToolsRef = React.useRef<HTMLDetailsElement>(null);
   const [isTargetFormOpen, setIsTargetFormOpen] = React.useState(false);
   const isPeriodSelectionDisabled = isTargetFormOpen || isChangingMonth || isRefreshing;
   const isReportingOverride = hasSavedPaydayRule && isCalendarMonth;
   const isCurrentPeriod = snapshot?.reportingPeriodRange.startDateIso === currentPeriod?.startDateIso;
   const isFuturePeriod = snapshot !== null && currentPeriod !== null &&
     snapshot.reportingPeriodRange.startDateIso > currentPeriod.startDateIso;
-
-  function openPlanningTools(): void {
-    if (planningToolsRef.current !== null) planningToolsRef.current.open = true;
-  }
 
   function navigateToPeriod(startDateIso: string): void {
     onMonthChange(isTwoFixedDayRule ? startDateIso : startDateIso.slice(0, 7));
@@ -137,11 +134,6 @@ export function ReviewWorkspace({
       <div className="review-intro">
         <div>
           <h2>{isCalendarMonth === false ? "Payday-period review" : "Monthly review"}</h2>
-          <p className="intro-copy">
-            {isCalendarMonth === false
-              ? "Review recorded income and spending within your chosen reporting dates."
-              : "See the month clearly, then act on what needs attention."}
-          </p>
         </div>
       </div>
 
@@ -187,7 +179,6 @@ export function ReviewWorkspace({
             <MonthlyTotalsSection
               viewContract={state.viewContract}
               refreshKey={refreshKey}
-              onOpenPlanningTools={openPlanningTools}
               onOpenTransactions={() => {
                 if (snapshot !== null) onOpenPeriodTransactions(
                   snapshot.reportingPeriodRange,
@@ -337,50 +328,19 @@ export function ReviewWorkspace({
               )}
             />
             </div>
-            <aside className="monthly-attention review-overview-attention" aria-label="Monthly attention">
-                <h3>{isCalendarMonth === false ? "Period checks" : "Monthly checks"}</h3>
-                {monthlyAttention === null ? (
-                  <p role="status">Calculating monthly exceptions...</p>
-                ) : (
-                  <div className="monthly-attention-content">
-                    {monthlyAttention.categoryReviewCount > 0 && (
-                      <div className="monthly-attention-item">
-                        <p>{monthlyAttention.categoryReviewCount} category {monthlyAttention.categoryReviewCount === 1
-                          ? "decision needs" : "decisions need"} review {isCalendarMonth === false
-                            ? "in this period."
-                            : "this month."}</p>
-                      </div>
-                    )}
-                    {monthlyAttention.overTargetCategoryCount > 0 && (
-                      <div className="monthly-attention-item">
-                        <a href="#target-vs-actual">
-                          Review {monthlyAttention.overTargetCategoryCount} {monthlyAttention.overTargetCategoryCount === 1
-                            ? "category"
-                            : "categories"} over target
-                        </a>
-                      </div>
-                    )}
-                    <div className="monthly-attention-item">
-                      {(state.viewContract.state !== "loading" &&
-                        (state.viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0) ? (
-                        <p role="status">Budget checks are incomplete until missing dated rates are recorded.</p>
-                      ) : monthlyAttention.categoryReviewCount === 0 && monthlyAttention.overTargetCategoryCount === 0 ? (
-                        <p>No category reviews or over-target categories {isCalendarMonth === false
-                          ? "in this period."
-                          : "this month."}</p>
-                      ) : null}
-                      <button type="button" onClick={onOpenTransactions}>
-                        Review all transactions
-                      </button>
-                    </div>
-                    <AccountCoverageSummary
-                      isActive={isActive}
-                      refreshKey={refreshKey}
-                      onOpenCoverage={onOpenCoverage}
-                    />
-                  </div>
-                )}
-              </aside>
+            <ReviewAttentionSection
+              isActive={isActive}
+              refreshKey={refreshKey}
+              monthlyAttention={monthlyAttention}
+              isPaydayPeriod={isCalendarMonth === false}
+              isIncomplete={(snapshot?.currencyReport?.incompleteCurrencies.length ?? 0) > 0}
+              hasTargets={isCalendarMonth && (snapshot?.targetVsActualCategoryRows.rows.some(
+                (row) => row.targetMinor !== null
+              ) ?? false)}
+              onOpenCoverage={onOpenCoverage}
+              onOpenCategoryReview={onOpenTransactions}
+              onOpenExchangeRates={onOpenExchangeRates}
+            />
             {state.viewContract.state !== "empty" && (
               <div className="review-support review-category-breakdown">
                 <CategoryBreakdownSection viewContract={state.viewContract} />
@@ -422,7 +382,6 @@ export function ReviewWorkspace({
             </details>
           </div>
           <details
-            ref={planningToolsRef}
             className="review-planning-disclosure"
             aria-label="Planning tools"
           >

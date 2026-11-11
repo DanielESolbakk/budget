@@ -97,13 +97,16 @@ test.describe("Dashboard renderer smoke", () => {
   });
 
   test("healthy monthly checks avoid unnecessary category and budget actions", async ({ dashboard }) => {
-    await expect(dashboard.monthlyAttention).toContainText("No category reviews or over-target categories this month.");
+    await expect(dashboard.monthlyAttention.getByRole("heading", { name: "Needs attention", exact: true })).toBeVisible();
+    await expect(dashboard.monthlyAttention).not.toContainText("No category reviews or over-target categories");
+    await expect(dashboard.reviewQueueAction).toHaveCount(0);
     await expect(dashboard.monthlyAttention.getByRole("button", { name: "Set a category target" })).toHaveCount(0);
     await expect(dashboard.monthlyAttention).toContainText("No statement periods recorded");
   });
 
-  test("review action explains that it opens transactions across all months", async ({ window, appShell }) => {
-    await window.getByRole("button", { name: "Review all transactions", exact: true }).click();
+  test("all transactions remain accessible through Activity rather than a competing review action", async ({ window, appShell }) => {
+    await expect(window.getByRole("button", { name: "Review all transactions", exact: true })).toHaveCount(0);
+    await appShell.openWorkspace("Transactions");
     await expect(appShell.workspace("Transactions")).toBeVisible();
   });
 
@@ -133,32 +136,22 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthSelector).toBeDisabled();
   });
 
-  test("monthly net is distinct from spendable cash and links to both planning tools", async ({
+  test("monthly net is distinct from spendable cash while planning stays behind Plan ahead", async ({
     dashboard,
     window,
   }) => {
     await expect(dashboard.monthlyTotal("Monthly net")).toBeVisible();
-    await expect(dashboard.monthlyTotalsSection).toContainText(/monthly net is this month's income minus expenses/i);
+    await expect(dashboard.monthlyTotalsSection).toContainText(/income minus expenses/i);
     await expect(dashboard.monthlyTotalsSection).toContainText(/not spendable cash until your next income/i);
 
-    const planningLinks = window.getByRole("navigation", { name: "Cash planning" });
-    const spendableLink = planningLinks.getByRole("link", {
-      name: "Estimate spendable cash",
-      exact: true,
-    });
-    await expect(spendableLink).toHaveAttribute("href", "#spendable-cash");
-    await expect(planningLinks.getByRole("link", {
-      name: "Compare cashflow scenarios",
-      exact: true,
-    })).toHaveAttribute("href", "#cashflow-scenarios");
+    await expect(window.getByRole("navigation", { name: "Cash planning" })).toHaveCount(0);
 
     const planningDisclosure = window.getByRole("group", { name: "Planning tools" });
     await expect(planningDisclosure).not.toHaveAttribute("open", "");
     await expect(dashboard.spendableCashSection).toBeHidden();
-    await spendableLink.click();
-    await expect(window).toHaveURL(/#spendable-cash$/);
+    await planningDisclosure.getByText("Plan ahead", { exact: true }).click();
     await expect(planningDisclosure).toHaveAttribute("open", "");
-    await expect(dashboard.spendableCashSection).toBeInViewport();
+    await expect(dashboard.spendableCashSection).toBeVisible();
   });
 
   test("category target entry repeats the selected month beside its form", async ({ window }) => {
@@ -331,7 +324,7 @@ test.describe("Dashboard renderer smoke", () => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
     });
 
-    await expect(dashboard.monthlyAttention).toContainText("No category reviews or over-target categories this month.");
+    await expect(dashboard.monthlyAttention).toContainText("No statement periods recorded");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
     const totalsPrecedeAttention = await dashboard.monthlyTotalsSection.evaluate((totals) => {
@@ -369,7 +362,7 @@ test.describe("Dashboard renderer smoke", () => {
     });
     await dashboard.selectMonth("2026-04");
     await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
-    await expect(dashboard.reviewQueueAction).toBeVisible();
+    await expect(dashboard.monthlyAttention.getByRole("button", { name: "Review account coverage" })).toBeVisible();
 
     const longNokTotal = await window.evaluate(() => new Intl.NumberFormat("nb-NO", {
       style: "currency",
@@ -598,11 +591,11 @@ test.describe("Dashboard renderer smoke", () => {
   test("monthly review signals follow a single attention reading path", async ({ window }) => {
     await window.setViewportSize({ width: 1440, height: 1100 });
     const attentionItems = window.locator(".monthly-attention-content > .monthly-attention-item");
-    await expect(attentionItems).toHaveCount(2);
+    await expect(attentionItems).toHaveCount(1);
     const rowPositions = await attentionItems.evaluateAll((items) =>
       [...new Set(items.map((item) => Math.round(item.getBoundingClientRect().top)))]
     );
-    expect(rowPositions).toHaveLength(2);
+    expect(rowPositions).toHaveLength(1);
   });
 
   test("@visual Visual: compact dashboard preserves primary workspace navigation", async ({ window, electronApp }) => {

@@ -306,7 +306,8 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     await categoryTarget.saveButton.click();
     await expect(groceries.getByRole("cell").nth(1)).toContainText("125,00");
     await expect(groceries.getByRole("cell").nth(3)).toHaveText(/40,00\s*kr under target/);
-    await expect(dashboard.monthlyAttention).toContainText("No category reviews or over-target categories this month.");
+    await expect(dashboard.overTargetLink).toHaveCount(0);
+    await expect(dashboard.reviewQueueAction).toHaveCount(0);
   });
 
   test("a failed post-save refresh explains stale review data and retries without losing the target", async ({

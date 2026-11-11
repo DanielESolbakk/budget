@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { _electron as electron, type Locator, type Page } from "@playwright/test";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import {
   installMainProcessNetworkProbe,
@@ -274,6 +274,32 @@ async function tabTo(window: Page, target: Locator): Promise<void> {
 }
 
 test.describe("account statement coverage and checkpoints", () => {
+  test("clear review checks stay neutral and do not imply a budget exists", async ({ window, dashboard }) => {
+    await window.evaluate(async () => {
+      await globalThis.window.budgetApi.accountCoverage.savePeriod({
+        id: "synthetic-clear-period", accountId: "sample-acc",
+        startDateIso: "2025-01-01", endDateIso: "2025-01-31", currencyCode: "NOK",
+        sourceName: "Synthetic confirmed statement", sourceType: "manual",
+        confirmed: true, confirmedAtIso: "2025-02-01T12:00:00Z",
+      });
+      for (const dateIso of ["2025-01-01", "2025-01-31"]) {
+        await globalThis.window.budgetApi.accountCoverage.appendCheckpoint({
+          id: `synthetic-clear-${dateIso}`, accountId: "sample-acc",
+          dateIso, currencyCode: "NOK", balanceMinor: 10000,
+          source: "Synthetic matched checkpoint", recordedAtIso: "2025-02-01T12:00:00Z",
+        });
+      }
+    });
+    await window.reload();
+    await dashboard.selectMonth("2026-03");
+    await expect(dashboard.monthlyAttention.getByRole("heading", { name: "Review status", exact: true })).toBeVisible();
+    await expect(dashboard.monthlyAttention).toContainText("No targets set this month.");
+    await expect(dashboard.monthlyAttention).toContainText("No open confirmation or checkpoint flags");
+    await expect(dashboard.monthlyAttention).not.toContainText("over-target");
+    await expect(dashboard.monthlyAttention.getByRole("button")).toHaveCount(0);
+    await expect(dashboard.monthlyAttention).toHaveClass(/is-clear/);
+  });
+
   test("surfaces account coverage status from monthly review", async ({ window }) => {
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     const coverageSummary = window.getByRole("region", { name: "Account coverage status" });
@@ -306,7 +332,8 @@ test.describe("account statement coverage and checkpoints", () => {
       .toHaveAttribute("aria-current", "page");
 
     await appShell.openWorkspace("Settings");
-    await expect(window.getByRole("region", { name: "Exchange rates", exact: true })).toBeVisible();
+    const settings = window.getByRole("region", { name: "Settings workspace", exact: true });
+    await expect(settings.getByRole("region", { name: "Exchange rates", exact: true }).last()).toBeVisible();
     await expect(navigation.getByRole("button", { name: "Household", exact: true }))
       .toHaveAttribute("aria-current", "page");
   });
@@ -363,7 +390,7 @@ test.describe("account statement coverage and checkpoints", () => {
     await electronApp.close();
     seedCoverageReviewStates(databasePath);
     const coverageApp = await electron.launch({
-      args: [MAIN_ENTRY],
+      args: [MAIN_ENTRY, `--user-data-dir=${join(dirname(databasePath), "coverage-profile")}`],
       env: {
         ...process.env,
         NODE_ENV: "test",
@@ -409,7 +436,7 @@ test.describe("account statement coverage and checkpoints", () => {
     await electronApp.close();
     seedCoverageImportProvenance(databasePath);
     const coverageApp = await electron.launch({
-      args: [MAIN_ENTRY],
+      args: [MAIN_ENTRY, `--user-data-dir=${join(dirname(databasePath), "coverage-profile")}`],
       env: {
         ...process.env,
         NODE_ENV: "test",
@@ -544,7 +571,7 @@ test.describe("account statement coverage and checkpoints", () => {
     await electronApp.close();
     seedCoverageReviewStates(databasePath);
     const coverageApp = await electron.launch({
-      args: [MAIN_ENTRY],
+      args: [MAIN_ENTRY, `--user-data-dir=${join(dirname(databasePath), "coverage-profile")}`],
       env: {
         ...process.env,
         NODE_ENV: "test",
@@ -601,7 +628,7 @@ test.describe("account statement coverage and checkpoints", () => {
     await electronApp.close();
     seedCoverageReviewStates(databasePath);
     const coverageApp = await electron.launch({
-      args: [MAIN_ENTRY],
+      args: [MAIN_ENTRY, `--user-data-dir=${join(dirname(databasePath), "coverage-profile")}`],
       env: {
         ...process.env,
         NODE_ENV: "test",
@@ -683,7 +710,7 @@ test.describe("account statement coverage and checkpoints", () => {
   }) => {
     await electronApp.close();
     const coverageApp = await electron.launch({
-      args: [MAIN_ENTRY],
+      args: [MAIN_ENTRY, `--user-data-dir=${join(dirname(databasePath), "coverage-profile")}`],
       env: {
         ...process.env,
         NODE_ENV: "test",
@@ -725,7 +752,7 @@ test.describe("account statement coverage and checkpoints", () => {
       await coverageApp.close();
       coverageAppClosed = true;
       const restartedApp = await electron.launch({
-        args: [MAIN_ENTRY],
+        args: [MAIN_ENTRY, `--user-data-dir=${join(dirname(databasePath), "coverage-profile")}`],
         env: {
           ...process.env,
           NODE_ENV: "test",

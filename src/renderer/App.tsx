@@ -516,6 +516,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
             onOpenTransactions={openReviewQueue}
             onOpenPeriodTransactions={openPeriodTransactions}
             onOpenCoverage={() => openWorkspace("coverage")}
+            onOpenExchangeRates={() => openWorkspace("settings", true)}
             onTargetSaved={() => setRefreshCounter((counter) => counter + 1)}
             onRetry={() => setRefreshCounter((counter) => counter + 1)}
             savedReportingPeriodRule={savedReportingPeriodRule}

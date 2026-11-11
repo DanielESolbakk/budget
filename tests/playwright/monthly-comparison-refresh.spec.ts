@@ -7,6 +7,11 @@ test("qualifies an in-progress period instead of claiming spending improved agai
   await window.clock.setFixedTime(new Date("2026-05-15T12:00:00"));
   await dashboard.selectMonth("2026-05");
   await expect(dashboard.monthlyTotalsSection.getByText("In progress", { exact: true })).toBeVisible();
+  await expect(dashboard.monthlyComparison).toContainText("not a like-for-like comparison");
+  await expect(dashboard.monthlyComparison.getByRole("group", { name: "Selected period spending" })).toBeHidden();
+  const details = dashboard.monthlyComparison.getByText("Comparison details", { exact: true });
+  await details.focus();
+  await details.press("Enter");
   await expect(dashboard.monthlyComparison.getByRole("group", { name: "Selected period spending" })).toContainText("In progress");
   await expect(dashboard.monthlyComparison.getByRole("group", { name: "Previous period spending" })).toContainText("Ended");
   await expect(dashboard.monthlyComparison.getByRole("group", { name: "Selected period spending" })).toContainText("1 May 2026 - 31 May 2026");
@@ -23,6 +28,17 @@ test("refreshes the previous-month comparison after a backdated manual transacti
   await appShell.openWorkspace("Review");
   await dashboard.selectMonth("2026-05");
   await expect(dashboard.monthlyComparison).toContainText(/Spending increased by 13,00.*April 2026/i);
+  const selected = dashboard.monthlyComparison.getByRole("group", { name: "Selected period spending" });
+  const previous = dashboard.monthlyComparison.getByRole("group", { name: "Previous period spending" });
+  await expect(selected).toBeHidden();
+  await expect(previous).toBeHidden();
+  await dashboard.monthlyComparison.getByText("Comparison details", { exact: true }).click();
+  await expect(selected).toBeVisible();
+  await expect(previous).toBeVisible();
+  await expect(selected).toContainText("1 May 2026 - 31 May 2026");
+  await expect(previous).toContainText("1 April 2026 - 30 April 2026");
+  await dashboard.monthlyComparison.getByText("Comparison details", { exact: true }).click();
+  await expect(previous).toBeHidden();
 
   await appShell.openWorkspace("Import");
   await manualEntry.submitEntry({

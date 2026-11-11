@@ -178,10 +178,10 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   await expect(totals.getByLabel("Income", { exact: true })).toContainText(/3\s?000,00/);
   await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/500,00/);
   await expect(totals.getByLabel("Period net", { exact: true })).toContainText(/2\s?500,00/);
-  await expect(totals).toContainText("Period net is this reporting period's income minus expenses");
+  await expect(totals).toContainText("Income minus expenses; not spendable cash until your next income.");
   await expect(review.getByRole("group", { name: "Spending by category" })).toContainText(/500,00/);
   const paydayComparison = review.getByRole("group", { name: "Payday period comparison" });
-  await expect(paydayComparison.getByRole("heading", { name: "Previous payday period" })).toBeVisible();
+  await paydayComparison.getByText("Comparison details", { exact: true }).click();
   await expect(paydayComparison).toContainText("24 September 2026 - 28 October 2026");
   await expect(review.getByRole("region", { name: "Target vs Actual" })).toHaveCount(0);
   await expect(review.getByText(
@@ -254,7 +254,7 @@ test("saves a last-weekday rule and ignores a superseded period response", async
     delete process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"];
   });
   const calendarComparison = review.getByRole("group", { name: "Monthly comparison" });
-  await expect(calendarComparison.getByRole("heading", { name: "Month-to-month spending" })).toBeVisible();
+  await expect(calendarComparison).toBeVisible();
   await expect(calendarComparison).toContainText("No recorded activity");
   await expect(calendarComparison).not.toContainText("Spending increased");
 
@@ -393,7 +393,7 @@ test("opens only the report's exact transactions and replaces old ledger filters
   await expect(settings.getByRole("status")).toContainText("Reporting period saved.");
   await appShell.openWorkspace("Review");
   const review = window.getByRole("region", { name: "Review workspace" });
-  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
   await expect(ledger.fromDateInput).toHaveValue("2026-10-29");
   await expect(ledger.toDateInput).toHaveValue("2026-11-28");
   await expect(ledger.table).toContainText("Reporting boundary start");
@@ -439,7 +439,7 @@ test("opens only the report's exact transactions and replaces old ledger filters
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "29 September 2026 - 28 October 2026"
   );
-  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
   await expect(ledger.fromDateInput).toHaveValue("2026-09-29");
   await expect(ledger.toDateInput).toHaveValue("2026-10-28");
   await expect(ledger.merchantInput).toHaveValue("");
@@ -452,7 +452,7 @@ test("opens only the report's exact transactions and replaces old ledger filters
   await expect(review.getByLabel("Active reporting range")).toHaveText("1 September 2026 - 30 September 2026");
   await review.getByLabel("Select month", { exact: true }).fill("2026-10");
   await expect(review.getByLabel("Active reporting range")).toHaveText("1 October 2026 - 31 October 2026");
-  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
   await expect(ledger.fromDateInput).toHaveValue("2026-10-01");
   await expect(ledger.toDateInput).toHaveValue("2026-10-31");
   await expect(ledger.table).toContainText("Reporting boundary before");
@@ -527,8 +527,12 @@ test("keeps payday actuals in range with native amounts and transaction-date FX"
       .toContainText("100,00");
     await expect(nativeSubtotals.getByRole("listitem").filter({ hasText: "SEK" }))
       .toContainText("50,00");
+    await review.getByRole("button", { name: "Record exchange rates", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await expect(settings.getByRole("heading", { name: "Exchange rates", exact: true })).toBeVisible();
+    await window.getByRole("button", { name: "Review", exact: true }).click();
 
-    await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+    await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
     const ledgerWorkspace = window.getByRole("region", { name: "Transactions workspace", exact: true });
     const ledgerSummary = ledgerWorkspace.getByRole("region", { name: "Filtered transaction totals", exact: true });
     await expect(ledgerSummary.getByLabel("Filtered expenses", { exact: true })).toContainText(/1\s?150,00/);
@@ -806,6 +810,7 @@ test("reviews and navigates two fixed reporting dates within one month", async (
   await expect(review.getByLabel("Active reporting range"))
     .toHaveText("15 February 2026 - 24 February 2026");
   const comparison = review.getByRole("group", { name: "Payday period comparison" });
+  await comparison.getByText("Comparison details", { exact: true }).click();
   await expect(comparison).toContainText("25 January 2026 - 14 February 2026");
   await expect(comparison.getByRole("group", { name: "Selected period spending" })).toContainText("150,00");
   await expect(comparison.getByRole("group", { name: "Previous period spending" })).toContainText("100,00");
@@ -823,7 +828,7 @@ test("reviews and navigates two fixed reporting dates within one month", async (
     .toHaveText("25 February 2026 - 14 March 2026");
   await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/500,00/);
   await expect(totals.getByLabel("Income", { exact: true })).toContainText(/0,00/);
-  await totals.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await totals.getByRole("button", { name: "View transactions for this period", exact: true }).click();
   await expect(ledger.fromDateInput).toHaveValue("2026-02-25");
   await expect(ledger.toDateInput).toHaveValue("2026-03-14");
   await expect(ledger.table).toContainText("Second two-date period");

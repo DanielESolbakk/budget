@@ -20,24 +20,9 @@ function formatMinor(minor: number): string {
   return nokCurrencyFormatter.format(minor / MINOR_UNITS_PER_NOK);
 }
 
-function CashPlanningNavigation({
-  onOpenPlanningTools,
-}: {
-  onOpenPlanningTools: () => void;
-}): React.JSX.Element {
-  return (
-    <nav className="cash-planning-shortcuts" aria-label="Cash planning">
-      <strong>Cash planning</strong>
-      <a href="#spendable-cash" onClick={onOpenPlanningTools}>Estimate spendable cash</a>
-      <a href="#cashflow-scenarios" onClick={onOpenPlanningTools}>Compare cashflow scenarios</a>
-    </nav>
-  );
-}
-
 export interface MonthlyTotalsSectionProps {
   viewContract: DashboardViewContract;
   refreshKey: number;
-  onOpenPlanningTools: () => void;
   periodControls?: React.ReactNode;
   onOpenTransactions?: () => void;
   isChangingPeriod?: boolean;
@@ -48,7 +33,6 @@ type LoadedDashboardViewContract = Exclude<DashboardViewContract, { state: "load
 export function MonthlyTotalsSection({
   viewContract,
   refreshKey,
-  onOpenPlanningTools,
   periodControls,
   onOpenTransactions,
   isChangingPeriod = false,
@@ -106,10 +90,9 @@ export function MonthlyTotalsSection({
         </div>
       </dl>
       <p className="monthly-net-meaning">
-        {isPaydayPeriod
-          ? "Period net is this reporting period's income minus expenses; it is not spendable cash until your next income."
-          : "Monthly net is this month's income minus expenses; it is not spendable cash until your next income."}
+        Income minus expenses; not spendable cash until your next income.
       </p>
+      <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
       <div className="monthly-report-actions">
         {onOpenTransactions !== undefined && (
           <button
@@ -118,12 +101,10 @@ export function MonthlyTotalsSection({
             disabled={isChangingPeriod}
             onClick={onOpenTransactions}
           >
-            View transactions for these dates
+            View transactions for this period
           </button>
         )}
-        <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
       </div>
-      <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
       <p className="comparison-basis-note">Recorded transactions only. Statement coverage may be incomplete.</p>
       {currencyReport?.nativeSubtotals.some((subtotal) => subtotal.currencyCode !== "NOK") && (
         <div className="native-currency-subtotals">
@@ -235,7 +216,6 @@ function MonthlyComparisonSummary({
       aria-label={isPaydayPeriod ? "Payday period comparison" : "Monthly comparison"}
       aria-busy={!isFuturePeriod && isLoading}
     >
-      <h3>{isPaydayPeriod ? "Previous payday period" : "Month-to-month spending"}</h3>
       {isFuturePeriod ? (
         <p role="status">These dates are in the future. Totals show recorded transactions only, not a forecast.</p>
       ) : previousPeriodLabel === null ? (
@@ -259,27 +239,30 @@ function MonthlyComparisonSummary({
           </p>
         ) : (
           <>
-            <dl className="period-spending-comparison">
-              <div role="group" aria-label="Selected period spending">
-                <dt>Selected period · {isInProgress ? "In progress" : "Ended"}</dt>
-                <dd className="comparison-amount">{formatCurrencyAmount(currentExpenseMinor, "NOK")}</dd>
-                <dd className="comparison-dates">{formatReportingPeriodRange(currentRange)}</dd>
-              </div>
-              <div role="group" aria-label="Previous period spending">
-                <dt>Previous period · Ended</dt>
-                <dd className="comparison-amount">{formatCurrencyAmount(comparison.previousExpenseMinor, "NOK")}</dd>
-                <dd className="comparison-dates">{previousRange === null ? "" : formatReportingPeriodRange(previousRange)}</dd>
-              </div>
-            </dl>
             <p role="status">
               {isInProgress
-                ? "An unfinished period is not a like-for-like comparison with an ended period."
+                ? "This period is still in progress; it is not a like-for-like comparison with an ended period."
                 : currentExpenseMinor === comparison.previousExpenseMinor
               ? `Spending was unchanged at ${formatCurrencyAmount(currentExpenseMinor, "NOK")} compared with ${previousPeriodLabel}.`
               : `Spending ${currentExpenseMinor > comparison.previousExpenseMinor ? "increased" : "decreased"} by ${
                 formatCurrencyAmount(Math.abs(currentExpenseMinor - comparison.previousExpenseMinor), "NOK")
               } compared with ${previousPeriodLabel}.`}
             </p>
+            <details className="comparison-details">
+              <summary>Comparison details</summary>
+              <dl className="period-spending-comparison">
+                <div role="group" aria-label="Selected period spending">
+                  <dt>Selected period · {isInProgress ? "In progress" : "Ended"}</dt>
+                  <dd className="comparison-amount">{formatCurrencyAmount(currentExpenseMinor, "NOK")}</dd>
+                  <dd className="comparison-dates">{formatReportingPeriodRange(currentRange)}</dd>
+                </div>
+                <div role="group" aria-label="Previous period spending">
+                  <dt>Previous period · Ended</dt>
+                  <dd className="comparison-amount">{formatCurrencyAmount(comparison.previousExpenseMinor, "NOK")}</dd>
+                  <dd className="comparison-dates">{previousRange === null ? "" : formatReportingPeriodRange(previousRange)}</dd>
+                </div>
+              </dl>
+            </details>
           </>
         )
       ) : (
