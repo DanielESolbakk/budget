@@ -144,6 +144,7 @@ function MonthlyComparisonSummary({
     : getAdjacentReportingPeriod(reportingPeriodRule, currentRange.startDateIso, "previous");
   const isPaydayPeriod = reportingPeriodRule.type !== "calendar-month";
   const previousYearMonth = previousRange?.startDateIso.slice(0, 7) ?? null;
+  const previousPeriodStartDateIso = isPaydayPeriod ? previousRange?.startDateIso : undefined;
   const year = Number(selectedYearMonth.slice(0, 4));
   const month = Number(selectedYearMonth.slice(5, 7));
   const previousMonthDate = new Date(Date.UTC(year, month - 2, 1));
@@ -176,7 +177,7 @@ function MonthlyComparisonSummary({
     setComparison({ status: "loading", previousYearMonth });
 
     window.budgetApi.dashboard
-      .getViewData(previousYearMonth, reportingPeriodRule)
+      .getViewData(previousYearMonth, reportingPeriodRule, previousPeriodStartDateIso)
       .then((previousView) => {
         if (!isActive) return;
         if (previousView.state === "loading") {
@@ -198,7 +199,7 @@ function MonthlyComparisonSummary({
     return () => {
       isActive = false;
     };
-  }, [previousYearMonth, reportingPeriodRule, refreshKey, retryCount]);
+  }, [previousPeriodStartDateIso, previousYearMonth, reportingPeriodRule, refreshKey, retryCount]);
   const comparisonIsCurrent = previousYearMonth !== null &&
     comparison.previousYearMonth === previousYearMonth;
   const isLoading = previousYearMonth !== null &&

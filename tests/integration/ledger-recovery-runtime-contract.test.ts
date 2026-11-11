@@ -72,6 +72,7 @@ function createSnapshotData(): LedgerSnapshotData {
     recurringCommitments: [],
     recurringCommitmentPaymentLinks: [],
     recurringCommitmentDecisions: [],
+    reportingPeriodRule: { type: "calendar-month" },
   };
 }
 

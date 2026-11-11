@@ -455,9 +455,23 @@ test("reviews and navigates two fixed reporting dates within one month", async (
   await electronApp.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
   });
-  await window.clock.install({ time: new Date("2026-02-10T12:00:00") });
+  await window.clock.install({ time: new Date("2026-02-20T12:00:00") });
 
   const transactions: ManualEntryValues[] = [
+    {
+      accountId: "sample-acc",
+      bookedAtIso: "2026-01-24",
+      amountNok: "-50,00",
+      merchantRaw: "Previous period boundary before",
+      categoryId: "groceries",
+    },
+    {
+      accountId: "sample-acc",
+      bookedAtIso: "2026-01-25",
+      amountNok: "-100,00",
+      merchantRaw: "Previous period boundary start",
+      categoryId: "groceries",
+    },
     {
       accountId: "sample-acc",
       bookedAtIso: "2026-02-15",
@@ -517,8 +531,8 @@ test("reviews and navigates two fixed reporting dates within one month", async (
   await earlierDate.fill("15");
   await laterDate.fill("25");
   const preview = reportingSettings.getByLabel("Reporting period preview");
-  await expect(preview).toContainText("25 January 2026 - 14 February 2026");
   await expect(preview).toContainText("15 February 2026 - 24 February 2026");
+  await expect(preview).toContainText("25 February 2026 - 14 March 2026");
   await savePreference.click();
   await expect(reportingSettings.getByRole("status"))
     .toContainText("Reporting period saved.");
@@ -526,13 +540,16 @@ test("reviews and navigates two fixed reporting dates within one month", async (
   await appShell.openWorkspace("Review");
   const review = window.getByRole("region", { name: "Review workspace" });
   await expect(review.getByLabel("Active reporting range"))
-    .toHaveText("25 January 2026 - 14 February 2026");
+    .toHaveText("15 February 2026 - 24 February 2026");
+  const comparison = review.getByRole("group", { name: "Payday period comparison" });
+  await expect(comparison).toContainText("25 January 2026 - 14 February 2026");
+  await expect(comparison).toContainText(/from .*100,00.* to .*150,00/);
   const totals = review.getByRole("region", { name: "Payday-period totals" });
   const nextPeriod = review.getByRole("button", { name: "Next period" });
   await nextPeriod.click();
   await expect(review.getByLabel("Active reporting range"))
-    .toHaveText("15 February 2026 - 24 February 2026");
-  await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/150,00/);
+    .toHaveText("25 February 2026 - 14 March 2026");
+  await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/500,00/);
   await review.getByRole("combobox", { name: "Select period" })
     .selectOption("2026-02-25");
   await expect(review.getByLabel("Active reporting range"))

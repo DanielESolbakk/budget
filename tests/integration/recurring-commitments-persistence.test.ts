@@ -856,7 +856,7 @@ describe("recurring commitments in backup snapshots", () => {
     try {
       const snapshot = buildBackupSnapshot(snapshotInput);
 
-      expect(snapshot.metadata.version).toBe("10");
+      expect(snapshot.metadata.version).toBe("11");
       expect(Reflect.get(snapshot, "recurringCommitments")).toEqual([commitment]);
       expect(Reflect.get(snapshot, "recurringCommitmentPaymentLinks")).toEqual([paymentLink]);
       expect(Reflect.get(snapshot, "recurringCommitmentDecisions")).toEqual([decision]);
