@@ -78,6 +78,22 @@ function withDatabase<Result>(
 }
 
 describe("SQLite ledger queries", () => {
+  it("clamps out-of-range pages to matching rows and keeps empty results on page one", () => {
+    withDatabase(Array.from({ length: 50 }, (_, index) =>
+      transaction(`page-${index}`, "2026-05-10", -100, "Kiwi", { categoryId: "groceries" })
+    ), (database) => {
+      const result = queryLedger(database, HOUSEHOLD.id, { categoryId: "groceries", page: 2, pageSize: 50 });
+      expect(result.page).toBe(1);
+      expect(result.transactions).toHaveLength(50);
+      expect(result.totalCount).toBe(50);
+      expect(result.summary.expenseMinor).toBe(5000);
+      const empty = queryLedger(database, HOUSEHOLD.id, { merchant: "absent", page: 2 });
+      expect(empty.page).toBe(1);
+      expect(empty.transactions).toEqual([]);
+      expect(empty.totalCount).toBe(0);
+    });
+  });
+
   it("filters signed NOK conversions across all pages and discloses missing-rate exclusions", () => {
     withDatabase([
       { ...transaction("eur-expense", "2026-05-10", -10000, "Synthetic FX"), currencyCode: "EUR" },

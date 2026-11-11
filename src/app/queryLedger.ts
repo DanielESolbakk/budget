@@ -18,8 +18,9 @@ export function queryLedger(
   const rates = database.listExchangeRates();
   const { transactions: allTransactions, amountFilterExclusions } = filterLedgerByNokAmount(candidates, accounts, rates, query);
   const summary = buildLedgerSummary(allTransactions, accounts, rates);
-  const page = query.page ?? 1;
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(allTransactions.length / pageSize));
+  const page = Math.min(query.page ?? 1, pageCount);
   return {
     transactions: allTransactions.slice((page - 1) * pageSize, page * pageSize),
     totalCount: allTransactions.length,

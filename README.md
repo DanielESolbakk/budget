@@ -77,6 +77,8 @@ Editing a ledger filter shows **Filters changed**, so a filtered subset is not m
 
 Reversed From/To dates mark both fields invalid with an inline correction message. They do not query or display zero totals; the previous rows remain until corrected or cleared, and saving the invalid draft is disabled.
 
+If refreshed matches no longer fill the current page, the ledger moves to the last available page and loads its transactions and totals together. An in-flight query invalidated by a filter draft still finishes its loading state without replacing the previous rows with obsolete results.
+
 #### Human comprehension check
 
 Use synthetic transactions with recorded activity in the selected and preceding periods. Ask a person unfamiliar with this feature to perform the following without coaching:
@@ -276,6 +278,8 @@ replace desktop/narrow-window visual and focus checks when consolidating rules.
 - Renderer preflight component-contract tests use the existing Playwright browser server with a controlled bridge to schedule responses; they are not native import-to-ledger evidence. Existing Electron journeys separately cover real import and registry persistence.
 
 ## Agent Readiness
+
+Product CI runs for non-draft pull requests targeting any branch, including stacked feature branches. Existing changed-file gates select extended validation; pushes and merge-queue validation remain scoped to `main`.
 
 - Universal entrypoint for agents: [AGENTS.md](AGENTS.md)
 - Repo-wide policy: [.github/copilot-instructions.md](.github/copilot-instructions.md)

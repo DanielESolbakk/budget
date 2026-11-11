@@ -179,6 +179,10 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
       .list(query)
       .then((result) => {
         if (!active || requestFilterRevision !== latestFilterRevision.current) return;
+        if (result.page !== (query.page ?? 1)) {
+          setQuery({ ...query, page: result.page });
+          return;
+        }
         setTransactions(result.transactions);
         setAccounts(result.accounts);
         setTotalCount(result.totalCount);
@@ -194,9 +198,9 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
         setError(loadError instanceof Error ? loadError.message : "Unable to load ledger.");
       })
       .finally(() => {
-        if (active && requestFilterRevision === latestFilterRevision.current) {
+        if (active) {
           setIsLoading(false);
-          setIsFilterPending(false);
+          if (requestFilterRevision === latestFilterRevision.current) setIsFilterPending(false);
         }
       });
 
