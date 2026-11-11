@@ -99,7 +99,7 @@ function addSyntheticForeignCurrencyReportingActivity(databasePath: string): voi
   }
 }
 
-test("saves a last-weekday payday rule and reviews its exact range", async ({
+test("saves a last-weekday rule and ignores a superseded period response", async ({
   appShell,
   electronApp,
   manualEntry,
@@ -213,8 +213,18 @@ test("saves a last-weekday payday rule and reviews its exact range", async ({
   );
 
   const reportingMode = review.getByLabel("Reporting mode");
-  await reportingMode.focus();
-  await reportingMode.press("ArrowUp");
+  await electronApp.evaluate(() => {
+    process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-11";
+    process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "750";
+  });
+  const monthSelector = review.getByRole("combobox", { name: "Select month" });
+  await monthSelector.selectOption("2026-11");
+  const updatingStatus = review.getByRole("status")
+    .filter({ hasText: "Updating reporting period..." });
+  await expect(updatingStatus).toBeVisible();
+  await expect(monthSelector).toBeDisabled();
+  await expect(reportingMode).toBeEnabled();
+  await reportingMode.selectOption("calendar-month");
   await expect(reportingMode).toHaveValue("calendar-month");
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "1 October 2026 - 31 October 2026"
@@ -222,6 +232,15 @@ test("saves a last-weekday payday rule and reviews its exact range", async ({
   const calendarTotals = review.getByRole("region", { name: "Monthly Totals" });
   await expect(calendarTotals.getByLabel("Expenses", { exact: true })).toContainText(/150,00/);
   await expect(calendarTotals.getByLabel("Monthly net", { exact: true })).toContainText(/2\s?850,00/);
+  await window.evaluate(() => globalThis.window.budgetApi.dashboard.getViewData("2026-11"));
+  await expect(reportingMode).toHaveValue("calendar-month");
+  await expect(review.getByLabel("Active reporting range")).toHaveText(
+    "1 October 2026 - 31 October 2026"
+  );
+  await electronApp.evaluate(() => {
+    delete process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"];
+    delete process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"];
+  });
   const calendarComparison = review.getByRole("group", { name: "Monthly comparison" });
   await expect(calendarComparison.getByRole("heading", { name: "Month-to-month spending" })).toBeVisible();
   await expect(calendarComparison).toContainText(/increased by 150,00/);
