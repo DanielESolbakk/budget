@@ -6,6 +6,7 @@ import {
 } from "../../domain/date/reportingPeriods.js";
 import { formatCurrencyAmount } from "../formatCurrencyAmount.js";
 import { formatReportingPeriodRange } from "../reportingPeriodDisplay.js";
+import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 
 const MINOR_UNITS_PER_NOK = 100;
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
@@ -38,6 +39,8 @@ export interface MonthlyTotalsSectionProps {
   refreshKey: number;
   onOpenPlanningTools: () => void;
   periodControls?: React.ReactNode;
+  onOpenTransactions?: () => void;
+  isChangingPeriod?: boolean;
 }
 
 type LoadedDashboardViewContract = Exclude<DashboardViewContract, { state: "loading" }>;
@@ -47,6 +50,8 @@ export function MonthlyTotalsSection({
   refreshKey,
   onOpenPlanningTools,
   periodControls,
+  onOpenTransactions,
+  isChangingPeriod = false,
 }: MonthlyTotalsSectionProps): React.JSX.Element {
   const isPaydayPeriod = viewContract.state !== "loading" &&
     viewContract.snapshot.reportingPeriodRule.type !== "calendar-month";
@@ -105,7 +110,19 @@ export function MonthlyTotalsSection({
           ? "Period net is this reporting period's income minus expenses; it is not spendable cash until your next income."
           : "Monthly net is this month's income minus expenses; it is not spendable cash until your next income."}
       </p>
-      <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
+      <div className="monthly-report-actions">
+        {onOpenTransactions !== undefined && (
+          <button
+            type="button"
+            className="action-secondary"
+            disabled={isChangingPeriod}
+            onClick={onOpenTransactions}
+          >
+            View transactions for these dates
+          </button>
+        )}
+        <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
+      </div>
       <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
       {currencyReport?.nativeSubtotals.some((subtotal) => subtotal.currencyCode !== "NOK") && (
         <div className="native-currency-subtotals">
@@ -148,20 +165,20 @@ function MonthlyComparisonSummary({
   const isPaydayPeriod = reportingPeriodRule.type !== "calendar-month";
   const previousYearMonth = previousRange?.startDateIso.slice(0, 7) ?? null;
   const previousPeriodStartDateIso = isPaydayPeriod ? previousRange?.startDateIso : undefined;
-  const year = Number(selectedYearMonth.slice(0, 4));
-  const month = Number(selectedYearMonth.slice(5, 7));
-  const previousMonthDate = new Date(Date.UTC(year, month - 2, 1));
-  const previousMonthLabel = new Intl.DateTimeFormat("nb-NO", {
-    month: "short",
+  const previousMonthLabel = previousRange === null ? null : new Intl.DateTimeFormat("en-GB", {
+    month: "long",
     year: "numeric",
     timeZone: "UTC",
-  }).format(previousMonthDate);
+  }).format(new Date(`${previousRange.startDateIso}T00:00:00.000Z`));
   const previousPeriodLabel = previousRange === null
     ? null
     : isPaydayPeriod
       ? formatReportingPeriodRange(previousRange)
       : previousMonthLabel;
   const currentExpenseMinor = viewContract.snapshot.monthlyTotals.expenseMinor;
+  const today = toLocalIsoDate(new Date());
+  const isFuturePeriod = currentRange.startDateIso > today;
+  const isInProgress = currentRange.startDateIso <= today && today < currentRange.endDateExclusiveIso;
   const currentIsIncomplete = (viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0;
   const [retryCount, setRetryCount] = React.useState(0);
   const [comparison, setComparison] = React.useState<MonthlyComparisonState>({
@@ -216,7 +233,9 @@ function MonthlyComparisonSummary({
       aria-busy={isLoading}
     >
       <h3>{isPaydayPeriod ? "Previous payday period" : "Month-to-month spending"}</h3>
-      {previousPeriodLabel === null ? (
+      {isFuturePeriod ? (
+        <p role="status">These dates are in the future. Totals show recorded transactions only, not a forecast.</p>
+      ) : previousPeriodLabel === null ? (
         <p role="status">No previous reporting period is available.</p>
       ) : isLoading ? (
         <p role="status">Loading {isPaydayPeriod ? "previous-period" : "previous-month"} comparison...</p>
@@ -235,6 +254,12 @@ function MonthlyComparisonSummary({
             No recorded activity {viewContract.state === "empty" ? "in the selected period" : `for ${previousPeriodLabel}`}.
             {" "}A spending change cannot be established from missing activity.
           </p>
+        ) : isInProgress ? (
+          <p role="status">
+            This period is in progress. Recorded spending is {formatCurrencyAmount(currentExpenseMinor, "NOK")};
+            {" "}the full previous period ({previousPeriodLabel}) has {formatCurrencyAmount(comparison.previousExpenseMinor, "NOK")}.
+            {" "}This is not a like-for-like comparison.
+          </p>
         ) : (
           <p role="status">
             {currentExpenseMinor === comparison.previousExpenseMinor
@@ -249,6 +274,7 @@ function MonthlyComparisonSummary({
       ) : (
         <p role="status">Loading {isPaydayPeriod ? "previous-period" : "previous-month"} comparison...</p>
       )}
+      {!isFuturePeriod && <p className="comparison-basis-note">Recorded transactions only. Statement coverage may be incomplete.</p>}
     </div>
   );
 }

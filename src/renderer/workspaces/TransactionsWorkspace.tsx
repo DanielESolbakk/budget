@@ -1,5 +1,5 @@
 import React from "react";
-import { LedgerSection } from "../dashboard/LedgerSection.js";
+import { LedgerSection, type LedgerFilterRequest } from "../dashboard/LedgerSection.js";
 import { CategoryReviewSection, type UncategorizedQueueState } from "../import/CategoryReviewSection.js";
 
 interface TransactionsWorkspaceProps {
@@ -7,6 +7,8 @@ interface TransactionsWorkspaceProps {
   refreshKey: number;
   reviewQueueFocusRequest: number;
   onCategorySaved: () => void;
+  filterRequest?: LedgerFilterRequest | null;
+  onBackToReview?: () => void;
 }
 
 export function TransactionsWorkspace({
@@ -14,6 +16,8 @@ export function TransactionsWorkspace({
   refreshKey,
   reviewQueueFocusRequest,
   onCategorySaved,
+  filterRequest = null,
+  onBackToReview,
 }: TransactionsWorkspaceProps): React.JSX.Element {
   const [uncategorizedQueueState, setUncategorizedQueueState] = React.useState<UncategorizedQueueState>({
     count: 0,
@@ -33,6 +37,14 @@ export function TransactionsWorkspace({
         <h2>Transactions</h2>
         <p>Search the ledger and review missing or uncertain category decisions.</p>
       </div>
+      {filterRequest !== null && filterRequest !== undefined && (
+        <div className="ledger-report-context">
+          <p>Opened from report: {filterRequest.description}. Ledger filters below can be changed.</p>
+          <button type="button" className="action-secondary" onClick={onBackToReview}>
+            Back to period review
+          </button>
+        </div>
+      )}
       {uncategorizedQueueState.isReady && uncategorizedQueueState.count > 0 && (
         <div className="ledger-review-action">
           <button
@@ -51,6 +63,7 @@ export function TransactionsWorkspace({
       <div className="transactions-workspace-grid">
         <LedgerSection
           refreshKey={refreshKey}
+          filterRequest={filterRequest}
         />
         <CategoryReviewSection
           refreshKey={refreshKey}

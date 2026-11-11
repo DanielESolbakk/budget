@@ -466,7 +466,8 @@ test.describe("Dashboard renderer smoke", () => {
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
     });
 
-    await dashboard.selectMonth("2026-04");
+    await dashboard.openPeriodControls();
+    await dashboard.monthSelector.fill("2026-04");
     const updatingStatus = window.getByRole("status").filter({ hasText: "Updating reporting period..." });
     await expect(updatingStatus).toBeVisible();
     await expect(dashboard.monthSelector).toBeDisabled();

@@ -16,21 +16,30 @@ describe("review period navigation", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-11T12:00:00"));
     const markup = renderReview("2026-12", ["2026-11"]);
-    expect(markup).toContain('<option value="2026-12" selected="">');
+    expect(markup).toMatch(/<input[^>]*type="month"[^>]*value="2026-12"/);
+    expect(markup).toMatch(/<input[^>]*type="month"[^>]*lang="en-GB"/);
     expect(markup).toContain("Future period");
-    expect(markup).toMatch(/aria-label="Next month[^"]*"[^>]*disabled=""/);
+    expect(markup).not.toMatch(/aria-label="Next month[^"]*"[^>]*disabled=""/);
   });
 
   it("offers a return to the current month without calling history a preference override", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-11T12:00:00"));
     const markup = renderReview("2026-10", ["2026-10"]);
-    expect(markup).toContain("Historical period");
+    expect(markup).not.toContain("Historical period");
     expect(markup).toContain("Current month");
     expect(markup).not.toContain("Custom view");
     expect(markup).not.toContain("Use household default");
     expect(markup).toContain("1 November 2026 - 30 November 2026");
-    expect(markup).toContain('<option value="2026-11"');
+    expect(markup).toContain('type="month"');
+  });
+
+  it("identifies an unfinished period and offers its transactions without expanding controls", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-11T12:00:00"));
+    const markup = renderReview("2026-11", []);
+    expect(markup).toContain("In progress");
+    expect(markup).toContain("View transactions for these dates");
   });
 
   it("disables period controls while a period query is in progress", () => {
@@ -63,6 +72,7 @@ describe("review period navigation", () => {
       onMonthChange: () => undefined,
       onReportingModeChange: () => undefined,
       onOpenTransactions: () => undefined,
+      onOpenPeriodTransactions: () => undefined,
       onOpenCoverage: () => undefined,
       onTargetSaved: () => undefined,
       onRetry: () => undefined,
@@ -70,7 +80,7 @@ describe("review period navigation", () => {
 
     expect(markup).toMatch(/<button[^>]*aria-label="Previous period[^"]*"[^>]*disabled=""/);
     expect(markup).toMatch(/<button[^>]*aria-label="Next period[^"]*"[^>]*disabled=""/);
-    expect(markup).toMatch(/<select[^>]*aria-label="Select month"[^>]*disabled=""/);
+    expect(markup).toMatch(/<input[^>]*aria-label="Select month"[^>]*disabled=""/);
   });
 });
 
@@ -93,6 +103,7 @@ function renderReview(selectedYearMonth: string, availableMonths: string[]): str
     onMonthChange: () => undefined,
     onReportingModeChange: () => undefined,
     onOpenTransactions: () => undefined,
+    onOpenPeriodTransactions: () => undefined,
     onOpenCoverage: () => undefined,
     onTargetSaved: () => undefined,
     onRetry: () => undefined,

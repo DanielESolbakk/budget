@@ -218,8 +218,42 @@
   font-size: 0.875rem;
 }
 
-.reporting-period-help {
+.reporting-period-controls > p,
+.reporting-basis-disclosure > p {
   max-width: 65ch;
+}
+
+.reporting-basis-disclosure > summary {
+  width: fit-content;
+  min-height: 44px;
+  padding-block: 0.65rem;
+  color: var(--orange);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.reporting-basis-disclosure[open] .reporting-period-mode {
+  margin-bottom: 0.65rem;
+}
+
+.ledger-report-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.ledger-report-context p {
+  flex: 1 1 25rem;
+  margin: 0;
+  max-width: 65ch;
+}
+
+.comparison-basis-note {
+  color: var(--paper-muted);
+  font-size: 0.875rem;
 }
 
 .reporting-period-navigation {
@@ -264,6 +298,8 @@
 }
 
 .reporting-period-navigation .month-picker {
+  display: grid;
+  gap: 0.4rem;
   width: 100%;
   max-width: none;
   min-width: 0;

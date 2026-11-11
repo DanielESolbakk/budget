@@ -582,7 +582,7 @@ test.describe("CSV import renderer workflow", () => {
     await appShell.openWorkspace("Review");
     await dashboard.openPeriodControls();
     const monthSelector = dashboard.monthSelector;
-    await monthSelector.selectOption("2026-05");
+    await monthSelector.fill("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
 

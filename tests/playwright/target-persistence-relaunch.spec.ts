@@ -46,7 +46,7 @@ test.describe("Category target persistence across application restart", () => {
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
       await restartedWindow.getByText("Change period", { exact: true }).click();
-      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
+      await restartedWindow.getByLabel("Select month", { exact: true }).fill("2026-05");
       await restartedWindow.getByText("Manage category targets", { exact: true }).click();
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
@@ -77,7 +77,7 @@ test.describe("Category target persistence across application restart", () => {
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
       const restartedDashboardTarget = new DashboardTargetPage(restartedWindow);
       await restartedWindow.getByText("Change period", { exact: true }).click();
-      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
+      await restartedWindow.getByLabel("Select month", { exact: true }).fill("2026-05");
       await restartedWindow.getByText("Manage category targets", { exact: true }).click();
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(

@@ -1,9 +1,11 @@
 import React from "react";
 import { getMonthlyAttentionSummary, type DashboardViewContract } from "../../shared/dashboard.js";
+import { isYearMonth } from "../../domain/types.js";
 import {
   getAdjacentReportingPeriod,
   resolveCurrentReportingPeriod,
   resolveReportingPeriod,
+  type ReportingPeriodRange,
 } from "../../domain/date/reportingPeriods.js";
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 import { CategoryBreakdownSection } from "../dashboard/CategoryBreakdownSection.js";
@@ -49,6 +51,7 @@ interface ReviewWorkspaceProps {
   onMonthChange: (yearMonth: string) => void;
   onReportingModeChange: (mode: "calendar-month" | "payday-period") => void;
   onOpenTransactions: () => void;
+  onOpenPeriodTransactions: (range: ReportingPeriodRange, rule: ReportingPeriodRule) => void;
   onOpenCoverage: () => void;
   onTargetSaved: () => void;
   onRetry: () => void;
@@ -66,6 +69,7 @@ export function ReviewWorkspace({
   onMonthChange,
   onReportingModeChange,
   onOpenTransactions,
+  onOpenPeriodTransactions,
   onOpenCoverage,
   onTargetSaved,
   onRetry,
@@ -81,15 +85,8 @@ export function ReviewWorkspace({
     snapshot.reportingPeriodRule,
     toLocalIsoDate(new Date())
   );
-  const periodMonths = state.status === "ready"
-    ? [...new Set([
-      ...state.availableMonths,
-      state.selectedYearMonth,
-      ...(currentPeriod === null ? [] : [currentPeriod.startDateIso.slice(0, 7)]),
-    ])].sort()
-    : [];
   const twoFixedDayPeriodOptions = isTwoFixedDayRule && state.status === "ready" && snapshot !== null
-    ? periodMonths
+    ? [state.selectedYearMonth]
       .flatMap((yearMonth) => [
         resolveReportingPeriod(snapshot.reportingPeriodRule, yearMonth, 0),
         resolveReportingPeriod(snapshot.reportingPeriodRule, yearMonth, 1),
@@ -121,15 +118,6 @@ export function ReviewWorkspace({
   const isCurrentPeriod = snapshot?.reportingPeriodRange.startDateIso === currentPeriod?.startDateIso;
   const isFuturePeriod = snapshot !== null && currentPeriod !== null &&
     snapshot.reportingPeriodRange.startDateIso > currentPeriod.startDateIso;
-  const latestRecordedMonth = state.status === "ready"
-    ? state.dashboardData.monthlyTotals.map((total) => total.yearMonth).sort().at(-1)
-    : undefined;
-  const latestRecordedPeriod = snapshot === null || latestRecordedMonth === undefined
-    ? null
-    : resolveReportingPeriod(snapshot.reportingPeriodRule, latestRecordedMonth, isTwoFixedDayRule ? 1 : 0);
-  const canNavigateForward = nextPeriod !== null && currentPeriod !== null &&
-    (nextPeriod.startDateIso <= currentPeriod.startDateIso ||
-      (latestRecordedPeriod !== null && nextPeriod.startDateIso <= latestRecordedPeriod.startDateIso));
 
   function openPlanningTools(): void {
     if (planningToolsRef.current !== null) planningToolsRef.current.open = true;
@@ -151,7 +139,7 @@ export function ReviewWorkspace({
           <h2>{isCalendarMonth === false ? "Payday-period review" : "Monthly review"}</h2>
           <p className="intro-copy">
             {isCalendarMonth === false
-              ? "Review recorded income and spending between paydays, then act on what needs attention."
+              ? "Review recorded income and spending within your chosen reporting dates."
               : "See the month clearly, then act on what needs attention."}
           </p>
         </div>
@@ -200,6 +188,13 @@ export function ReviewWorkspace({
               viewContract={state.viewContract}
               refreshKey={refreshKey}
               onOpenPlanningTools={openPlanningTools}
+              onOpenTransactions={() => {
+                if (snapshot !== null) onOpenPeriodTransactions(
+                  snapshot.reportingPeriodRange,
+                  snapshot.reportingPeriodRule
+                );
+              }}
+              isChangingPeriod={isChangingMonth || isRefreshing}
               periodControls={snapshot !== null && (
                 <div className="reporting-period-toolbar">
                   <div className="reporting-period-readout">
@@ -207,46 +202,59 @@ export function ReviewWorkspace({
                       {formatReportingPeriodRange(snapshot.reportingPeriodRange)}
                     </p>
                     <span>{isCalendarMonth ? "Calendar month" : "Payday period"}</span>
-                    {!isCurrentPeriod && <span>{isFuturePeriod ? "Future period" : "Historical period"}</span>}
-                    {isReportingOverride && <span className="reporting-period-override">Calendar view override</span>}
+                    {isCurrentPeriod && <span>In progress</span>}
+                    {isFuturePeriod && <span>Future period</span>}
+                    {isReportingOverride && <span className="reporting-period-override">Using calendar months instead of saved payday periods</span>}
                   </div>
                   <details className="reporting-period-disclosure">
                     <summary>Change period</summary>
                     <div className="reporting-period-controls">
                       <p id="reporting-period-scope">
-                        Choose the dates for recorded income and spending, not a forecast.
-                        {" "}Categories, comparisons, and checks follow these dates.
+                        Totals, categories, and checks follow these dates. No transactions or settings are changed.
                       </p>
                       <div className="reporting-period-navigation">
                         <div className="reporting-period-picker-row">
                           <div className="month-picker">
                             <label htmlFor="month-select">
-                              {isCalendarMonth ? "Month to review" : "Payday period to review"}
+                              {isCalendarMonth ? "Month to review" : "Period starting in"}
                             </label>
-                            <select
+                            <input
                               id="month-select"
-                              aria-label={isTwoFixedDayRule ? "Select period" : "Select month"}
-                              value={isTwoFixedDayRule
-                                ? snapshot.reportingPeriodRange.startDateIso
-                                : state.selectedYearMonth}
+                              type="month"
+                              lang="en-GB"
+                              aria-label="Select month"
+                              min="0001-01"
+                              max="9999-12"
+                              value={state.selectedYearMonth}
                               disabled={isPeriodSelectionDisabled}
                               aria-describedby={isTargetFormOpen ? "target-draft-help" : "reporting-period-scope"}
-                              onChange={(event) => onMonthChange(event.target.value)}
-                            >
-                              {isTwoFixedDayRule
-                                ? twoFixedDayPeriodOptions.map((period) => (
-                                  <option key={period.startDateIso} value={period.startDateIso}>
-                                    {formatReportingPeriodRange(period)}
-                                  </option>
-                                ))
-                                : periodMonths.map((month) => (
-                                  <option key={month} value={month}>
-                                    {isCalendarMonth === false
-                                      ? formatReportingPeriodRange(resolveReportingPeriod(snapshot.reportingPeriodRule, month))
-                                      : formatYearMonth(month)}
-                                  </option>
-                                ))}
-                            </select>
+                              onChange={(event) => {
+                                const month = event.currentTarget.value;
+                                if (isYearMonth(month)) {
+                                  onMonthChange(isTwoFixedDayRule
+                                    ? resolveReportingPeriod(snapshot.reportingPeriodRule, month).startDateIso
+                                    : month);
+                                }
+                              }}
+                            />
+                            {isTwoFixedDayRule && (
+                              <>
+                                <label htmlFor="period-select">Period to review</label>
+                                <select
+                                  id="period-select"
+                                  aria-label="Select period"
+                                  value={snapshot.reportingPeriodRange.startDateIso}
+                                  disabled={isPeriodSelectionDisabled}
+                                  onChange={(event) => onMonthChange(event.currentTarget.value)}
+                                >
+                                  {twoFixedDayPeriodOptions.map((period) => (
+                                    <option key={period.startDateIso} value={period.startDateIso}>
+                                      {formatReportingPeriodRange(period)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </>
+                            )}
                           </div>
                           {!isCurrentPeriod && (
                             <button
@@ -280,8 +288,7 @@ export function ReviewWorkspace({
                             className="action-secondary"
                             aria-label={`${isCalendarMonth ? "Next month" : "Next period"}${nextPeriod === null
                               ? "" : `: ${formatReportingPeriodRange(nextPeriod)}`}`}
-                            aria-describedby={!canNavigateForward ? "reporting-forward-help" : undefined}
-                            disabled={isPeriodSelectionDisabled || !canNavigateForward}
+                            disabled={isPeriodSelectionDisabled || nextPeriod === null}
                             onClick={() => {
                               if (nextPeriod !== null) navigateToPeriod(nextPeriod.startDateIso);
                             }}
@@ -291,42 +298,39 @@ export function ReviewWorkspace({
                           </button>
                         </div>
                       </div>
-                      {!canNavigateForward && (
-                        <p id="reporting-forward-help">No later recorded months to review. For projections, use Plan ahead.</p>
-                      )}
                       {hasSavedPaydayRule && (
-                        <div className="reporting-period-mode">
-                          <label htmlFor="reporting-mode-select">Reporting mode</label>
-                          <select
-                            id="reporting-mode-select"
-                            value={isCalendarMonth ? "calendar-month" : "payday-period"}
-                            disabled={isTargetFormOpen || isRefreshing}
-                            aria-describedby="reporting-period-scope"
-                            onChange={(event) => onReportingModeChange(
-                              event.currentTarget.value === "calendar-month"
-                                ? "calendar-month"
-                                : "payday-period"
-                            )}
-                          >
-                            <option value="calendar-month">Calendar month</option>
-                            <option value="payday-period">Payday period</option>
-                          </select>
-                          {isReportingOverride && (
-                            <button
-                              type="button"
-                              className="action-secondary"
+                        <details className="reporting-basis-disclosure">
+                          <summary>Reporting basis</summary>
+                          <div className="reporting-period-mode">
+                            <label htmlFor="reporting-mode-select">Reporting mode</label>
+                            <select
+                              id="reporting-mode-select"
+                              value={isCalendarMonth ? "calendar-month" : "payday-period"}
                               disabled={isTargetFormOpen || isRefreshing}
-                              onClick={() => onReportingModeChange("payday-period")}
+                              aria-describedby="reporting-period-scope"
+                              onChange={(event) => onReportingModeChange(
+                                event.currentTarget.value === "calendar-month"
+                                  ? "calendar-month"
+                                  : "payday-period"
+                              )}
                             >
-                              Use saved payday periods
-                            </button>
-                          )}
-                        </div>
+                              <option value="calendar-month">Calendar month</option>
+                              <option value="payday-period">Payday period</option>
+                            </select>
+                            {isReportingOverride && (
+                              <button
+                                type="button"
+                                className="action-secondary"
+                                disabled={isTargetFormOpen || isRefreshing}
+                                onClick={() => onReportingModeChange("payday-period")}
+                              >
+                                Use saved payday periods
+                              </button>
+                            )}
+                          </div>
+                          <p>Changes apply to this review only. Your saved preference is in Settings.</p>
+                        </details>
                       )}
-                      <p className="reporting-period-help">
-                        {isCalendarMonth && "Calendar target comparisons also follow the selected month. "}
-                        Your transactions and saved reporting preference in Settings stay unchanged.
-                      </p>
                     </div>
                   </details>
                 </div>

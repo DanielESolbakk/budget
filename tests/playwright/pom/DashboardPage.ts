@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 
 /**
  * Page Object Model for the monthly dashboard sections of the Budget Planner.
@@ -84,9 +84,9 @@ export class DashboardPage {
     return this.page.getByRole("region", { name: "Category Target Entry" });
   }
 
-  /** The month selector combobox. */
+  /** The native month input. */
   get monthSelector() {
-    return this.page.getByRole("combobox", { name: "Select month", includeHidden: true });
+    return this.page.getByLabel("Select month", { exact: true });
   }
 
   async openPeriodControls(): Promise<void> {
@@ -97,7 +97,10 @@ export class DashboardPage {
 
   async selectMonth(yearMonth: string): Promise<void> {
     await this.openPeriodControls();
-    await this.monthSelector.selectOption(yearMonth);
+    await this.monthSelector.fill(yearMonth);
+    await this.page.getByRole("region", { name: "Review workspace" })
+      .and(this.page.locator('[aria-busy="false"]'))
+      .waitFor({ state: "visible" });
   }
 
   get zeroActivityStatus() {
@@ -124,27 +127,12 @@ export class DashboardPage {
     return this.monthlyTotalsSection.getByRole("group", { name: `${label} total` });
   }
 
-  /** Select a different month option than the current one and return the selected month value. */
+  /** Select the preceding calendar month and return its value. */
   async selectDifferentMonth(currentMonth: string): Promise<string> {
-    await this.openPeriodControls();
-    const options = await this.monthSelector
-      .getByRole("option")
-      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
-    const candidates = options.filter((option) => option !== currentMonth);
-
-    for (const candidate of candidates) {
-      await this.monthSelector.selectOption(candidate);
-      await expect(this.monthSelector).toHaveValue(candidate);
-
-      try {
-        await this.incomeValue.waitFor({ state: "visible", timeout: 1500 });
-        await this.categoryEntries.first().waitFor({ state: "visible", timeout: 1500 });
-        return candidate;
-      } catch {
-        // Candidate likely led to an empty/loading branch; try the next one.
-      }
-    }
-
-    throw new Error("No alternate data-bearing month option found for month-switch scenario.");
+    const date = new Date(`${currentMonth}-01T00:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth() - 1);
+    const previousMonth = date.toISOString().slice(0, 7);
+    await this.selectMonth(previousMonth);
+    return previousMonth;
   }
 }

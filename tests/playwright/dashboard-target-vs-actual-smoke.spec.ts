@@ -88,6 +88,6 @@ test.describe("Dashboard target-vs-actual renderer smoke — refresh path", () =
     await expect(targetPage.deltaCell("groceries")).toHaveText(
       `${formatMinor(GROCERIES_UPDATED_TARGET_MINOR - GROCERIES_ACTUAL_MINOR)} under target`
     );
-    await expect(window.getByRole("combobox", { name: "Select month" })).toHaveValue(DEFAULT_YEAR_MONTH);
+    await expect(window.getByLabel("Select month", { exact: true })).toHaveValue(DEFAULT_YEAR_MONTH);
   });
 });

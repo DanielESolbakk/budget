@@ -121,6 +121,10 @@ test.describe("Keyboard accessibility smoke", () => {
     await expect(changePeriod).toBeFocused();
     const cashPlanning = window.getByRole("navigation", { name: "Cash planning" });
     await window.keyboard.press("Tab");
+    await expect(dashboard.monthlyTotalsSection.getByRole("button", {
+      name: "View transactions for these dates",
+    })).toBeFocused();
+    await window.keyboard.press("Tab");
     await expect(cashPlanning.getByRole("link", { name: "Estimate spendable cash" })).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(cashPlanning.getByRole("link", { name: "Compare cashflow scenarios" })).toBeFocused();

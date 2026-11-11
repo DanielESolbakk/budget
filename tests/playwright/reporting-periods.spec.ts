@@ -165,15 +165,13 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   await reviewButton.press("Enter");
   const review = window.getByRole("region", { name: "Review workspace" });
   await review.getByText("Change period", { exact: true }).click();
+  await review.getByText("Reporting basis", { exact: true }).click();
   await expect(review.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "29 October 2026 - 25 November 2026"
   );
-  const monthPicker = review.getByRole("combobox", { name: "Select month" });
-  await expect(monthPicker.getByRole("option", {
-    name: "29 October 2026 - 25 November 2026",
-    exact: true,
-  })).toBeAttached();
+  const monthPicker = review.getByLabel("Select month", { exact: true });
+  await expect(monthPicker).toHaveValue("2026-10");
   const monthPickerBounds = await monthPicker.boundingBox();
   expect(monthPickerBounds?.width ?? 0).toBeGreaterThan(260);
   const totals = review.getByRole("region", { name: "Payday-period totals" });
@@ -231,8 +229,8 @@ test("saves a last-weekday rule and ignores a superseded period response", async
     process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-11";
     process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "750";
   });
-  const monthSelector = review.getByRole("combobox", { name: "Select month" });
-  await monthSelector.selectOption("2026-11");
+  const monthSelector = review.getByLabel("Select month", { exact: true });
+  await monthSelector.fill("2026-11");
   const updatingStatus = review.getByRole("status")
     .filter({ hasText: "Updating reporting period..." });
   await expect(updatingStatus).toBeVisible();
@@ -268,6 +266,7 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   await window.reload();
   const reloadedReview = window.getByRole("region", { name: "Review workspace" });
   await reloadedReview.getByText("Change period", { exact: true }).click();
+  await reloadedReview.getByText("Reporting basis", { exact: true }).click();
   await expect(reloadedReview.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(reloadedReview.getByLabel("Active reporting range")).toHaveText(
     "29 October 2026 - 25 November 2026"
@@ -311,14 +310,16 @@ test("separates current-period navigation from the saved reporting basis without
   await expect(review.getByRole("button", { name: /^Next period/ })).not.toBeVisible();
   await changePeriod.focus();
   await changePeriod.press("Enter");
+  await expect(review.getByLabel("Reporting mode")).not.toBeVisible();
+  await review.getByText("Reporting basis", { exact: true }).click();
   const reportingModeLabel = review.getByText("Reporting mode", { exact: true });
   await expect(reportingModeLabel).toHaveAttribute("for", "reporting-mode-select");
   await expect(reportingModeLabel).toBeVisible();
-  await expect(totals.getByText(/Categories, comparisons, and checks follow these dates/))
+  await expect(totals.getByText(/Totals, categories, and checks follow these dates/))
     .toBeVisible();
   await review.getByLabel("Reporting mode").selectOption("calendar-month");
   const calendarTotals = review.getByRole("region", { name: "Monthly Totals" });
-  await expect(calendarTotals.getByText("Calendar view override", { exact: true })).toBeVisible();
+  await expect(calendarTotals.getByText("Using calendar months instead of saved payday periods", { exact: true })).toBeVisible();
   await expect(calendarTotals.getByLabel("Active reporting range")).toHaveText(
     "1 October 2026 - 31 October 2026"
   );
@@ -332,13 +333,13 @@ test("separates current-period navigation from the saved reporting basis without
   await expect(totals.getByLabel("Active reporting range")).toHaveText(
     "25 October 2026 - 24 November 2026"
   );
-  await expect(totals.getByText("Calendar view override", { exact: true })).toHaveCount(0);
+  await expect(totals.getByText("Using calendar months instead of saved payday periods", { exact: true })).toHaveCount(0);
   await totals.getByRole("button", { name: /^Previous period/ }).click();
   await expect(totals.getByLabel("Active reporting range")).toHaveText(
     "25 September 2026 - 24 October 2026"
   );
-  await expect(totals.getByText("Historical period", { exact: true })).toBeVisible();
-  await expect(totals.getByText("Calendar view override", { exact: true })).toHaveCount(0);
+  await expect(totals.getByLabel("Active reporting range")).toHaveText("25 September 2026 - 24 October 2026");
+  await expect(totals.getByText("Using calendar months instead of saved payday periods", { exact: true })).toHaveCount(0);
   await review.getByLabel("Reporting mode").selectOption("calendar-month");
   await expect(calendarTotals.getByLabel("Active reporting range")).toHaveText(
     "1 September 2026 - 30 September 2026"
@@ -352,7 +353,7 @@ test("separates current-period navigation from the saved reporting basis without
   await expect(calendarTotals.getByLabel("Active reporting range")).toHaveText(
     "1 November 2026 - 30 November 2026"
   );
-  await expect(calendarTotals.getByText("Calendar view override", { exact: true })).toBeVisible();
+  await expect(calendarTotals.getByText("Using calendar months instead of saved payday periods", { exact: true })).toBeVisible();
   await calendarTotals.getByRole("button", { name: "Use saved payday periods" }).click();
   await expect(totals.getByLabel("Active reporting range")).toHaveText(
     "25 November 2026 - 24 December 2026"
@@ -370,6 +371,69 @@ test("separates current-period navigation from the saved reporting basis without
   await expect(totals.getByLabel("Active reporting range")).toHaveText(
     "25 October 2026 - 24 November 2026"
   );
+});
+
+test("opens only the report's exact transactions and replaces old ledger filters on repeated drill-down", async ({
+  appShell,
+  ledger,
+  manualEntry,
+  window,
+}) => {
+  await window.clock.setFixedTime(new Date("2026-11-10T12:00:00"));
+  for (const transaction of boundaryTransactions) {
+    await manualEntry.submitEntry(transaction);
+    await expect(manualEntry.successStatus).toContainText(`Added ${transaction.merchantRaw}`);
+  }
+  await appShell.openWorkspace("Settings");
+  const settings = window.getByRole("region", { name: "Settings workspace" });
+  await settings.getByRole("region", { name: "Reporting period" }).getByRole("combobox").first()
+    .selectOption("fixed-day");
+  await settings.getByLabel("Day of month", { exact: true }).fill("29");
+  await settings.getByRole("button", { name: "Save reporting preference" }).click();
+  await expect(settings.getByRole("status")).toContainText("Reporting period saved.");
+  await appShell.openWorkspace("Review");
+  const review = window.getByRole("region", { name: "Review workspace" });
+  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await expect(ledger.fromDateInput).toHaveValue("2026-10-29");
+  await expect(ledger.toDateInput).toHaveValue("2026-11-28");
+  await expect(ledger.table).toContainText("Reporting boundary start");
+  await expect(ledger.table).toContainText("Reporting period final day");
+  await expect(ledger.table).not.toContainText("Reporting boundary before");
+  await expect(ledger.table).not.toContainText("Synthetic year-rollover activity");
+  await expect(ledger.workspace).toContainText("29 October 2026 - 28 November 2026");
+  await expect(ledger.workspace.getByRole("heading", { name: "Transactions", exact: true })).toBeFocused();
+  await ledger.merchantInput.fill("no matching merchant");
+  await expect(ledger.resultStatus).toHaveText("0 ledger transactions");
+  await ledger.workspace.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await expect(review.getByRole("heading", { name: "Payday-period review", exact: true })).toBeFocused();
+  await expect(review.getByLabel("Active reporting range")).toHaveText(
+    "29 October 2026 - 28 November 2026"
+  );
+  await review.getByText("Change period", { exact: true }).click();
+  await review.getByText("Reporting basis", { exact: true }).click();
+  await review.getByRole("button", { name: /^Previous period/ }).click();
+  await expect(review.getByLabel("Active reporting range")).toHaveText(
+    "29 September 2026 - 28 October 2026"
+  );
+  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await expect(ledger.fromDateInput).toHaveValue("2026-09-29");
+  await expect(ledger.toDateInput).toHaveValue("2026-10-28");
+  await expect(ledger.merchantInput).toHaveValue("");
+  await expect(ledger.table).toContainText("Reporting boundary before");
+  await expect(ledger.table).not.toContainText("Reporting boundary start");
+  await ledger.clearFiltersButton.click();
+  await expect(ledger.table).toContainText("Synthetic year-rollover activity");
+  await ledger.workspace.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await review.getByRole("combobox", { name: "Reporting mode" }).selectOption("calendar-month");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("1 September 2026 - 30 September 2026");
+  await review.getByLabel("Select month", { exact: true }).fill("2026-10");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("1 October 2026 - 31 October 2026");
+  await review.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await expect(ledger.fromDateInput).toHaveValue("2026-10-01");
+  await expect(ledger.toDateInput).toHaveValue("2026-10-31");
+  await expect(ledger.table).toContainText("Reporting boundary before");
+  await expect(ledger.table).toContainText("Reporting boundary start");
+  await expect(ledger.table).not.toContainText("Reporting period final day");
 });
 
 test("keeps payday actuals in range with native amounts and transaction-date FX", async ({
@@ -442,6 +506,7 @@ test("keeps payday actuals in range with native amounts and transaction-date FX"
 
     const reportingMode = review.getByLabel("Reporting mode");
     await review.getByText("Change period", { exact: true }).click();
+    await review.getByText("Reporting basis", { exact: true }).click();
     await reportingMode.selectOption("calendar-month");
     await expect(review.getByLabel("Active reporting range")).toHaveText(
       "1 October 2026 - 31 October 2026"
@@ -499,15 +564,13 @@ test("supports keyboard payday setup without horizontal overflow at compact size
   expect(disclosureBounds?.height ?? 0).toBeGreaterThanOrEqual(44);
   await changePeriod.focus();
   await changePeriod.press("Enter");
+  await review.getByText("Reporting basis", { exact: true }).click();
   await expect(review.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "25 September 2026 - 24 October 2026"
   );
-  const monthPicker = review.getByRole("combobox", { name: "Select month" });
-  await expect(monthPicker.getByRole("option", {
-    name: "25 September 2026 - 24 October 2026",
-    exact: true,
-  })).toBeAttached();
+  const monthPicker = review.getByLabel("Select month", { exact: true });
+  await expect(monthPicker).toHaveValue("2026-09");
   const monthPickerBounds = await monthPicker.boundingBox();
   expect(monthPickerBounds?.width ?? 0).toBeGreaterThan(260);
   await expect(review.getByRole("note").filter({
@@ -601,6 +664,7 @@ test("chooses a weekday occurrence and previews the selected boundary", async ({
 test("reviews and navigates two fixed reporting dates within one month", async ({
   appShell,
   electronApp,
+  ledger,
   manualEntry,
   window,
 }) => {
@@ -695,7 +759,9 @@ test("reviews and navigates two fixed reporting dates within one month", async (
     .toHaveText("15 February 2026 - 24 February 2026");
   const comparison = review.getByRole("group", { name: "Payday period comparison" });
   await expect(comparison).toContainText("25 January 2026 - 14 February 2026");
-  await expect(comparison).toContainText(/from .*100,00.* to .*150,00/);
+  await expect(comparison).toContainText(/Recorded spending is 150,00/);
+  await expect(comparison).toContainText(/full previous period .*100,00/);
+  await expect(comparison).toContainText("not a like-for-like comparison");
   const totals = review.getByRole("region", { name: "Payday-period totals" });
   const nextPeriod = review.getByRole("button", { name: /^Next period/ });
   await review.getByText("Change period", { exact: true }).click();
@@ -709,6 +775,14 @@ test("reviews and navigates two fixed reporting dates within one month", async (
     .toHaveText("25 February 2026 - 14 March 2026");
   await expect(totals.getByLabel("Expenses", { exact: true })).toContainText(/500,00/);
   await expect(totals.getByLabel("Income", { exact: true })).toContainText(/0,00/);
+  await totals.getByRole("button", { name: "View transactions for these dates", exact: true }).click();
+  await expect(ledger.fromDateInput).toHaveValue("2026-02-25");
+  await expect(ledger.toDateInput).toHaveValue("2026-03-14");
+  await expect(ledger.table).toContainText("Second two-date period");
+  await expect(ledger.table).toContainText("Second two-date period end");
+  await expect(ledger.table).not.toContainText("First two-date period");
+  await expect(ledger.table).not.toContainText("Next period start");
+  await ledger.workspace.getByRole("button", { name: "Back to period review", exact: true }).click();
   await totals.getByRole("button", { name: "Current payday period", exact: true }).click();
   await expect(review.getByRole("combobox", { name: "Select period" }))
     .toHaveValue("2026-02-15");
@@ -799,6 +873,8 @@ test("a failed calendar save preserves the draft and keeps the saved payday rule
   await appShell.openWorkspace("Review");
   await window.getByRole("region", { name: "Review workspace" })
     .getByText("Change period", { exact: true }).click();
+  await window.getByRole("region", { name: "Review workspace" })
+    .getByText("Reporting basis", { exact: true }).click();
   await expect(window.getByRole("region", { name: "Review workspace" })
     .getByLabel("Reporting mode")).toHaveValue("payday-period");
 });

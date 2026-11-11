@@ -2,6 +2,7 @@ import React from "react";
 import {
   resolveCurrentReportingPeriod,
   resolveReportingPeriod,
+  type ReportingPeriodRange,
 } from "../domain/date/reportingPeriods.js";
 import {
   DEFAULT_REPORTING_PERIOD_RULE,
@@ -22,6 +23,8 @@ import { PendingTransactionsWorkspace } from "./workspaces/PendingTransactionsWo
 import { PropertyRegistrySection } from "./workspaces/property/PropertyRegistrySection.js";
 import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
 import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
+import type { LedgerFilterRequest } from "./dashboard/LedgerSection.js";
+import { formatReportingPeriodRange } from "./reportingPeriodDisplay.js";
 import type { ReviewState } from "./workspaces/types.js";
 
 const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
@@ -88,6 +91,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     () => new Set(["review"])
   );
   const [reviewQueueFocusRequest, setReviewQueueFocusRequest] = React.useState(0);
+  const [ledgerFilterRequest, setLedgerFilterRequest] = React.useState<LedgerFilterRequest | null>(null);
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [propertyRegistryRevision, setPropertyRegistryRevision] = React.useState(0);
   const [requestedPropertyId, setRequestedPropertyId] = React.useState<string | null>(null);
@@ -329,6 +333,20 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     setReviewQueueFocusRequest((request) => request + 1);
   }
 
+  function openPeriodTransactions(range: ReportingPeriodRange, rule: ReportingPeriodRule): void {
+    const inclusiveEnd = new Date(`${range.endDateExclusiveIso}T00:00:00.000Z`);
+    inclusiveEnd.setUTCDate(inclusiveEnd.getUTCDate() - 1);
+    setLedgerFilterRequest((previous) => ({
+      id: (previous?.id ?? 0) + 1,
+      filters: {
+        bookedFromIso: range.startDateIso,
+        bookedToIso: inclusiveEnd.toISOString().slice(0, 10),
+      },
+      description: `${rule.type === "calendar-month" ? "Calendar month" : "Payday period"}: ${formatReportingPeriodRange(range)}`,
+    }));
+    openWorkspace("transactions", true);
+  }
+
   function handleSetupComplete(): void {
     setSetupRequired(false);
     setIsFirstImport(true);
@@ -495,6 +513,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
             refreshError={refreshError}
             onMonthChange={handleMonthChange}
             onOpenTransactions={openReviewQueue}
+            onOpenPeriodTransactions={openPeriodTransactions}
             onOpenCoverage={() => openWorkspace("coverage")}
             onTargetSaved={() => setRefreshCounter((counter) => counter + 1)}
             onRetry={() => setRefreshCounter((counter) => counter + 1)}
@@ -506,6 +525,8 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
               isActive={activeWorkspace === "transactions"}
               refreshKey={refreshCounter}
               reviewQueueFocusRequest={reviewQueueFocusRequest}
+              filterRequest={ledgerFilterRequest}
+              onBackToReview={() => openWorkspace("review", true)}
               onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
             />
           )}
