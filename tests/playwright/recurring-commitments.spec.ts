@@ -4,6 +4,7 @@ import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlit
 import type { ImportJob, PendingTransactionObservation, Transaction } from "../../src/domain/types.js";
 import { RecurringCommitmentsPage } from "./pom/RecurringCommitmentsPage.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
+import { assertVisualScreenshot } from "./visualScreenshot.js";
 
 const test = baseTest.extend({});
 
@@ -50,10 +51,11 @@ test.describe("local recurring commitment workflow", () => {
     await expect(occurrence).toContainText(/129,00\s*kr/);
 
     await window.setViewportSize({ width: 1280, height: 800 });
-    await expect(recurring.section).toHaveScreenshot("recurring-upcoming-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("recurring-upcoming-desktop.png", () =>
+      expect(recurring.section).toHaveScreenshot("recurring-upcoming-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
     await window.setViewportSize({ width: 390, height: 844 });
     await expect(occurrence).toBeVisible();
     await expectNoHorizontalOverflow(window);
@@ -63,10 +65,11 @@ test.describe("local recurring commitment workflow", () => {
       button.getBoundingClientRect().height
     );
     expect(pauseButtonHeight).toBeGreaterThanOrEqual(44);
-    await expect(recurring.section).toHaveScreenshot("recurring-upcoming-compact.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("recurring-upcoming-compact.png", () =>
+      expect(recurring.section).toHaveScreenshot("recurring-upcoming-compact.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
   });
 
   test("supports editing, pausing, and ending a commitment", async ({ window }) => {
@@ -241,17 +244,19 @@ test.describe("local recurring commitment workflow", () => {
     await expect(occurrence).toContainText("Paid on time");
     await expect(occurrence).not.toContainText("Past due");
     await window.setViewportSize({ width: 1280, height: 800 });
-    await expect(recurring.section).toHaveScreenshot("recurring-payment-matched-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("recurring-payment-matched-desktop.png", () =>
+      expect(recurring.section).toHaveScreenshot("recurring-payment-matched-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
     await window.setViewportSize({ width: 390, height: 844 });
     await expect(occurrence).toBeVisible();
     await expectNoHorizontalOverflow(window);
-    await expect(recurring.section).toHaveScreenshot("recurring-payment-matched-compact.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("recurring-payment-matched-compact.png", () =>
+      expect(recurring.section).toHaveScreenshot("recurring-payment-matched-compact.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
   });
 
   test("requires confirmation before applying an observed price change", async ({
@@ -310,10 +315,11 @@ test.describe("local recurring commitment workflow", () => {
       element.getBoundingClientRect().top
     );
     expect(desktopReviewTop).toBeLessThan(desktopScheduleTop);
-    await expect(recurring.section).toHaveScreenshot("recurring-price-change-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("recurring-price-change-desktop.png", () =>
+      expect(recurring.section).toHaveScreenshot("recurring-price-change-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
     await window.setViewportSize({ width: 390, height: 844 });
     const compactReviewTop = await review.evaluate((element) =>
       element.getBoundingClientRect().top
@@ -322,10 +328,11 @@ test.describe("local recurring commitment workflow", () => {
       element.getBoundingClientRect().top
     );
     expect(compactReviewTop).toBeLessThan(compactScheduleTop);
-    await expect(recurring.section).toHaveScreenshot("recurring-price-change-compact.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("recurring-price-change-compact.png", () =>
+      expect(recurring.section).toHaveScreenshot("recurring-price-change-compact.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
 
     const commitment = window.getByRole("group", {
       name: "Commitment Synthetic subscription",
@@ -398,18 +405,20 @@ test.describe("local recurring commitment workflow", () => {
     });
     await expect(overdueOccurrence).toContainText("Past due");
     await expect(overdueOccurrence).toContainText("Unmatched");
-    await expect(recurring.section).toHaveScreenshot("recurring-variable-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("recurring-variable-desktop.png", () =>
+      expect(recurring.section).toHaveScreenshot("recurring-variable-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
 
     await window.setViewportSize({ width: 390, height: 844 });
     await expect(variableOccurrence).toBeVisible();
     await expectNoHorizontalOverflow(window);
-    await expect(recurring.section).toHaveScreenshot("recurring-variable-compact.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("recurring-variable-compact.png", () =>
+      expect(recurring.section).toHaveScreenshot("recurring-variable-compact.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
   });
 
   test("finds local transaction history for an old overdue occurrence", async ({

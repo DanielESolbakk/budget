@@ -2,6 +2,7 @@ import { _electron as electron, type Locator, type Page } from "@playwright/test
 import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
+import { assertVisualScreenshot } from "./visualScreenshot.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -102,16 +103,18 @@ test.describe("transaction category allocations", () => {
       name: "Remove split for Kiwi",
     });
     await expect(restoreButton).toBeVisible();
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-split-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("allocation-editor-split-desktop.png", () =>
+      expect(allocationEditor).toHaveScreenshot("allocation-editor-split-desktop.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
 
     await window.setViewportSize({ width: 390, height: 844 });
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-split-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
+    await assertVisualScreenshot("allocation-editor-split-mobile.png", () =>
+      expect(allocationEditor).toHaveScreenshot("allocation-editor-split-mobile.png", {
+        animations: "disabled",
+        maxDiffPixelRatio: 0.01,
+      }));
     const horizontalOverflow = await window.evaluate(() =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth
     );
