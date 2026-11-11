@@ -11,8 +11,29 @@ import {
   type ReportingPeriodRule,
   DEFAULT_REPORTING_PERIOD_RULE,
   validateReportingPeriodRule,
+  haveSameReportingPeriodRule,
 } from "../../src/shared/applicationPreferences.js";
 import type { Account, ExchangeRate, Transaction } from "../../src/domain/types.js";
+
+describe("reporting rule identity", () => {
+  it.each<{ left: ReportingPeriodRule; right: ReportingPeriodRule; same: boolean }>([
+    { left: { type: "calendar-month" }, right: { type: "calendar-month" }, same: true },
+    { left: { type: "calendar-month" }, right: { type: "fixed-day", dayOfMonth: 1 }, same: false },
+    { left: { type: "fixed-day", dayOfMonth: 25 }, right: { type: "fixed-day", dayOfMonth: 25 }, same: true },
+    { left: { type: "fixed-day", dayOfMonth: 25 }, right: { type: "fixed-day", dayOfMonth: 10 }, same: false },
+    { left: { type: "last-weekday", weekday: 4 }, right: { type: "last-weekday", weekday: 4 }, same: true },
+    { left: { type: "last-weekday", weekday: 4 }, right: { type: "last-weekday", weekday: 5 }, same: false },
+    { left: { type: "weekday-occurrence", weekday: 4, occurrence: 2 }, right: { type: "weekday-occurrence", weekday: 4, occurrence: 2 }, same: true },
+    { left: { type: "weekday-occurrence", weekday: 4, occurrence: 2 }, right: { type: "weekday-occurrence", weekday: 4, occurrence: "last" }, same: false },
+    { left: { type: "weekday-occurrence", weekday: 4, occurrence: 2 }, right: { type: "weekday-occurrence", weekday: 5, occurrence: 2 }, same: false },
+    { left: { type: "two-fixed-days", firstDayOfMonth: 10, secondDayOfMonth: 25 }, right: { type: "two-fixed-days", firstDayOfMonth: 10, secondDayOfMonth: 25 }, same: true },
+    { left: { type: "two-fixed-days", firstDayOfMonth: 10, secondDayOfMonth: 25 }, right: { type: "two-fixed-days", firstDayOfMonth: 15, secondDayOfMonth: 25 }, same: false },
+    { left: { type: "two-fixed-days", firstDayOfMonth: 10, secondDayOfMonth: 25 }, right: { type: "two-fixed-days", firstDayOfMonth: 10, secondDayOfMonth: 28 }, same: false },
+  ])("compares all parameters of $left and $right", ({ left, right, same }) => {
+    expect(haveSameReportingPeriodRule(left, right)).toBe(same);
+    expect(haveSameReportingPeriodRule(right, left)).toBe(same);
+  });
+});
 
 describe("reporting period boundaries", () => {
   it("clamps fixed-day boundaries independently to each month's last day", () => {

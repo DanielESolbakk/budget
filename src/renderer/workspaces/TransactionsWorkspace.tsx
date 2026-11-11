@@ -9,6 +9,7 @@ interface TransactionsWorkspaceProps {
   onCategorySaved: () => void;
   filterRequest?: LedgerFilterRequest | null;
   isReportCurrent: boolean;
+  isReportSelected: boolean;
   onBackToReview?: () => void;
 }
 
@@ -19,6 +20,7 @@ export function TransactionsWorkspace({
   onCategorySaved,
   filterRequest = null,
   isReportCurrent,
+  isReportSelected,
   onBackToReview,
 }: TransactionsWorkspaceProps): React.JSX.Element {
   const [uncategorizedQueueState, setUncategorizedQueueState] = React.useState<UncategorizedQueueState>({
@@ -66,6 +68,7 @@ export function TransactionsWorkspace({
           refreshKey={refreshKey}
           filterRequest={filterRequest}
           isReportCurrent={isReportCurrent}
+          isReportSelected={isReportSelected}
         />
         <CategoryReviewSection
           refreshKey={refreshKey}

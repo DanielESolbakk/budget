@@ -7,7 +7,7 @@ import {
   resolveReportingPeriod,
   type ReportingPeriodRange,
 } from "../../domain/date/reportingPeriods.js";
-import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
+import { haveSameReportingPeriodRule, type ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 import { CategoryBreakdownSection } from "../dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySection.js";
 import { CashflowScenarioSection } from "../dashboard/CashflowScenarioSection.js";
@@ -115,7 +115,8 @@ export function ReviewWorkspace({
       );
   const [isTargetFormOpen, setIsTargetFormOpen] = React.useState(false);
   const isPeriodSelectionDisabled = isTargetFormOpen || isChangingMonth || isRefreshing;
-  const isReportingOverride = hasSavedPaydayRule && isCalendarMonth;
+  const isReportingOverride = snapshot !== null && savedReportingPeriodRule !== null &&
+    !haveSameReportingPeriodRule(snapshot.reportingPeriodRule, savedReportingPeriodRule);
   const isCurrentPeriod = snapshot?.reportingPeriodRange.startDateIso === currentPeriod?.startDateIso;
   const isFuturePeriod = snapshot !== null && currentPeriod !== null &&
     snapshot.reportingPeriodRange.startDateIso > currentPeriod.startDateIso;
@@ -196,7 +197,11 @@ export function ReviewWorkspace({
                     <span>{isCalendarMonth ? "Calendar month" : "Payday period"}</span>
                     {isCurrentPeriod && <span>In progress</span>}
                     {isFuturePeriod && <span>Future period</span>}
-                    {isReportingOverride && <span className="reporting-period-override">Using calendar months instead of saved payday periods</span>}
+                    {isReportingOverride && <span className="reporting-period-override">
+                      {isCalendarMonth && hasSavedPaydayRule
+                        ? "Using calendar months instead of saved payday periods"
+                        : "Using the opened report's reporting basis instead of your saved preference"}
+                    </span>}
                   </div>
                   <details className="reporting-period-disclosure">
                     <summary>Change period</summary>
@@ -290,7 +295,7 @@ export function ReviewWorkspace({
                           </button>
                         </div>
                       </div>
-                      {hasSavedPaydayRule && (
+                      {(hasSavedPaydayRule || isCalendarMonth === false) && (
                         <details className="reporting-basis-disclosure">
                           <summary>Reporting basis</summary>
                           <div className="reporting-period-mode">
@@ -307,16 +312,16 @@ export function ReviewWorkspace({
                               )}
                             >
                               <option value="calendar-month">Calendar month</option>
-                              <option value="payday-period">Payday period</option>
+                              <option value="payday-period" disabled={!hasSavedPaydayRule}>Payday period</option>
                             </select>
                             {isReportingOverride && (
                               <button
                                 type="button"
                                 className="action-secondary"
                                 disabled={isTargetFormOpen || isRefreshing}
-                                onClick={() => onReportingModeChange("payday-period")}
+                                onClick={() => onReportingModeChange(hasSavedPaydayRule ? "payday-period" : "calendar-month")}
                               >
-                                Use saved payday periods
+                                {hasSavedPaydayRule ? "Use saved payday periods" : "Use saved calendar months"}
                               </button>
                             )}
                           </div>

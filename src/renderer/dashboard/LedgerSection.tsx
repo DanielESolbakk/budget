@@ -89,6 +89,7 @@ interface LedgerSectionProps {
   refreshKey: number;
   filterRequest?: LedgerFilterRequest | null;
   isReportCurrent: boolean;
+  isReportSelected: boolean;
 }
 
 export interface LedgerFilterRequest {
@@ -97,7 +98,7 @@ export interface LedgerFilterRequest {
   description: string;
 }
 
-export function LedgerSection({ refreshKey, filterRequest, isReportCurrent }: LedgerSectionProps): React.JSX.Element {
+export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isReportSelected }: LedgerSectionProps): React.JSX.Element {
   const [amountFrom, setAmountFrom] = React.useState("");
   const [amountTo, setAmountTo] = React.useState("");
   const [filters, setFilterState] = React.useState<TransactionFilters>(filterRequest?.filters ?? {});
@@ -604,6 +605,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent }: Le
               <strong>{reportFiltersChanged ? "Filters changed" : "Report dates applied"}</strong>
               {" · "}{filterRequest.description}
               {reportFiltersChanged && ". These results no longer represent the original report."}
+              {!isReportSelected && `${reportFiltersChanged ? " " : ". "}Review period changed. Back to period review restores this report's dates and reporting basis.`}
             </p>
             {reportFiltersChanged && <small id="restore-report-filter-help">Restores the report's dates and clears other filters.</small>}
           </div>
@@ -784,7 +786,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent }: Le
               {" "}These transactions could not be checked against the amount limits. Record local rates in Household &gt; Settings &gt; Exchange rates.
             </p>
           )}
-          {filterRequest !== null && filterRequest !== undefined && !reportFiltersChanged && (
+          {filterRequest !== null && filterRequest !== undefined && !reportFiltersChanged && isReportSelected && (
             isReportCurrent ? (
               <p>These transactions produce the selected report's {summary.incompleteCurrencies.length > 0 ? "partial NOK subtotals" : "totals"}.</p>
             ) : (

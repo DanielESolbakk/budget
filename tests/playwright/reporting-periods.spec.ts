@@ -433,6 +433,118 @@ test("requires a fresh report before claiming its ledger totals reconcile after 
   await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("185,00");
 });
 
+test("returns to the originating report after a different Review month is selected", async ({
+  appShell,
+  dashboard,
+  ledger,
+  window,
+}) => {
+  await appShell.openWorkspace("Review");
+  await dashboard.selectMonth("2026-05");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  await dashboard.monthlyTotalsSection.getByRole("button", {
+    name: "View transactions for this period", exact: true,
+  }).click();
+  const summary = ledger.workspace.getByRole("region", { name: "Filtered transaction totals", exact: true });
+  await expect(summary).toContainText("These transactions produce the selected report's totals.");
+  await appShell.openWorkspace("Review");
+  await dashboard.selectMonth("2026-04");
+  await expect(dashboard.expenseValue).toContainText("72,00");
+  await appShell.openWorkspace("Activity");
+  await expect(ledger.fromDateInput).toHaveValue("2026-05-01");
+  await expect(summary.getByLabel("Filtered expenses", { exact: true })).toContainText("85,00");
+  await expect(summary).not.toContainText("These transactions produce the selected report's totals.");
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" }))
+    .toContainText("Review period changed");
+  const back = window.getByRole("button", { name: "Back to period review", exact: true });
+  await back.focus();
+  await back.press("Enter");
+  await expect(dashboard.monthlyTotalsSection.getByLabel("Active reporting range"))
+    .toHaveText("1 May 2026 - 31 May 2026");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  await expect(window.getByRole("heading", { name: "Monthly review", exact: true })).toBeFocused();
+  await appShell.openWorkspace("Activity");
+  await expect(summary).toContainText("These transactions produce the selected report's totals.");
+});
+
+test("returning to the originating report supersedes an in-flight period selection", async ({
+  appShell,
+  dashboard,
+  electronApp,
+  window,
+}) => {
+  await appShell.openWorkspace("Review");
+  await dashboard.selectMonth("2026-05");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+  await dashboard.monthlyTotalsSection.getByRole("button", {
+    name: "View transactions for this period", exact: true,
+  }).click();
+  await appShell.openWorkspace("Review");
+  await electronApp.evaluate(() => {
+    process.env["BUDGET_TEST_SLOW_DASHBOARD_MONTH"] = "2026-04";
+    process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "750";
+  });
+  await dashboard.monthSelector.fill("2026-04");
+  const review = window.getByRole("region", { name: "Review workspace", exact: true });
+  await expect(review).toHaveAttribute("aria-busy", "true");
+  await appShell.openWorkspace("Activity");
+  await window.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await window.evaluate(() => globalThis.window.budgetApi.dashboard.getViewData("2026-04"));
+  await expect(review).toHaveAttribute("aria-busy", "false");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("1 May 2026 - 31 May 2026");
+  await expect(dashboard.expenseValue).toContainText("85,00");
+});
+
+test("restores the originating two-date period and basis without rewriting a changed saved preference", async ({
+  appShell,
+  ledger,
+  window,
+}) => {
+  await window.clock.setFixedTime(new Date("2026-11-10T12:00:00"));
+  await appShell.openWorkspace("Settings");
+  const settings = window.getByRole("region", { name: "Settings workspace" });
+  const rule = settings.getByRole("region", { name: "Reporting period" }).getByRole("combobox").first();
+  await rule.selectOption("two-fixed-days");
+  await settings.getByLabel("Earlier date", { exact: true }).fill("10");
+  await settings.getByLabel("Later date", { exact: true }).fill("25");
+  await settings.getByRole("button", { name: "Save reporting preference" }).click();
+  await expect(settings.getByRole("status")).toContainText("Reporting period saved.");
+  await appShell.openWorkspace("Review");
+  const review = window.getByRole("region", { name: "Review workspace", exact: true });
+  await review.getByText("Change period", { exact: true }).click();
+  await review.getByLabel("Select month", { exact: true }).fill("2026-10");
+  await review.getByLabel("Select period", { exact: true }).selectOption("2026-10-25");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("25 October 2026 - 9 November 2026");
+  await review.getByRole("button", { name: "View transactions for this period", exact: true }).click();
+  await expect(ledger.fromDateInput).toHaveValue("2026-10-25");
+  await appShell.openWorkspace("Review");
+  await review.getByLabel("Select period", { exact: true }).selectOption("2026-10-10");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("10 October 2026 - 24 October 2026");
+  await appShell.openWorkspace("Activity");
+  await expect(ledger.workspace.getByRole("status", { name: "Report filter context" }))
+    .toContainText("Review period changed");
+  await window.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await expect(review.getByLabel("Active reporting range")).toHaveText("25 October 2026 - 9 November 2026");
+
+  await appShell.openWorkspace("Settings");
+  await rule.selectOption("calendar-month");
+  await settings.getByRole("button", { name: "Save reporting preference" }).click();
+  await expect(settings.getByRole("status")).toContainText("Reporting period saved.");
+  await appShell.openWorkspace("Review");
+  await expect(review.getByLabel("Active reporting range")).toHaveText("1 November 2026 - 30 November 2026");
+  await appShell.openWorkspace("Activity");
+  const summary = ledger.workspace.getByRole("region", { name: "Filtered transaction totals", exact: true });
+  await expect(summary).not.toContainText("These transactions produce the selected report's totals.");
+  await window.getByRole("button", { name: "Back to period review", exact: true }).click();
+  await expect(review.getByLabel("Active reporting range")).toHaveText("25 October 2026 - 9 November 2026");
+  await expect(review.getByRole("heading", { name: "Payday-period review", exact: true })).toBeFocused();
+  const savedRule = await window.evaluate(() => globalThis.window.budgetApi.reportingPreferences.getPeriodRule());
+  expect(savedRule).toEqual({ type: "calendar-month" });
+  await review.getByText("Reporting basis", { exact: true }).click();
+  await review.getByRole("button", { name: "Use saved calendar months", exact: true }).click();
+  await expect(review.getByLabel("Active reporting range")).toHaveText("1 October 2026 - 31 October 2026");
+});
+
 test("opens only the report's exact transactions and replaces old ledger filters on repeated drill-down", async ({
   appShell,
   ledger,
