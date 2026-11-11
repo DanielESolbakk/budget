@@ -1,14 +1,21 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createMonthlyCategoryTarget,
   createMonthlyCategoryTargetStore,
   queryCategoryBreakdown,
+  queryHouseholdDashboardView,
   queryMonthlyTotals,
   queryTargetVsActualCategoryRows,
   readMonthlyCategoryTarget,
   reloadMonthlyCategoryTargets,
   updateMonthlyCategoryTarget,
 } from "../../src/app/dashboardApi.js";
+import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import type { Transaction } from "../../src/domain/types.js";
 
 const sampleTransactions: Transaction[] = [
@@ -61,6 +68,63 @@ describe("dashboard query layer no-network verification", () => {
     const result = queryCategoryBreakdown(sampleTransactions, "2026-05");
     expect(result.entries.length).toBeGreaterThan(0);
     expect(fetchCalled).toBe(false);
+  });
+
+  it("reporting preference save, query, and backup restore stay local-only", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-reporting-no-network-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    const snapshotPath = join(directory, "snapshot.json");
+    let fetchCalled = false;
+    (globalThis as unknown as { fetch?: () => unknown }).fetch = () => {
+      fetchCalled = true;
+      throw new Error("Network access is not allowed in this test.");
+    };
+    let ledger: ReturnType<typeof createLocalLedgerDatabase> | undefined;
+
+    try {
+      ledger = createLocalLedgerDatabase({ dbPath });
+      const { household } = ledger.createInitialHouseholdAndAccount({
+        householdName: "Synthetic household",
+        accountName: "Everyday",
+        currencyCode: "NOK",
+      });
+      const rule = {
+        type: "two-fixed-days",
+        firstDayOfMonth: 15,
+        secondDayOfMonth: 31,
+      } as const;
+      ledger.saveReportingPeriodRule(household.id, rule);
+      expect(ledger.getReportingPeriodRule(household.id)).toEqual(rule);
+
+      const view = queryHouseholdDashboardView(
+        ledger,
+        household.id,
+        "2026-02",
+        undefined,
+        undefined,
+        "2026-02-28"
+      );
+      expect(view).toMatchObject({
+        state: "empty",
+        snapshot: {
+          reportingPeriodRange: {
+            startDateIso: "2026-02-28",
+            endDateExclusiveIso: "2026-03-15",
+          },
+        },
+      });
+
+      createBackupSnapshot({
+        ...ledger.loadLedgerSnapshotData(),
+        createdAtIso: "2026-06-01T12:00:00Z",
+        outputPath: snapshotPath,
+      });
+      expect(restoreBackupSnapshot({ snapshotPath }).reportingPeriodRule).toEqual(rule);
+      expect(fetchCalled).toBe(false);
+    } finally {
+      ledger?.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("target persistence operations do not invoke fetch", () => {
