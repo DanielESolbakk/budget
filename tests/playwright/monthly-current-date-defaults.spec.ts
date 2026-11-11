@@ -39,7 +39,10 @@ test.describe("Current local date defaults", () => {
     await expect(dashboard.monthSelector.locator('option[value="2026-05"]')).toHaveCount(1);
     await expect(dashboard.monthSelector.locator(`option[value="${CURRENT_LOCAL_MONTH}"]`)).toHaveCount(1);
     await expect(dashboard.zeroActivityStatus).toContainText("No activity has been recorded for this month.");
-    await expect(window.getByRole("group", { name: "Monthly comparison" })).toContainText("No activity to compare");
+    await expect(window.getByRole("group", { name: "Monthly comparison" })).toContainText("No recorded activity");
+    await expect(dashboard.incomeValue).toContainText("0,00");
+    await expect(dashboard.expenseValue).toContainText("0,00");
+    await expect(dashboard.netValue).toContainText("0,00");
     await expect(dashboard.monthlyTotalsSection).not.toContainText("Spending was unchanged");
     await expect(dashboard.monthlyTotalsSection).not.toContainText("No transactions for this month.");
     await expect(dashboard.categoryBreakdownSection).toBeHidden();
@@ -69,12 +72,31 @@ test.describe("Current local date defaults", () => {
 
     await dashboard.selectMonth("2026-05");
     await expect(dashboard.incomeValue).toBeVisible();
-    await expect(dashboard.monthlyTotalsSection.getByText("Custom view", { exact: true })).toBeVisible();
-    await dashboard.monthlyTotalsSection.getByRole("button", { name: "Use household default" }).click();
+    await expect(dashboard.monthlyTotalsSection.getByText("Historical period", { exact: true })).toBeVisible();
+    await expect(dashboard.monthlyTotalsSection.getByText("Custom view", { exact: true })).toHaveCount(0);
+    await dashboard.monthlyTotalsSection.getByRole("button", { name: "Current month", exact: true }).click();
     await expect(dashboard.monthSelector).toHaveValue(CURRENT_LOCAL_MONTH);
     await expect(dashboard.monthlyTotalsSection.getByText("Custom view", { exact: true })).toHaveCount(0);
     expect(await window.evaluate(() => globalThis.window.budgetApi.reportingPreferences.getPeriodRule()))
       .toEqual({ type: "calendar-month" });
+  });
+
+  test("keeps an empty adjacent month in sync and does not report missing activity as savings", async ({
+    dashboard,
+    window,
+  }) => {
+    await reloadAtFrozenLocalDate(window);
+    await dashboard.selectMonth("2026-05");
+    await dashboard.monthlyTotalsSection.getByRole("button", { name: /^Next (month|period)/ }).click();
+    await expect(dashboard.monthSelector).toHaveValue("2026-06");
+    await expect(dashboard.monthlyTotalsSection.getByLabel("Active reporting range"))
+      .toHaveText("1 June 2026 - 30 June 2026");
+    await expect(dashboard.expenseValue).toContainText("0,00");
+    await expect(dashboard.monthlyComparison).toContainText("No recorded activity");
+    await expect(dashboard.monthlyComparison).not.toContainText("Spending decreased");
+    await dashboard.monthlyTotalsSection.getByRole("button", { name: "Current month", exact: true }).click();
+    await expect(dashboard.monthSelector).toHaveValue(CURRENT_LOCAL_MONTH);
+    await expect(dashboard.monthlyTotalsSection.getByRole("button", { name: /^Next month/ })).toBeDisabled();
   });
 
   test("keeps the selected local booking date and review month through refresh", async ({

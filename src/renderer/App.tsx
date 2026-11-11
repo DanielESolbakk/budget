@@ -1,6 +1,7 @@
 import React from "react";
 import {
   resolveCurrentReportingPeriod,
+  resolveReportingPeriod,
 } from "../domain/date/reportingPeriods.js";
 import {
   DEFAULT_REPORTING_PERIOD_RULE,
@@ -244,7 +245,12 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
         window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, yearMonth);
         setAppState((prev) => {
           if (prev.status !== "ready") return prev;
-          return { ...prev, viewContract, selectedYearMonth: yearMonth };
+          return {
+            ...prev,
+            viewContract,
+            selectedYearMonth: yearMonth,
+            availableMonths: [...new Set([...prev.availableMonths, yearMonth])].sort(),
+          };
         });
         selectedYearMonthRef.current = yearMonth;
         selectedPeriodStartDateIsoRef.current = selectedPeriodStartDateIso;
@@ -260,18 +266,12 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   }
 
   function handleReportingModeChange(mode: "calendar-month" | "payday-period"): void {
-    const currentReportingPeriod = mode === "payday-period" && savedReportingPeriodRule !== null
-      ? resolveCurrentReportingPeriod(savedReportingPeriodRule, toLocalIsoDate(new Date()))
-      : null;
-    const selectedYearMonth = currentReportingPeriod !== null
-      ? currentReportingPeriod.startDateIso.slice(0, 7)
-      : appState.status === "ready"
-        ? appState.selectedYearMonth
-        : initialYearMonth;
+    const selectedYearMonth = appState.status === "ready"
+      ? appState.selectedYearMonth
+      : initialYearMonth;
     selectedPeriodStartDateIsoRef.current =
-      currentReportingPeriod?.startDateIso !== undefined &&
-        savedReportingPeriodRule?.type === "two-fixed-days"
-        ? currentReportingPeriod.startDateIso
+      mode === "payday-period" && savedReportingPeriodRule?.type === "two-fixed-days"
+        ? resolveReportingPeriod(savedReportingPeriodRule, selectedYearMonth).startDateIso
         : undefined;
     setUseCalendarReportingMode(mode === "calendar-month");
     selectedYearMonthRef.current = selectedYearMonth;
@@ -500,9 +500,6 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
             onRetry={() => setRefreshCounter((counter) => counter + 1)}
             savedReportingPeriodRule={savedReportingPeriodRule}
             onReportingModeChange={handleReportingModeChange}
-            onUseReportingDefault={() => {
-              if (savedReportingPeriodRule !== null) showCurrentReportingPeriod(savedReportingPeriodRule);
-            }}
           />
           {visitedWorkspaces.has("transactions") && (
             <TransactionsWorkspace

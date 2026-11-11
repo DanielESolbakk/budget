@@ -66,16 +66,6 @@ export function MonthlyTotalsSection({
     );
   }
 
-  if (viewContract.state === "empty") {
-    return (
-      <section aria-label={sectionLabel}>
-        {heading}
-        <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
-        <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
-      </section>
-    );
-  }
-
   const { monthlyTotals, currencyReport } = viewContract.snapshot;
   const isIncomplete = (currencyReport?.incompleteCurrencies.length ?? 0) > 0;
   const netLabel = isPaydayPeriod ? "Period net" : "Monthly net";
@@ -83,6 +73,12 @@ export function MonthlyTotalsSection({
   return (
     <section aria-label={sectionLabel}>
       {heading}
+      {viewContract.state === "empty" && (
+        <p className="rail-status is-empty-month" role="status" aria-label="Monthly activity">
+          No activity has been recorded for {isPaydayPeriod ? "this period." : "this month."}
+          {" "}Zero recorded totals do not establish that there was no spending.
+        </p>
+      )}
       {isIncomplete && (
         <p className="currency-warning" role="status">
           <strong>Incomplete NOK subtotal.</strong> Missing dated rates: {currencyReport?.incompleteCurrencies.join(", ")}.
@@ -234,8 +230,11 @@ function MonthlyComparisonSummary({
       ) : comparison.status === "ready" ? (
         currentIsIncomplete || comparison.isIncomplete ? (
           <p role="status">Spending comparison is incomplete until missing dated exchange rates are recorded.</p>
-        ) : viewContract.state === "empty" && comparison.isEmpty ? (
-          <p role="status">No activity to compare with {previousPeriodLabel}.</p>
+        ) : viewContract.state === "empty" || comparison.isEmpty ? (
+          <p role="status">
+            No recorded activity {viewContract.state === "empty" ? "in the selected period" : `for ${previousPeriodLabel}`}.
+            {" "}A spending change cannot be established from missing activity.
+          </p>
         ) : (
           <p role="status">
             {currentExpenseMinor === comparison.previousExpenseMinor

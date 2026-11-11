@@ -243,6 +243,11 @@
     padding-inline: 0.55rem;
   }
 
+  .reporting-period-picker-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .reporting-period-mode {
     align-items: stretch;
     flex-direction: column;
