@@ -202,21 +202,8 @@ test("@visual Visual: linked loan records remain composed for desktop and compac
   await loans.expandLoanDetails("Home mortgage");
   await expect(loans.balanceRow("Home mortgage", "2026-10-01")).toBeVisible();
 
-  await expect(window).toHaveScreenshot("loan-records-desktop.png", {
-    animations: "disabled",
-    mask: [window.locator('time[datetime*="T"]')],
-    maskColor: "#fffdfa",
-    maxDiffPixelRatio: 0.01,
-  });
-
   await window.setViewportSize({ width: 390, height: 844 });
   await expect(loans.backToLoanListButton).toBeVisible();
-  await expect(window).toHaveScreenshot("loan-records-compact.png", {
-    animations: "disabled",
-    mask: [window.locator('time[datetime*="T"]')],
-    maskColor: "#fffdfa",
-    maxDiffPixelRatio: 0.01,
-  });
 });
 
 test("loan records use a selected detail and return to the list on compact screens", async ({

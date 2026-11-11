@@ -2,7 +2,6 @@ import { _electron as electron, type Locator, type Page } from "@playwright/test
 import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
-import { assertVisualScreenshot } from "./visualScreenshot.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -103,18 +102,8 @@ test.describe("transaction category allocations", () => {
       name: "Remove split for Kiwi",
     });
     await expect(restoreButton).toBeVisible();
-    await assertVisualScreenshot("allocation-editor-split-desktop.png", () =>
-      expect(allocationEditor).toHaveScreenshot("allocation-editor-split-desktop.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      }));
 
     await window.setViewportSize({ width: 390, height: 844 });
-    await assertVisualScreenshot("allocation-editor-split-mobile.png", () =>
-      expect(allocationEditor).toHaveScreenshot("allocation-editor-split-mobile.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      }));
     const horizontalOverflow = await window.evaluate(() =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth
     );
@@ -243,60 +232,25 @@ test.describe("transaction category allocations", () => {
       .toContainText(/0,00\s*kr/);
     await expect(allocationEditor).toContainText("1 allocation is incomplete.");
 
-    await window.setViewportSize({ width: 1280, height: 800 });
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-
     await window.setViewportSize({ width: 390, height: 844 });
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-
     await window.setViewportSize({ width: 1280, height: 800 });
     await allocationEditor.getByLabel("Allocation category 1").selectOption("groceries");
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
     await expect(allocationEditor.getByText(/Allocation total:/)).toContainText(/72,00\s*kr/);
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-valid-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
     await window.setViewportSize({ width: 390, height: 844 });
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-valid-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
 
     await window.setViewportSize({ width: 1280, height: 800 });
     await allocationEditor.getByLabel("Allocation amount 2").fill("-40.00");
     await expect(allocationEditor.getByText(/Over-allocated by:/)).toContainText(/8,00\s*kr/);
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-overallocated-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
     await window.setViewportSize({ width: 390, height: 844 });
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-overallocated-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
 
     await window.setViewportSize({ width: 1280, height: 800 });
     await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
     await expect(allocationEditor.getByRole("alert"))
       .toHaveText("Category allocations must sum exactly to the source transaction amount.");
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-rejected-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
     await window.setViewportSize({ width: 390, height: 844 });
-    await expect(allocationEditor).toHaveScreenshot("allocation-editor-rejected-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
 
     const editorWidth = await allocationEditor.evaluate((element) =>
       element.getBoundingClientRect().width

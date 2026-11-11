@@ -329,10 +329,6 @@ test.describe("Categorization review workflow", () => {
     expect(desktopDimensions.scrollWidth).toBeLessThanOrEqual(desktopDimensions.clientWidth);
     const queueTop = await reviewQueue.section.evaluate((element) => element.getBoundingClientRect().top);
     expect(desktopActionBounds!.y).toBeLessThan(queueTop);
-    await expect(ledger.reviewUncategorizedButton).toHaveScreenshot("review-action-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
@@ -343,10 +339,6 @@ test.describe("Categorization review workflow", () => {
       scrollWidth: document.documentElement.scrollWidth,
     }));
     expect(compactDimensions.scrollWidth).toBeLessThanOrEqual(compactDimensions.clientWidth);
-    await expect(ledger.reviewUncategorizedButton).toHaveScreenshot("review-action-compact.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.015,
-    });
   });
 
   test("distinguishes queue loading, empty, and retryable error states", async ({

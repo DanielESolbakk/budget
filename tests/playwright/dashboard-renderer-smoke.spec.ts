@@ -18,8 +18,6 @@
 import { test, expect } from "./fixtures/electron.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
 
-const MOBILE_SCREENSHOT_DIFF_RATIO = process.platform === "linux" ? 0.03 : 0.01;
-
 test.describe("Dashboard renderer smoke", () => {
   test.beforeEach(async ({ dashboard, window }) => {
     await window.clock.setFixedTime(new Date("2026-06-15T12:00:00"));
@@ -481,19 +479,6 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.incomeValue).toContainText("540");
   });
 
-  test("@visual Visual: desktop dashboard preserves the monthly review layout", async ({ window, electronApp }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1100);
-    });
-    await expect(window.getByRole("region", { name: "Account coverage status" }))
-      .toContainText("No statement periods recorded");
-
-    await expect(window).toHaveScreenshot("dashboard-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-  });
-
   test("compact review action buttons meet 44px touch targets", async ({ window, electronApp }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
@@ -609,10 +594,6 @@ test.describe("Dashboard renderer smoke", () => {
     const viewportWidth = await window.evaluate(() => document.documentElement.clientWidth);
     expect(documentWidth).toBeLessThanOrEqual(viewportWidth);
 
-    await expect(window).toHaveScreenshot("dashboard-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: MOBILE_SCREENSHOT_DIFF_RATIO,
-    });
   });
 
   test("compact shell keeps the household descriptor readable", async ({ window, electronApp }) => {

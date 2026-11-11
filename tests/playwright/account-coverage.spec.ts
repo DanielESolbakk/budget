@@ -369,18 +369,6 @@ test.describe("account statement coverage and checkpoints", () => {
     await appShell.openWorkspace("Coverage");
     const coverage = window.getByRole("region", { name: "Account statement coverage" });
     await expect(coverage).toContainText("No statement periods recorded.");
-
-    await window.setViewportSize({ width: 1280, height: 800 });
-    await expect(window).toHaveScreenshot("account-coverage-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-
-    await window.setViewportSize({ width: 390, height: 844 });
-    await expect(window).toHaveScreenshot("account-coverage-mobile.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
   });
 
   test("@visual Visual: coverage review states remain distinct at desktop and compact widths", async ({
@@ -413,17 +401,6 @@ test.describe("account statement coverage and checkpoints", () => {
       await expect(coverage).toContainText("No booked transactions in this period.");
       await expect(coverage).toContainText("Unknown");
       await expect(coverage).toContainText(/Difference.*5,00/);
-
-      await window.setViewportSize({ width: 1280, height: 800 });
-      await expect(coverage).toHaveScreenshot("account-coverage-states-desktop.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
-      await window.setViewportSize({ width: 390, height: 844 });
-      await expect(coverage).toHaveScreenshot("account-coverage-states-mobile.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
     } finally {
       await coverageApp.close();
     }

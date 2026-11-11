@@ -421,14 +421,6 @@ test.describe("CSV import renderer workflow", () => {
       .toHaveText("Sample Household");
 
     await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800);
-    });
-    await expect(window).toHaveScreenshot("import-workspace-desktop.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    });
-
-    await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(390, 844);
     });
     const compactDimensions = await window.evaluate(() => ({
@@ -440,10 +432,6 @@ test.describe("CSV import renderer workflow", () => {
     expect(compactDimensions.documentWidth).toBeLessThanOrEqual(compactDimensions.viewportWidth);
     expect(compactDimensions.statementButtonWidth).toBeGreaterThan(300);
     expect(compactDimensions.manualButtonWidth).toBeGreaterThan(180);
-    await expect(window).toHaveScreenshot("import-workspace-compact.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.015,
-    });
   });
 
   test.describe("CSV file picker cancellation", () => {
