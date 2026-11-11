@@ -6,7 +6,7 @@ test("refreshes the previous-month comparison after a backdated manual transacti
   manualEntry,
 }) => {
   await appShell.openWorkspace("Review");
-  await dashboard.monthSelector.selectOption("2026-05");
+  await dashboard.selectMonth("2026-05");
   await expect(dashboard.monthlyComparison).toContainText(/Spending increased by 13,00.*apr\. 2026/i);
 
   await appShell.openWorkspace("Import");

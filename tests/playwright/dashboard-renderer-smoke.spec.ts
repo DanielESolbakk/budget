@@ -21,11 +21,13 @@ import { AppShellPage } from "./pom/AppShellPage.js";
 const MOBILE_SCREENSHOT_DIFF_RATIO = process.platform === "linux" ? 0.03 : 0.01;
 
 test.describe("Dashboard renderer smoke", () => {
-  test.beforeEach(async ({ dashboard }) => {
-    await dashboard.monthSelector.selectOption("2026-05");
+  test.beforeEach(async ({ dashboard, window }) => {
+    await window.clock.setFixedTime(new Date("2026-06-15T12:00:00"));
+    await dashboard.selectMonth("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     await expect(dashboard.categoryBreakdownSection).toBeVisible();
     await expect(dashboard.monthSelector).toHaveValue("2026-05");
+    await dashboard.monthlyTotalsSection.getByText("Change period", { exact: true }).click();
   });
 
   test("Scenario 3: month-switch control updates selected month and refreshes at least one value", async ({ dashboard }) => {
@@ -359,7 +361,7 @@ test.describe("Dashboard renderer smoke", () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1200, 800);
     });
-    await dashboard.monthSelector.selectOption("2026-04");
+    await dashboard.selectMonth("2026-04");
     await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
     await expect(dashboard.reviewQueueAction).toBeVisible();
 
@@ -427,7 +429,7 @@ test.describe("Dashboard renderer smoke", () => {
   });
 
   test("Scenario 6: target overruns link to their monthly details", async ({ dashboard }) => {
-    await dashboard.monthSelector.selectOption("2026-04");
+    await dashboard.selectMonth("2026-04");
 
     await expect(dashboard.overTargetLink).toHaveText("Review 1 category over target");
     await expect(dashboard.overTargetLink).toHaveAttribute("href", "#target-vs-actual");
@@ -442,7 +444,7 @@ test.describe("Dashboard renderer smoke", () => {
       process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"] = "1";
     });
 
-    await dashboard.monthSelector.selectOption("2026-04");
+    await dashboard.selectMonth("2026-04");
 
     await expect(dashboard.monthChangeError).toContainText(
       "Your current review remains visible. Select a month again to retry."
@@ -453,7 +455,7 @@ test.describe("Dashboard renderer smoke", () => {
     await electronApp.evaluate(() => {
       delete process.env["BUDGET_TEST_DASHBOARD_REFRESH_FAILURE"];
     });
-    await dashboard.monthSelector.selectOption("2026-04");
+    await dashboard.selectMonth("2026-04");
     await expect(dashboard.monthSelector).toHaveValue("2026-04");
     await expect(dashboard.incomeValue).toContainText("510");
   });
@@ -464,7 +466,7 @@ test.describe("Dashboard renderer smoke", () => {
       process.env["BUDGET_TEST_DASHBOARD_VIEW_DELAY_MS"] = "250";
     });
 
-    await dashboard.monthSelector.selectOption("2026-04");
+    await dashboard.selectMonth("2026-04");
     const updatingStatus = window.getByRole("status").filter({ hasText: "Updating reporting period..." });
     await expect(updatingStatus).toBeVisible();
     await expect(dashboard.monthSelector).toBeDisabled();
@@ -474,7 +476,7 @@ test.describe("Dashboard renderer smoke", () => {
     await expect(dashboard.monthSelector).toHaveValue("2026-04");
     await expect(dashboard.incomeValue).toContainText("510");
 
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await expect(dashboard.monthSelector).toHaveValue("2026-05", { timeout: 10_000 });
     await expect(dashboard.incomeValue).toContainText("540");
   });

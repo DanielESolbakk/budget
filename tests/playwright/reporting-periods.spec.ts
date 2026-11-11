@@ -157,6 +157,7 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   await reviewButton.focus();
   await reviewButton.press("Enter");
   const review = window.getByRole("region", { name: "Review workspace" });
+  await review.getByText("Change period", { exact: true }).click();
   await expect(review.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "29 October 2026 - 25 November 2026"
@@ -207,7 +208,6 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "31 December 2026 - 27 January 2027"
   );
-  await expect(review.getByText("Next boundary: 28 January 2027")).toBeVisible();
 
   await previousPeriod.focus();
   await previousPeriod.press("Enter");
@@ -259,6 +259,7 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   );
   await window.reload();
   const reloadedReview = window.getByRole("region", { name: "Review workspace" });
+  await reloadedReview.getByText("Change period", { exact: true }).click();
   await expect(reloadedReview.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(reloadedReview.getByLabel("Active reporting range")).toHaveText(
     "29 October 2026 - 25 November 2026"
@@ -269,7 +270,7 @@ test("saves a last-weekday rule and ignores a superseded period response", async
   ).toContainText(/500,00/);
 });
 
-test("shows a visible reporting-mode label in payday review", async ({
+test("keeps period controls inside totals and restores the saved default without changing Settings", async ({
   appShell,
   electronApp,
   window,
@@ -292,10 +293,51 @@ test("shows a visible reporting-mode label in payday review", async ({
 
   await appShell.openWorkspace("Review");
   const review = window.getByRole("region", { name: "Review workspace" });
+  const totals = review.getByRole("region", { name: "Payday-period totals" });
+  await expect(totals.getByLabel("Active reporting range")).toHaveText(
+    "25 October 2026 - 24 November 2026"
+  );
+  const changePeriod = totals.getByText("Change period", { exact: true });
+  await expect(changePeriod).toBeVisible();
+  await expect(review.getByLabel("Reporting mode")).not.toBeVisible();
+  await expect(review.getByRole("button", { name: "Next period" })).not.toBeVisible();
+  await changePeriod.focus();
+  await changePeriod.press("Enter");
   const reportingModeLabel = review.getByText("Reporting mode", { exact: true });
   await expect(reportingModeLabel).toHaveAttribute("for", "reporting-mode-select");
-  const labelBounds = await reportingModeLabel.boundingBox();
-  expect(labelBounds?.width ?? 0).toBeGreaterThan(1);
+  await expect(reportingModeLabel).toBeVisible();
+  await expect(totals.getByText("Applies to totals, category spending, and period checks."))
+    .toBeVisible();
+  await review.getByLabel("Reporting mode").selectOption("calendar-month");
+  const calendarTotals = review.getByRole("region", { name: "Monthly Totals" });
+  await expect(calendarTotals.getByText("Custom view", { exact: true })).toBeVisible();
+  await expect(calendarTotals.getByLabel("Active reporting range")).toHaveText(
+    "1 October 2026 - 31 October 2026"
+  );
+  expect(await window.evaluate(() => globalThis.window.budgetApi.reportingPreferences.getPeriodRule()))
+    .toEqual({ type: "fixed-day", dayOfMonth: 25 });
+  await appShell.openWorkspace("Settings");
+  await expect(reportingPeriod).toHaveValue("fixed-day");
+  await expect(settings.getByLabel("Day of month", { exact: true })).toHaveValue("25");
+  await appShell.openWorkspace("Review");
+  await calendarTotals.getByRole("button", { name: "Use household default" }).click();
+  await expect(totals.getByLabel("Active reporting range")).toHaveText(
+    "25 October 2026 - 24 November 2026"
+  );
+  await expect(totals.getByText("Custom view", { exact: true })).toHaveCount(0);
+  await totals.getByRole("button", { name: "Previous period" }).click();
+  await expect(totals.getByLabel("Active reporting range")).toHaveText(
+    "25 September 2026 - 24 October 2026"
+  );
+  await expect(totals.getByText("Custom view", { exact: true })).toBeVisible();
+  await changePeriod.click();
+  await expect(totals.getByRole("button", { name: "Previous period" })).not.toBeVisible();
+  await expect(totals.getByLabel("Active reporting range")).toBeVisible();
+  await changePeriod.click();
+  await totals.getByRole("button", { name: "Use household default" }).click();
+  await expect(totals.getByLabel("Active reporting range")).toHaveText(
+    "25 October 2026 - 24 November 2026"
+  );
 });
 
 test("keeps payday actuals in range with native amounts and transaction-date FX", async ({
@@ -367,6 +409,7 @@ test("keeps payday actuals in range with native amounts and transaction-date FX"
       .toContainText("50,00");
 
     const reportingMode = review.getByLabel("Reporting mode");
+    await review.getByText("Change period", { exact: true }).click();
     await reportingMode.selectOption("calendar-month");
     await expect(review.getByLabel("Active reporting range")).toHaveText(
       "1 October 2026 - 31 October 2026"
@@ -419,6 +462,11 @@ test("supports keyboard payday setup without horizontal overflow at compact size
   await reviewButton.focus();
   await reviewButton.press("Enter");
   const review = window.getByRole("region", { name: "Review workspace" });
+  const changePeriod = review.getByText("Change period", { exact: true });
+  const disclosureBounds = await changePeriod.boundingBox();
+  expect(disclosureBounds?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await changePeriod.focus();
+  await changePeriod.press("Enter");
   await expect(review.getByLabel("Reporting mode")).toHaveValue("payday-period");
   await expect(review.getByLabel("Active reporting range")).toHaveText(
     "25 September 2026 - 24 October 2026"
@@ -618,6 +666,7 @@ test("reviews and navigates two fixed reporting dates within one month", async (
   await expect(comparison).toContainText(/from .*100,00.* to .*150,00/);
   const totals = review.getByRole("region", { name: "Payday-period totals" });
   const nextPeriod = review.getByRole("button", { name: "Next period" });
+  await review.getByText("Change period", { exact: true }).click();
   await nextPeriod.click();
   await expect(review.getByLabel("Active reporting range"))
     .toHaveText("25 February 2026 - 14 March 2026");
@@ -710,6 +759,8 @@ test("a failed calendar save preserves the draft and keeps the saved payday rule
   }
 
   await appShell.openWorkspace("Review");
+  await window.getByRole("region", { name: "Review workspace" })
+    .getByText("Change period", { exact: true }).click();
   await expect(window.getByRole("region", { name: "Review workspace" })
     .getByLabel("Reporting mode")).toHaveValue("payday-period");
 });

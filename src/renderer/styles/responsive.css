@@ -228,13 +228,14 @@
     flex: initial;
   }
 
-  .reporting-period-toolbar {
-    width: 100%;
-    justify-items: stretch;
-  }
-
   .reporting-period-navigation {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reporting-period-disclosure > summary {
+    top: -0.625rem;
+    min-height: 44px;
+    padding-block: 0.75rem;
   }
 
   .reporting-period-stepper .action-secondary {
@@ -242,18 +243,14 @@
     padding-inline: 0.55rem;
   }
 
-  .reporting-period-current {
-    width: 100%;
-    justify-content: flex-start;
-    text-align: left;
-  }
-
   .reporting-period-mode {
-    justify-content: space-between;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .reporting-period-mode select {
     min-width: 0;
+    width: 100%;
   }
 
   .reporting-period-preview {

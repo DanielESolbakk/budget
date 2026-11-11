@@ -285,7 +285,7 @@ test("keeps CSV and text-PDF pending rows separate from the booked review", asyn
   ).toBeVisible();
 
   await appShell.openWorkspace("Review");
-  await dashboard.monthSelector.selectOption("2026-05");
+  await dashboard.selectMonth("2026-05");
   const formatNok = (amountMinor: number): string =>
     new Intl.NumberFormat("nb-NO", {
       style: "currency",
@@ -311,7 +311,7 @@ test("pending CSV and text-PDF imports leave budget actuals and forecasts unchan
   window,
 }) => {
   await appShell.openWorkspace("Review");
-  await dashboard.monthSelector.selectOption("2026-05");
+  await dashboard.selectMonth("2026-05");
   await expect(dashboardTarget.targetCell("groceries")).toHaveText(/90,00/);
   await expect(dashboardTarget.actualCell("groceries")).toHaveText(/85,00/);
   await window.getByText("Plan ahead", { exact: true }).click();

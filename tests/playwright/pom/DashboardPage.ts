@@ -86,7 +86,18 @@ export class DashboardPage {
 
   /** The month selector combobox. */
   get monthSelector() {
-    return this.page.getByRole("combobox", { name: "Select month" });
+    return this.page.getByRole("combobox", { name: "Select month", includeHidden: true });
+  }
+
+  async openPeriodControls(): Promise<void> {
+    if (!await this.monthSelector.isVisible()) {
+      await this.monthlyTotalsSection.getByText("Change period", { exact: true }).click();
+    }
+  }
+
+  async selectMonth(yearMonth: string): Promise<void> {
+    await this.openPeriodControls();
+    await this.monthSelector.selectOption(yearMonth);
   }
 
   get zeroActivityStatus() {
@@ -115,6 +126,7 @@ export class DashboardPage {
 
   /** Select a different month option than the current one and return the selected month value. */
   async selectDifferentMonth(currentMonth: string): Promise<string> {
+    await this.openPeriodControls();
     const options = await this.monthSelector
       .getByRole("option")
       .evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));

@@ -39,6 +39,7 @@ describe("review period navigation", () => {
       savedReportingPeriodRule: reportingPeriodRule,
       onMonthChange: () => undefined,
       onReportingModeChange: () => undefined,
+      onUseReportingDefault: () => undefined,
       onOpenTransactions: () => undefined,
       onOpenCoverage: () => undefined,
       onTargetSaved: () => undefined,

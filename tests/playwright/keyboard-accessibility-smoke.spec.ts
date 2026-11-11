@@ -89,8 +89,9 @@ test.describe("Keyboard accessibility smoke", () => {
   });
 
   test("month selector responds to keyboard selection", async ({ dashboard, window }) => {
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     const initialMonth = await dashboard.monthSelector.inputValue();
+    await expect(dashboard.monthSelector).toBeEnabled();
     await dashboard.monthSelector.focus();
     await expect(dashboard.monthSelector).toBeFocused();
     await window.keyboard.press("ArrowUp");
@@ -104,7 +105,9 @@ test.describe("Keyboard accessibility smoke", () => {
     dashboard,
     window,
   }) => {
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
+    const changePeriod = dashboard.monthlyTotalsSection.getByText("Change period", { exact: true });
+    await changePeriod.click();
     await appShell.destination("Review").focus();
     await expect(appShell.destination("Review")).toBeFocused();
 
@@ -115,7 +118,7 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(appShell.destination("Household")).toBeFocused();
     await window.keyboard.press("Tab");
-    await expect(dashboard.monthSelector).toBeFocused();
+    await expect(changePeriod).toBeFocused();
     const cashPlanning = window.getByRole("navigation", { name: "Cash planning" });
     await window.keyboard.press("Tab");
     await expect(cashPlanning.getByRole("link", { name: "Estimate spendable cash" })).toBeFocused();
@@ -160,7 +163,7 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Investments" })).toBeFocused();
     await window.keyboard.press("Tab");
-    await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
+    await expect(householdTools.getByRole("button", { name: "Settings" })).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Data safety" })).toBeFocused();
     const properties = new PropertyRegistryPage(window);
@@ -204,7 +207,7 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Investments" })).toBeFocused();
     await window.keyboard.press("Tab");
-    await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
+    await expect(householdTools.getByRole("button", { name: "Settings" })).toBeFocused();
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Data safety" })).toBeFocused();
     const loans = new LoanRegistryPage(window);
@@ -293,7 +296,7 @@ test.describe("Keyboard accessibility smoke", () => {
     await window.keyboard.press("Tab");
     await expect(householdTools.getByRole("button", { name: "Investments" })).toBeFocused();
     await window.keyboard.press("Tab");
-    await expect(householdTools.getByRole("button", { name: "Exchange rates" })).toBeFocused();
+    await expect(householdTools.getByRole("button", { name: "Settings" })).toBeFocused();
     await window.keyboard.press("Tab");
     const dataSafetyTab = householdTools.getByRole("button", { name: "Data safety" });
     await expect(dataSafetyTab).toBeFocused();

@@ -132,7 +132,7 @@ test.describe("Manual entry and duplicate detection", () => {
     await expect(entry.submitButton).toBeVisible();
 
     await appShell.openWorkspace("Review");
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await expect(dashboard.expenseValue).toContainText("85,00");
     await appShell.openWorkspace("Import");
     await entry.submitEntry(manualEntry);
@@ -150,7 +150,7 @@ test.describe("Manual entry and duplicate detection", () => {
 
   test("Scenario 2: equivalent entry shows a duplicate warning and keeps totals unchanged", async ({ appShell, manualEntry: entry, dashboard, window }) => {
     await appShell.openWorkspace("Review");
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
     await appShell.openWorkspace("Import");

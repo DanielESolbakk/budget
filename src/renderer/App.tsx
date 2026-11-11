@@ -281,6 +281,10 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
 
   function handleReportingPeriodPreferenceSaved(rule: ReportingPeriodRule): void {
     setSavedReportingPeriodRule(rule);
+    showCurrentReportingPeriod(rule);
+  }
+
+  function showCurrentReportingPeriod(rule: ReportingPeriodRule): void {
     setUseCalendarReportingMode(false);
     const currentReportingPeriod = resolveCurrentReportingPeriod(rule, toLocalIsoDate(new Date()));
     const selectedYearMonth = currentReportingPeriod.startDateIso.slice(0, 7);
@@ -496,6 +500,9 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
             onRetry={() => setRefreshCounter((counter) => counter + 1)}
             savedReportingPeriodRule={savedReportingPeriodRule}
             onReportingModeChange={handleReportingModeChange}
+            onUseReportingDefault={() => {
+              if (savedReportingPeriodRule !== null) showCurrentReportingPeriod(savedReportingPeriodRule);
+            }}
           />
           {visitedWorkspaces.has("transactions") && (
             <TransactionsWorkspace

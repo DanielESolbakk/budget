@@ -114,7 +114,7 @@ test.describe("Categorization review workflow", () => {
       database.close();
     }
     await window.reload();
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await expect(dashboard.monthlyAttention).toContainText("1 category decision needs review this month.");
     await expect(dashboard.monthlyAttention).toContainText("Coverage includes all recorded periods, not only this month.");
     await dashboard.reviewQueueAction.click();
@@ -395,7 +395,7 @@ test.describe("Categorization review workflow", () => {
     await expect(csvImport.successStatus).toBeVisible({ timeout: 10_000 });
 
     await appShell.openWorkspace("Review");
-  await dashboard.monthSelector.selectOption("2026-05");
+  await dashboard.selectMonth("2026-05");
     await expect(dashboard.monthlyAttention).toContainText("category decisions need review this month.");
     await dashboard.reviewQueueAction.click();
 

@@ -233,7 +233,7 @@ test.describe("single statement import entry", () => {
         await expect(csvImport.successStatus).toContainText("Added 1 transaction to your ledger.");
 
         await appShell.openWorkspace("Review");
-        await dashboard.monthSelector.selectOption("2026-05");
+        await dashboard.selectMonth("2026-05");
         await expect(dashboard.monthSelector).toHaveValue("2026-05");
         const expensesBeforeCorrection = await dashboard.expenseValue.textContent();
 

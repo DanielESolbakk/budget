@@ -37,6 +37,7 @@ export interface MonthlyTotalsSectionProps {
   viewContract: DashboardViewContract;
   refreshKey: number;
   onOpenPlanningTools: () => void;
+  periodControls?: React.ReactNode;
 }
 
 type LoadedDashboardViewContract = Exclude<DashboardViewContract, { state: "loading" }>;
@@ -45,22 +46,30 @@ export function MonthlyTotalsSection({
   viewContract,
   refreshKey,
   onOpenPlanningTools,
+  periodControls,
 }: MonthlyTotalsSectionProps): React.JSX.Element {
+  const isPaydayPeriod = viewContract.state !== "loading" &&
+    viewContract.snapshot.reportingPeriodRule.type !== "calendar-month";
+  const sectionLabel = isPaydayPeriod ? "Payday-period totals" : "Monthly Totals";
+  const heading = (
+    <header className="monthly-totals-header">
+      <h2>{sectionLabel}</h2>
+      {periodControls}
+    </header>
+  );
   if (viewContract.state === "loading") {
     return (
       <section aria-label="Monthly Totals">
-        <h2>Monthly Totals</h2>
+        {heading}
         <p>Loading...</p>
       </section>
     );
   }
 
   if (viewContract.state === "empty") {
-    const isPaydayPeriod = viewContract.snapshot.reportingPeriodRule.type !== "calendar-month";
-    const sectionLabel = isPaydayPeriod ? "Payday-period totals" : "Monthly Totals";
     return (
       <section aria-label={sectionLabel}>
-        <h2>{sectionLabel}</h2>
+        {heading}
         <MonthlyComparisonSummary viewContract={viewContract} refreshKey={refreshKey} />
         <CashPlanningNavigation onOpenPlanningTools={onOpenPlanningTools} />
       </section>
@@ -69,13 +78,11 @@ export function MonthlyTotalsSection({
 
   const { monthlyTotals, currencyReport } = viewContract.snapshot;
   const isIncomplete = (currencyReport?.incompleteCurrencies.length ?? 0) > 0;
-  const isPaydayPeriod = viewContract.snapshot.reportingPeriodRule.type !== "calendar-month";
-  const sectionLabel = isPaydayPeriod ? "Payday-period totals" : "Monthly Totals";
   const netLabel = isPaydayPeriod ? "Period net" : "Monthly net";
 
   return (
     <section aria-label={sectionLabel}>
-      <h2>{sectionLabel}</h2>
+      {heading}
       {isIncomplete && (
         <p className="currency-warning" role="status">
           <strong>Incomplete NOK subtotal.</strong> Missing dated rates: {currencyReport?.incompleteCurrencies.join(", ")}.

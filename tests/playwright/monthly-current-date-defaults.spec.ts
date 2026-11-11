@@ -43,6 +43,7 @@ test.describe("Current local date defaults", () => {
     await expect(dashboard.monthlyTotalsSection).not.toContainText("Spending was unchanged");
     await expect(dashboard.monthlyTotalsSection).not.toContainText("No transactions for this month.");
     await expect(dashboard.categoryBreakdownSection).toBeHidden();
+    await dashboard.openPeriodControls();
 
     for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
       await electronApp.evaluate(({ BrowserWindow }, viewport) => {
@@ -65,6 +66,15 @@ test.describe("Current local date defaults", () => {
       }));
       expect(documentWidth.scrollWidth).toBeLessThanOrEqual(documentWidth.clientWidth);
     }
+
+    await dashboard.selectMonth("2026-05");
+    await expect(dashboard.incomeValue).toBeVisible();
+    await expect(dashboard.monthlyTotalsSection.getByText("Custom view", { exact: true })).toBeVisible();
+    await dashboard.monthlyTotalsSection.getByRole("button", { name: "Use household default" }).click();
+    await expect(dashboard.monthSelector).toHaveValue(CURRENT_LOCAL_MONTH);
+    await expect(dashboard.monthlyTotalsSection.getByText("Custom view", { exact: true })).toHaveCount(0);
+    expect(await window.evaluate(() => globalThis.window.budgetApi.reportingPreferences.getPeriodRule()))
+      .toEqual({ type: "calendar-month" });
   });
 
   test("keeps the selected local booking date and review month through refresh", async ({
@@ -98,7 +108,7 @@ test.describe("Current local date defaults", () => {
     }
 
     await appShell.openWorkspace("Review");
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await expect(dashboard.monthSelector).toHaveValue("2026-05");
     await expect(dashboard.monthlyTotalsSection).not.toContainText("No transactions for this month.");
     await expect(dashboard.incomeValue).toBeVisible();
