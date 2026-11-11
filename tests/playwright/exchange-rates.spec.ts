@@ -249,13 +249,15 @@ async function openRatesWorkspace(
     const householdButton = window.getByRole("button", { name: "Household", exact: true });
     await householdButton.focus();
     await window.keyboard.press("Enter");
-    const exchangeRatesTab = window
+    const settingsTab = window
       .getByRole("navigation", { name: "Household tools" })
-      .getByRole("button", { name: "Exchange rates", exact: true });
-    await exchangeRatesTab.focus();
+      .getByRole("button", { name: "Settings", exact: true });
+    await settingsTab.focus();
     await window.keyboard.press("Enter");
 
-    const rates = window.getByRole("region", { name: "Exchange rates", exact: true });
+    const settings = window.getByRole("region", { name: "Settings workspace", exact: true });
+    const rates = settings.getByRole("region", { name: "Exchange rates", exact: true }).last();
+    await expect(rates).toBeVisible();
     const rateBookTab = rates.getByRole("button", { name: "Rate book", exact: true });
     const monthlyReportTab = rates.getByRole("button", { name: "Monthly report", exact: true });
     const rateCurrency = rates.getByLabel("Rate currency");

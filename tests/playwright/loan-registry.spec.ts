@@ -17,14 +17,14 @@ import {
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
-test("Household navigation separates property, loan, exchange-rate, and data-safety destinations", async ({
+test("Household navigation separates property, loan, settings, and data-safety destinations", async ({
   appShell,
   window,
 }) => {
   await appShell.destination("Household").click();
 
   const householdNavigation = window.getByRole("navigation", { name: "Household tools" });
-  for (const destination of ["Properties", "Loans", "Exchange rates", "Data safety"]) {
+  for (const destination of ["Properties", "Loans", "Settings", "Data safety"]) {
     await expect(
       householdNavigation.getByRole("button", { name: destination, exact: true })
     ).toBeVisible();
