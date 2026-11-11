@@ -188,7 +188,7 @@ export function ReviewWorkspace({
             {snapshot !== null && (
               <div className="reporting-period-current">
                 <div className="reporting-period-mode">
-                  <span>Reporting mode</span>
+                  <span className="visually-hidden">Reporting mode</span>
                   {hasSavedPaydayRule ? (
                     <select
                       aria-label="Reporting mode"
