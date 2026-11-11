@@ -1,5 +1,5 @@
 import { DEFAULT_TRANSACTION_PAGE_SIZE, type TransactionQuery } from "../domain/ledger/filterTransactions.js";
-import { buildLedgerSummary, type LedgerQueryResult } from "../shared/ledgerSummary.js";
+import { buildLedgerSummary, filterLedgerByNokAmount, type LedgerQueryResult } from "../shared/ledgerSummary.js";
 import type { LocalLedgerDatabase } from "./backup/localLedgerContracts.js";
 
 export function queryLedger(
@@ -7,9 +7,17 @@ export function queryLedger(
   householdId: string,
   query: TransactionQuery,
 ): LedgerQueryResult {
-  const allTransactions = database.getFilteredTransactions(householdId, query);
+  // Repository amount predicates use native units; ledger amount limits are dated NOK.
+  const candidateQuery = { ...query };
+  delete candidateQuery.amountMinor;
+  delete candidateQuery.amountFromMinor;
+  delete candidateQuery.amountToMinor;
+  delete candidateQuery.largeTransactionsOnly;
+  const candidates = database.getFilteredTransactions(householdId, candidateQuery);
   const accounts = database.getAccountsForHousehold(householdId);
-  const summary = buildLedgerSummary(allTransactions, accounts, database.listExchangeRates());
+  const rates = database.listExchangeRates();
+  const { transactions: allTransactions, amountFilterExclusions } = filterLedgerByNokAmount(candidates, accounts, rates, query);
+  const summary = buildLedgerSummary(allTransactions, accounts, rates);
   const page = query.page ?? 1;
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
   return {
@@ -19,5 +27,6 @@ export function queryLedger(
     pageSize,
     accounts,
     summary,
+    amountFilterExclusions,
   };
 }

@@ -368,6 +368,50 @@ test.describe("Ledger search and filter workflow", () => {
     await expect(ledger.amountToInput).toHaveAttribute("aria-invalid", "true");
   });
 
+  test("rejects reversed date drafts without presenting empty financial results", async ({ ledger, window }) => {
+    await expect(ledger.resultStatus).toHaveText("4 ledger transactions");
+    const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+    await ledger.fromDateInput.fill("2026-05-31");
+    await ledger.toDateInput.fill("2026-05-01");
+    await expect(window.getByRole("alert", { name: "Date range error" })).toContainText("From date must not be after To date.");
+    await expect(ledger.fromDateInput).toHaveAttribute("aria-invalid", "true");
+    await expect(ledger.toDateInput).toHaveAttribute("aria-describedby", "ledger-date-range-error");
+    await expect(summary).not.toBeVisible();
+    await expect(ledger.table).not.toContainText("No transactions");
+    await ledger.openSavedViews();
+    await ledger.savedViewNameInput.fill("Invalid date range");
+    await expect(ledger.saveViewButton).toBeDisabled();
+    await ledger.fromDateInput.fill("2026-05-01");
+    await ledger.toDateInput.fill("2026-05-31");
+    await expect(summary).toContainText("2 matching transactions");
+    await expect(ledger.fromDateInput).toHaveAttribute("aria-invalid", "false");
+    await expect(ledger.saveViewButton).toBeEnabled();
+    await ledger.fromDateInput.fill("2026-06-01");
+    await expect(summary).not.toBeVisible();
+    await ledger.clearFiltersButton.click();
+    await expect(summary).toContainText("4 matching transactions");
+    await expect(window.getByRole("alert", { name: "Date range error" })).not.toBeVisible();
+  });
+
+  test("secondary actions meet the hit-area floor and summary typography is component-owned", async ({ ledger, window }) => {
+    await expect(ledger.resultStatus).toHaveText("4 ledger transactions");
+    await ledger.quickFilter("Income").click();
+    const summary = window.getByRole("region", { name: "Filtered transaction totals", exact: true });
+    await expect(summary).toBeVisible();
+    for (const width of [1280, 390]) {
+      await window.setViewportSize({ width, height: 844 });
+      for (const control of [ledger.clearFiltersButton, ledger.savedViewsSummary, ledger.table.getByRole("button", { name: "Sort by date", exact: true })]) {
+        const box = await control.boundingBox();
+        expect(box?.height).toBeGreaterThanOrEqual(44);
+        expect(box?.width).toBeGreaterThanOrEqual(44);
+      }
+      expect(await summary.locator("dd").first().evaluate(el => {
+        const style = getComputedStyle(el);
+        return { size: parseFloat(style.fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize), weight: style.fontWeight };
+      })).toEqual({ size: 1.15, weight: "600" });
+    }
+  });
+
   test("shows a loading state before the initial ledger query completes", async ({
     appShell,
     electronApp,

@@ -1,5 +1,5 @@
 import React from "react";
-import { haveSameTransactionFilters, type LedgerSummary } from "../../shared/ledgerSummary.js";
+import { haveSameTransactionFilters, type LedgerQueryResult, type LedgerSummary } from "../../shared/ledgerSummary.js";
 import {
   DEFAULT_TRANSACTION_PAGE_SIZE,
   LARGE_TRANSACTION_THRESHOLD_MINOR,
@@ -119,6 +119,9 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
   const [savedViewMessage, setSavedViewMessage] = React.useState<string | null>(null);
   const [totalCount, setTotalCount] = React.useState(0);
   const [summary, setSummary] = React.useState<LedgerSummary | null>(null);
+  const [amountFilterExclusions, setAmountFilterExclusions] = React.useState<LedgerQueryResult["amountFilterExclusions"]>({
+    transactionCount: 0, currencies: [],
+  });
   const [loadedQuery, setLoadedQuery] = React.useState<TransactionQuery | null>(null);
   const [loadedRefreshKey, setLoadedRefreshKey] = React.useState<number | null>(null);
   const [loadedRetryKey, setLoadedRetryKey] = React.useState<number | null>(null);
@@ -160,6 +163,11 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
       : minimumAmount !== undefined && minimumAmount !== null && maximumAmount !== undefined && maximumAmount !== null && minimumAmount > maximumAmount
         ? "Minimum amount must not exceed maximum amount."
         : null;
+  const dateRangeError = filters.bookedFromIso !== undefined && filters.bookedToIso !== undefined &&
+    filters.bookedFromIso.slice(0, 10) > filters.bookedToIso.slice(0, 10)
+      ? "From date must not be after To date."
+      : null;
+  const hasInvalidFilters = amountRangeError !== null || dateRangeError !== null;
 
   React.useEffect(() => {
     let active = true;
@@ -175,6 +183,7 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
         setAccounts(result.accounts);
         setTotalCount(result.totalCount);
         setSummary(result.summary);
+        setAmountFilterExclusions(result.amountFilterExclusions);
         setLoadedQuery(query);
         setLoadedRefreshKey(refreshKey);
         setLoadedRetryKey(retryKey);
@@ -217,7 +226,7 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
       return;
     }
     const filterRevision = latestFilterRevision.current;
-    if (amountRangeError !== null) {
+    if (hasInvalidFilters) {
       setIsFilterPending(false);
       return;
     }
@@ -238,7 +247,7 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
     return () => {
       window.clearTimeout(timer);
     };
-  }, [filters, amountRangeError]);
+  }, [filters, hasInvalidFilters]);
 
   function setFilter(field: LedgerFilterField, value: TransactionFilters[LedgerFilterField]): void {
     updateFilters((current) => {
@@ -509,10 +518,10 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
 
   const currentPage = query.page ?? 1;
   const reportFiltersChanged = filterRequest !== null && filterRequest !== undefined &&
-    (amountRangeError !== null || !haveSameTransactionFilters(filters, filterRequest.filters));
+    (hasInvalidFilters || !haveSameTransactionFilters(filters, filterRequest.filters));
   const resultsAreCurrent = loadedQuery === query && loadedRefreshKey === refreshKey &&
     loadedRetryKey === retryKey &&
-    !isLoading && !isFilterPending && amountRangeError === null && error === null &&
+    !isLoading && !isFilterPending && !hasInvalidFilters && error === null &&
     haveSameTransactionFilters(filters, query) &&
     (filterRequest === null || filterRequest === undefined || lastFilterRequestId.current === filterRequest.id);
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
@@ -645,11 +654,11 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
           </label>
           <label>
             From date
-            <input aria-label="Filter from date" type="date" value={filters.bookedFromIso?.slice(0, 10) ?? ""} onChange={(event) => setFilter("bookedFromIso", event.target.value || undefined)} />
+            <input aria-label="Filter from date" type="date" aria-invalid={dateRangeError !== null} aria-describedby={dateRangeError === null ? undefined : "ledger-date-range-error"} value={filters.bookedFromIso?.slice(0, 10) ?? ""} onChange={(event) => setFilter("bookedFromIso", event.target.value || undefined)} />
           </label>
           <label>
             To date
-            <input aria-label="Filter to date" type="date" value={filters.bookedToIso?.slice(0, 10) ?? ""} onChange={(event) => setFilter("bookedToIso", event.target.value || undefined)} />
+            <input aria-label="Filter to date" type="date" aria-invalid={dateRangeError !== null} aria-describedby={dateRangeError === null ? undefined : "ledger-date-range-error"} value={filters.bookedToIso?.slice(0, 10) ?? ""} onChange={(event) => setFilter("bookedToIso", event.target.value || undefined)} />
           </label>
         </div>
         <div id="ledger-advanced-filters" className="ledger-secondary-filters-panel" hidden={!isAdvancedFiltersOpen}>
@@ -681,12 +690,15 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
                 Maximum amount (NOK)
                 <input aria-label="Maximum amount (NOK)" type="text" inputMode="decimal" aria-invalid={amountRangeError !== null} aria-describedby={amountRangeError === null ? undefined : "ledger-amount-range-error"} value={amountTo} onChange={(event) => handleAmountChange("to", event.target.value)} />
               </label>
-              <p className="ledger-amount-format-hint">Enter kroner, for example 100,50.</p>
+              <p className="ledger-amount-format-hint">Enter kroner, for example 100,50. Foreign amounts use dated NOK conversions.</p>
             </div>
           </div>
         </div>
         {amountRangeError !== null && (
           <p id="ledger-amount-range-error" role="alert" aria-label="Amount range error">{amountRangeError} Results remain unchanged until the range is valid.</p>
+        )}
+        {dateRangeError !== null && (
+          <p id="ledger-date-range-error" role="alert" aria-label="Date range error">{dateRangeError} Results remain unchanged until the dates are valid.</p>
         )}
         {hasFiltersToClear && (
           <div className="ledger-filter-actions">
@@ -711,7 +723,7 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
               Save current filters as a view
               <input aria-label="Saved view name" maxLength={40} value={savedViewName} onChange={(event) => setSavedViewName(event.target.value)} />
             </label>
-            <button type="submit" disabled={savedViewName.trim() === "" || Object.keys(filters).length === 0 || isFilterPending || isLoading || amountRangeError !== null}>Save current filters</button>
+            <button type="submit" disabled={savedViewName.trim() === "" || Object.keys(filters).length === 0 || isFilterPending || isLoading || hasInvalidFilters}>Save current filters</button>
           </form>
           {savedViews.length > 0 ? (
             <ul className="ledger-saved-view-list">
@@ -761,6 +773,12 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
         <div role="region" aria-label="Filtered transaction totals" className="ledger-filtered-totals">
           <h3>Filtered transaction totals</h3>
           <p>{totalCount} matching transactions · All pages</p>
+          {amountFilterExclusions.transactionCount > 0 && (
+            <p role="status" aria-label="Amount filter exclusions" className="currency-warning">
+              {amountFilterExclusions.transactionCount} {amountFilterExclusions.transactionCount === 1 ? "transaction excluded" : "transactions excluded"} from NOK amount filters because dated rates are missing: {amountFilterExclusions.currencies.join(", ")}.
+              {" "}These transactions could not be checked against the amount limits. Record local rates in Household &gt; Settings &gt; Exchange rates.
+            </p>
+          )}
           {filterRequest !== null && filterRequest !== undefined && !reportFiltersChanged && (
             <p>These transactions produce the selected report's {summary.incompleteCurrencies.length > 0 ? "partial NOK subtotals" : "totals"}.</p>
           )}
@@ -792,7 +810,7 @@ export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps)
       {resultsAreCurrent && (
         <p className="ledger-result-summary" role="status">{totalCount} ledger transactions</p>
       )}
-      {hasLoaded && !isLoading && !isFilterPending && error === null && totalCount === 0 && (
+      {resultsAreCurrent && totalCount === 0 && (
         <div className="empty-state">
           <strong>No transactions match these filters.</strong>
         </div>

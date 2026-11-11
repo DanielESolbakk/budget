@@ -78,6 +78,57 @@ function withDatabase<Result>(
 }
 
 describe("SQLite ledger queries", () => {
+  it("filters signed NOK conversions across all pages and discloses missing-rate exclusions", () => {
+    withDatabase([
+      { ...transaction("eur-expense", "2026-05-10", -10000, "Synthetic FX"), currencyCode: "EUR" },
+      { ...transaction("eur-income", "2026-05-10", 10000, "Synthetic FX"), currencyCode: "EUR" },
+      { ...transaction("sek", "2026-05-10", -10000, "Synthetic FX"), currencyCode: "SEK" },
+      transaction("nok", "2026-05-10", -10000, "Synthetic FX"),
+      { ...transaction("eur-large", "2026-05-10", -100000, "Synthetic FX"), currencyCode: "EUR" },
+      { ...transaction("eur-before-rate", "2025-12-31", -10000, "Synthetic FX"), currencyCode: "EUR" },
+    ], (database) => {
+      database.upsertExchangeRate({
+        id: "eur", currencyCode: "EUR", rateNokPerUnit: "11.50",
+        effectiveDate: "2026-01-01", kind: "dated", source: "Synthetic", provenance: "manual",
+      });
+      database.upsertExchangeRate({
+        id: "later", currencyCode: "EUR", rateNokPerUnit: "20",
+        effectiveDate: "2026-05-11", kind: "dated", source: "Synthetic", provenance: "manual",
+      });
+      const filters = { merchant: "Synthetic FX", amountFromMinor: -120000, amountToMinor: -100000 };
+      database.saveLedgerView({ id: "nok-range", name: "NOK range", filters });
+      const result = queryLedger(database, HOUSEHOLD.id, { ...database.listSavedLedgerViews()[0]?.filters, pageSize: 1 });
+      expect(result.transactions.map(({ id }) => id)).toEqual(["eur-expense"]);
+      expect(result.summary).toMatchObject({ expenseMinor: 115000, netMinor: -115000, incompleteCurrencies: [] });
+      expect(result.amountFilterExclusions).toEqual({ transactionCount: 2, currencies: ["EUR", "SEK"] });
+      expect(queryLedger(database, HOUSEHOLD.id, { amountFromMinor: -20000, amountToMinor: -5000 }).transactions.map(({ id }) => id))
+        .toEqual(["nok"]);
+      expect(queryLedger(database, HOUSEHOLD.id, { amountMinor: 115000 }).transactions.map(({ id }) => id))
+        .toEqual(["eur-income"]);
+      expect(queryLedger(database, HOUSEHOLD.id, { largeTransactionsOnly: true }).transactions.map(({ id }) => id))
+        .toEqual(["eur-large"]);
+      for (const page of [1, 2]) {
+        const allExpenses = queryLedger(database, HOUSEHOLD.id, { amountToMinor: -1, pageSize: 2, page, sortDirection: "asc" });
+        expect(allExpenses.totalCount).toBe(3);
+        expect(allExpenses.summary.expenseMinor).toBe(1275000);
+      }
+      expect(queryLedger(database, HOUSEHOLD.id, {}).amountFilterExclusions)
+        .toEqual({ transactionCount: 0, currencies: [] });
+      for (const restriction of [{ merchant: "No matching merchant" }, { accountId: SAVINGS_ACCOUNT.id }]) {
+        expect(queryLedger(database, HOUSEHOLD.id, { ...filters, ...restriction }).amountFilterExclusions)
+          .toEqual({ transactionCount: 0, currencies: [] });
+      }
+      database.upsertExchangeRate({
+        id: "sek", currencyCode: "SEK", rateNokPerUnit: "11.50",
+        effectiveDate: "2026-01-01", kind: "dated", source: "Synthetic", provenance: "manual",
+      });
+      const afterRate = queryLedger(database, HOUSEHOLD.id, database.listSavedLedgerViews()[0]?.filters ?? {});
+      expect(afterRate.totalCount).toBe(2);
+      expect(afterRate.summary.expenseMinor).toBe(230000);
+      expect(afterRate.amountFilterExclusions).toEqual({ transactionCount: 1, currencies: ["EUR"] });
+    });
+  });
+
   it("matches the report's cross-month dated FX and missing-rate subtotals", () => {
     const entries: Transaction[] = [
       transaction("salary", "2026-01-25T00:15:00+02:00", 300000, "Synthetic salary"),

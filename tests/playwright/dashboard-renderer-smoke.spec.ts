@@ -351,6 +351,12 @@ test.describe("Dashboard renderer smoke", () => {
 
     expect(attentionBottom).toBeLessThanOrEqual(viewportHeight);
     expect(totalsBottom).toBeLessThanOrEqual(viewportHeight);
+    for (const width of [1280, 390]) {
+      await window.setViewportSize({ width, height: 800 });
+      const box = await dashboard.monthlyTotalsSection.getByText("Change period", { exact: true }).boundingBox();
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+      expect(box?.width).toBeGreaterThanOrEqual(44);
+    }
   });
 
   test("startup-size review keeps long totals and attention actions within their columns", async ({

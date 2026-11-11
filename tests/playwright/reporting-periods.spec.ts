@@ -537,6 +537,19 @@ test("keeps payday actuals in range with native amounts and transaction-date FX"
     await ledgerSummary.getByText("Native net subtotals", { exact: true }).click();
     await expect(ledgerSummary.getByRole("list", { name: "Filtered native currency subtotals" })).toContainText("EUR");
     await expect(ledgerSummary.getByRole("list", { name: "Filtered native currency subtotals" })).toContainText("SEK");
+    await ledgerWorkspace.getByRole("button", { name: "More filters", exact: true }).click();
+    await ledgerWorkspace.getByLabel("Minimum amount (NOK)", { exact: true }).fill("-1200");
+    await ledgerWorkspace.getByLabel("Maximum amount (NOK)", { exact: true }).fill("-1100");
+    await expect(ledgerSummary).toContainText("1 matching transactions");
+    await expect(ledgerSummary.getByLabel("Filtered expenses", { exact: true })).toContainText(/1\s?150,00/);
+    await expect(ledgerWorkspace.getByRole("status", { name: "Amount filter exclusions" })).toContainText("SEK");
+    await ledgerWorkspace.getByLabel("Minimum amount (NOK)", { exact: true }).fill("-200");
+    await ledgerWorkspace.getByLabel("Maximum amount (NOK)", { exact: true }).fill("-50");
+    await expect(ledgerSummary).toContainText("0 matching transactions");
+    await expect(ledgerWorkspace.getByRole("status", { name: "Amount filter exclusions" })).toContainText("1 transaction excluded");
+    await ledgerWorkspace.getByRole("button", { name: "Restore report dates", exact: true }).click();
+    await expect(ledgerSummary).toContainText("partial NOK subtotals");
+    await expect(ledgerWorkspace.getByRole("status", { name: "Amount filter exclusions" })).not.toBeVisible();
     await ledgerWorkspace.getByRole("button", { name: "Back to period review", exact: true }).click();
 
     const reportingMode = review.getByLabel("Reporting mode");

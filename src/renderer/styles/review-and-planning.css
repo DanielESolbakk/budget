@@ -197,7 +197,8 @@
   position: absolute;
   top: 0;
   right: 0;
-  padding-block: 0.15rem;
+  padding-block: 0.65rem;
+  min-height: 44px;
   color: var(--orange);
   font-size: 0.875rem;
   font-weight: 600;
@@ -251,6 +252,18 @@
   max-width: 65ch;
 }
 
+.ledger-report-context button,
+.monthly-report-actions button,
+.monthly-attention button {
+  min-height: 44px;
+}
+
+.ledger-filtered-totals > details > summary {
+  min-height: 44px;
+  padding-block: 0.65rem;
+  cursor: pointer;
+}
+
 .comparison-basis-note {
   color: var(--paper-muted);
   font-size: 0.875rem;
@@ -274,12 +287,14 @@
   margin: 0;
 }
 
-.ledger-summary-amounts dd {
+section[aria-label="Ledger"] .ledger-summary-amounts dd {
   margin: 0.25rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.period-spending-comparison .comparison-amount,
-.ledger-summary-amounts dd {
+.period-spending-comparison .comparison-amount {
   font-size: 1.15rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -317,7 +332,7 @@
 
 @media (min-width: 1100px) {
   .review-overview-attention {
-    padding-block: 0.5rem;
+    padding-block: 0.375rem;
   }
 
   .monthly-comparison:has(.period-spending-comparison) {

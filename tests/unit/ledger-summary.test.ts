@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLedgerSummary, haveSameTransactionFilters } from "../../src/shared/ledgerSummary.js";
+import { buildLedgerSummary, filterLedgerByNokAmount, haveSameTransactionFilters } from "../../src/shared/ledgerSummary.js";
 import type { Account, ExchangeRate, Transaction } from "../../src/domain/types.js";
 import { parseTransactionFilters, parseTransactionQuery } from "../../electron/ipc/validation.js";
 
@@ -17,11 +17,39 @@ const transactions: Transaction[] = [
 ];
 
 describe("filtered ledger summaries", () => {
+  it("uses rounded signed dated NOK amounts for matching while retaining order and exclusion evidence", () => {
+    const input = [
+      { ...transactions[2]!, id: "rounded", amountMinor: -1 },
+      { ...transactions[2]!, id: "unknown", currencyCode: "SEK" as const },
+      transactions[0]!,
+    ];
+    expect(filterLedgerByNokAmount(input, accounts, rates, { amountMinor: -12 })).toEqual({
+      transactions: [input[0]],
+      amountFilterExclusions: { transactionCount: 1, currencies: ["SEK"] },
+    });
+    expect(filterLedgerByNokAmount(input, accounts, rates, {})).toEqual({
+      transactions: input,
+      amountFilterExclusions: { transactionCount: 0, currencies: [] },
+    });
+    expect(filterLedgerByNokAmount(transactions, accounts, rates, {
+      amountFromMinor: -115000, amountToMinor: -115000,
+    }).transactions).toEqual([transactions[2]]);
+  });
+
   it("preserves report date basis across query and saved-filter validation and rejects unsupported bases", () => {
     const filters = { bookedFromIso: "2026-01-25", bookedToIso: "2026-02-24", dateBasis: "booking-date" };
     expect(parseTransactionQuery(filters)).toEqual(filters);
     expect(parseTransactionFilters(filters)).toEqual(filters);
     expect(() => parseTransactionQuery({ dateBasis: "unknown" })).toThrow("dateBasis");
+  });
+
+  it("does not aggregate nonmatching candidates before applying NOK limits", () => {
+    const input = [
+      { ...transactions[0]!, id: "large-a", amountMinor: Number.MAX_SAFE_INTEGER },
+      { ...transactions[0]!, id: "large-b", amountMinor: Number.MAX_SAFE_INTEGER },
+      { ...transactions[0]!, id: "small", amountMinor: 1 },
+    ];
+    expect(filterLedgerByNokAmount(input, accounts, [], { amountMinor: 1 }).transactions).toEqual([input[2]]);
   });
 
   it("uses dated conversion across months without changing native amounts or input order", () => {

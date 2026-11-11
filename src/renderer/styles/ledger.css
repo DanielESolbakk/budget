@@ -9,6 +9,11 @@
   gap: 1rem;
 }
 
+section[aria-label="Ledger"] button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 .pending-workspace-summary {
   max-width: 68ch;
   border-top: 1px solid var(--line-strong);
@@ -240,7 +245,7 @@ section[aria-label="Ledger"] .ledger-filter-actions {
 }
 
 section[aria-label="Ledger"] .ledger-clear-filters {
-  min-height: 40px;
+  min-height: 44px;
   border-color: transparent;
   padding: 0.35rem 0.55rem;
   color: var(--paper-muted);
@@ -292,6 +297,8 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
 }
 
 .ledger-active-filters li button {
+  min-height: 44px;
+  min-width: 44px;
   padding: 0.2rem 0.35rem;
 }
 
@@ -364,6 +371,8 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
 }
 
 .ledger-table th button {
+  min-height: 44px;
+  min-width: 44px;
   display: inline-flex;
   align-items: baseline;
   gap: 0.35rem;
@@ -503,8 +512,8 @@ section[aria-label="Ledger"] section[aria-label="Saved ledger views"] {
 
 .ledger-saved-view-details > summary {
   width: fit-content;
-  min-height: 32px;
-  padding-block: 0.45rem;
+  min-height: 44px;
+  padding-block: 0.65rem;
   color: var(--paper-muted);
   cursor: pointer;
   font-size: 0.875rem;

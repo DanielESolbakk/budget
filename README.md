@@ -69,9 +69,13 @@ Empty periods retain zero recorded totals without implying no spending occurred.
 
 **Filtered transaction totals** summarizes income, expenses, and net for all matching ledger transactions across all pages, not only the visible rows. Sorting and paging do not change these amounts. With the original report-date filters, the amounts reconcile to that report using the same transaction-date local FX selection and per-transaction rounding. Missing dated rates produce explicitly partial NOK totals and excluded-currency warnings; native net subtotals remain available separately. Original transaction amounts are never rewritten. Empty results show zero recorded amounts, not proof of no spending.
 
+Ledger exact/minimum/maximum amount filters and **Large transactions** compare signed, per-transaction rounded NOK conversions using those same dated rates; the large-transaction threshold uses absolute NOK magnitude. Transactions without a usable dated rate cannot match an amount filter. A separate warning reports their count and currencies, even when no transactions match, so zero matching totals never silently imply that missing-rate transactions passed the check. Recording a local rate makes them eligible on the next query; saved views retain the NOK limits, not frozen conversion results.
+
 Report drill-down uses **Recorded booking dates**, matching the report even when a timestamp's offset crosses a UTC day boundary. This date basis is visible in the filter chips and retained in saved views. Ordinary ledger date filters retain their existing UTC-day/inclusive-instant behavior. Clearing filters or removing the date-basis chip restores that ordinary behavior; **Restore report dates** reapplies the report's recorded-date basis.
 
 Editing a ledger filter shows **Filters changed**, so a filtered subset is not mistaken for the original report. **Restore report dates** reapplies the original dates, clears all other filters and amount drafts, returns to page one, and focuses the merchant field. Sorting and paging alone do not mark filters changed. Totals are withheld while filters are invalid, updating, or failed; previous rows can remain visible with explicit updating/error guidance until current results arrive. A retry reloads rows and totals together.
+
+Reversed From/To dates mark both fields invalid with an inline correction message. They do not query or display zero totals; the previous rows remain until corrected or cleared, and saving the invalid draft is disabled.
 
 #### Human comprehension check
 

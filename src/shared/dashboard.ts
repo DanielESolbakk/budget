@@ -460,9 +460,9 @@ export function buildNokMonthlyReport(input: NokMonthlyReportInput): NokMonthlyR
   };
 }
 
-export function buildNokTransactionReport(
+export function buildNokReportTransactions(
   input: Pick<NokMonthlyReportInput, "transactions" | "accounts" | "rates" | "monthlyReferenceRateIds" | "useLatestRateScenario">
-): NokCurrencySubtotals & { transactions: NokMonthlyReportTransaction[] } {
+): NokMonthlyReportTransaction[] {
   const accountsById = new Map(input.accounts.map((account) => [account.id, account]));
   const sortedTransactions = [...input.transactions].sort((left, right) =>
       left.bookedAtIso.localeCompare(right.bookedAtIso) ||
@@ -502,10 +502,16 @@ export function buildNokTransactionReport(
     });
   }
 
-  const subtotals = buildNokCurrencySubtotals(transactions);
+  return transactions;
+}
+
+export function buildNokTransactionReport(
+  input: Pick<NokMonthlyReportInput, "transactions" | "accounts" | "rates" | "monthlyReferenceRateIds" | "useLatestRateScenario">
+): NokCurrencySubtotals & { transactions: NokMonthlyReportTransaction[] } {
+  const transactions = buildNokReportTransactions(input);
 
   return {
-    ...subtotals,
+    ...buildNokCurrencySubtotals(transactions),
     transactions,
   };
 }
