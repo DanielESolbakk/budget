@@ -202,6 +202,43 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect(await invoke("dashboard:getViewData", "2026-05")).toMatchObject({ state: "empty" });
   });
 
+  it("loads and saves validated reporting-period preferences through trusted IPC", async () => {
+    createHousehold();
+    expect(invoke("reportingPreferences:getPeriodRule")).toEqual({ type: "calendar-month" });
+    expect(await invoke("reportingPreferences:savePeriodRule", {
+      type: "last-weekday",
+      weekday: 4,
+    })).toEqual({ type: "last-weekday", weekday: 4 });
+    expect(invoke("reportingPreferences:getPeriodRule"))
+      .toEqual({ type: "last-weekday", weekday: 4 });
+    const twoDateRule = {
+      type: "two-fixed-days",
+      firstDayOfMonth: 15,
+      secondDayOfMonth: 31,
+    };
+    expect(await invoke("reportingPreferences:savePeriodRule", twoDateRule)).toEqual(twoDateRule);
+    expect(invoke("reportingPreferences:getPeriodRule")).toEqual(twoDateRule);
+    expect(await invoke(
+      "dashboard:getViewData",
+      "2026-02",
+      twoDateRule,
+      "2026-02-28"
+    )).toMatchObject({
+      state: "empty",
+      snapshot: {
+        reportingPeriodRange: {
+          startDateIso: "2026-02-28",
+          endDateExclusiveIso: "2026-03-15",
+        },
+      },
+    });
+    await expect(Promise.resolve().then(() => invoke("reportingPreferences:savePeriodRule", {
+      type: "two-fixed-days", firstDayOfMonth: 28, secondDayOfMonth: 29,
+    }))).rejects.toThrow("Reporting period preference is malformed.");
+    expect(invoke("reportingPreferences:getPeriodRule"))
+      .toEqual(twoDateRule);
+  });
+
   it("preserves cancellation results for every chooser without creating files", async () => {
     const filesBefore = readdirSync(directory).sort();
     harness.dialogs.mockResolvedValue({ canceled: true, filePaths: [], filePath: "" });

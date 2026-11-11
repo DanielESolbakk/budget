@@ -82,6 +82,7 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     recurringCommitments: snapshot.recurringCommitments,
     recurringCommitmentPaymentLinks: snapshot.recurringCommitmentPaymentLinks,
     recurringCommitmentDecisions: snapshot.recurringCommitmentDecisions,
+    reportingPeriodRule: snapshot.reportingPeriodRule,
     transactionCount: snapshot.transactions.length,
   };
 }

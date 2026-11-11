@@ -1,9 +1,19 @@
 import React from "react";
-import { toLocalYearMonth } from "../domain/date/localDateDefaults.js";
+import {
+  resolveCurrentReportingPeriod,
+  resolveReportingPeriod,
+  type ReportingPeriodRange,
+} from "../domain/date/reportingPeriods.js";
+import {
+  DEFAULT_REPORTING_PERIOD_RULE,
+  type ReportingPeriodRule,
+} from "../shared/applicationPreferences.js";
+import { toLocalIsoDate, toLocalYearMonth } from "../domain/date/localDateDefaults.js";
 import "./app.css";
 import { AccountCoverageSection } from "./dashboard/AccountCoverageSection.js";
 import { loadDashboardData } from "./dashboard/loadDashboardData.js";
 import { ExchangeRatesSection } from "./settings/ExchangeRatesSection.js";
+import { ReportingPeriodSettingsSection } from "./settings/ReportingPeriodSettingsSection.js";
 import { HouseholdSetup } from "./setup/HouseholdSetup.js";
 import { DataSafetyWorkspace } from "./workspaces/DataSafetyWorkspace.js";
 import { HoldingRegistrySection } from "./workspaces/holding/HoldingRegistrySection.js";
@@ -13,10 +23,13 @@ import { PendingTransactionsWorkspace } from "./workspaces/PendingTransactionsWo
 import { PropertyRegistrySection } from "./workspaces/property/PropertyRegistrySection.js";
 import { ReviewWorkspace } from "./workspaces/ReviewWorkspace.js";
 import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
+import type { LedgerFilterRequest } from "./dashboard/LedgerSection.js";
+import { formatReportingPeriodRange } from "./reportingPeriodDisplay.js";
 import type { ReviewState } from "./workspaces/types.js";
 
 const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
 const SELECTED_YEAR_MONTH_SESSION_KEY = "budget-planner.selected-review-month";
+const CALENDAR_MONTH_RULE: ReportingPeriodRule = DEFAULT_REPORTING_PERIOD_RULE;
 
 function getInitialYearMonth(): string {
   const selectedYearMonth = window.sessionStorage.getItem(SELECTED_YEAR_MONTH_SESSION_KEY);
@@ -78,6 +91,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     () => new Set(["review"])
   );
   const [reviewQueueFocusRequest, setReviewQueueFocusRequest] = React.useState(0);
+  const [ledgerFilterRequest, setLedgerFilterRequest] = React.useState<LedgerFilterRequest | null>(null);
   const [refreshCounter, setRefreshCounter] = React.useState(0);
   const [propertyRegistryRevision, setPropertyRegistryRevision] = React.useState(0);
   const [requestedPropertyId, setRequestedPropertyId] = React.useState<string | null>(null);
@@ -85,8 +99,12 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [monthChangeError, setMonthChangeError] = React.useState<string | null>(null);
   const [refreshError, setRefreshError] = React.useState<string | null>(null);
+  const [savedReportingPeriodRule, setSavedReportingPeriodRule] =
+    React.useState<ReportingPeriodRule | null>(null);
+  const [useCalendarReportingMode, setUseCalendarReportingMode] = React.useState(false);
   const hasLoadedInitialState = React.useRef(false);
   const selectedYearMonthRef = React.useRef(initialYearMonth);
+  const selectedPeriodStartDateIsoRef = React.useRef<string | undefined>(undefined);
   const latestViewRequestRef = React.useRef(0);
   const workspaceRef = React.useRef<HTMLElement>(null);
   const previousWorkspaceRef = React.useRef(activeWorkspace);
@@ -117,6 +135,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     let isActive = true;
     const requestId = latestViewRequestRef.current + 1;
     latestViewRequestRef.current = requestId;
+    const isInitialLoad = !hasLoadedInitialState.current;
     const requestedYearMonth = selectedYearMonthRef.current;
 
     setMonthChangeError(null);
@@ -136,23 +155,57 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
         if (required) return null;
         return Promise.all([
           loadDashboardData(window.budgetApi),
-          window.budgetApi.dashboard.getViewData(requestedYearMonth),
-        ] as const);
+          window.budgetApi.reportingPreferences.getPeriodRule(),
+        ] as const).then(async ([dashboardData, storedReportingPeriodRule]) => {
+          const activeRule = useCalendarReportingMode
+            ? CALENDAR_MONTH_RULE
+            : storedReportingPeriodRule;
+          const currentReportingPeriod = isInitialLoad && activeRule.type !== "calendar-month"
+            ? resolveCurrentReportingPeriod(activeRule, toLocalIsoDate(new Date()))
+            : null;
+          const selectedYearMonth = currentReportingPeriod !== null
+            ? currentReportingPeriod.startDateIso.slice(0, 7)
+            : requestedYearMonth;
+          const selectedPeriodStartDateIso = activeRule.type === "two-fixed-days"
+            ? currentReportingPeriod?.startDateIso ?? selectedPeriodStartDateIsoRef.current
+            : undefined;
+          const viewContract = await window.budgetApi.dashboard.getViewData(
+            selectedYearMonth,
+            activeRule,
+            selectedPeriodStartDateIso
+          );
+          return {
+            dashboardData,
+            viewContract,
+            selectedYearMonth,
+            selectedPeriodStartDateIso,
+            storedReportingPeriodRule,
+          };
+        });
       })
       .then((loadedData) => {
         if (loadedData === null || !isActive || requestId !== latestViewRequestRef.current) return;
-        const [dashboardData, viewContract] = loadedData;
+        const {
+          dashboardData,
+          viewContract,
+          selectedYearMonth,
+          selectedPeriodStartDateIso,
+          storedReportingPeriodRule,
+        } = loadedData;
         hasLoadedInitialState.current = true;
+        setSavedReportingPeriodRule(storedReportingPeriodRule);
         setIsRefreshing(false);
         setRefreshError(null);
         const availableMonths = dashboardData.monthlyTotals.map((t) => t.yearMonth);
         if (!availableMonths.includes(requestedYearMonth)) availableMonths.unshift(requestedYearMonth);
-        selectedYearMonthRef.current = requestedYearMonth;
+        if (!availableMonths.includes(selectedYearMonth)) availableMonths.unshift(selectedYearMonth);
+        selectedYearMonthRef.current = selectedYearMonth;
+        selectedPeriodStartDateIsoRef.current = selectedPeriodStartDateIso;
         setAppState({
           status: "ready",
           dashboardData,
           viewContract,
-          selectedYearMonth: requestedYearMonth,
+          selectedYearMonth,
           availableMonths,
         });
       })
@@ -171,25 +224,40 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
     return () => {
       isActive = false;
     };
-  }, [refreshCounter]);
+  }, [refreshCounter, useCalendarReportingMode]);
 
-  function handleMonthChange(yearMonth: string): void {
+  function handleMonthChange(selection: string): void {
     if (appState.status !== "ready") return;
 
     const requestId = latestViewRequestRef.current + 1;
     latestViewRequestRef.current = requestId;
     setIsChangingMonth(true);
     setMonthChangeError(null);
+    const activeRule = useCalendarReportingMode
+      ? CALENDAR_MONTH_RULE
+      : savedReportingPeriodRule ?? CALENDAR_MONTH_RULE;
+    const selectedPeriodStartDateIso = activeRule.type === "two-fixed-days"
+      ? selection
+      : undefined;
+    const yearMonth = selectedPeriodStartDateIso === undefined
+      ? selection
+      : selection.slice(0, 7);
     window.budgetApi.dashboard
-      .getViewData(yearMonth)
+      .getViewData(yearMonth, activeRule, selectedPeriodStartDateIso)
       .then((viewContract) => {
         if (requestId !== latestViewRequestRef.current) return;
         window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, yearMonth);
         setAppState((prev) => {
           if (prev.status !== "ready") return prev;
-          return { ...prev, viewContract, selectedYearMonth: yearMonth };
+          return {
+            ...prev,
+            viewContract,
+            selectedYearMonth: yearMonth,
+            availableMonths: [...new Set([...prev.availableMonths, yearMonth])].sort(),
+          };
         });
         selectedYearMonthRef.current = yearMonth;
+        selectedPeriodStartDateIsoRef.current = selectedPeriodStartDateIso;
         setIsChangingMonth(false);
       })
       .catch(() => {
@@ -199,6 +267,37 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
             "Unable to change month. Your current review remains visible. Select a month again to retry."
           );
       });
+  }
+
+  function handleReportingModeChange(mode: "calendar-month" | "payday-period"): void {
+    const selectedYearMonth = appState.status === "ready"
+      ? appState.selectedYearMonth
+      : initialYearMonth;
+    selectedPeriodStartDateIsoRef.current =
+      mode === "payday-period" && savedReportingPeriodRule?.type === "two-fixed-days"
+        ? resolveReportingPeriod(savedReportingPeriodRule, selectedYearMonth).startDateIso
+        : undefined;
+    setUseCalendarReportingMode(mode === "calendar-month");
+    selectedYearMonthRef.current = selectedYearMonth;
+    window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, selectedYearMonth);
+    setRefreshCounter((counter) => counter + 1);
+  }
+
+  function handleReportingPeriodPreferenceSaved(rule: ReportingPeriodRule): void {
+    setSavedReportingPeriodRule(rule);
+    showCurrentReportingPeriod(rule);
+  }
+
+  function showCurrentReportingPeriod(rule: ReportingPeriodRule): void {
+    setUseCalendarReportingMode(false);
+    const currentReportingPeriod = resolveCurrentReportingPeriod(rule, toLocalIsoDate(new Date()));
+    const selectedYearMonth = currentReportingPeriod.startDateIso.slice(0, 7);
+    selectedPeriodStartDateIsoRef.current = rule.type === "two-fixed-days"
+      ? currentReportingPeriod.startDateIso
+      : undefined;
+    selectedYearMonthRef.current = selectedYearMonth;
+    window.sessionStorage.setItem(SELECTED_YEAR_MONTH_SESSION_KEY, selectedYearMonth);
+    setRefreshCounter((counter) => counter + 1);
   }
 
   function openWorkspace(workspaceId: WorkspaceId, focusDestination = false): void {
@@ -232,6 +331,20 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
   function openReviewQueue(): void {
     openWorkspace("transactions");
     setReviewQueueFocusRequest((request) => request + 1);
+  }
+
+  function openPeriodTransactions(range: ReportingPeriodRange, rule: ReportingPeriodRule): void {
+    const inclusiveEnd = new Date(`${range.endDateExclusiveIso}T00:00:00.000Z`);
+    inclusiveEnd.setUTCDate(inclusiveEnd.getUTCDate() - 1);
+    setLedgerFilterRequest((previous) => ({
+      id: (previous?.id ?? 0) + 1,
+      filters: {
+        bookedFromIso: range.startDateIso,
+        bookedToIso: inclusiveEnd.toISOString().slice(0, 10),
+      },
+      description: `${rule.type === "calendar-month" ? "Calendar month" : "Payday period"}: ${formatReportingPeriodRange(range)}`,
+    }));
+    openWorkspace("transactions", true);
   }
 
   function handleSetupComplete(): void {
@@ -352,7 +465,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
                 ["properties", "Properties"],
                 ["loans", "Loans"],
                 ["investments", "Investments"],
-                ["settings", "Exchange rates"],
+                ["settings", "Settings"],
                 ["data-safety", "Data safety"],
               ] as const).map(([workspaceId, label]) => (
                 <button
@@ -400,15 +513,20 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
             refreshError={refreshError}
             onMonthChange={handleMonthChange}
             onOpenTransactions={openReviewQueue}
+            onOpenPeriodTransactions={openPeriodTransactions}
             onOpenCoverage={() => openWorkspace("coverage")}
             onTargetSaved={() => setRefreshCounter((counter) => counter + 1)}
             onRetry={() => setRefreshCounter((counter) => counter + 1)}
+            savedReportingPeriodRule={savedReportingPeriodRule}
+            onReportingModeChange={handleReportingModeChange}
           />
           {visitedWorkspaces.has("transactions") && (
             <TransactionsWorkspace
               isActive={activeWorkspace === "transactions"}
               refreshKey={refreshCounter}
               reviewQueueFocusRequest={reviewQueueFocusRequest}
+              filterRequest={ledgerFilterRequest}
+              onBackToReview={() => openWorkspace("review", true)}
               onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}
             />
           )}
@@ -521,10 +639,19 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
               hidden={activeWorkspace !== "settings"}
             >
               <div className="destination-heading">
-                <h2>Exchange rates</h2>
-                <p>Record rates locally and use them to compare household spending.</p>
+                <h2>Settings</h2>
+                <p>Set how household reporting periods are calculated. Your data stays on this device.</p>
               </div>
-              <ExchangeRatesSection onRatesChanged={() => setRefreshCounter((counter) => counter + 1)} />
+              <ReportingPeriodSettingsSection onSaved={handleReportingPeriodPreferenceSaved} />
+              <section className="settings-exchange-rates" aria-labelledby="exchange-rates-heading">
+                <div className="reporting-preferences-heading">
+                  <div>
+                    <h3 id="exchange-rates-heading">Exchange rates</h3>
+                    <p>Record local rates for NOK comparison and valuation reports.</p>
+                  </div>
+                </div>
+                <ExchangeRatesSection onRatesChanged={() => setRefreshCounter((counter) => counter + 1)} />
+              </section>
             </section>
           )}
         </main>

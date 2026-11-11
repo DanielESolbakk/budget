@@ -594,7 +594,7 @@ test.describe("Recovery and portability renderer workflows", () => {
 
       await expect(recovery.restoreSuccess).toContainText("1 transaction restored");
       await appShell.openWorkspace("Review");
-      await dashboard.monthSelector.selectOption("2026-05");
+      await dashboard.selectMonth("2026-05");
       await expect(dashboard.categoryBreakdownSection).toContainText("Restored");
       await expect(dashboard.monthSelector).toHaveValue("2026-05");
       await expect(dashboard.incomeValue).toHaveText(/0,00/);
@@ -843,7 +843,7 @@ test.describe("Recovery and portability renderer workflows", () => {
       await expect(recovery.restoreSuccess).not.toBeVisible();
       expect(loadPersistedSnapshot(databasePath)).toEqual(initialSnapshot);
       await appShell.openWorkspace("Review");
-      await dashboard.monthSelector.selectOption("2026-05");
+      await dashboard.selectMonth("2026-05");
       await expect(dashboard.categoryBreakdownSection).toContainText("Groceries & food");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -901,7 +901,7 @@ test.describe("Recovery and portability renderer workflows", () => {
       await expect(recovery.restoreCancelled).toHaveText("Restore cancelled.");
       await expect(recovery.restoreSuccess).not.toBeVisible();
       await appShell.openWorkspace("Review");
-      await dashboard.monthSelector.selectOption("2026-05");
+      await dashboard.selectMonth("2026-05");
       await expect(dashboard.categoryBreakdownSection).toContainText("Groceries & food");
       await expect(dashboard.categoryBreakdownSection).not.toContainText("Cancelled");
       const persistedSnapshot = loadPersistedSnapshot(databasePath);

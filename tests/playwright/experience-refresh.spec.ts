@@ -207,7 +207,7 @@ for (const viewport of [
     await electronApp.evaluate(({ BrowserWindow }, size) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(size.width, size.height);
     }, viewport);
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
 
     for (const name of workspaces) {
       await appShell.openWorkspace(name);

@@ -89,10 +89,20 @@ import type { CsvImportProfile } from "../domain/import/csvImportProfile.js";
 import type { DuplicateImportDecision } from "../domain/import/filterPreviouslyImportedTransactions.js";
 import type { ImportJobHistoryEntry, UndoImportJobResult } from "../domain/import/importJobHistory.js";
 import type { ImportPreflightProgress } from "../app/import/importPreflight.js";
+import type { ReportingPeriodRule } from "../shared/applicationPreferences.js";
 
 export interface DashboardApi {
   getData: () => Promise<DashboardData>;
-  getViewData: (yearMonth: string) => Promise<DashboardViewContract>;
+  getViewData: (
+    yearMonth: string,
+    reportingPeriodRule?: ReportingPeriodRule,
+    selectedPeriodStartDateIso?: string
+  ) => Promise<DashboardViewContract>;
+}
+
+export interface ReportingPreferencesApi {
+  getPeriodRule: () => Promise<ReportingPeriodRule>;
+  savePeriodRule: (rule: ReportingPeriodRule) => Promise<ReportingPeriodRule>;
 }
 
 export interface ForecastApi {
@@ -260,6 +270,7 @@ export interface LoanRegistryApi {
 
 export interface BudgetApi {
   dashboard: DashboardApi;
+  reportingPreferences: ReportingPreferencesApi;
   accounts: AccountsApi;
   setup: SetupApi;
   forecast: ForecastApi;
@@ -294,8 +305,23 @@ const budgetApi: BudgetApi = {
   },
   dashboard: {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),
-    getViewData: (yearMonth: string): Promise<DashboardViewContract> =>
-      ipcRenderer.invoke("dashboard:getViewData", yearMonth),
+    getViewData: (
+      yearMonth: string,
+      reportingPeriodRule?: ReportingPeriodRule,
+      selectedPeriodStartDateIso?: string
+    ): Promise<DashboardViewContract> =>
+      ipcRenderer.invoke(
+        "dashboard:getViewData",
+        yearMonth,
+        reportingPeriodRule,
+        selectedPeriodStartDateIso
+      ),
+  },
+  reportingPreferences: {
+    getPeriodRule: (): Promise<ReportingPeriodRule> =>
+      ipcRenderer.invoke("reportingPreferences:getPeriodRule"),
+    savePeriodRule: (rule: ReportingPeriodRule): Promise<ReportingPeriodRule> =>
+      ipcRenderer.invoke("reportingPreferences:savePeriodRule", rule),
   },
   forecast: {
     getEntries: (): Promise<ForecastEntry[]> =>

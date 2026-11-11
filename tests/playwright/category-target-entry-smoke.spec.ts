@@ -19,7 +19,7 @@ import { DatabaseSync } from "node:sqlite";
 
 test.describe("Category target entry renderer smoke", () => {
   test.beforeEach(async ({ dashboard }) => {
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
   });
 
   test("Scenario 1: category target entry form renders in the Electron window and is interactive", async ({ appShell, categoryTarget }) => {
@@ -94,7 +94,7 @@ test.describe("Category target entry renderer smoke", () => {
       await expect(dashboard.monthSelector).toBeEnabled();
       await expect(opener).toBeEnabled();
       await expect(opener).toBeFocused();
-      await dashboard.monthSelector.selectOption("2026-04");
+      await dashboard.selectMonth("2026-04");
       await expect(dashboard.monthSelector).toHaveValue("2026-04");
     });
   }
@@ -246,10 +246,10 @@ test.describe("Category target entry renderer smoke — save and reload persiste
   * and database, so the save + reload flow is isolated from other scenarios.
    */
   test.beforeEach(async ({ dashboard }) => {
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
   });
 
-  test("Scenario 2: save interaction persists target value and reload preserves displayed value", async ({ window, categoryTarget }) => {
+  test("Scenario 2: save interaction persists target value and reload preserves displayed value", async ({ window, categoryTarget, dashboard }) => {
     // AC-2: save a target for a category not in the default store, then reload.
     // The default sampleTargetStore in main.ts includes groceries/2026-05 but not transport.
     await categoryTarget.addTargetButton.click();
@@ -267,7 +267,7 @@ test.describe("Category target entry renderer smoke — save and reload persiste
     // Reload the renderer while the main process remains running.
     await window.reload();
     await window.waitForLoadState("domcontentloaded");
-    await window.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await window.getByText("Manage category targets", { exact: true }).click();
 
     // After reload the saved targets list re-loads via categoryTarget:listByMonth IPC.

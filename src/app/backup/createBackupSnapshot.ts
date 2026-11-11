@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
+import { validateReportingPeriodRule } from "../../shared/applicationPreferences.js";
 import {
   SNAPSHOT_VERSION,
   type BackupSnapshot,
@@ -148,6 +149,9 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     recurringCommitments,
     recurringCommitmentPaymentLinks,
     recurringCommitmentDecisions,
+    reportingPeriodRule: validateReportingPeriodRule(
+      input.reportingPeriodRule ?? { type: "calendar-month" }
+    ),
   };
 }
 

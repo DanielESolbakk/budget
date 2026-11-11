@@ -9,9 +9,9 @@ import { join } from "path";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
 import { createCashflowScenarioService } from "../src/app/cashflowScenarioService.js";
 import {
-  buildDashboardViewContract,
   createMonthlyCategoryTargetStore,
   queryHouseholdDashboardData,
+  queryHouseholdDashboardView,
   type DashboardData,
   type DashboardViewContract,
 } from "../src/app/dashboardApi.js";
@@ -28,6 +28,7 @@ import type {
   MonthlyCategoryTargetInput,
   Transaction,
 } from "../src/domain/types.js";
+import type { ReportingPeriodRule } from "../src/shared/applicationPreferences.js";
 import { createDashboardProvider } from "./dashboardProvider.js";
 import {
   createBackupOutputDialog,
@@ -217,14 +218,19 @@ function getDashboardData(): DashboardData {
   return queryHouseholdDashboardData(localLedgerDatabase, sampleHousehold.id);
 }
 
-function getViewData(yearMonth: string): DashboardViewContract {
-  return buildDashboardViewContract({
-    transactions: localLedgerDatabase.getTransactionsForMonth(sampleHousehold.id, yearMonth),
-    selectedYearMonth: yearMonth,
-    accounts: localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id),
-    rates: localLedgerDatabase.listExchangeRates(),
-    monthlyCategoryTargetStore: sampleTargetStore,
-  });
+function getViewData(
+  yearMonth: string,
+  reportingPeriodRule?: ReportingPeriodRule,
+  selectedPeriodStartDateIso?: string
+): DashboardViewContract {
+  return queryHouseholdDashboardView(
+    localLedgerDatabase,
+    sampleHousehold.id,
+    yearMonth,
+    reportingPeriodRule,
+    sampleTargetStore,
+    selectedPeriodStartDateIso
+  );
 }
 
 async function applyTransactionListTestControl(queryKind: "ledger" | "review"): Promise<void> {
@@ -294,7 +300,7 @@ app.whenReady().then(async () => {
   const restoreSnapshotDialog = createRestoreSnapshotDialog();
 
   registerReportsChannels({
-    ipcMain, assertTrustedRenderer, localLedgerDatabase, sampleTargetStore,
+    ipcMain, assertTrustedRenderer, localLedgerDatabase, sampleHousehold, sampleTargetStore,
     spendableCashService, cashflowScenarioService, ledgerOperationCoordinator,
     getDashboardData, dashboardProvider, exchangeRateImportDialog,
   });

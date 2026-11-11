@@ -21,7 +21,7 @@ test.describe("Category target persistence across application restart", () => {
     databasePath,
     electronApp,
   }) => {
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await categoryTarget.addTargetButton.click();
     await categoryTarget.categorySelect.selectOption(RESTART_TARGET_CATEGORY_ID);
     await categoryTarget.targetAmountInput.fill(INITIAL_TARGET_NOK);
@@ -45,7 +45,8 @@ test.describe("Category target persistence across application restart", () => {
       const restartedWindow = await restartedApp.firstWindow();
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
-      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
+      await restartedWindow.getByText("Change period", { exact: true }).click();
+      await restartedWindow.getByLabel("Select month", { exact: true }).fill("2026-05");
       await restartedWindow.getByText("Manage category targets", { exact: true }).click();
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(
@@ -75,7 +76,8 @@ test.describe("Category target persistence across application restart", () => {
       await restartedWindow.waitForLoadState("domcontentloaded");
       const restartedCategoryTarget = new CategoryTargetPage(restartedWindow);
       const restartedDashboardTarget = new DashboardTargetPage(restartedWindow);
-      await restartedWindow.getByRole("combobox", { name: "Select month" }).selectOption("2026-05");
+      await restartedWindow.getByText("Change period", { exact: true }).click();
+      await restartedWindow.getByLabel("Select month", { exact: true }).fill("2026-05");
       await restartedWindow.getByText("Manage category targets", { exact: true }).click();
 
       await expect(restartedCategoryTarget.savedTargetItem(RESTART_TARGET_CATEGORY_ID)).toHaveText(

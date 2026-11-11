@@ -680,7 +680,7 @@ export interface CategoryBreakdownEntry {
 }
 
 export interface CategoryBreakdown {
-  /** Calendar month in YYYY-MM format, e.g. "2026-05". */
+  /** Reporting month in YYYY-MM format; payday periods use their start month. */
   yearMonth: string;
   /**
    * Entries ordered by totalMinor descending, ties broken by categoryId ascending.

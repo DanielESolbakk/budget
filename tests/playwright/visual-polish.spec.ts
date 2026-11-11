@@ -58,7 +58,7 @@ for (const width of [1440, 390]) {
     });
 
     test("financial comparisons and supporting lists align their amounts", async ({ dashboard, window }) => {
-      await dashboard.monthSelector.selectOption("2026-05");
+      await dashboard.selectMonth("2026-05");
       const values = dashboard.targetVsActualSection.locator('tbody td:not([data-label="Category"])');
       await expect(values.first()).toBeVisible();
       const comparison = await dashboard.targetVsActualSection.boundingBox();

@@ -8,6 +8,11 @@ import {
   reloadMonthlyCategoryTargets,
   updateMonthlyCategoryTarget,
 } from "../shared/dashboard.js";
+import {
+  DEFAULT_REPORTING_PERIOD_RULE,
+  validateReportingPeriodRule,
+  type ReportingPeriodRule,
+} from "../shared/applicationPreferences.js";
 import { toLocalYearMonth } from "../domain/date/localDateDefaults.js";
 import type { Account, Transaction } from "../domain/types.js";
 import type { BudgetApi } from "./preload.js";
@@ -82,6 +87,7 @@ export function resolveRendererBudgetApi(
   };
   const previewMonths = [-3, -2, -1, 0].map((offset) => monthAtOffset(selectedYearMonth, offset));
   const transactions = createPreviewTransactions(previewMonths);
+  let reportingPeriodRule: ReportingPeriodRule = { ...DEFAULT_REPORTING_PERIOD_RULE };
   const dashboardData = buildDashboardData({
     monthlyTotals: previewMonths.map((yearMonth) => ({
       yearMonth,
@@ -97,14 +103,27 @@ export function resolveRendererBudgetApi(
     },
     dashboard: {
       getData: async () => dashboardData,
-      getViewData: async (yearMonth: string) =>
+      getViewData: async (
+        yearMonth: string,
+        requestedRule?: ReportingPeriodRule,
+        selectedPeriodStartDateIso?: string
+      ) =>
         buildDashboardViewContract({
           transactions,
           selectedYearMonth: yearMonth,
+          ...(selectedPeriodStartDateIso === undefined ? {} : { selectedPeriodStartDateIso }),
+          reportingPeriodRule: requestedRule ?? reportingPeriodRule,
           monthlyCategoryTargetStore: targets,
           accounts: [previewAccount],
           rates: [],
         }),
+    },
+    reportingPreferences: {
+      getPeriodRule: async () => ({ ...reportingPeriodRule }),
+      savePeriodRule: async (rule: ReportingPeriodRule) => {
+        reportingPeriodRule = validateReportingPeriodRule(rule);
+        return { ...reportingPeriodRule };
+      },
     },
     accounts: {
       list: async () => [previewAccount],

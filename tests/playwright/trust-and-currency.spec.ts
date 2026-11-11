@@ -42,7 +42,7 @@ test("skipping navigation preserves month, ledger, import and recovery IPC", asy
   await window.getByRole("link", { name: "Skip to workspace" }).focus();
   await window.keyboard.press("Enter");
   await expect(window.getByRole("main")).toBeFocused();
-  await dashboard.monthSelector.selectOption("2026-05");
+  await dashboard.selectMonth("2026-05");
   await expect(dashboard.expenseValue).toContainText("85,00");
   await expect(dashboard.monthChangeError).toHaveCount(0);
   await appShell.openWorkspace("Transactions");
@@ -63,7 +63,7 @@ test("the over-target fragment preserves subsequent ledger IPC", async ({
   appShell, dashboard, categoryTarget, ledger, window,
 }) => {
   await appShell.openWorkspace("Review");
-  await dashboard.monthSelector.selectOption("2026-05");
+  await dashboard.selectMonth("2026-05");
   await categoryTarget.editTargetButton("groceries").click();
   await categoryTarget.targetAmountInput.fill("80");
   await categoryTarget.saveButton.click();

@@ -29,7 +29,7 @@ import type {
   TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import { isYearMonth } from "../../domain/types.js";
-import { nextYearMonth } from "../../domain/date/calendarDate.js";
+import { isIsoCalendarDate, nextYearMonth } from "../../domain/date/calendarDate.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 
 type SnapshotReader = Pick<LocalLedgerDatabase,
@@ -38,6 +38,7 @@ type SnapshotReader = Pick<LocalLedgerDatabase,
 type TransactionRepository = Pick<LocalLedgerDatabase,
   | "listMonthlyTotals"
   | "getTransactionsForMonth"
+  | "getTransactionsForDateRange"
   | "getTransactionsForAccount"
   | "listPendingTransactionObservations"
   | "getTransactionById"
@@ -101,6 +102,35 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
       WHERE household_id = ? AND booked_at_iso >= ? AND booked_at_iso < ?
       ORDER BY booked_at_iso ASC, id ASC
     `).all(householdId, `${yearMonth}-01`, `${nextYearMonth(yearMonth)}-01`) as unknown as
+      Array<TransactionRow & { categorization_json: string | null }>;
+    return rows.map((row) => {
+      const transaction = mapTransactionRow(row);
+      if (row.categorization_json !== null) {
+        transaction.categorization = JSON.parse(row.categorization_json) as CategorizationDecision;
+      }
+      return transaction;
+    });
+  }
+
+  function getTransactionsForDateRange(
+    householdId: string,
+    startDateIso: string,
+    endDateExclusiveIso: string
+  ): Transaction[] {
+    if (!isIsoCalendarDate(startDateIso) || !isIsoCalendarDate(endDateExclusiveIso)) {
+      throw new Error("Dashboard reporting range must use valid calendar dates.");
+    }
+    if (startDateIso >= endDateExclusiveIso) {
+      throw new Error("Dashboard reporting range end must be after its start.");
+    }
+    const rows = db.prepare(`
+      SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+        currency_code, source_type, source_reference, category_id, import_job_id,
+        category_allocations_json, categorization_json
+      FROM transactions
+      WHERE household_id = ? AND booked_at_iso >= ? AND booked_at_iso < ?
+      ORDER BY booked_at_iso ASC, id ASC
+    `).all(householdId, startDateIso, endDateExclusiveIso) as unknown as
       Array<TransactionRow & { categorization_json: string | null }>;
     return rows.map((row) => {
       const transaction = mapTransactionRow(row);
@@ -358,6 +388,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
   return {
     listMonthlyTotals,
     getTransactionsForMonth,
+    getTransactionsForDateRange,
     getTransactionsForAccount,
     listPendingTransactionObservations,
     getTransactionById,

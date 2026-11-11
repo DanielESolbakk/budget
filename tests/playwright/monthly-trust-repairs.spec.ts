@@ -19,7 +19,7 @@ test(`monthly NOK subtotals refresh after recording a local dated rate at ${widt
   await csvImport.confirmImportButton.click();
   await expect(csvImport.successStatus).toBeVisible();
   await appShell.openWorkspace("Review");
-  await dashboard.monthSelector.selectOption("2026-05");
+  await dashboard.selectMonth("2026-05");
   await expect(dashboard.expenseValue).toContainText("2 764,80");
   const currencyWarning = dashboard.monthlyTotalsSection
     .getByRole("status")
@@ -146,7 +146,7 @@ test("forecast states its net measure, history cutoff and independence from the 
   appShell, dashboard, window,
 }) => {
   await appShell.openWorkspace("Review");
-  await dashboard.monthSelector.selectOption("2026-04");
+  await dashboard.selectMonth("2026-04");
   await window.getByText("Plan ahead", { exact: true }).click();
   const forecast = window.getByRole("region", { name: "Forecast", exact: true });
   await expect(forecast).toContainText(/monthly net/i);

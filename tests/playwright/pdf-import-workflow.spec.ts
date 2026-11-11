@@ -833,7 +833,7 @@ test.describe("PDF import renderer workflow", () => {
     );
 
     await appShell.openWorkspace("Review");
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
 
     await appShell.openWorkspace("Import");
@@ -941,8 +941,9 @@ test.describe("PDF import renderer workflow", () => {
 
     // Capture baseline dashboard income value before import.
     await appShell.openWorkspace("Review");
+    await dashboard.openPeriodControls();
     const monthSelector = dashboard.monthSelector;
-    await monthSelector.selectOption("2026-05");
+    await monthSelector.fill("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = ((await dashboard.incomeValue.textContent()) ?? "").trim();
 
@@ -1022,7 +1023,7 @@ test.describe("PDF import renderer workflow", () => {
   test("Scenario 2: importing an unsupported layout reports validation errors and leaves dashboard unchanged", async ({ appShell, pdfImport, dashboard }) => {
     // Ensure dashboard is in a known state before the invalid import.
     await appShell.openWorkspace("Review");
-    await dashboard.monthSelector.selectOption("2026-05");
+    await dashboard.selectMonth("2026-05");
     await expect(dashboard.monthlyTotalsSection).toBeVisible();
     const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
 
@@ -1065,7 +1066,7 @@ test.describe("PDF import renderer workflow", () => {
       const mutablePath = join(createTemporaryDirectory(), `mutable-${randomUUID()}.${fixture.extension}`);
       writeFileSync(mutablePath, readFileSync(fixture.path));
       await appShell.openWorkspace("Review");
-      await dashboard.monthSelector.selectOption("2026-05");
+      await dashboard.selectMonth("2026-05");
       const beforeIncomeText = (await dashboard.incomeValue.textContent()) ?? "";
       const beforeExpenseText = (await dashboard.expenseValue.textContent()) ?? "";
       const beforeNetText = (await dashboard.netValue.textContent()) ?? "";

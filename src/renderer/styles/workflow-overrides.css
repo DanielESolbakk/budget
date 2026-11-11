@@ -444,7 +444,14 @@ section[aria-label].destination-workspace.household-workspace {
   line-height: 1.35;
 }
 
-.cash-planning-shortcuts + .monthly-comparison {
+.monthly-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+}
+
+.monthly-report-actions + .monthly-comparison {
   margin-block-start: 0.25rem;
 }
 

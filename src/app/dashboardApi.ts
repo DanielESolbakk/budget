@@ -1,10 +1,19 @@
 import { assessAccountCoverage } from "../domain/ledger/accountCoverage.js";
 import type { AccountCoverageAssessment, AccountCoverageAssessmentInput } from "../domain/types.js";
 import {
+  resolveReportingPeriod,
+  resolveReportingPeriodStartingOn,
+} from "../domain/date/reportingPeriods.js";
+import { validateReportingPeriodRule, type ReportingPeriodRule } from "../shared/applicationPreferences.js";
+import {
   buildDashboardData,
   buildNokValuationReport,
+  buildDashboardViewContract,
+  createMonthlyCategoryTargetStore,
   queryMonthlyDashboardSnapshot,
   type DashboardData,
+  type DashboardViewContract,
+  type MonthlyCategoryTargetStore,
   type NokValuationReport,
 } from "../shared/dashboard.js";
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
@@ -75,6 +84,46 @@ export function queryHouseholdDashboardData(
       .filter((snapshot) => snapshot.currencyReport?.incompleteCurrencies.length)
       .map((snapshot) => snapshot.selectedYearMonth),
   };
+}
+
+export function queryHouseholdDashboardView(
+  database: Pick<LocalLedgerDatabase,
+    | "getReportingPeriodRule"
+    | "getTransactionsForDateRange"
+    | "getAccountsForHousehold"
+    | "listExchangeRates"
+  >,
+  householdId: string,
+  selectedYearMonth: string,
+  reportingPeriodRule?: ReportingPeriodRule,
+  monthlyCategoryTargetStore: MonthlyCategoryTargetStore = createMonthlyCategoryTargetStore(),
+  selectedPeriodStartDateIso?: string
+): DashboardViewContract {
+  const rule = validateReportingPeriodRule(
+    reportingPeriodRule ?? database.getReportingPeriodRule(householdId)
+  );
+  if (
+    selectedPeriodStartDateIso !== undefined &&
+    selectedPeriodStartDateIso.slice(0, 7) !== selectedYearMonth
+  ) {
+    throw new RangeError("Reporting period start must belong to the selected month.");
+  }
+  const range = selectedPeriodStartDateIso === undefined
+    ? resolveReportingPeriod(rule, selectedYearMonth)
+    : resolveReportingPeriodStartingOn(rule, selectedPeriodStartDateIso);
+  return buildDashboardViewContract({
+    transactions: database.getTransactionsForDateRange(
+      householdId,
+      range.startDateIso,
+      range.endDateExclusiveIso
+    ),
+    selectedYearMonth,
+    ...(selectedPeriodStartDateIso === undefined ? {} : { selectedPeriodStartDateIso }),
+    reportingPeriodRule: rule,
+    accounts: database.getAccountsForHousehold(householdId),
+    rates: database.listExchangeRates(),
+    monthlyCategoryTargetStore,
+  });
 }
 
 export function queryNokValuationReport(

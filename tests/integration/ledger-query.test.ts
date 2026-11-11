@@ -404,6 +404,58 @@ describe("SQLite ledger queries", () => {
     });
   });
 
+  it("returns payday-range transactions with an inclusive start and exclusive next boundary", () => {
+    withDatabase([
+      transaction("before", "2026-10-28T23:59:59Z", -100, "Before payday"),
+      transaction("start", "2026-10-29T00:00:00Z", -200, "Payday"),
+      transaction("inside-next-month", "2026-11-25T23:59:59Z", -300, "Inside period"),
+      transaction("next-start", "2026-11-26T00:00:00Z", -400, "Next payday"),
+    ], (database) => {
+      expect(database.getTransactionsForDateRange(
+        HOUSEHOLD.id,
+        "2026-10-29",
+        "2026-11-26"
+      ).map(({ id }) => id)).toEqual(["start", "inside-next-month"]);
+    });
+  });
+
+  it("uses the saved reporting rule to build the complete household dashboard period", async () => {
+    const queryHouseholdDashboardView = Reflect.get(
+      await import("../../src/app/dashboardApi.js"),
+      "queryHouseholdDashboardView"
+    );
+    expect(queryHouseholdDashboardView).toBeTypeOf("function");
+    if (typeof queryHouseholdDashboardView !== "function") return;
+
+    withDatabase([
+      transaction("before", "2026-10-28T23:59:59Z", -100, "Before payday"),
+      transaction("payday-expense", "2026-10-29T00:00:00Z", -10_000, "Groceries", {
+        categoryId: "groceries",
+      }),
+      transaction("next-month-income", "2026-11-25T23:59:59Z", 50_000, "Salary", {
+        categoryId: "salary",
+      }),
+      transaction("next-payday", "2026-11-26T00:00:00Z", -400, "Next payday"),
+    ], (database) => {
+      database.saveReportingPeriodRule(HOUSEHOLD.id, { type: "last-weekday", weekday: 4 });
+
+      const view = queryHouseholdDashboardView(database, HOUSEHOLD.id, "2026-10");
+      expect(view.state).toBe("ready");
+      if (view.state !== "ready") return;
+      expect(view.snapshot.reportingPeriodRange).toEqual({
+        startDateIso: "2026-10-29",
+        endDateExclusiveIso: "2026-11-26",
+      });
+      expect(view.snapshot.monthlyTotals).toEqual({
+        yearMonth: "2026-10",
+        incomeMinor: 50_000,
+        expenseMinor: 10_000,
+        netMinor: 40_000,
+      });
+      expect(view.snapshot.targetVsActualCategoryRows.rows).toEqual([]);
+    });
+  });
+
   it("loads dashboard startup metadata without materializing transactions", () => {
     withDatabase([
       transaction("startup-row", "2026-05-01T08:00:00Z", -100, "Existing transaction"),

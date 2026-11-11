@@ -1,5 +1,13 @@
 import React from "react";
 import { getMonthlyAttentionSummary, type DashboardViewContract } from "../../shared/dashboard.js";
+import { isYearMonth } from "../../domain/types.js";
+import {
+  getAdjacentReportingPeriod,
+  resolveCurrentReportingPeriod,
+  resolveReportingPeriod,
+  type ReportingPeriodRange,
+} from "../../domain/date/reportingPeriods.js";
+import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 import { CategoryBreakdownSection } from "../dashboard/CategoryBreakdownSection.js";
 import { CategoryTargetEntrySection } from "../dashboard/CategoryTargetEntrySection.js";
 import { CashflowScenarioSection } from "../dashboard/CashflowScenarioSection.js";
@@ -9,6 +17,8 @@ import { RecurringCommitmentsSection } from "../dashboard/RecurringCommitmentsSe
 import { SpendableCashSection } from "../dashboard/SpendableCashSection.js";
 import { TargetVsActualSection } from "../dashboard/TargetVsActualSection.js";
 import { AccountCoverageSummary } from "../dashboard/AccountCoverageSummary.js";
+import { formatReportingPeriodRange } from "../reportingPeriodDisplay.js";
+import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 import type { ReviewState } from "./types.js";
 
 const monthFormatter = new Intl.DateTimeFormat("nb-NO", {
@@ -37,8 +47,11 @@ interface ReviewWorkspaceProps {
   refreshKey: number;
   monthChangeError: string | null;
   refreshError: string | null;
+  savedReportingPeriodRule: ReportingPeriodRule | null;
   onMonthChange: (yearMonth: string) => void;
+  onReportingModeChange: (mode: "calendar-month" | "payday-period") => void;
   onOpenTransactions: () => void;
+  onOpenPeriodTransactions: (range: ReportingPeriodRange, rule: ReportingPeriodRule) => void;
   onOpenCoverage: () => void;
   onTargetSaved: () => void;
   onRetry: () => void;
@@ -52,19 +65,66 @@ export function ReviewWorkspace({
   refreshKey,
   monthChangeError,
   refreshError,
+  savedReportingPeriodRule,
   onMonthChange,
+  onReportingModeChange,
   onOpenTransactions,
+  onOpenPeriodTransactions,
   onOpenCoverage,
   onTargetSaved,
   onRetry,
 }: ReviewWorkspaceProps): React.JSX.Element {
   const viewContract: DashboardViewContract | null = state.status === "ready" ? state.viewContract : null;
   const monthlyAttention = viewContract === null ? null : getMonthlyAttentionSummary(viewContract);
+  const snapshot = viewContract === null || viewContract.state === "loading"
+    ? null
+    : viewContract.snapshot;
+  const isCalendarMonth = snapshot?.reportingPeriodRule.type === "calendar-month";
+  const isTwoFixedDayRule = snapshot?.reportingPeriodRule.type === "two-fixed-days";
+  const currentPeriod = snapshot === null ? null : resolveCurrentReportingPeriod(
+    snapshot.reportingPeriodRule,
+    toLocalIsoDate(new Date())
+  );
+  const twoFixedDayPeriodOptions = isTwoFixedDayRule && state.status === "ready" && snapshot !== null
+    ? [state.selectedYearMonth]
+      .flatMap((yearMonth) => [
+        resolveReportingPeriod(snapshot.reportingPeriodRule, yearMonth, 0),
+        resolveReportingPeriod(snapshot.reportingPeriodRule, yearMonth, 1),
+      ])
+      .filter((period, index, periods) =>
+        periods.findIndex((candidate) => candidate.startDateIso === period.startDateIso) === index
+      )
+    : [];
+  const hasSavedPaydayRule = savedReportingPeriodRule !== null &&
+    savedReportingPeriodRule.type !== "calendar-month";
+  const previousPeriod = snapshot === null || snapshot.reportingPeriodRange.startDateIso.startsWith("0000-01")
+    ? null
+    : getAdjacentReportingPeriod(
+        snapshot.reportingPeriodRule,
+        snapshot.reportingPeriodRange.startDateIso,
+        "previous"
+      );
+  const nextPeriod = snapshot === null || snapshot.reportingPeriodRange.startDateIso.startsWith("9999-12")
+    ? null
+    : getAdjacentReportingPeriod(
+        snapshot.reportingPeriodRule,
+        snapshot.reportingPeriodRange.startDateIso,
+        "next"
+      );
   const planningToolsRef = React.useRef<HTMLDetailsElement>(null);
   const [isTargetFormOpen, setIsTargetFormOpen] = React.useState(false);
+  const isPeriodSelectionDisabled = isTargetFormOpen || isChangingMonth || isRefreshing;
+  const isReportingOverride = hasSavedPaydayRule && isCalendarMonth;
+  const isCurrentPeriod = snapshot?.reportingPeriodRange.startDateIso === currentPeriod?.startDateIso;
+  const isFuturePeriod = snapshot !== null && currentPeriod !== null &&
+    snapshot.reportingPeriodRange.startDateIso > currentPeriod.startDateIso;
 
   function openPlanningTools(): void {
     if (planningToolsRef.current !== null) planningToolsRef.current.open = true;
+  }
+
+  function navigateToPeriod(startDateIso: string): void {
+    onMonthChange(isTwoFixedDayRule ? startDateIso : startDateIso.slice(0, 7));
   }
 
   return (
@@ -76,34 +136,20 @@ export function ReviewWorkspace({
     >
       <div className="review-intro">
         <div>
-          <h2>Monthly review</h2>
-          <p className="intro-copy">See the month clearly, then act on what needs attention.</p>
+          <h2>{isCalendarMonth === false ? "Payday-period review" : "Monthly review"}</h2>
+          <p className="intro-copy">
+            {isCalendarMonth === false
+              ? "Review recorded income and spending within your chosen reporting dates."
+              : "See the month clearly, then act on what needs attention."}
+          </p>
         </div>
-        {state.status === "ready" && (
-          <div className="month-picker">
-            <label htmlFor="month-select">Reviewing</label>
-            <select
-              id="month-select"
-              aria-label="Select month"
-              value={state.selectedYearMonth}
-              disabled={isTargetFormOpen}
-              aria-describedby={isTargetFormOpen ? "target-draft-help" : undefined}
-              onChange={(event) => onMonthChange(event.target.value)}
-            >
-              {state.availableMonths.map((month) => (
-                <option key={month} value={month}>{formatYearMonth(month)}</option>
-              ))}
-            </select>
-            <span className="month-picker-code">{state.selectedYearMonth}</span>
-          </div>
-        )}
       </div>
 
       {state.status === "loading" && (
         <section className="status-panel status-loading" aria-live="polite">
           <div className="status-heading">
             <span className="status-marker" aria-hidden="true" />
-            <h3>Loading your monthly review</h3>
+            <h3>Loading your household review</h3>
           </div>
           <div className="skeleton-line skeleton-line-wide" />
           <div className="skeleton-line skeleton-line-short" />
@@ -134,24 +180,165 @@ export function ReviewWorkspace({
             </section>
           )}
 
-          {isChangingMonth && <p className="rail-status" role="status">Updating month...</p>}
+          {isChangingMonth && <p className="rail-status" role="status">Updating reporting period...</p>}
           {monthChangeError !== null && <p className="rail-status is-error" role="alert">{monthChangeError}</p>}
-          {state.viewContract.state === "empty" && (
-            <p className="rail-status is-empty-month" role="status" aria-label="Monthly activity">
-              No activity has been recorded for this month.
-            </p>
-          )}
-
           <div className="review-grid">
             <div className="review-overview-totals">
             <MonthlyTotalsSection
               viewContract={state.viewContract}
               refreshKey={refreshKey}
               onOpenPlanningTools={openPlanningTools}
+              onOpenTransactions={() => {
+                if (snapshot !== null) onOpenPeriodTransactions(
+                  snapshot.reportingPeriodRange,
+                  snapshot.reportingPeriodRule
+                );
+              }}
+              isChangingPeriod={isChangingMonth || isRefreshing}
+              periodControls={snapshot !== null && (
+                <div className="reporting-period-toolbar">
+                  <div className="reporting-period-readout">
+                    <p className="reporting-period-range" aria-label="Active reporting range">
+                      {formatReportingPeriodRange(snapshot.reportingPeriodRange)}
+                    </p>
+                    <span>{isCalendarMonth ? "Calendar month" : "Payday period"}</span>
+                    {isCurrentPeriod && <span>In progress</span>}
+                    {isFuturePeriod && <span>Future period</span>}
+                    {isReportingOverride && <span className="reporting-period-override">Using calendar months instead of saved payday periods</span>}
+                  </div>
+                  <details className="reporting-period-disclosure">
+                    <summary>Change period</summary>
+                    <div className="reporting-period-controls">
+                      <p id="reporting-period-scope">
+                        Totals, categories, and checks follow these dates. No transactions or settings are changed.
+                      </p>
+                      <div className="reporting-period-navigation">
+                        <div className="reporting-period-picker-row">
+                          <div className="month-picker">
+                            <label htmlFor="month-select">
+                              {isCalendarMonth ? "Month to review" : "Period starting in"}
+                            </label>
+                            <input
+                              id="month-select"
+                              type="month"
+                              lang="en-GB"
+                              aria-label="Select month"
+                              min="0001-01"
+                              max="9999-12"
+                              value={state.selectedYearMonth}
+                              disabled={isPeriodSelectionDisabled}
+                              aria-describedby={isTargetFormOpen ? "target-draft-help" : "reporting-period-scope"}
+                              onChange={(event) => {
+                                const month = event.currentTarget.value;
+                                if (isYearMonth(month)) {
+                                  onMonthChange(isTwoFixedDayRule
+                                    ? resolveReportingPeriod(snapshot.reportingPeriodRule, month).startDateIso
+                                    : month);
+                                }
+                              }}
+                            />
+                            {isTwoFixedDayRule && (
+                              <>
+                                <label htmlFor="period-select">Period to review</label>
+                                <select
+                                  id="period-select"
+                                  aria-label="Select period"
+                                  value={snapshot.reportingPeriodRange.startDateIso}
+                                  disabled={isPeriodSelectionDisabled}
+                                  onChange={(event) => onMonthChange(event.currentTarget.value)}
+                                >
+                                  {twoFixedDayPeriodOptions.map((period) => (
+                                    <option key={period.startDateIso} value={period.startDateIso}>
+                                      {formatReportingPeriodRange(period)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </>
+                            )}
+                          </div>
+                          {!isCurrentPeriod && (
+                            <button
+                              type="button"
+                              className="action-secondary"
+                              disabled={isPeriodSelectionDisabled}
+                              onClick={() => {
+                                if (currentPeriod !== null) navigateToPeriod(currentPeriod.startDateIso);
+                              }}
+                            >
+                              {isCalendarMonth ? "Current month" : "Current payday period"}
+                            </button>
+                          )}
+                        </div>
+                        <div className="reporting-period-stepper" role="group" aria-label="Reporting period navigation">
+                          <button
+                            type="button"
+                            className="action-secondary"
+                            aria-label={`${isCalendarMonth ? "Previous month" : "Previous period"}${previousPeriod === null
+                              ? "" : `: ${formatReportingPeriodRange(previousPeriod)}`}`}
+                            disabled={isPeriodSelectionDisabled || previousPeriod === null}
+                            onClick={() => {
+                              if (previousPeriod !== null) navigateToPeriod(previousPeriod.startDateIso);
+                            }}
+                          >
+                            <span>{isCalendarMonth ? "Previous month" : "Previous period"}</span>
+                            {previousPeriod !== null && <small>{formatReportingPeriodRange(previousPeriod)}</small>}
+                          </button>
+                          <button
+                            type="button"
+                            className="action-secondary"
+                            aria-label={`${isCalendarMonth ? "Next month" : "Next period"}${nextPeriod === null
+                              ? "" : `: ${formatReportingPeriodRange(nextPeriod)}`}`}
+                            disabled={isPeriodSelectionDisabled || nextPeriod === null}
+                            onClick={() => {
+                              if (nextPeriod !== null) navigateToPeriod(nextPeriod.startDateIso);
+                            }}
+                          >
+                            <span>{isCalendarMonth ? "Next month" : "Next period"}</span>
+                            {nextPeriod !== null && <small>{formatReportingPeriodRange(nextPeriod)}</small>}
+                          </button>
+                        </div>
+                      </div>
+                      {hasSavedPaydayRule && (
+                        <details className="reporting-basis-disclosure">
+                          <summary>Reporting basis</summary>
+                          <div className="reporting-period-mode">
+                            <label htmlFor="reporting-mode-select">Reporting mode</label>
+                            <select
+                              id="reporting-mode-select"
+                              value={isCalendarMonth ? "calendar-month" : "payday-period"}
+                              disabled={isTargetFormOpen || isRefreshing}
+                              aria-describedby="reporting-period-scope"
+                              onChange={(event) => onReportingModeChange(
+                                event.currentTarget.value === "calendar-month"
+                                  ? "calendar-month"
+                                  : "payday-period"
+                              )}
+                            >
+                              <option value="calendar-month">Calendar month</option>
+                              <option value="payday-period">Payday period</option>
+                            </select>
+                            {isReportingOverride && (
+                              <button
+                                type="button"
+                                className="action-secondary"
+                                disabled={isTargetFormOpen || isRefreshing}
+                                onClick={() => onReportingModeChange("payday-period")}
+                              >
+                                Use saved payday periods
+                              </button>
+                            )}
+                          </div>
+                          <p>Changes apply to this review only. Your saved preference is in Settings.</p>
+                        </details>
+                      )}
+                    </div>
+                  </details>
+                </div>
+              )}
             />
             </div>
             <aside className="monthly-attention review-overview-attention" aria-label="Monthly attention">
-                <h3>Monthly checks</h3>
+                <h3>{isCalendarMonth === false ? "Period checks" : "Monthly checks"}</h3>
                 {monthlyAttention === null ? (
                   <p role="status">Calculating monthly exceptions...</p>
                 ) : (
@@ -159,7 +346,9 @@ export function ReviewWorkspace({
                     {monthlyAttention.categoryReviewCount > 0 && (
                       <div className="monthly-attention-item">
                         <p>{monthlyAttention.categoryReviewCount} category {monthlyAttention.categoryReviewCount === 1
-                          ? "decision needs" : "decisions need"} review this month.</p>
+                          ? "decision needs" : "decisions need"} review {isCalendarMonth === false
+                            ? "in this period."
+                            : "this month."}</p>
                       </div>
                     )}
                     {monthlyAttention.overTargetCategoryCount > 0 && (
@@ -176,7 +365,9 @@ export function ReviewWorkspace({
                         (state.viewContract.snapshot.currencyReport?.incompleteCurrencies.length ?? 0) > 0) ? (
                         <p role="status">Budget checks are incomplete until missing dated rates are recorded.</p>
                       ) : monthlyAttention.categoryReviewCount === 0 && monthlyAttention.overTargetCategoryCount === 0 ? (
-                        <p>No category reviews or over-target categories this month.</p>
+                        <p>No category reviews or over-target categories {isCalendarMonth === false
+                          ? "in this period."
+                          : "this month."}</p>
                       ) : null}
                       <button type="button" onClick={onOpenTransactions}>
                         Review all transactions
@@ -195,9 +386,19 @@ export function ReviewWorkspace({
                 <CategoryBreakdownSection viewContract={state.viewContract} />
               </div>
             )}
-            <div className="review-primary review-target-vs-actual">
-              <TargetVsActualSection viewContract={state.viewContract} />
-            </div>
+            {isCalendarMonth === false ? (
+              <div className="review-primary review-target-vs-actual">
+                <h3>Calendar-month targets</h3>
+                <p role="note">
+                  Target comparisons are shown only in Calendar month mode. Switch to Calendar month to
+                  compare actuals with those targets.
+                </p>
+              </div>
+            ) : (
+              <div className="review-primary review-target-vs-actual">
+                <TargetVsActualSection viewContract={state.viewContract} />
+              </div>
+            )}
             <details
               className="review-category-target review-maintenance-disclosure"
               aria-label="Category target management"
@@ -211,7 +412,9 @@ export function ReviewWorkspace({
               <div className="review-primary">
               <CategoryTargetEntrySection
                 selectedYearMonth={state.selectedYearMonth}
-                selectedMonthLabel={formatYearMonth(state.selectedYearMonth)}
+                selectedMonthLabel={`${formatYearMonth(state.selectedYearMonth)}${isCalendarMonth === false
+                  ? " calendar month"
+                  : ""}`}
                 onTargetSaved={onTargetSaved}
                 onFormOpenChange={setIsTargetFormOpen}
               />
@@ -225,7 +428,9 @@ export function ReviewWorkspace({
           >
             <summary>
               <span>Plan ahead</span>
-              <small>Forecast, recurring commitments, spendable cash, and cashflow scenarios</small>
+              <small>{isCalendarMonth === false
+                ? "Calendar-month basis: forecast, recurring commitments, spendable cash, and cashflow scenarios"
+                : "Forecast, recurring commitments, spendable cash, and cashflow scenarios"}</small>
             </summary>
             <div className="review-planning-content">
               <ForecastSection dashboardData={state.dashboardData} />

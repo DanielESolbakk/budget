@@ -85,15 +85,24 @@ function getActiveFilters(filters: TransactionFilters, accounts: Account[]): Act
 
 interface LedgerSectionProps {
   refreshKey: number;
+  filterRequest?: LedgerFilterRequest | null;
 }
 
-export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Element {
+export interface LedgerFilterRequest {
+  id: number;
+  filters: TransactionFilters;
+  description: string;
+}
+
+export function LedgerSection({ refreshKey, filterRequest }: LedgerSectionProps): React.JSX.Element {
   const [amountFrom, setAmountFrom] = React.useState("");
   const [amountTo, setAmountTo] = React.useState("");
-  const [filters, setFilterState] = React.useState<TransactionFilters>({});
+  const [filters, setFilterState] = React.useState<TransactionFilters>(filterRequest?.filters ?? {});
+  const lastFilterRequestId = React.useRef(filterRequest?.id);
   const latestFilterRevision = React.useRef(0);
   const appliedFilterRevision = React.useRef(0);
   const [query, setQuery] = React.useState<TransactionQuery>({
+    ...filterRequest?.filters,
     sortBy: "bookedAtIso",
     sortDirection: "desc",
     page: 1,
@@ -125,6 +134,14 @@ export function LedgerSection({ refreshKey }: LedgerSectionProps): React.JSX.Ele
     latestFilterRevision.current += 1;
     setFilterState(action);
   }
+
+  React.useEffect(() => {
+    if (filterRequest === null || filterRequest === undefined || lastFilterRequestId.current === filterRequest.id) return;
+    lastFilterRequestId.current = filterRequest.id;
+    setAmountFrom(amountToInput(filterRequest.filters.amountFromMinor));
+    setAmountTo(amountToInput(filterRequest.filters.amountToMinor));
+    updateFilters(filterRequest.filters);
+  }, [filterRequest]);
 
   const minimumAmount = amountFrom.trim() === "" ? undefined : parseNokAmountToMinor(amountFrom);
   const maximumAmount = amountTo.trim() === "" ? undefined : parseNokAmountToMinor(amountTo);

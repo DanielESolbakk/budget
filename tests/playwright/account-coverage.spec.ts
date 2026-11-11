@@ -306,7 +306,8 @@ test.describe("account statement coverage and checkpoints", () => {
       .toHaveAttribute("aria-current", "page");
 
     await appShell.openWorkspace("Settings");
-    await expect(window.getByRole("region", { name: "Exchange rates", exact: true })).toBeVisible();
+    const settings = window.getByRole("region", { name: "Settings workspace", exact: true });
+    await expect(settings.getByRole("region", { name: "Exchange rates", exact: true }).last()).toBeVisible();
     await expect(navigation.getByRole("button", { name: "Household", exact: true }))
       .toHaveAttribute("aria-current", "page");
   });

@@ -20,6 +20,7 @@ const versions = [
   { version: "8", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings] },
   { version: "9", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings] },
   { version: "10", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring] },
+  { version: "11", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring] },
 ];
 
 function snapshot(version: string, required: string[]): Record<string, unknown> {
@@ -28,6 +29,7 @@ function snapshot(version: string, required: string[]): Record<string, unknown> 
     household: { id: "hh", name: "Synthetic", createdAtIso: "2026-01-01T00:00:00Z" },
     accounts: [{ id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" }],
     transactions: [], importJobs: [], monthlyCategoryTargets: [],
+    ...(version === "11" ? { reportingPeriodRule: { type: "calendar-month" } } : {}),
     ...Object.fromEntries(required.map(name => [name, []])),
   };
 }
@@ -53,7 +55,8 @@ describe("backup historical version capabilities", () => {
         accountStatementCoveragePeriods: [], accountBalanceCheckpoints: [], exchangeRates: [],
         properties: [], propertyValuations: [], loanRecords: [], loanBalanceSnapshots: [],
         holdings: [], holdingValuations: [], recurringCommitments: [],
-        recurringCommitmentPaymentLinks: [], recurringCommitmentDecisions: [], transactionCount: 0,
+        recurringCommitmentPaymentLinks: [], recurringCommitmentDecisions: [],
+        reportingPeriodRule: { type: "calendar-month" }, transactionCount: 0,
       });
     });
   });
@@ -84,7 +87,7 @@ describe("backup historical version capabilities", () => {
     });
   });
 
-  it.each(["9", "10"])("rejects missing ownership share in version %s", version => {
+  it.each(["9", "10", "11"])("rejects missing ownership share in version %s", version => {
     const requirements = versions.find(row => row.version === version)!.required;
     const value = snapshot(version, requirements);
     value.properties = [{ id: "property", householdId: "hh", label: "Home",
@@ -125,7 +128,7 @@ describe("backup historical version capabilities", () => {
     });
   });
 
-  it.each(["0", "11", "01", 10, null])("rejects unsupported version %j", version => {
+  it.each(["0", "12", "01", 10, null])("rejects unsupported version %j", version => {
     const value = snapshot("10", versions[9]!.required);
     value.metadata = { version, createdAtIso: "2026-05-01T00:00:00Z", accountCount: 1, transactionCount: 0 };
     withSnapshot(value, snapshotPath => {

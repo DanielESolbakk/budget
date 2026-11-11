@@ -12,6 +12,7 @@ import {
   installMainProcessNetworkProbe,
   mainProcessNetworkRequests,
 } from "./helpers/networkProbe.js";
+import { assertVisualScreenshot } from "./visualScreenshot.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -249,13 +250,15 @@ async function openRatesWorkspace(
     const householdButton = window.getByRole("button", { name: "Household", exact: true });
     await householdButton.focus();
     await window.keyboard.press("Enter");
-    const exchangeRatesTab = window
+    const settingsTab = window
       .getByRole("navigation", { name: "Household tools" })
-      .getByRole("button", { name: "Exchange rates", exact: true });
-    await exchangeRatesTab.focus();
+      .getByRole("button", { name: "Settings", exact: true });
+    await settingsTab.focus();
     await window.keyboard.press("Enter");
 
-    const rates = window.getByRole("region", { name: "Exchange rates", exact: true });
+    const settings = window.getByRole("region", { name: "Settings workspace", exact: true });
+    const rates = settings.getByRole("region", { name: "Exchange rates", exact: true }).last();
+    await expect(rates).toBeVisible();
     const rateBookTab = rates.getByRole("button", { name: "Rate book", exact: true });
     const monthlyReportTab = rates.getByRole("button", { name: "Monthly report", exact: true });
     const rateCurrency = rates.getByLabel("Rate currency");
@@ -393,19 +396,21 @@ test.describe("local dated exchange-rate workflow", () => {
           })
         );
       expect(await propertySubtotalValuesHaveInset()).toBe(true);
-      await expect(report).toHaveScreenshot("valuation-report-desktop.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
+      await assertVisualScreenshot("valuation-report-desktop.png", () =>
+        expect(report).toHaveScreenshot("valuation-report-desktop.png", {
+          animations: "disabled",
+          maxDiffPixelRatio: 0.01,
+        }));
 
       await window.setViewportSize({ width: 390, height: 844 });
       await expect(report).toBeVisible();
       expect(await propertySubtotalValuesFit()).toBe(true);
       expect(await propertySubtotalValuesHaveInset()).toBe(true);
-      await expect(report).toHaveScreenshot("valuation-report-mobile.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
+      await assertVisualScreenshot("valuation-report-mobile.png", () =>
+        expect(report).toHaveScreenshot("valuation-report-mobile.png", {
+          animations: "disabled",
+          maxDiffPixelRatio: 0.01,
+        }));
       const horizontalOverflow = await window.evaluate(() =>
         document.documentElement.scrollWidth > document.documentElement.clientWidth
       );

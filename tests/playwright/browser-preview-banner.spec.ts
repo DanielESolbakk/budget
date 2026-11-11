@@ -62,7 +62,8 @@ test("synthetic preview target edits refresh comparisons and monthly checks", as
 
   const targets = new CategoryTargetPage(page);
   const comparison = new DashboardTargetPage(page);
-  await expect(page.getByRole("combobox", { name: "Select month" })).toHaveValue("2026-05");
+  await expect(page.getByLabel("Active reporting range"))
+    .toHaveText("1 May 2026 - 31 May 2026");
   await page.getByText("Manage category targets", { exact: true }).click();
   await targets.addTargetButton.click();
   await targets.categorySelect.selectOption("groceries");
