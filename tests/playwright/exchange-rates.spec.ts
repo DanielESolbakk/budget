@@ -12,6 +12,7 @@ import {
   installMainProcessNetworkProbe,
   mainProcessNetworkRequests,
 } from "./helpers/networkProbe.js";
+import { assertVisualScreenshot } from "./visualScreenshot.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
 
@@ -395,19 +396,21 @@ test.describe("local dated exchange-rate workflow", () => {
           })
         );
       expect(await propertySubtotalValuesHaveInset()).toBe(true);
-      await expect(report).toHaveScreenshot("valuation-report-desktop.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
+      await assertVisualScreenshot("valuation-report-desktop.png", () =>
+        expect(report).toHaveScreenshot("valuation-report-desktop.png", {
+          animations: "disabled",
+          maxDiffPixelRatio: 0.01,
+        }));
 
       await window.setViewportSize({ width: 390, height: 844 });
       await expect(report).toBeVisible();
       expect(await propertySubtotalValuesFit()).toBe(true);
       expect(await propertySubtotalValuesHaveInset()).toBe(true);
-      await expect(report).toHaveScreenshot("valuation-report-mobile.png", {
-        animations: "disabled",
-        maxDiffPixelRatio: 0.01,
-      });
+      await assertVisualScreenshot("valuation-report-mobile.png", () =>
+        expect(report).toHaveScreenshot("valuation-report-mobile.png", {
+          animations: "disabled",
+          maxDiffPixelRatio: 0.01,
+        }));
       const horizontalOverflow = await window.evaluate(() =>
         document.documentElement.scrollWidth > document.documentElement.clientWidth
       );
