@@ -18,7 +18,8 @@ export function ensureSchema(db: DatabaseSync): void {
       id TEXT PRIMARY KEY,
       household_id TEXT NOT NULL,
       name TEXT NOT NULL,
-      currency_code TEXT NOT NULL
+      currency_code TEXT NOT NULL,
+      archived_at_iso TEXT
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
@@ -374,6 +375,11 @@ export function ensureSchema(db: DatabaseSync): void {
       PRIMARY KEY (import_job_id, transaction_id)
     );
   `);
+
+  const accountColumns = db.prepare("PRAGMA table_info(accounts)").all() as Array<{ name: string }>;
+  if (!accountColumns.some((column) => column.name === "archived_at_iso")) {
+    db.exec("ALTER TABLE accounts ADD COLUMN archived_at_iso TEXT");
+  }
 
   const propertyColumns = db.prepare("PRAGMA table_info(properties)").all() as Array<{ name: string }>;
   if (!propertyColumns.some((column) => column.name === "ownership_share_basis_points")) {

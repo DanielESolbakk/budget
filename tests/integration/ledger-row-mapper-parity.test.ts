@@ -175,7 +175,8 @@ describe("ledger list and snapshot row contracts", () => {
       try {
         raw.exec(`
           INSERT INTO households VALUES ('hh-other', 'Other synthetic household', '2026-01-01T00:00:00Z');
-          INSERT INTO accounts VALUES ('acc-other', 'hh-other', 'Other account', 'NOK');
+          INSERT INTO accounts (id, household_id, name, currency_code)
+          VALUES ('acc-other', 'hh-other', 'Other account', 'NOK');
         `);
       } finally {
         raw.close();

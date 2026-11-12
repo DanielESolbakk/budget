@@ -81,10 +81,14 @@ export function ImportHistorySection({ refreshKey, onUndoSuccess }: ImportHistor
     Promise.all([
       window.budgetApi.import.history.list(),
       window.budgetApi.accounts.getCurrent(),
-    ]).then(([history, current]) => {
+    ]).then(async ([history, current]) => {
+      if (!active) return;
+      const loadedAccounts = current === null
+        ? []
+        : await window.budgetApi.accounts.list(current.householdId);
       if (!active) return;
       setEntries(history);
-      setAccounts(current?.accounts ?? []);
+      setAccounts(loadedAccounts);
       setLoadState("ready");
     }).catch(() => {
       if (active) setLoadState("error");

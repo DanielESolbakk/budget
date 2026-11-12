@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { AppShellPage } from "./pom/AppShellPage.js";
+import { LedgerPage } from "./pom/LedgerPage.js";
 import { ManualEntryPage } from "./pom/ManualEntryPage.js";
 import { OnboardingPage } from "./pom/OnboardingPage.js";
 import {
@@ -297,6 +298,190 @@ test.describe("account editing", () => {
     await expect.poll(() => window.evaluate(() => (
       document.documentElement.scrollWidth - document.documentElement.clientWidth
     ))).toBeLessThanOrEqual(0);
+    expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
+  });
+});
+
+test.describe("account archiving", () => {
+  test.use({ databaseSeed: "empty" });
+
+  test("confirms archive, excludes active workflows, and keeps searchable history", async ({
+    databasePath,
+    electronApp,
+    window,
+  }) => {
+    const onboarding = new OnboardingPage(window);
+    await expect(onboarding.heading).toBeVisible();
+    await onboarding.submit("Test Household", "Checking", "NOK");
+
+    await installMainProcessNetworkProbe(electronApp);
+    const appShell = new AppShellPage(window);
+    await appShell.openWorkspace("Accounts");
+    await window.getByLabel("Account name", { exact: true }).fill("Savings");
+    await window.getByLabel("Currency code", { exact: true }).fill("NOK");
+    await window.getByRole("button", { name: "Add account" }).click();
+    await expect(window.getByRole("status", { name: "Account management status" }))
+      .toContainText("Savings account added in NOK.");
+
+    const database = new DatabaseSync(databasePath);
+    let checkingAccountId: string;
+    try {
+      const account = database.prepare(
+        "SELECT id, household_id FROM accounts WHERE name = ?"
+      ).get("Checking") as { id: string; household_id: string } | undefined;
+      if (account === undefined) throw new Error("Initial account was not persisted.");
+      checkingAccountId = account.id;
+      database.prepare(`
+        INSERT INTO transactions (
+          id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
+          merchant_search, currency_code, source_type, source_reference, category_id,
+          import_job_id, categorization_json, category_allocations_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "tx-account-archive",
+        account.household_id,
+        account.id,
+        "2026-05-12T00:00:00Z",
+        -12_500,
+        "Synthetic archive grocery",
+        "SYNTHETIC ARCHIVE GROCERY",
+        "NOK",
+        "manual",
+        "synthetic-archive-entry",
+        null,
+        null,
+        null,
+        null
+      );
+      database.prepare(`
+        INSERT INTO account_statement_coverage_periods (
+          id, account_id, start_date_iso, end_date_iso, currency_code, source_name,
+          source_type, confirmed, confirmed_at_iso
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "period-account-archive",
+        account.id,
+        "2026-05-01",
+        "2026-05-31",
+        "NOK",
+        "synthetic-may-statement",
+        "manual",
+        1,
+        "2026-06-01T00:00:00Z"
+      );
+      database.prepare(`
+        INSERT INTO account_balance_checkpoints (
+          id, account_id, date_iso, currency_code, balance_minor, source, recorded_at_iso
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "checkpoint-account-archive",
+        account.id,
+        "2026-05-31",
+        "NOK",
+        87_500,
+        "synthetic statement",
+        "2026-06-01T00:00:00Z"
+      );
+    } finally {
+      database.close();
+    }
+
+    const archiveAccountButton = window.getByRole("button", { name: "Archive account Checking" });
+    await expect(archiveAccountButton).toBeVisible();
+    let cancelDialogMessage = "";
+    window.once("dialog", async (dialog) => {
+      cancelDialogMessage = dialog.message();
+      await dialog.dismiss();
+    });
+    await archiveAccountButton.click();
+    expect(cancelDialogMessage).toContain("Checking");
+    expect(cancelDialogMessage).toContain("active account selections");
+    expect(cancelDialogMessage).toContain("transactions, statement periods, checkpoints, and exports");
+    await expect(window.getByRole("list", { name: "Household accounts" }))
+      .toContainText("Checking");
+
+    let archiveDialogMessage = "";
+    window.once("dialog", async (dialog) => {
+      archiveDialogMessage = dialog.message();
+      await dialog.accept();
+    });
+    await archiveAccountButton.click();
+    expect(archiveDialogMessage).toContain("Checking");
+    await expect(window.getByRole("status", { name: "Account management status" }))
+      .toContainText("Checking has been archived.");
+    await expect(window.getByRole("list", { name: "Household accounts" })
+      .getByRole("listitem").filter({ hasText: "Checking" })).toContainText("Archived");
+
+    const archivedDatabase = new DatabaseSync(databasePath);
+    try {
+      expect(archivedDatabase.prepare(
+        "SELECT name, archived_at_iso FROM accounts WHERE id = ?"
+      ).get(checkingAccountId)).toMatchObject({
+        name: "Checking",
+        archived_at_iso: expect.any(String),
+      });
+      expect(archivedDatabase.prepare(
+        "SELECT id FROM transactions WHERE account_id = ?"
+      ).all(checkingAccountId)).toEqual([{ id: "tx-account-archive" }]);
+      expect(archivedDatabase.prepare(
+        "SELECT id FROM account_statement_coverage_periods WHERE account_id = ?"
+      ).all(checkingAccountId)).toEqual([{ id: "period-account-archive" }]);
+      expect(archivedDatabase.prepare(
+        "SELECT id FROM account_balance_checkpoints WHERE account_id = ?"
+      ).all(checkingAccountId)).toEqual([{ id: "checkpoint-account-archive" }]);
+    } finally {
+      archivedDatabase.close();
+    }
+
+    await appShell.openWorkspace("Review");
+    await window.getByText("Plan ahead", { exact: true }).click();
+    const liquidAccounts = window.getByRole("group", { name: "Liquid accounts" });
+    await expect(liquidAccounts.getByText("Savings", { exact: true })).toBeVisible();
+    await expect(liquidAccounts.getByText("Checking", { exact: true })).toHaveCount(0);
+
+    await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Manual transaction");
+    const manualEntry = new ManualEntryPage(window);
+    await expect(manualEntry.accountInput).toContainText("Savings");
+    await expect(manualEntry.accountInput).not.toContainText("Checking");
+
+    await appShell.openWorkspace("Transactions");
+    const ledger = new LedgerPage(window);
+    await expect(ledger.transaction("Synthetic archive grocery")).toBeVisible();
+
+    await appShell.openWorkspace("Coverage");
+    await window.getByLabel("Coverage account").selectOption(checkingAccountId);
+    await expect(window.getByRole("list", { name: "Balance checkpoint history" }))
+      .toContainText("875,00");
+    await expect(window.getByText("synthetic-may-statement", { exact: true })).toBeVisible();
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const browserWindow = BrowserWindow.getAllWindows()[0];
+      if (browserWindow === undefined) throw new Error("Electron window is unavailable.");
+      browserWindow.setContentSize(390, 844);
+    });
+    await expect.poll(() => window.evaluate(() => (
+      document.documentElement.scrollWidth - document.documentElement.clientWidth
+    ))).toBeLessThanOrEqual(0);
+    expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
+  });
+
+  test("explains why the last active account cannot be archived", async ({
+    electronApp,
+    window,
+  }) => {
+    const onboarding = new OnboardingPage(window);
+    await expect(onboarding.heading).toBeVisible();
+    await onboarding.submit("Test Household", "Checking", "NOK");
+    await installMainProcessNetworkProbe(electronApp);
+
+    await new AppShellPage(window).openWorkspace("Accounts");
+    await expect(window.getByText(
+      "Keep at least one active account. Add another account before archiving this one.",
+      { exact: true }
+    )).toBeVisible();
+    await expect(window.getByRole("button", { name: "Archive account Checking" }))
+      .toBeDisabled();
     expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   });
 });

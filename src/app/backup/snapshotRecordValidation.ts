@@ -69,6 +69,7 @@ export function validateAccounts(value: unknown[], householdId: string, snapshot
       !isNonEmptyString(account.householdId) ||
       !isNonEmptyString(account.name) ||
       !isCurrencyCode(account.currencyCode) ||
+      !isOptionalString(account.archivedAtIso) ||
       account.householdId !== householdId ||
       accountIds.has(account.id)
     ) {

@@ -30,6 +30,7 @@ import type {
   Transaction,
 } from "../src/domain/types.js";
 import type { ReportingPeriodRule } from "../src/shared/applicationPreferences.js";
+import { selectActiveAccounts } from "../src/shared/accountLifecycle.js";
 import { createDashboardProvider } from "./dashboardProvider.js";
 import {
   createBackupOutputDialog,
@@ -181,7 +182,8 @@ function applyRuntimeLedgerSnapshot(snapshot: {
 })();
 
 function resolveDefaultAccountId(householdId: string): string {
-  const account = runtimeAccounts.find((item) => item.householdId === householdId);
+  const account = selectActiveAccounts(runtimeAccounts)
+    .find((item) => item.householdId === householdId);
   if (!account) {
     throw new Error(`No account available for household ${householdId}`);
   }
@@ -190,8 +192,7 @@ function resolveDefaultAccountId(householdId: string): string {
 }
 
 function accountBelongsToHousehold(accountId: string, householdId: string): boolean {
-  return localLedgerDatabase
-    .getAccountsForHousehold(householdId)
+  return selectActiveAccounts(localLedgerDatabase.getAccountsForHousehold(householdId))
     .some((account) => account.id === accountId);
 }
 

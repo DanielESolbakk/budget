@@ -1,3 +1,4 @@
+import type { Account } from "../domain/types.js";
 import { isCurrencyCode } from "../domain/types.js";
 
 export interface AccountInput {
@@ -13,6 +14,30 @@ export interface AccountHistorySummary {
   transactionCount: number;
   coveragePeriodCount: number;
   checkpointCount: number;
+}
+
+export function archiveAccount(
+  account: Account,
+  activeAccountCount: number,
+  archivedAtIso: string
+): Account {
+  if (account.archivedAtIso !== undefined) {
+    throw new Error("This account is already archived.");
+  }
+  if (!Number.isInteger(activeAccountCount) || activeAccountCount < 1) {
+    throw new Error("Active account count must be a positive integer.");
+  }
+  if (activeAccountCount <= 1) {
+    throw new Error("Keep at least one active account. Add another account before archiving this one.");
+  }
+  if (Number.isNaN(Date.parse(archivedAtIso))) {
+    throw new Error("Archive timestamp must be a valid date.");
+  }
+  return { ...account, archivedAtIso };
+}
+
+export function selectActiveAccounts(accounts: readonly Account[]): Account[] {
+  return accounts.filter((account) => account.archivedAtIso === undefined);
 }
 
 export class AccountInputValidationError extends Error {

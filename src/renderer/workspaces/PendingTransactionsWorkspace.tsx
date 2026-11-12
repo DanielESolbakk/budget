@@ -54,10 +54,14 @@ export function PendingTransactionsWorkspace({
       window.budgetApi.pending.list(),
       window.budgetApi.accounts.getCurrent(),
     ])
-      .then(([observations, current]) => {
+      .then(async ([observations, current]) => {
+        if (!isActiveRequest) return;
+        const accounts = current === null
+          ? []
+          : await window.budgetApi.accounts.list(current.householdId);
         if (!isActiveRequest) return;
         const accountNames = new Map(
-          (current?.accounts ?? []).map((account) => [account.id, account.name])
+          accounts.map((account) => [account.id, account.name])
         );
         setState({ status: "ready", observations, accountNames });
       })

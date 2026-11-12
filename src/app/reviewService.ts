@@ -4,6 +4,7 @@ import { detectDuplicate } from "../domain/import/detectDuplicate.js";
 import { needsCategorizationReview, orderReviewQueueTransactions } from "../domain/categorization/reviewQueue.js";
 import { validateCorrectionCategoryId } from "../domain/review/correction.js";
 import { normalizeMerchantName } from "../domain/merchant/normalizeMerchantName.js";
+import { selectActiveAccounts } from "../shared/accountLifecycle.js";
 import {
   validateImportReviewCorrectionInput,
   type ImportReviewCorrectionInput,
@@ -122,7 +123,7 @@ export function applyImportReviewCorrection(
 
   const validation = validateImportReviewCorrectionInput(correction, {
     householdId: item.householdId,
-    accounts: database.getAccountsForHousehold(item.householdId),
+    accounts: selectActiveAccounts(database.getAccountsForHousehold(item.householdId)),
   });
   if (!validation.ok) {
     return {

@@ -47,6 +47,8 @@ const snapshotCapabilities = {
   "9": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections, ...holdingCollections], requiresHouseholdShares: true },
   "10": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
+  "11": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+    ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
   [SNAPSHOT_VERSION]: { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
 };
@@ -67,7 +69,8 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     );
   }
   const capabilities = snapshotCapabilities[metadata.version];
-  if (metadata.version === SNAPSHOT_VERSION && value.reportingPeriodRule === undefined) {
+  if ((metadata.version === "11" || metadata.version === SNAPSHOT_VERSION) &&
+    value.reportingPeriodRule === undefined) {
     throw new Error(`Invalid snapshot reportingPeriodRule: ${snapshotPath}`);
   }
   let reportingPeriodRule: ReportingPeriodRule;

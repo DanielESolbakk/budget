@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { normalizeHouseholdSetupInput } from "../onboarding/householdSetup.js";
 import {
+  archiveAccount as createArchivedAccount,
   normalizeAccountInput,
   normalizeAccountUpdateInput,
   type AccountHistorySummary,
@@ -166,13 +167,14 @@ function updateAccount(
   db.exec("BEGIN IMMEDIATE");
   try {
     const existingAccount = db.prepare(`
-      SELECT id, household_id, currency_code
+      SELECT id, household_id, currency_code, archived_at_iso
       FROM accounts
       WHERE id = ?
     `).get(input.accountId) as {
       id: string;
       household_id: string;
       currency_code: string;
+      archived_at_iso: string | null;
     } | undefined;
     if (existingAccount === undefined) {
       throw new Error(`Account not found: ${input.accountId}`);
@@ -193,7 +195,59 @@ function updateAccount(
       householdId: existingAccount.household_id,
       name: accountName,
       currencyCode,
+      ...(existingAccount.archived_at_iso === null
+        ? {}
+        : { archivedAtIso: existingAccount.archived_at_iso }),
     };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function archiveAccount(
+  db: DatabaseSync,
+  accountId: string,
+  archivedAtIso: string
+): Account {
+  if (typeof accountId !== "string" || accountId.trim().length === 0) {
+    throw new Error("Account id is required.");
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const accountRow = db.prepare(`
+      SELECT id, household_id, name, currency_code, archived_at_iso
+      FROM accounts
+      WHERE id = ?
+    `).get(accountId) as {
+      id: string;
+      household_id: string;
+      name: string;
+      currency_code: string;
+      archived_at_iso: string | null;
+    } | undefined;
+    if (accountRow === undefined) {
+      throw new Error(`Account not found: ${accountId}`);
+    }
+
+    const account: Account = {
+      id: accountRow.id,
+      householdId: accountRow.household_id,
+      name: accountRow.name,
+      currencyCode: accountRow.currency_code,
+      ...(accountRow.archived_at_iso === null ? {} : { archivedAtIso: accountRow.archived_at_iso }),
+    };
+    const activeAccountCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM accounts
+      WHERE household_id = ? AND archived_at_iso IS NULL
+    `).get(account.householdId) as { count: number }).count;
+    const archivedAccount = createArchivedAccount(account, activeAccountCount, archivedAtIso);
+    db.prepare("UPDATE accounts SET archived_at_iso = ? WHERE id = ?")
+      .run(archivedAtIso, account.id);
+    db.exec("COMMIT");
+    return archivedAccount;
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
@@ -546,6 +600,7 @@ export function createLocalLedgerDatabase(
     createInitialHouseholdAndAccount: (input) => createInitialHouseholdAndAccount(db, input),
     createAccount: (input) => createAccount(db, input),
     updateAccount: (input) => updateAccount(db, input),
+    archiveAccount: (accountId, archivedAtIso) => archiveAccount(db, accountId, archivedAtIso),
     getAccountHistorySummary: (accountId) => getAccountHistorySummary(db, accountId),
     getReportingPeriodRule,
     saveReportingPeriodRule,

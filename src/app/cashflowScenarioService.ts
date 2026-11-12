@@ -5,6 +5,7 @@ import { createRecurringCommitmentService } from "./recurringCommitmentService.j
 import { createSpendableCashService } from "./spendableCashService.js";
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import { convertCurrencyAmount } from "../domain/money/convertCurrencyAmount.js";
+import { selectActiveAccounts } from "../shared/accountLifecycle.js";
 import {
   calculateCashflowScenario,
   validateCashflowScenarioRequest,
@@ -188,8 +189,9 @@ export function createCashflowScenarioService(
     const estimate = createSpendableCashService(database, {
       now: () => evaluatedAt,
     }).getEstimate({
-      selectedAccountIds: database
-        .getAccountsForHousehold(runtimeMetadata.household.id)
+      selectedAccountIds: selectActiveAccounts(
+        database.getAccountsForHousehold(runtimeMetadata.household.id)
+      )
         .map((account) => account.id),
       nextIncomeDateIso: horizonEndExclusive,
       reserveMinor: 0,

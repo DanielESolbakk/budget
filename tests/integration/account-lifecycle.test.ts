@@ -3,11 +3,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAccountLifecycleService } from "../../src/app/accountLifecycleService.js";
+import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { exportLedgerCsvToFile } from "../../src/app/exportCsv.js";
+import { createSpendableCashService } from "../../src/app/spendableCashService.js";
+import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
+import { submitManualEntry } from "../../src/app/import/manualEntry.js";
+import { selectActiveAccounts } from "../../src/shared/accountLifecycle.js";
 import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
   ImportJob,
+  ManualEntryInput,
   Transaction,
 } from "../../src/domain/types.js";
 
@@ -246,6 +253,132 @@ describe("account editing persistence", () => {
       currencyCode: "SEK",
     })).toThrow("Create another account instead.");
 
+    expect(ledger.loadLedgerSnapshotData()).toEqual(before);
+    expect(networkFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("account archiving persistence", () => {
+  it("retains account history and archive state across restart and backup restore", () => {
+    const { dbPath, ledger, household, account } = createAccountWithHistory();
+    const savings = ledger.createAccount({
+      householdId: household.id,
+      accountName: "Savings",
+      currencyCode: "NOK",
+    });
+    const lifecycle = createAccountLifecycleService(ledger);
+    const archivedAtIso = "2026-11-12T10:00:00.000Z";
+    const beforeArchive = ledger.loadLedgerSnapshotData();
+    expect(lifecycle.archiveAccount(account.id, archivedAtIso)).toEqual({
+      ...account,
+      archivedAtIso,
+    });
+
+    const archivedSnapshot = ledger.loadLedgerSnapshotData();
+    expect(selectActiveAccounts(archivedSnapshot.accounts)).toEqual([savings]);
+    expect(archivedSnapshot.accounts).toHaveLength(2);
+    expect(archivedSnapshot.accounts).toEqual(
+      expect.arrayContaining([{ ...account, archivedAtIso }, savings])
+    );
+    expect(archivedSnapshot.transactions).toEqual(beforeArchive.transactions);
+    expect(archivedSnapshot.importJobs).toEqual(beforeArchive.importJobs);
+    expect(archivedSnapshot.accountStatementCoveragePeriods)
+      .toEqual(beforeArchive.accountStatementCoveragePeriods);
+    expect(archivedSnapshot.accountBalanceCheckpoints)
+      .toEqual(beforeArchive.accountBalanceCheckpoints);
+    expect(networkFetch).not.toHaveBeenCalled();
+
+    const manualEntryInput: ManualEntryInput = {
+      householdId: household.id,
+      accountId: account.id,
+      bookedAtIso: "2026-11-12",
+      amountMinor: -2500,
+      merchantRaw: "Synthetic archived-account entry",
+      categoryId: "groceries",
+    };
+    expect(submitManualEntry(manualEntryInput, archivedSnapshot.transactions, ledger))
+      .toMatchObject({
+        ok: false,
+        reason: "validation",
+        code: "INVALID_ACCOUNT_ID",
+      });
+
+    expect(createSpendableCashService(ledger, {
+      now: () => new Date("2026-11-12T10:00:00.000Z"),
+    }).getEstimate({
+      selectedAccountIds: [account.id],
+      nextIncomeDateIso: "2026-11-20",
+      reserveMinor: 0,
+    })).toMatchObject({
+      state: "incomplete",
+      incompleteReasons: [{
+        code: "unknown-account",
+        message: "A selected account is no longer available.",
+      }],
+    });
+
+    const ledgerCloserIndex = closeLedgers.indexOf(ledger.close);
+    if (ledgerCloserIndex < 0) throw new Error("Ledger cleanup registration is missing.");
+    const closeLedger = closeLedgers.splice(ledgerCloserIndex, 1)[0];
+    if (closeLedger === undefined) throw new Error("Ledger cleanup registration is missing.");
+    closeLedger();
+
+    const reopenedLedger = createLocalLedgerDatabase({ dbPath });
+    closeLedgers.push(reopenedLedger.close);
+    expect(reopenedLedger.loadLedgerSnapshotData().accounts).toEqual(archivedSnapshot.accounts);
+    expect(reopenedLedger.loadLedgerSnapshotData().transactions).toEqual(beforeArchive.transactions);
+    expect(reopenedLedger.loadLedgerSnapshotData().accountStatementCoveragePeriods)
+      .toEqual(beforeArchive.accountStatementCoveragePeriods);
+    expect(reopenedLedger.loadLedgerSnapshotData().accountBalanceCheckpoints)
+      .toEqual(beforeArchive.accountBalanceCheckpoints);
+    expect(reopenedLedger.getTransactionsForAccount(account.id))
+      .toEqual(beforeArchive.transactions);
+
+    let exportedCsv = "";
+    const exportResult = exportLedgerCsvToFile({
+      ledger: reopenedLedger,
+      outputPath: "synthetic-archive-export.csv",
+      writeFile: (_path, content) => {
+        exportedCsv = content;
+      },
+    });
+    expect(exportResult.rowCount).toBe(1);
+    expect(exportedCsv).toContain("Synthetic grocery");
+    expect(exportedCsv).toContain(account.id);
+
+    const snapshotDirectory = mkdtempSync(join(tmpdir(), "budget-account-archive-backup-"));
+    temporaryDirectories.push(snapshotDirectory);
+    const snapshotPath = join(snapshotDirectory, "snapshot.json");
+    createBackupSnapshot({
+      ...reopenedLedger.loadLedgerSnapshotData(),
+      createdAtIso: "2026-11-12T10:01:00.000Z",
+      outputPath: snapshotPath,
+    });
+    const restored = restoreBackupSnapshot({ snapshotPath });
+    expect(restored.accounts).toEqual(archivedSnapshot.accounts);
+    expect(restored.transactions).toEqual(beforeArchive.transactions);
+    expect(restored.accountStatementCoveragePeriods)
+      .toEqual(beforeArchive.accountStatementCoveragePeriods);
+    expect(restored.accountBalanceCheckpoints)
+      .toEqual(beforeArchive.accountBalanceCheckpoints);
+
+    const restoredLedger = createLocalLedgerDatabase({
+      dbPath: join(snapshotDirectory, "restored.sqlite"),
+    });
+    closeLedgers.push(restoredLedger.close);
+    restoredLedger.replaceLedgerSnapshotData(restored);
+    expect(restoredLedger.loadLedgerSnapshotData().accounts).toEqual(archivedSnapshot.accounts);
+    expect(restoredLedger.loadLedgerSnapshotData().transactions).toEqual(beforeArchive.transactions);
+    expect(networkFetch).not.toHaveBeenCalled();
+  });
+
+  it("leaves the ledger unchanged when archiving its only active account", () => {
+    const { ledger, account } = createAccountWithHistory();
+    const lifecycle = createAccountLifecycleService(ledger);
+    const before = ledger.loadLedgerSnapshotData();
+
+    expect(() => lifecycle.archiveAccount(account.id, "2026-11-12T10:00:00.000Z"))
+      .toThrow("Keep at least one active account. Add another account before archiving this one.");
     expect(ledger.loadLedgerSnapshotData()).toEqual(before);
     expect(networkFetch).not.toHaveBeenCalled();
   });

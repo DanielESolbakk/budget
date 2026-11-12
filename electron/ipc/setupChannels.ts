@@ -1,6 +1,10 @@
 import { normalizeHouseholdSetupInput } from "../../src/app/onboarding/householdSetup.js";
 import type { Account, HouseholdAccountContext } from "../../src/domain/types.js";
-import { normalizeAccountInput, type AccountUpdateInput } from "../../src/shared/accountLifecycle.js";
+import {
+  normalizeAccountInput,
+  selectActiveAccounts,
+  type AccountUpdateInput,
+} from "../../src/shared/accountLifecycle.js";
 import type { LedgerChannelContext } from "./context.js";
 import { parseNonEmptyString } from "./validation.js";
 export function registerSetupChannels({
@@ -34,7 +38,9 @@ export function registerSetupChannels({
     return {
       householdId: sampleHousehold.id,
       householdName: sampleHousehold.name,
-      accounts: localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id),
+      accounts: selectActiveAccounts(
+        localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id)
+      ),
     };
   });
 
@@ -75,6 +81,21 @@ export function registerSetupChannels({
     };
     return ledgerOperationCoordinator.runExclusive(() => {
       const account = accountLifecycleService.updateAccount(validated);
+      const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+      if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
+      runtimeState.ledgerGeneration += 1;
+      return account;
+    });
+  });
+
+  ipcMain.handle("account:archive", (event, accountId: unknown): Promise<Account> => {
+    assertTrustedRenderer(event);
+    const validatedAccountId = parseNonEmptyString(accountId, "accountId");
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const account = accountLifecycleService.archiveAccount(
+        validatedAccountId,
+        new Date().toISOString()
+      );
       const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
       if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
       runtimeState.ledgerGeneration += 1;

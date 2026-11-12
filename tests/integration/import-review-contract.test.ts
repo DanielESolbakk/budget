@@ -419,6 +419,43 @@ describe("import review persistence contract", () => {
     }
   });
 
+  it("does not allow review corrections to target an archived account", () => {
+    const testLedger = createReviewLedger("archived-correction");
+    const correction = {
+      bookedAtIso: "2026-05-19",
+      amountMinor: -999,
+      merchantRaw: "SYNTHETIC CORRECTED MERCHANT",
+      accountId: ACCOUNT.id,
+      currencyCode: "NOK",
+    };
+
+    try {
+      testLedger.ledger.createAccount({
+        householdId: HOUSEHOLD.id,
+        accountName: "Savings",
+        currencyCode: "NOK",
+      });
+      testLedger.ledger.archiveAccount(ACCOUNT.id, "2026-06-01T00:00:00Z");
+      const result = invokeReviewServiceAction(
+        "applyImportReviewCorrection",
+        testLedger.ledger,
+        HOUSEHOLD.id,
+        testLedger.reviewItem.id,
+        correction,
+        "2026-06-02T00:00:00Z"
+      );
+
+      expect(result).toMatchObject({
+        ok: false,
+        code: "IMPORT_REVIEW_VALIDATION_FAILED",
+      });
+      expect(testLedger.ledger.getTransactionsForImportJob(testLedger.reviewItem.importJobId))
+        .toHaveLength(1);
+    } finally {
+      testLedger.close();
+    }
+  });
+
   it("dismisses an unresolved row with a reason and creates no transaction", () => {
     const testLedger = createReviewLedger("dismissal");
     const dismissedAtIso = "2026-05-22T10:00:00Z";

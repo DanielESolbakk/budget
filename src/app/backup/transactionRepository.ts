@@ -347,13 +347,14 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
   function getAccountsForHousehold(householdId: string): Account[] {
     const accounts = db
       .prepare(
-        "SELECT id, household_id, name, currency_code FROM accounts WHERE household_id = ? ORDER BY id"
+        "SELECT id, household_id, name, currency_code, archived_at_iso FROM accounts WHERE household_id = ? ORDER BY id"
       )
       .all(householdId) as Array<{
       id: string;
       household_id: string;
       name: string;
       currency_code: string;
+      archived_at_iso: string | null;
     }>;
 
     return accounts.map((account) => ({
@@ -361,6 +362,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
       householdId: account.household_id,
       name: account.name,
       currencyCode: account.currency_code,
+      ...(account.archived_at_iso === null ? {} : { archivedAtIso: account.archived_at_iso }),
     }));
   }
 
