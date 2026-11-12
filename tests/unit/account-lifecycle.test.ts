@@ -104,10 +104,14 @@ describe("account archiving", () => {
   const archivedAtIso = "2026-11-12T10:00:00.000Z";
 
   it("archives an active account without changing its identity or currency", () => {
-    expect(archiveAccount(account, 2, archivedAtIso)).toEqual({
+    const input = { ...account };
+    const archived = archiveAccount(input, 2, archivedAtIso);
+
+    expect(archived).toEqual({
       ...account,
       archivedAtIso,
     });
+    expect(input).toEqual(account);
   });
 
   it("rejects archiving the last active account with recovery guidance", () => {
