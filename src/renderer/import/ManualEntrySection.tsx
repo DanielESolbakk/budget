@@ -75,12 +75,13 @@ function toManualEntryInput(
 }
 
 interface ManualEntrySectionProps {
+  refreshKey: number;
   onEntrySuccess: () => void;
   onOpenLedger: () => void;
   onReviewUncategorized: () => void;
 }
 
-export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncategorized }: ManualEntrySectionProps): React.JSX.Element {
+export function ManualEntrySection({ refreshKey, onEntrySuccess, onOpenLedger, onReviewUncategorized }: ManualEntrySectionProps): React.JSX.Element {
   const [householdId, setHouseholdId] = React.useState<string | null>(null);
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [accountState, setAccountState] = React.useState<"loading" | "ready" | "error">("loading");
@@ -111,7 +112,7 @@ export function ManualEntrySection({ onEntrySuccess, onOpenLedger, onReviewUncat
     return () => {
       active = false;
     };
-  }, [accountRetryKey]);
+  }, [accountRetryKey, refreshKey]);
 
   function updateField(field: keyof ManualEntryFormValues, value: string): void {
     setFormValues((current) => ({ ...current, [field]: value }));

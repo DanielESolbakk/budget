@@ -1,20 +1,25 @@
 import { normalizeHouseholdSetupInput } from "../../src/app/onboarding/householdSetup.js";
 import type { Account, HouseholdAccountContext } from "../../src/domain/types.js";
+import { normalizeAccountInput, type AccountUpdateInput } from "../../src/shared/accountLifecycle.js";
 import type { LedgerChannelContext } from "./context.js";
 import { parseNonEmptyString } from "./validation.js";
 export function registerSetupChannels({
   ipcMain,
   assertTrustedRenderer,
   localLedgerDatabase,
+  accountLifecycleService,
   sampleHousehold,
   runtimeState,
+  ledgerOperationCoordinator,
   applyRuntimeLedgerSnapshot
 }: Pick<LedgerChannelContext,
   | "ipcMain"
   | "assertTrustedRenderer"
   | "localLedgerDatabase"
+  | "accountLifecycleService"
   | "sampleHousehold"
   | "runtimeState"
+  | "ledgerOperationCoordinator"
   | "applyRuntimeLedgerSnapshot"
 >): void {
 
@@ -31,6 +36,50 @@ export function registerSetupChannels({
       householdName: sampleHousehold.name,
       accounts: localLedgerDatabase.getAccountsForHousehold(sampleHousehold.id),
     };
+  });
+
+  ipcMain.handle("account:create", (event, input: unknown): Promise<Account> => {
+    assertTrustedRenderer(event);
+    const accountInput = normalizeAccountInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      if (!localLedgerDatabase.hasHousehold()) {
+        throw new Error("Create the household before adding an account.");
+      }
+      const account = localLedgerDatabase.createAccount({
+        householdId: sampleHousehold.id,
+        ...accountInput,
+      });
+      const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+      if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
+      runtimeState.ledgerGeneration += 1;
+      return account;
+    });
+  });
+
+  ipcMain.handle("account:getHistorySummary", (event, accountId: unknown) => {
+    assertTrustedRenderer(event);
+    return accountLifecycleService.getHistorySummary(
+      parseNonEmptyString(accountId, "accountId")
+    );
+  });
+
+  ipcMain.handle("account:update", (event, input: unknown): Promise<Account> => {
+    assertTrustedRenderer(event);
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      throw new Error("Account details must be an object.");
+    }
+    const record = input as Record<string, unknown>;
+    const validated: AccountUpdateInput = {
+      accountId: parseNonEmptyString(record.accountId, "accountId"),
+      ...normalizeAccountInput(record),
+    };
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const account = accountLifecycleService.updateAccount(validated);
+      const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+      if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
+      runtimeState.ledgerGeneration += 1;
+      return account;
+    });
   });
 
   ipcMain.handle("setup:isRequired", (event): boolean => {

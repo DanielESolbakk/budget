@@ -570,7 +570,10 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
               aria-label="Coverage workspace"
               hidden={activeWorkspace !== "coverage"}
             >
-              <AccountCoverageSection />
+              <AccountCoverageSection
+                refreshKey={refreshCounter}
+                onAccountsChanged={() => setRefreshCounter((counter) => counter + 1)}
+              />
             </section>
           )}
           {visitedWorkspaces.has("pending") && (

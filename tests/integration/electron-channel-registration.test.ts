@@ -202,6 +202,57 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect(await invoke("dashboard:getViewData", "2026-05")).toMatchObject({ state: "empty" });
   });
 
+  it("creates an account through trusted IPC and refreshes the current household context", async () => {
+    createHousehold();
+
+    await expect(Promise.resolve().then(() => invoke("account:create", {
+      accountName: "  Savings  ",
+      currencyCode: "sek",
+    }))).resolves.toMatchObject({
+      householdId: (invoke("account:getCurrent") as { householdId: string }).householdId,
+      name: "Savings",
+      currencyCode: "SEK",
+    });
+    expect((invoke("account:getCurrent") as { accounts: unknown[] }).accounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Daily", currencyCode: "NOK" }),
+        expect.objectContaining({ name: "Savings", currencyCode: "SEK" }),
+      ])
+    );
+  });
+
+  it("updates an account through trusted IPC and refreshes the current household context", async () => {
+    createHousehold();
+    const current = invoke("account:getCurrent") as { accounts: Array<{ id: string }> };
+    const account = current.accounts[0];
+    if (account === undefined) throw new Error("Initial account is unavailable.");
+
+    await expect(Promise.resolve().then(() => invoke("account:update", {
+      accountId: account.id,
+      accountName: "  Main account  ",
+      currencyCode: "sek",
+    }))).resolves.toMatchObject({
+      id: account.id,
+      name: "Main account",
+      currencyCode: "SEK",
+    });
+    expect(invoke("account:getCurrent")).toMatchObject({
+      accounts: [{ id: account.id, name: "Main account", currencyCode: "SEK" }],
+    });
+  });
+
+  it("rejects invalid account details without adding an account", async () => {
+    createHousehold();
+
+    await expect(Promise.resolve().then(() => invoke("account:create", {
+      accountName: " ",
+      currencyCode: "NOK",
+    }))).rejects.toThrow("Enter an account name.");
+    expect(invoke("account:getCurrent")).toMatchObject({
+      accounts: [{ name: "Daily", currencyCode: "NOK" }],
+    });
+  });
+
   it("loads and saves validated reporting-period preferences through trusted IPC", async () => {
     createHousehold();
     expect(invoke("reportingPreferences:getPeriodRule")).toEqual({ type: "calendar-month" });
@@ -322,6 +373,47 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect(invoke("categoryTarget:listByMonth", "2026-05")).toEqual([
       { yearMonth: "2026-05", categoryId: "groceries", targetMinor: 7500 },
     ]);
+  });
+
+  it("serializes account creation with restore and applies it to the restored household", async () => {
+    createHousehold();
+    const snapshotPath = writeReplacementSnapshot();
+    const recoveryDelayVariable = "BUDGET_TEST_RECOVERY_OPERATION_DELAY_MS";
+    const originalRecoveryDelay = process.env[recoveryDelayVariable];
+    vi.stubEnv(recoveryDelayVariable, "100");
+    const restore = Promise.resolve(invoke("backup:restore", { snapshotPath }));
+    await Promise.resolve();
+
+    let accountCreated = false;
+    const createAccount = Promise.resolve(invoke("account:create", {
+      accountName: "Savings",
+      currencyCode: "SEK",
+    })).then((account) => {
+      accountCreated = true;
+      return account;
+    });
+
+    await Promise.resolve();
+    const createdBeforeRestore = accountCreated;
+    try {
+      await restore;
+    } finally {
+      if (originalRecoveryDelay === undefined) delete process.env[recoveryDelayVariable];
+      else process.env[recoveryDelayVariable] = originalRecoveryDelay;
+    }
+    expect(createdBeforeRestore).toBe(false);
+    await expect(createAccount).resolves.toMatchObject({
+      householdId: "restored-household",
+      name: "Savings",
+      currencyCode: "SEK",
+    });
+    expect(invoke("account:getCurrent")).toMatchObject({
+      householdId: "restored-household",
+      accounts: expect.arrayContaining([
+        expect.objectContaining({ id: "restored-account" }),
+        expect.objectContaining({ name: "Savings", currencyCode: "SEK" }),
+      ]),
+    });
   });
 
   it.each([

@@ -132,6 +132,13 @@ export function resolveRendererBudgetApi(
         householdName: "Preview Household",
         accounts: [previewAccount],
       }),
+      getHistorySummary: async () => ({
+        transactionCount: 0,
+        coveragePeriodCount: 0,
+        checkpointCount: 0,
+      }),
+      create: desktopOnlyAction,
+      update: desktopOnlyAction,
     },
     forecast: {
       getEntries: desktopOnlyAction,

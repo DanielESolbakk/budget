@@ -537,6 +537,80 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   min-width: 0;
 }
 
+.account-management {
+  display: grid;
+  gap: 0.75rem;
+  border-block: 1px solid var(--line);
+  padding-block: 1rem;
+}
+
+.account-management-heading h3 {
+  margin: 0;
+  color: var(--paper);
+  font-size: 1rem;
+}
+
+.account-management-heading p {
+  max-width: 65ch;
+  margin: 0.3rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.45;
+}
+
+.account-management-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account-management-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding-block: 0.55rem;
+}
+
+.account-management-summary {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.account-management-summary strong {
+  overflow-wrap: anywhere;
+}
+
+.account-management-summary span {
+  color: var(--paper-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-management-form {
+  max-width: 48rem;
+}
+
+.account-management-edit-form {
+  grid-column: 1 / -1;
+  max-width: 48rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  align-items: end;
+}
+
+.account-management-edit-form > .account-coverage-message,
+.account-management-edit-actions {
+  grid-column: 1 / -1;
+}
+
+.account-management-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .reporting-preferences-section {
   display: grid;
   gap: 1rem;

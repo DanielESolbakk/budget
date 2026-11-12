@@ -7,6 +7,12 @@ import type {
 } from "../../domain/types.js";
 import type { ImportJobHistoryEntry } from "../../domain/import/importJobHistory.js";
 import { formatMinorUnits } from "../../domain/money/minorUnits.js";
+import {
+  AccountInputValidationError,
+  normalizeAccountInput,
+  normalizeAccountUpdateInput,
+} from "../../shared/accountLifecycle.js";
+import type { AccountHistorySummary } from "../../shared/accountLifecycle.js";
 import { parseSignedAmountMinor as parseAmountMinor } from "../amountInputs.js";
 
 const amountFormatter = new Intl.NumberFormat("nb-NO", {
@@ -26,6 +32,14 @@ function displayDate(dateIso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateIso);
   if (match === null) return dateIso;
   return dateFormatter.format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))));
+}
+
+function hasAccountHistory(summary: AccountHistorySummary | null): boolean {
+  return summary !== null && (
+    summary.transactionCount > 0 ||
+    summary.coveragePeriodCount > 0 ||
+    summary.checkpointCount > 0
+  );
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -52,7 +66,15 @@ async function loadAccountCoverageData(accountId: string): Promise<AccountCovera
   return { periods, checkpoints, assessments: new Map(assessments) };
 }
 
-export function AccountCoverageSection(): React.JSX.Element {
+interface AccountCoverageSectionProps {
+  refreshKey: number;
+  onAccountsChanged: () => void;
+}
+
+export function AccountCoverageSection({
+  refreshKey,
+  onAccountsChanged,
+}: AccountCoverageSectionProps): React.JSX.Element {
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [importJobs, setImportJobs] = React.useState<ImportJobHistoryEntry[]>([]);
   const [selectedAccountId, setSelectedAccountId] = React.useState("");
@@ -72,9 +94,31 @@ export function AccountCoverageSection(): React.JSX.Element {
   const [revision, setRevision] = React.useState(0);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [accountName, setAccountName] = React.useState("");
+  const [accountCurrencyCode, setAccountCurrencyCode] = React.useState("NOK");
+  const [accountFieldError, setAccountFieldError] =
+    React.useState<AccountInputValidationError | null>(null);
+  const [accountError, setAccountError] = React.useState<string | null>(null);
+  const [accountStatus, setAccountStatus] = React.useState<string | null>(null);
+  const [isCreatingAccount, setIsCreatingAccount] = React.useState(false);
+  const [editingAccountId, setEditingAccountId] = React.useState<string | null>(null);
+  const [editAccountName, setEditAccountName] = React.useState("");
+  const [editAccountCurrencyCode, setEditAccountCurrencyCode] = React.useState("NOK");
+  const [editAccountHistory, setEditAccountHistory] = React.useState<AccountHistorySummary | null>(null);
+  const [editAccountFieldError, setEditAccountFieldError] =
+    React.useState<AccountInputValidationError | null>(null);
+  const [editAccountError, setEditAccountError] = React.useState<string | null>(null);
+  const [editAccountStatus, setEditAccountStatus] = React.useState<string | null>(null);
+  const [isLoadingEditContext, setIsLoadingEditContext] = React.useState(false);
+  const [isUpdatingAccount, setIsUpdatingAccount] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const checkpointFormRef = React.useRef<HTMLFormElement>(null);
   const checkpointDateInputRef = React.useRef<HTMLInputElement>(null);
+  const accountFormRef = React.useRef<HTMLFormElement>(null);
+  const editAccountNameInputRef = React.useRef<HTMLInputElement>(null);
+  const editButtonRefs = React.useRef(new Map<string, HTMLButtonElement>());
+  const editContextRequestId = React.useRef(0);
+  const previousEditingAccountId = React.useRef<string | null>(null);
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
   const accountImportJobs = importJobs.filter((job) => job.accountId === selectedAccountId);
 
@@ -102,7 +146,7 @@ export function AccountCoverageSection(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshKey]);
 
   React.useEffect(() => {
     if (selectedAccountId === "") return;
@@ -124,9 +168,142 @@ export function AccountCoverageSection(): React.JSX.Element {
     };
   }, [selectedAccountId, revision]);
 
+  React.useEffect(() => {
+    if (editingAccountId !== null && !isLoadingEditContext) {
+      editAccountNameInputRef.current?.focus();
+    }
+    if (editingAccountId === null && previousEditingAccountId.current !== null) {
+      editButtonRefs.current.get(previousEditingAccountId.current)?.focus();
+    }
+    previousEditingAccountId.current = editingAccountId;
+  }, [editingAccountId, isLoadingEditContext]);
+
   async function refresh(): Promise<void> {
     if (selectedAccountId === "") return;
     setRevision((current) => current + 1);
+  }
+
+  async function createAccount(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (isCreatingAccount) return;
+
+    setAccountFieldError(null);
+    setAccountError(null);
+    setAccountStatus(null);
+    let input: ReturnType<typeof normalizeAccountInput>;
+    try {
+      input = normalizeAccountInput({
+        accountName,
+        currencyCode: accountCurrencyCode,
+      });
+    } catch (validationError: unknown) {
+      if (!(validationError instanceof AccountInputValidationError)) throw validationError;
+      setAccountFieldError(validationError);
+      accountFormRef.current
+        ?.querySelector<HTMLInputElement>(`[name="${validationError.field}"]`)
+        ?.focus();
+      return;
+    }
+
+    setIsCreatingAccount(true);
+    try {
+      const account = await window.budgetApi.accounts.create(input);
+      setAccounts((current) => [...current, account]);
+      setSelectedAccountId(account.id);
+      setAccountName("");
+      setAccountCurrencyCode("NOK");
+      setAccountStatus(`${account.name} account added in ${account.currencyCode}.`);
+      onAccountsChanged();
+    } catch (createError: unknown) {
+      setAccountError(errorMessage(createError, "Unable to add the account."));
+    } finally {
+      setIsCreatingAccount(false);
+    }
+  }
+
+  async function beginAccountEdit(account: Account): Promise<void> {
+    const requestId = editContextRequestId.current + 1;
+    editContextRequestId.current = requestId;
+    setEditingAccountId(account.id);
+    setEditAccountName(account.name);
+    setEditAccountCurrencyCode(account.currencyCode);
+    setEditAccountHistory(null);
+    setEditAccountFieldError(null);
+    setEditAccountError(null);
+    setEditAccountStatus(null);
+    setAccountStatus(null);
+    setIsLoadingEditContext(true);
+
+    try {
+      const history = await window.budgetApi.accounts.getHistorySummary(account.id);
+      if (editContextRequestId.current === requestId) setEditAccountHistory(history);
+    } catch (loadError: unknown) {
+      if (editContextRequestId.current === requestId) {
+        setEditAccountError(errorMessage(loadError, "Unable to load account history."));
+      }
+    } finally {
+      if (editContextRequestId.current === requestId) setIsLoadingEditContext(false);
+    }
+  }
+
+  function cancelAccountEdit(): void {
+    editContextRequestId.current += 1;
+    setEditingAccountId(null);
+    setEditAccountHistory(null);
+    setEditAccountFieldError(null);
+    setEditAccountError(null);
+    setEditAccountStatus(null);
+    setIsLoadingEditContext(false);
+  }
+
+  async function updateAccount(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (editingAccountId === null || isUpdatingAccount || editAccountHistory === null) return;
+    const account = accounts.find((candidate) => candidate.id === editingAccountId);
+    if (account === undefined) {
+      setEditAccountError("This account is no longer available. Reload the Accounts workspace.");
+      return;
+    }
+
+    setEditAccountFieldError(null);
+    setEditAccountError(null);
+    setEditAccountStatus(null);
+    setAccountStatus(null);
+    let input: ReturnType<typeof normalizeAccountUpdateInput>;
+    try {
+      input = normalizeAccountUpdateInput({
+        accountName: editAccountName,
+        currencyCode: editAccountCurrencyCode,
+      }, account.currencyCode, editAccountHistory);
+    } catch (validationError: unknown) {
+      if (!(validationError instanceof AccountInputValidationError)) throw validationError;
+      setEditAccountFieldError(validationError);
+      document.getElementById(`account-edit-${validationError.field}`)?.focus();
+      return;
+    }
+
+    setIsUpdatingAccount(true);
+    try {
+      const updatedAccount = await window.budgetApi.accounts.update({
+        accountId: account.id,
+        ...input,
+      });
+      setAccounts((current) => current.map((candidate) =>
+        candidate.id === updatedAccount.id ? updatedAccount : candidate
+      ));
+      setSelectedAccountId((current) => current === account.id ? updatedAccount.id : current);
+      setEditingAccountId(null);
+      setEditAccountHistory(null);
+      setEditAccountStatus("Account updated.");
+      onAccountsChanged();
+    } catch (updateError: unknown) {
+      const detail = updateError instanceof Error ? ` Details: ${updateError.message}` : "";
+      setEditAccountError(
+        `Unable to save account changes. Your edits are still available to retry.${detail}`
+      );
+    } finally {
+      setIsUpdatingAccount(false);
+    }
   }
 
   function focusCheckpointEntry(): void {
@@ -222,6 +399,194 @@ export function AccountCoverageSection(): React.JSX.Element {
         <h2>Account statement coverage</h2>
         <p>Record confirmed statement periods and dated balance checkpoints before relying on account trends.</p>
       </div>
+
+      <section className="account-management" aria-labelledby="account-management-heading">
+        <div className="account-management-heading">
+          <h3 id="account-management-heading">Household accounts</h3>
+          <p>Accounts are stored on this device and remain part of the household ledger.</p>
+        </div>
+        {accounts.length > 0 && (
+          <ul className="account-management-list" aria-label="Household accounts">
+            {accounts.map((account) => {
+              const isEditing = editingAccountId === account.id;
+              const accountHasHistory = isEditing && hasAccountHistory(editAccountHistory);
+              return (
+                <li key={account.id}>
+                  {isEditing ? (
+                    <form
+                      className="account-coverage-form account-management-edit-form"
+                      aria-label={`Edit account ${account.name}`}
+                      noValidate
+                      onSubmit={(event) => void updateAccount(event)}
+                    >
+                      <label>
+                        Account name
+                        <input
+                          id="account-edit-accountName"
+                          name="accountName"
+                          aria-invalid={editAccountFieldError?.field === "accountName" || undefined}
+                          aria-describedby={
+                            editAccountFieldError?.field === "accountName"
+                              ? "account-edit-accountName-error"
+                              : undefined
+                          }
+                          autoComplete="off"
+                          maxLength={100}
+                          onChange={(event) => {
+                            setEditAccountName(event.currentTarget.value);
+                            setEditAccountFieldError(null);
+                            setEditAccountError(null);
+                          }}
+                          ref={editAccountNameInputRef}
+                          value={editAccountName}
+                        />
+                      </label>
+                      <label>
+                        Currency code
+                        <input
+                          id="account-edit-currencyCode"
+                          name="currencyCode"
+                          aria-invalid={editAccountFieldError?.field === "currencyCode" || undefined}
+                          aria-describedby={[
+                            editAccountFieldError?.field === "currencyCode"
+                              ? "account-edit-currencyCode-error"
+                              : null,
+                            accountHasHistory ? "account-edit-currency-guidance" : null,
+                          ].filter((value): value is string => value !== null).join(" ") || undefined}
+                          autoCapitalize="characters"
+                          disabled={isLoadingEditContext || accountHasHistory}
+                          maxLength={3}
+                          onChange={(event) => {
+                            setEditAccountCurrencyCode(event.currentTarget.value.toUpperCase());
+                            setEditAccountFieldError(null);
+                            setEditAccountError(null);
+                          }}
+                          pattern="[A-Za-z]{3}"
+                          value={editAccountCurrencyCode}
+                        />
+                      </label>
+                      {isLoadingEditContext && (
+                        <p className="account-coverage-message" role="status">Checking account history...</p>
+                      )}
+                      {accountHasHistory && (
+                        <p id="account-edit-currency-guidance" className="account-coverage-message">
+                          Currency cannot be changed while transactions, statement coverage or checkpoints exist.
+                          Create another account instead.
+                        </p>
+                      )}
+                      {editAccountFieldError !== null && (
+                        <p
+                          id={`account-edit-${editAccountFieldError.field}-error`}
+                          className="account-coverage-message is-error"
+                          role="alert"
+                        >
+                          {editAccountFieldError.message}
+                        </p>
+                      )}
+                      {editAccountError !== null && (
+                        <p className="account-coverage-message is-error" role="alert">{editAccountError}</p>
+                      )}
+                      <div className="account-management-edit-actions">
+                        <button
+                          type="submit"
+                          disabled={isLoadingEditContext || editAccountHistory === null || isUpdatingAccount}
+                        >
+                          {isUpdatingAccount ? "Saving account..." : "Save account changes"}
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          disabled={isUpdatingAccount}
+                          onClick={cancelAccountEdit}
+                        >
+                          Cancel edit
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="account-management-summary">
+                        <strong>{account.name}</strong>
+                        <span>{account.currencyCode}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        aria-label={`Edit account ${account.name}`}
+                        ref={(element) => {
+                          if (element === null) editButtonRefs.current.delete(account.id);
+                          else editButtonRefs.current.set(account.id, element);
+                        }}
+                        onClick={() => void beginAccountEdit(account)}
+                      >
+                        Edit
+                      </button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {editAccountStatus !== null && (
+          <p className="account-coverage-message is-success" role="status" aria-label="Account management status">
+            {editAccountStatus}
+          </p>
+        )}
+        <form
+          ref={accountFormRef}
+          className="account-coverage-form account-management-form"
+          aria-label="Add account"
+          noValidate
+          onSubmit={(event) => void createAccount(event)}
+        >
+          <div className="account-coverage-form-heading">
+            <h3>Add an account</h3>
+            <p>Add another account to the existing household without changing its current records.</p>
+          </div>
+          <label>
+            Account name
+            <input
+              name="accountName"
+              aria-invalid={accountFieldError?.field === "accountName" || undefined}
+              aria-describedby={accountFieldError?.field === "accountName" ? "account-field-error" : undefined}
+              autoComplete="off"
+              maxLength={100}
+              onChange={(event) => setAccountName(event.currentTarget.value)}
+              value={accountName}
+            />
+          </label>
+          <label>
+            Currency code
+            <input
+              name="currencyCode"
+              aria-invalid={accountFieldError?.field === "currencyCode" || undefined}
+              aria-describedby={accountFieldError?.field === "currencyCode" ? "account-field-error" : undefined}
+              autoCapitalize="characters"
+              maxLength={3}
+              onChange={(event) => setAccountCurrencyCode(event.currentTarget.value.toUpperCase())}
+              pattern="[A-Za-z]{3}"
+              value={accountCurrencyCode}
+            />
+          </label>
+          {accountFieldError !== null && (
+            <p id="account-field-error" className="account-coverage-message is-error" role="alert">
+              {accountFieldError.message}
+            </p>
+          )}
+          {accountError !== null && (
+            <p className="account-coverage-message is-error" role="alert">{accountError}</p>
+          )}
+          {accountStatus !== null && (
+            <p className="account-coverage-message is-success" role="status" aria-label="Account management status">
+              {accountStatus}
+            </p>
+          )}
+          <button type="submit" disabled={isCreatingAccount}>
+            {isCreatingAccount ? "Adding account..." : "Add account"}
+          </button>
+        </form>
+      </section>
 
       {error !== null && <p className="account-coverage-message is-error" role="alert">{error}</p>}
       {statusMessage !== null && <p className="account-coverage-message is-success" role="status">{statusMessage}</p>}

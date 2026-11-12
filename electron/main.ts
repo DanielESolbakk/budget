@@ -7,6 +7,7 @@ import {
 import { pathToFileURL } from "node:url";
 import { join } from "path";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
+import { createAccountLifecycleService } from "../src/app/accountLifecycleService.js";
 import { createCashflowScenarioService } from "../src/app/cashflowScenarioService.js";
 import {
   createMonthlyCategoryTargetStore,
@@ -128,6 +129,7 @@ const localLedgerDatabase = createLocalLedgerDatabase({
       }
     : {}),
 });
+const accountLifecycleService = createAccountLifecycleService(localLedgerDatabase);
 const propertyRegistry = createPropertyRegistry(localLedgerDatabase);
 const holdingRegistry = createHoldingRegistry(localLedgerDatabase);
 const loanRegistry = createLoanRegistry(localLedgerDatabase);
@@ -309,8 +311,8 @@ app.whenReady().then(async () => {
     importStatementDialog, restoreSnapshotDialog,
   });
   registerSetupChannels({
-    ipcMain, assertTrustedRenderer, localLedgerDatabase, sampleHousehold,
-    runtimeState, applyRuntimeLedgerSnapshot,
+    ipcMain, assertTrustedRenderer, localLedgerDatabase, accountLifecycleService,
+    sampleHousehold, runtimeState, ledgerOperationCoordinator, applyRuntimeLedgerSnapshot,
   });
   registerRecurringChannels({
     ipcMain, assertTrustedRenderer, recurringCommitmentService, ledgerOperationCoordinator,

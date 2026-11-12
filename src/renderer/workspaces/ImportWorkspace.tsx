@@ -275,6 +275,7 @@ export function ImportWorkspace({
       {visitedFormats.has("manual") && (
         <div className="import-format-content" hidden={selectedFormat !== "manual"}>
           <ManualEntrySection
+            refreshKey={refreshKey}
             onEntrySuccess={onImportSuccess}
             onOpenLedger={onOpenLedger}
             onReviewUncategorized={onReviewUncategorized}
