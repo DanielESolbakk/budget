@@ -451,6 +451,12 @@ test.describe("account archiving", () => {
 
     await appShell.openWorkspace("Coverage");
     await window.getByLabel("Coverage account").selectOption(checkingAccountId);
+    await expect(window.getByRole("option", { name: "Checking (NOK) — Archived" }))
+      .toBeAttached();
+    await expect(window.getByRole("status", { name: "Archived account history" }))
+      .toHaveText("Archived account. Historical coverage and checkpoints are read-only. Restore this account to make changes.");
+    await expect(window.getByRole("button", { name: "Save statement period" })).toBeDisabled();
+    await expect(window.getByRole("button", { name: "Save balance checkpoint" })).toBeDisabled();
     await expect(window.getByRole("list", { name: "Balance checkpoint history" }))
       .toContainText("875,00");
     await expect(window.getByText("synthetic-may-statement", { exact: true })).toBeVisible();
@@ -466,6 +472,69 @@ test.describe("account archiving", () => {
     expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   });
 
+  test("restores an archived account to active workflows", async ({
+    databasePath,
+    electronApp,
+    window,
+  }) => {
+    const onboarding = new OnboardingPage(window);
+    await expect(onboarding.heading).toBeVisible();
+    await onboarding.submit("Test Household", "Checking", "NOK");
+
+    await installMainProcessNetworkProbe(electronApp);
+    const appShell = new AppShellPage(window);
+    await appShell.openWorkspace("Accounts");
+    await window.getByLabel("Account name", { exact: true }).fill("Savings");
+    await window.getByLabel("Currency code", { exact: true }).fill("NOK");
+    await window.getByRole("button", { name: "Add account" }).click();
+
+    const database = new DatabaseSync(databasePath);
+    let checkingAccountId: string;
+    try {
+      const account = database.prepare(
+        "SELECT id FROM accounts WHERE name = ?"
+      ).get("Checking") as { id: string } | undefined;
+      if (account === undefined) throw new Error("Initial account was not persisted.");
+      checkingAccountId = account.id;
+    } finally {
+      database.close();
+    }
+
+    window.once("dialog", async (dialog) => dialog.accept());
+    await window.getByRole("button", { name: "Archive account Checking" }).click();
+    await expect(window.getByRole("status", { name: "Account management status" }))
+      .toContainText("Checking has been archived.");
+
+    const restoreButton = window.getByRole("button", { name: "Restore account Checking" });
+    await expect(restoreButton).toBeVisible();
+    await restoreButton.click();
+    await expect(window.getByRole("status", { name: "Account management status" }))
+      .toContainText("Checking has been restored.");
+    await expect(window.getByRole("list", { name: "Household accounts" })
+      .getByRole("listitem").filter({ hasText: "Checking" })).not.toContainText("Archived");
+
+    await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Manual transaction");
+    const manualEntry = new ManualEntryPage(window);
+    await expect(manualEntry.accountInput).toContainText("Checking");
+    await expect(manualEntry.accountInput).toContainText("Savings");
+
+    await appShell.openWorkspace("Coverage");
+    await window.getByLabel("Coverage account").selectOption(checkingAccountId);
+    await expect(window.getByRole("button", { name: "Save statement period" })).toBeEnabled();
+    await expect(window.getByRole("button", { name: "Save balance checkpoint" })).toBeEnabled();
+
+    const restoredDatabase = new DatabaseSync(databasePath);
+    try {
+      expect(restoredDatabase.prepare(
+        "SELECT archived_at_iso FROM accounts WHERE id = ?"
+      ).get(checkingAccountId)).toEqual({ archived_at_iso: null });
+    } finally {
+      restoredDatabase.close();
+    }
+    expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
+  });
+
   test("explains why the last active account cannot be archived", async ({
     electronApp,
     window,
@@ -476,12 +545,16 @@ test.describe("account archiving", () => {
     await installMainProcessNetworkProbe(electronApp);
 
     await new AppShellPage(window).openWorkspace("Accounts");
-    await expect(window.getByText(
-      "Keep at least one active account. Add another account before archiving this one.",
-      { exact: true }
-    )).toBeVisible();
-    await expect(window.getByRole("button", { name: "Archive account Checking" }))
-      .toBeDisabled();
+    const archiveButton = window.getByRole("button", { name: "Archive account Checking" });
+    await expect(archiveButton).toBeDisabled();
+    await expect(archiveButton).toHaveAccessibleDescription(
+      "You cannot archive the last active account. Add another active account first."
+    );
+    await window.setViewportSize({ width: 390, height: 844 });
+    const hasHorizontalOverflow = await window.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+    );
+    expect(hasHorizontalOverflow).toBe(false);
     expect(await mainProcessNetworkRequests(electronApp)).toEqual([]);
   });
 });

@@ -103,6 +103,18 @@ export function registerSetupChannels({
     });
   });
 
+  ipcMain.handle("account:restore", (event, accountId: unknown): Promise<Account> => {
+    assertTrustedRenderer(event);
+    const validatedAccountId = parseNonEmptyString(accountId, "accountId");
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const account = accountLifecycleService.restoreAccount(validatedAccountId);
+      const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+      if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
+      runtimeState.ledgerGeneration += 1;
+      return account;
+    });
+  });
+
   ipcMain.handle("setup:isRequired", (event): boolean => {
     assertTrustedRenderer(event);
     return !localLedgerDatabase.hasHousehold();

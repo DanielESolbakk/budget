@@ -140,6 +140,7 @@ export function resolveRendererBudgetApi(
       create: desktopOnlyAction,
       update: desktopOnlyAction,
       archive: desktopOnlyAction,
+      restore: desktopOnlyAction,
     },
     forecast: {
       getEntries: desktopOnlyAction,

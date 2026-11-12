@@ -254,6 +254,46 @@ function archiveAccount(
   }
 }
 
+function restoreAccount(db: DatabaseSync, accountId: string): Account {
+  if (typeof accountId !== "string" || accountId.trim().length === 0) {
+    throw new Error("Account id is required.");
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const accountRow = db.prepare(`
+      SELECT id, household_id, name, currency_code, archived_at_iso
+      FROM accounts
+      WHERE id = ?
+    `).get(accountId) as {
+      id: string;
+      household_id: string;
+      name: string;
+      currency_code: string;
+      archived_at_iso: string | null;
+    } | undefined;
+    if (accountRow === undefined) {
+      throw new Error(`Account not found: ${accountId}`);
+    }
+    if (accountRow.archived_at_iso === null) {
+      throw new Error("Account is already active.");
+    }
+
+    db.prepare("UPDATE accounts SET archived_at_iso = NULL WHERE id = ?")
+      .run(accountRow.id);
+    db.exec("COMMIT");
+    return {
+      id: accountRow.id,
+      householdId: accountRow.household_id,
+      name: accountRow.name,
+      currencyCode: accountRow.currency_code,
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function createLocalLedgerDatabase(
   options: CreateLocalLedgerDatabaseOptions
 ): LocalLedgerDatabase {
@@ -601,6 +641,7 @@ export function createLocalLedgerDatabase(
     createAccount: (input) => createAccount(db, input),
     updateAccount: (input) => updateAccount(db, input),
     archiveAccount: (accountId, archivedAtIso) => archiveAccount(db, accountId, archivedAtIso),
+    restoreAccount: (accountId) => restoreAccount(db, accountId),
     getAccountHistorySummary: (accountId) => getAccountHistorySummary(db, accountId),
     getReportingPeriodRule,
     saveReportingPeriodRule,

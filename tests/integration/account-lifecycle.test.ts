@@ -382,4 +382,73 @@ describe("account archiving persistence", () => {
     expect(ledger.loadLedgerSnapshotData()).toEqual(before);
     expect(networkFetch).not.toHaveBeenCalled();
   });
+
+  it("rejects statement coverage and checkpoint changes after account archival", () => {
+    const { ledger, household, account } = createAccountWithHistory();
+    ledger.createAccount({
+      householdId: household.id,
+      accountName: "Savings",
+      currencyCode: "NOK",
+    });
+    const lifecycle = createAccountLifecycleService(ledger);
+    const beforeArchive = ledger.loadLedgerSnapshotData();
+    const existingPeriod = beforeArchive.accountStatementCoveragePeriods?.find(
+      (period) => period.accountId === account.id
+    );
+    if (existingPeriod === undefined) throw new Error("Synthetic statement period is missing.");
+
+    lifecycle.archiveAccount(account.id, "2026-11-12T10:00:00.000Z");
+
+    expect(() => ledger.saveAccountStatementCoveragePeriod({
+      id: "period-after-archive",
+      accountId: account.id,
+      startDateIso: "2026-06-01",
+      endDateIso: "2026-06-30",
+      currencyCode: "NOK",
+      sourceName: "synthetic-june-statement",
+      sourceType: "manual",
+      confirmed: false,
+    })).toThrow("Archived accounts are read-only. Restore this account to add or change records.");
+    expect(() => ledger.saveAccountStatementCoveragePeriod({
+      ...existingPeriod,
+      sourceName: "synthetic-edited-statement",
+    })).toThrow("Archived accounts are read-only. Restore this account to add or change records.");
+    expect(() => ledger.appendAccountBalanceCheckpoint({
+      id: "checkpoint-after-archive",
+      accountId: account.id,
+      dateIso: "2026-06-30",
+      currencyCode: "NOK",
+      balanceMinor: 92_500,
+      source: "synthetic June statement",
+      recordedAtIso: "2026-07-01T00:00:00.000Z",
+    })).toThrow("Archived accounts are read-only. Restore this account to add or change records.");
+
+    const afterAttempts = ledger.loadLedgerSnapshotData();
+    expect(afterAttempts.accountStatementCoveragePeriods)
+      .toEqual(beforeArchive.accountStatementCoveragePeriods);
+    expect(afterAttempts.accountBalanceCheckpoints)
+      .toEqual(beforeArchive.accountBalanceCheckpoints);
+    expect(networkFetch).not.toHaveBeenCalled();
+  });
+
+  it("restores an archived account without losing its history", () => {
+    const { ledger, household, account } = createAccountWithHistory();
+    ledger.createAccount({
+      householdId: household.id,
+      accountName: "Savings",
+      currencyCode: "NOK",
+    });
+    const lifecycle = createAccountLifecycleService(ledger);
+    const historyBefore = ledger.loadLedgerSnapshotData();
+    lifecycle.archiveAccount(account.id, "2026-11-12T10:00:00.000Z");
+
+    expect(lifecycle.restoreAccount(account.id)).toEqual(account);
+    const afterRestore = ledger.loadLedgerSnapshotData();
+    expect(afterRestore.accountStatementCoveragePeriods)
+      .toEqual(historyBefore.accountStatementCoveragePeriods);
+    expect(afterRestore.accountBalanceCheckpoints)
+      .toEqual(historyBefore.accountBalanceCheckpoints);
+    expect(ledger.loadRuntimeMetadata()?.accounts).toContainEqual(account);
+    expect(networkFetch).not.toHaveBeenCalled();
+  });
 });
