@@ -375,6 +375,47 @@ describe("Electron channel registration and live ledger wiring", () => {
     ]);
   });
 
+  it("serializes account creation with restore and applies it to the restored household", async () => {
+    createHousehold();
+    const snapshotPath = writeReplacementSnapshot();
+    const recoveryDelayVariable = "BUDGET_TEST_RECOVERY_OPERATION_DELAY_MS";
+    const originalRecoveryDelay = process.env[recoveryDelayVariable];
+    vi.stubEnv(recoveryDelayVariable, "100");
+    const restore = Promise.resolve(invoke("backup:restore", { snapshotPath }));
+    await Promise.resolve();
+
+    let accountCreated = false;
+    const createAccount = Promise.resolve(invoke("account:create", {
+      accountName: "Savings",
+      currencyCode: "SEK",
+    })).then((account) => {
+      accountCreated = true;
+      return account;
+    });
+
+    await Promise.resolve();
+    const createdBeforeRestore = accountCreated;
+    try {
+      await restore;
+    } finally {
+      if (originalRecoveryDelay === undefined) delete process.env[recoveryDelayVariable];
+      else process.env[recoveryDelayVariable] = originalRecoveryDelay;
+    }
+    expect(createdBeforeRestore).toBe(false);
+    await expect(createAccount).resolves.toMatchObject({
+      householdId: "restored-household",
+      name: "Savings",
+      currencyCode: "SEK",
+    });
+    expect(invoke("account:getCurrent")).toMatchObject({
+      householdId: "restored-household",
+      accounts: expect.arrayContaining([
+        expect.objectContaining({ id: "restored-account" }),
+        expect.objectContaining({ name: "Savings", currencyCode: "SEK" }),
+      ]),
+    });
+  });
+
   it.each([
     ["csv", "rogaland-2026-05-synthetic.csv", { ok: false, code: "PREVIEW_STALE" }],
     ["pdf", "rogaland-2026-05-statement.txt", {

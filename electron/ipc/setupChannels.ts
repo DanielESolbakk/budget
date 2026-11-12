@@ -38,20 +38,22 @@ export function registerSetupChannels({
     };
   });
 
-  ipcMain.handle("account:create", (event, input: unknown): Account => {
+  ipcMain.handle("account:create", (event, input: unknown): Promise<Account> => {
     assertTrustedRenderer(event);
-    if (!localLedgerDatabase.hasHousehold()) {
-      throw new Error("Create the household before adding an account.");
-    }
     const accountInput = normalizeAccountInput(input);
-    const account = localLedgerDatabase.createAccount({
-      householdId: sampleHousehold.id,
-      ...accountInput,
+    return ledgerOperationCoordinator.runExclusive(() => {
+      if (!localLedgerDatabase.hasHousehold()) {
+        throw new Error("Create the household before adding an account.");
+      }
+      const account = localLedgerDatabase.createAccount({
+        householdId: sampleHousehold.id,
+        ...accountInput,
+      });
+      const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+      if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
+      runtimeState.ledgerGeneration += 1;
+      return account;
     });
-    const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
-    if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
-    runtimeState.ledgerGeneration += 1;
-    return account;
   });
 
   ipcMain.handle("account:getHistorySummary", (event, accountId: unknown) => {

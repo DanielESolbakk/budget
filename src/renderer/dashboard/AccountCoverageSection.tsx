@@ -212,7 +212,7 @@ export function AccountCoverageSection({
       setSelectedAccountId(account.id);
       setAccountName("");
       setAccountCurrencyCode("NOK");
-      setAccountStatus(`${account.name} account added.`);
+      setAccountStatus(`${account.name} account added in ${account.currencyCode}.`);
       onAccountsChanged();
     } catch (createError: unknown) {
       setAccountError(errorMessage(createError, "Unable to add the account."));
@@ -297,10 +297,10 @@ export function AccountCoverageSection({
       setEditAccountStatus("Account updated.");
       onAccountsChanged();
     } catch (updateError: unknown) {
-      setEditAccountError(errorMessage(
-        updateError,
-        "Unable to save account changes. Your edits are still available to retry."
-      ));
+      const detail = updateError instanceof Error ? ` Details: ${updateError.message}` : "";
+      setEditAccountError(
+        `Unable to save account changes. Your edits are still available to retry.${detail}`
+      );
     } finally {
       setIsUpdatingAccount(false);
     }

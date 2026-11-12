@@ -99,7 +99,7 @@ test.describe("account creation", () => {
     await window.getByLabel("Currency code", { exact: true }).fill("SEK");
     await window.getByRole("button", { name: "Add account" }).click();
     await expect(window.getByRole("status", { name: "Account management status" }))
-      .toContainText("Savings account added.");
+      .toContainText("Savings account added in SEK.");
     await expect(window.getByLabel("Coverage account")).toContainText("Savings (SEK)");
     await expect.poll(() => window.evaluate(() => (
       document.documentElement.scrollWidth - document.documentElement.clientWidth
@@ -225,6 +225,11 @@ test.describe("account editing", () => {
     await expect(editForm.getByLabel("Currency code")).toBeDisabled();
     await expect(editForm.getByText(/Currency cannot be changed.*Create another account instead\./))
       .toBeVisible();
+    await editForm.getByLabel("Account name").fill(" ");
+    await editForm.getByRole("button", { name: "Save account changes" }).click();
+    await expect(editForm.getByLabel("Account name")).toHaveAttribute("aria-invalid", "true");
+    await expect(editForm.getByLabel("Account name")).toBeFocused();
+    await expect(editForm.getByRole("alert")).toContainText("Enter an account name.");
     await editForm.getByLabel("Account name").fill("Discarded draft");
     await editForm.getByRole("button", { name: "Cancel edit" }).click();
     await expect(window.getByRole("list", { name: "Household accounts" }))
@@ -236,6 +241,7 @@ test.describe("account editing", () => {
     const retryForm = window.getByRole("form", { name: "Edit account Checking" });
     await retryForm.getByLabel("Account name").fill("Primary");
     await retryForm.getByRole("button", { name: "Save account changes" }).click();
+    await expect(window.getByRole("alert")).toContainText("Unable to save account changes.");
     await expect(window.getByRole("alert"))
       .toContainText("synthetic account update failure");
     await expect(retryForm.getByLabel("Account name")).toHaveValue("Primary");
