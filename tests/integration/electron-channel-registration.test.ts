@@ -253,6 +253,64 @@ describe("Electron channel registration and live ledger wiring", () => {
     });
   });
 
+  it.each([
+    ["csv", "rogaland-2026-05-synthetic.csv"],
+    ["pdf", "rogaland-2026-05-statement.txt"],
+  ])("excludes archived accounts from %s import targets and rejects stale selections", async (format, fixture) => {
+    createHousehold();
+    const archivedAccount = (invoke("account:getCurrent") as {
+      accounts: Array<{ id: string }>;
+    }).accounts[0];
+    if (archivedAccount === undefined) throw new Error("Initial account is unavailable.");
+    const activeAccount = await invoke("account:create", {
+      accountName: "Savings",
+      currencyCode: "NOK",
+    }) as { id: string };
+    const filePath = join(process.cwd(), "tests", "fixtures", "synthetic", fixture);
+    const stalePreviewId = previewId(await invoke(`import:${format}Preview`, {
+      filePath,
+      accountId: archivedAccount.id,
+    }));
+
+    await invoke("account:archive", archivedAccount.id);
+    expect(invoke("account:getCurrent")).toMatchObject({
+      accounts: [{ id: activeAccount.id }],
+    });
+
+    const activePreview = await invoke(`import:${format}Preview`, { filePath });
+    expect(activePreview).toMatchObject({
+      ok: true,
+      transactions: expect.arrayContaining([
+        expect.objectContaining({ accountId: activeAccount.id }),
+      ]),
+    });
+    const archivedPreview = await invoke(`import:${format}Preview`, {
+      filePath,
+      accountId: archivedAccount.id,
+    });
+    expect(archivedPreview).toMatchObject(format === "csv"
+      ? { ok: false, code: "INVALID_ACCOUNT_ID" }
+      : { ok: false, errors: [{ code: "INVALID_ACCOUNT_ID" }] });
+
+    const ledger = createLocalLedgerDatabase({ dbPath });
+    try {
+      const beforeImport = ledger.loadLedgerSnapshotData();
+      const staleImport = await invoke(`import:${format}`, {
+        filePath,
+        previewId: stalePreviewId,
+        accountId: archivedAccount.id,
+      });
+      expect(staleImport).toMatchObject(format === "csv"
+        ? { ok: false, errors: [{ codes: ["INVALID_ACCOUNT_ID"] }] }
+        : { ok: false, errors: [{ code: "INVALID_ACCOUNT_ID" }] });
+      const afterImport = ledger.loadLedgerSnapshotData();
+      expect(afterImport.transactions).toEqual(beforeImport.transactions);
+      expect(afterImport.importJobs).toEqual(beforeImport.importJobs);
+    } finally {
+      ledger.close();
+    }
+  });
+
   it("loads and saves validated reporting-period preferences through trusted IPC", async () => {
     createHousehold();
     expect(invoke("reportingPreferences:getPeriodRule")).toEqual({ type: "calendar-month" });
