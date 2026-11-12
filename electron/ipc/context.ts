@@ -2,6 +2,7 @@ import type { IpcMain } from "electron";
 import type { LocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import type { createCashflowScenarioService } from "../../src/app/cashflowScenarioService.js";
 import type { DashboardData } from "../../src/app/dashboardApi.js";
+import type { createAccountLifecycleService } from "../../src/app/accountLifecycleService.js";
 import type { createHoldingRegistry } from "../../src/app/holdingRegistry.js";
 import type { ImportPreviewRegistry } from "../../src/app/import/importPreviewRegistry.js";
 import type { LedgerOperationCoordinator } from "../../src/app/ledgerOperationCoordinator.js";
@@ -24,6 +25,7 @@ export interface LedgerChannelContext {
   ipcMain: Pick<IpcMain, "handle">;
   assertTrustedRenderer: (event: Electron.IpcMainInvokeEvent) => void;
   localLedgerDatabase: LocalLedgerDatabase;
+  accountLifecycleService: ReturnType<typeof createAccountLifecycleService>;
   sampleHousehold: Household;
   sampleTargetStore: MonthlyCategoryTargetStore;
   runtimeState: { ledgerGeneration: number };

@@ -1,4 +1,7 @@
-import { isCurrencyCode } from "../domain/types.js";
+import {
+  AccountInputValidationError,
+  normalizeAccountInput,
+} from "./accountLifecycle.js";
 
 export interface HouseholdSetupInput {
   householdName: string;
@@ -13,14 +16,16 @@ export class HouseholdSetupValidationError extends Error {
   }
 }
 
-function parseNonEmptyName(value: unknown, fieldName: "householdName" | "accountName"): string {
-  const label = fieldName === "householdName" ? "household name" : "account name";
+function parseHouseholdName(value: unknown): string {
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw new HouseholdSetupValidationError(fieldName, `Enter ${fieldName === "householdName" ? "a" : "an"} ${label}.`);
+    throw new HouseholdSetupValidationError("householdName", "Enter a household name.");
   }
   const name = value.trim();
   if (name.length > 100) {
-    throw new HouseholdSetupValidationError(fieldName, `Use 100 characters or fewer for the ${label}.`);
+    throw new HouseholdSetupValidationError(
+      "householdName",
+      "Use 100 characters or fewer for the household name."
+    );
   }
   return name;
 }
@@ -30,12 +35,13 @@ export function normalizeHouseholdSetupInput(input: unknown): HouseholdSetupInpu
     throw new Error("Household setup must be an object.");
   }
   const record = input as Record<string, unknown>;
-  const householdName = parseNonEmptyName(record.householdName, "householdName");
-  const accountName = parseNonEmptyName(record.accountName, "accountName");
-  const currencyCode =
-    typeof record.currencyCode === "string" ? record.currencyCode.trim().toUpperCase() : "";
-  if (!isCurrencyCode(currencyCode)) {
-    throw new HouseholdSetupValidationError("currencyCode", "Enter a three-letter currency code, such as NOK.");
+  const householdName = parseHouseholdName(record.householdName);
+  try {
+    return { householdName, ...normalizeAccountInput(record) };
+  } catch (error: unknown) {
+    if (error instanceof AccountInputValidationError) {
+      throw new HouseholdSetupValidationError(error.field, error.message);
+    }
+    throw error;
   }
-  return { householdName, accountName, currencyCode };
 }

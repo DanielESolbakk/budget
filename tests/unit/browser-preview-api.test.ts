@@ -79,6 +79,20 @@ describe("renderer budget API resolution", () => {
     await expect(resolved.api.dialogs.chooseImportStatementPath()).rejects.toThrow(
       "This action requires the desktop app"
     );
+    await expect(resolved.api.accounts.create({
+      accountName: "Savings",
+      currencyCode: "NOK",
+    })).rejects.toThrow("This action requires the desktop app");
+    expect(await resolved.api.accounts.getHistorySummary("preview-account")).toEqual({
+      transactionCount: 0,
+      coveragePeriodCount: 0,
+      checkpointCount: 0,
+    });
+    await expect(resolved.api.accounts.update({
+      accountId: "preview-account",
+      accountName: "Savings",
+      currencyCode: "NOK",
+    })).rejects.toThrow("This action requires the desktop app");
   });
 
   it("uses saved targets in the refreshed comparison and monthly checks", async () => {

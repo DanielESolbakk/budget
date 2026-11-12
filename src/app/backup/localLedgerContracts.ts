@@ -36,6 +36,10 @@ import type {
   TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
+import type {
+  AccountHistorySummary,
+  AccountUpdateInput,
+} from "../../shared/accountLifecycle.js";
 
 export interface LocalLedgerRuntimeMetadata {
   household: Household;
@@ -51,6 +55,13 @@ export interface LocalLedgerDatabase {
     accountName: string;
     currencyCode: string;
   }) => { household: Household; account: Account };
+  createAccount: (input: {
+    householdId: string;
+    accountName: string;
+    currencyCode: string;
+  }) => Account;
+  updateAccount: (input: AccountUpdateInput) => Account;
+  getAccountHistorySummary: (accountId: string) => AccountHistorySummary;
   getReportingPeriodRule: (householdId: string) => ReportingPeriodRule;
   saveReportingPeriodRule: (householdId: string, rule: ReportingPeriodRule) => ReportingPeriodRule;
   loadRuntimeMetadata: () => LocalLedgerRuntimeMetadata | null;

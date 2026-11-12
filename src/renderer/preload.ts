@@ -90,6 +90,11 @@ import type { DuplicateImportDecision } from "../domain/import/filterPreviouslyI
 import type { ImportJobHistoryEntry, UndoImportJobResult } from "../domain/import/importJobHistory.js";
 import type { ImportPreflightProgress } from "../app/import/importPreflight.js";
 import type { ReportingPeriodRule } from "../shared/applicationPreferences.js";
+import type {
+  AccountHistorySummary,
+  AccountInput,
+  AccountUpdateInput,
+} from "../shared/accountLifecycle.js";
 
 export interface DashboardApi {
   getData: () => Promise<DashboardData>;
@@ -125,6 +130,9 @@ export interface CategoryTargetsApi {
 export interface AccountsApi {
   list: (householdId: string) => Promise<Account[]>;
   getCurrent: () => Promise<HouseholdAccountContext | null>;
+  getHistorySummary: (accountId: string) => Promise<AccountHistorySummary>;
+  create: (input: AccountInput) => Promise<Account>;
+  update: (input: AccountUpdateInput) => Promise<Account>;
 }
 
 export interface SetupApi {
@@ -302,6 +310,10 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("account:list", householdId),
     getCurrent: (): Promise<HouseholdAccountContext | null> =>
       ipcRenderer.invoke("account:getCurrent"),
+    getHistorySummary: (accountId: string): Promise<AccountHistorySummary> =>
+      ipcRenderer.invoke("account:getHistorySummary", accountId),
+    create: (input): Promise<Account> => ipcRenderer.invoke("account:create", input),
+    update: (input): Promise<Account> => ipcRenderer.invoke("account:update", input),
   },
   dashboard: {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),

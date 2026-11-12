@@ -15,6 +15,12 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { normalizeHouseholdSetupInput } from "../onboarding/householdSetup.js";
+import {
+  normalizeAccountInput,
+  normalizeAccountUpdateInput,
+  type AccountHistorySummary,
+  type AccountUpdateInput,
+} from "../../shared/accountLifecycle.js";
 import type { BackupSnapshotCatalogEntry, LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
 import { type SavedLedgerView } from "../../domain/ledger/filterTransactions.js";
@@ -96,6 +102,102 @@ function createInitialHouseholdAndAccount(
   }
 
   return { household, account };
+}
+
+function createAccount(
+  db: DatabaseSync,
+  input: { householdId: string; accountName: string; currencyCode: string }
+): Account {
+  const { accountName, currencyCode } = normalizeAccountInput(input);
+  const account: Account = {
+    id: randomUUID(),
+    householdId: input.householdId,
+    name: accountName,
+    currencyCode,
+  };
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const householdExists = db
+      .prepare("SELECT 1 FROM households WHERE id = ?")
+      .get(account.householdId);
+    if (householdExists === undefined) {
+      throw new Error("Account household does not exist.");
+    }
+    db.prepare("INSERT INTO accounts (id, household_id, name, currency_code) VALUES (?, ?, ?, ?)")
+      .run(account.id, account.householdId, account.name, account.currencyCode);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return account;
+}
+
+function getAccountHistorySummary(db: DatabaseSync, accountId: string): AccountHistorySummary {
+  if (typeof accountId !== "string" || accountId.trim().length === 0) {
+    throw new Error("Account id is required.");
+  }
+  if (db.prepare("SELECT 1 FROM accounts WHERE id = ?").get(accountId) === undefined) {
+    throw new Error(`Account not found: ${accountId}`);
+  }
+  return {
+    transactionCount: (db.prepare(
+      "SELECT COUNT(*) AS count FROM transactions WHERE account_id = ?"
+    ).get(accountId) as { count: number }).count,
+    coveragePeriodCount: (db.prepare(
+      "SELECT COUNT(*) AS count FROM account_statement_coverage_periods WHERE account_id = ?"
+    ).get(accountId) as { count: number }).count,
+    checkpointCount: (db.prepare(
+      "SELECT COUNT(*) AS count FROM account_balance_checkpoints WHERE account_id = ?"
+    ).get(accountId) as { count: number }).count,
+  };
+}
+
+function updateAccount(
+  db: DatabaseSync,
+  input: AccountUpdateInput
+): Account {
+  if (typeof input.accountId !== "string" || input.accountId.trim().length === 0) {
+    throw new Error("Account id is required.");
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const existingAccount = db.prepare(`
+      SELECT id, household_id, currency_code
+      FROM accounts
+      WHERE id = ?
+    `).get(input.accountId) as {
+      id: string;
+      household_id: string;
+      currency_code: string;
+    } | undefined;
+    if (existingAccount === undefined) {
+      throw new Error(`Account not found: ${input.accountId}`);
+    }
+
+    const history = getAccountHistorySummary(db, input.accountId);
+    const { accountName, currencyCode } = normalizeAccountUpdateInput(
+      input,
+      existingAccount.currency_code,
+      history
+    );
+    db.prepare("UPDATE accounts SET name = ?, currency_code = ? WHERE id = ?")
+      .run(accountName, currencyCode, existingAccount.id);
+    db.exec("COMMIT");
+
+    return {
+      id: existingAccount.id,
+      householdId: existingAccount.household_id,
+      name: accountName,
+      currencyCode,
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function createLocalLedgerDatabase(
@@ -442,6 +544,9 @@ export function createLocalLedgerDatabase(
   return {
     hasHousehold: () => hasHousehold(db),
     createInitialHouseholdAndAccount: (input) => createInitialHouseholdAndAccount(db, input),
+    createAccount: (input) => createAccount(db, input),
+    updateAccount: (input) => updateAccount(db, input),
+    getAccountHistorySummary: (accountId) => getAccountHistorySummary(db, accountId),
     getReportingPeriodRule,
     saveReportingPeriodRule,
     loadRuntimeMetadata,
