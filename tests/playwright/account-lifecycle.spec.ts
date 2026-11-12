@@ -276,6 +276,9 @@ test.describe("account editing", () => {
     await appShell.openWorkspace("Accounts");
     await expect(window.getByRole("list", { name: "Household accounts" }))
       .toContainText("Primary");
+    await appShell.openWorkspace("Import");
+    await appShell.selectImportFormat("Manual transaction");
+    await expect(new ManualEntryPage(window).accountInput).toContainText("Primary");
     await expect.poll(() => window.evaluate(() => (
       document.documentElement.scrollWidth - document.documentElement.clientWidth
     ))).toBeLessThanOrEqual(0);
