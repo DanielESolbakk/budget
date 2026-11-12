@@ -545,6 +545,10 @@ test.describe("account archiving", () => {
     electronApp,
     window,
   }) => {
+    const recordedAtIso = new Date().toISOString();
+    const nextIncomeDateIso = new Date(
+      Date.parse(recordedAtIso) + 86_400_000
+    ).toISOString().slice(0, 10);
     const onboarding = new OnboardingPage(window);
     await expect(onboarding.heading).toBeVisible();
     await onboarding.submit("Test Household", "Checking", "NOK");
@@ -565,6 +569,10 @@ test.describe("account archiving", () => {
       ).get("Checking") as { id: string; household_id: string } | undefined;
       if (account === undefined) throw new Error("Initial account was not persisted.");
       checkingAccountId = account.id;
+      const activeAccount = database.prepare(
+        "SELECT id FROM accounts WHERE name = ?"
+      ).get("Savings") as { id: string } | undefined;
+      if (activeAccount === undefined) throw new Error("Active account was not persisted.");
       database.prepare(`
         INSERT INTO transactions (
           id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
@@ -616,6 +624,36 @@ test.describe("account archiving", () => {
         "synthetic statement",
         "2026-06-01T00:00:00Z"
       );
+      const activeBalanceDateIso = recordedAtIso.slice(0, 10);
+      database.prepare(`
+        INSERT INTO account_statement_coverage_periods (
+          id, account_id, start_date_iso, end_date_iso, currency_code, source_name,
+          source_type, confirmed, confirmed_at_iso
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "period-active-account-relaunch",
+        activeAccount.id,
+        activeBalanceDateIso,
+        activeBalanceDateIso,
+        "NOK",
+        "synthetic-active-statement",
+        "manual",
+        1,
+        recordedAtIso
+      );
+      database.prepare(`
+        INSERT INTO account_balance_checkpoints (
+          id, account_id, date_iso, currency_code, balance_minor, source, recorded_at_iso
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "checkpoint-active-account-relaunch",
+        activeAccount.id,
+        activeBalanceDateIso,
+        "NOK",
+        50_000,
+        "synthetic active account",
+        recordedAtIso
+      );
     } finally {
       database.close();
     }
@@ -658,6 +696,21 @@ test.describe("account archiving", () => {
       const liquidAccounts = restartedWindow.getByRole("group", { name: "Liquid accounts" });
       await expect(liquidAccounts.getByText("Savings", { exact: true })).toBeVisible();
       await expect(liquidAccounts.getByText("Checking", { exact: true })).toHaveCount(0);
+
+      const spendableCash = restartedWindow.getByRole("region", {
+        name: "Spendable cash until income",
+      });
+      await spendableCash.getByLabel("Next income date").fill(nextIncomeDateIso);
+      await spendableCash.getByLabel("Reserve (NOK)").fill("0");
+      await spendableCash.getByRole("button", { name: "Estimate spendable cash" }).click();
+      const selectedBalancesHeading = spendableCash.getByRole("heading", {
+        name: "Selected balances",
+        exact: true,
+      });
+      const selectedBalances = selectedBalancesHeading.locator("..");
+      await expect(selectedBalances.getByRole("list")).toContainText("Savings");
+      await expect(selectedBalances.getByRole("list")).toContainText("500,00");
+      await expect(selectedBalances.getByRole("list")).not.toContainText("Checking");
 
       await restartedShell.openWorkspace("Import");
       await restartedShell.selectImportFormat("Manual transaction");
