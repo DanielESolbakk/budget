@@ -581,18 +581,20 @@ export function AccountCoverageSection({
                         {account.archivedAtIso !== undefined && <span>Archived</span>}
                       </div>
                       <div className="account-management-actions">
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          aria-label={`Edit account ${account.name}`}
-                          ref={(element) => {
-                            if (element === null) editButtonRefs.current.delete(account.id);
-                            else editButtonRefs.current.set(account.id, element);
-                          }}
-                          onClick={() => void beginAccountEdit(account)}
-                        >
-                          Edit
-                        </button>
+                        {account.archivedAtIso === undefined && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            aria-label={`Edit account ${account.name}`}
+                            ref={(element) => {
+                              if (element === null) editButtonRefs.current.delete(account.id);
+                              else editButtonRefs.current.set(account.id, element);
+                            }}
+                            onClick={() => void beginAccountEdit(account)}
+                          >
+                            Edit
+                          </button>
+                        )}
                         {account.archivedAtIso === undefined ? (
                           <div className="account-management-archive-action">
                             <button

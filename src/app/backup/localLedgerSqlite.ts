@@ -179,6 +179,9 @@ function updateAccount(
     if (existingAccount === undefined) {
       throw new Error(`Account not found: ${input.accountId}`);
     }
+    if (existingAccount.archived_at_iso !== null) {
+      throw new Error("Archived accounts are read-only. Restore this account before changing account details.");
+    }
 
     const history = getAccountHistorySummary(db, input.accountId);
     const { accountName, currencyCode } = normalizeAccountUpdateInput(

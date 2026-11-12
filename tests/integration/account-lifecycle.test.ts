@@ -451,4 +451,24 @@ describe("account archiving persistence", () => {
     expect(ledger.loadRuntimeMetadata()?.accounts).toContainEqual(account);
     expect(networkFetch).not.toHaveBeenCalled();
   });
+
+  it("rejects account detail changes while archived without changing history", () => {
+    const { ledger, household, account } = createAccountWithHistory();
+    ledger.createAccount({
+      householdId: household.id,
+      accountName: "Savings",
+      currencyCode: "NOK",
+    });
+    const lifecycle = createAccountLifecycleService(ledger);
+    lifecycle.archiveAccount(account.id, "2026-11-12T10:00:00.000Z");
+    const beforeEdit = ledger.loadLedgerSnapshotData();
+
+    expect(() => lifecycle.updateAccount({
+      accountId: account.id,
+      accountName: "Renamed checking",
+      currencyCode: "NOK",
+    })).toThrow("Archived accounts are read-only. Restore this account before changing account details.");
+    expect(ledger.loadLedgerSnapshotData()).toEqual(beforeEdit);
+    expect(networkFetch).not.toHaveBeenCalled();
+  });
 });

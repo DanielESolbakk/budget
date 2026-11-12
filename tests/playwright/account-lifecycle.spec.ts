@@ -411,6 +411,7 @@ test.describe("account archiving", () => {
       .toContainText("Checking has been archived.");
     await expect(window.getByRole("list", { name: "Household accounts" })
       .getByRole("listitem").filter({ hasText: "Checking" })).toContainText("Archived");
+    await expect(window.getByRole("button", { name: "Edit account Checking" })).toHaveCount(0);
 
     const archivedDatabase = new DatabaseSync(databasePath);
     try {
