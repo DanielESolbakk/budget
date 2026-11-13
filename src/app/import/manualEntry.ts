@@ -37,7 +37,9 @@ export type ManualEntryResponse =
   | ManualEntryValidationFailure;
 
 export interface ManualEntryLedger {
-  getAccountsForHousehold: (householdId: string) => readonly { id: string }[];
+  getAccountsForHousehold: (
+    householdId: string
+  ) => readonly { id: string; archivedAtIso?: string }[];
   appendManualEntry: (importJob: ImportJob, transaction: Transaction) => void;
 }
 
@@ -65,9 +67,8 @@ export function submitManualEntry(
   const householdId = input.householdId.trim();
   const accountId = input.accountId.trim();
   const categoryId = input.categoryId?.trim();
-  const accountExists = ledger
-    .getAccountsForHousehold(householdId)
-    .some((account) => account.id === accountId);
+  const accountExists = ledger.getAccountsForHousehold(householdId)
+    .some((account) => account.id === accountId && account.archivedAtIso === undefined);
 
   if (!accountExists) {
     return {

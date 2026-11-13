@@ -38,6 +38,7 @@ export interface Account {
   householdId: string;
   name: string;
   currencyCode: CurrencyCode;
+  archivedAtIso?: string;
 }
 
 export interface HouseholdAccountContext {

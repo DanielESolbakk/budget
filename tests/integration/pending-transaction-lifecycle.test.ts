@@ -441,7 +441,8 @@ describe("pending transaction lifecycle persistence", () => {
         import_job_id TEXT
       );
       INSERT INTO households VALUES ('hh-pending', 'Synthetic Household', '2026-01-01T00:00:00Z');
-      INSERT INTO accounts VALUES ('acc-pending', 'hh-pending', 'Synthetic Account', 'NOK');
+      INSERT INTO accounts (id, household_id, name, currency_code)
+      VALUES ('acc-pending', 'hh-pending', 'Synthetic Account', 'NOK');
       INSERT INTO transactions (
         id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw
       ) VALUES (

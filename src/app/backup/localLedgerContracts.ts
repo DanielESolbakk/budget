@@ -61,6 +61,8 @@ export interface LocalLedgerDatabase {
     currencyCode: string;
   }) => Account;
   updateAccount: (input: AccountUpdateInput) => Account;
+  archiveAccount: (accountId: string, archivedAtIso: string) => Account;
+  restoreAccount: (accountId: string) => Account;
   getAccountHistorySummary: (accountId: string) => AccountHistorySummary;
   getReportingPeriodRule: (householdId: string) => ReportingPeriodRule;
   saveReportingPeriodRule: (householdId: string, rule: ReportingPeriodRule) => ReportingPeriodRule;

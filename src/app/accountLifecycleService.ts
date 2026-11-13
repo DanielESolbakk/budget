@@ -9,12 +9,18 @@ import {
 export interface AccountLifecycleService {
   getHistorySummary: (accountId: string) => AccountHistorySummary;
   updateAccount: (input: AccountUpdateInput) => Account;
+  archiveAccount: (accountId: string, archivedAtIso?: string) => Account;
+  restoreAccount: (accountId: string) => Account;
 }
 
 export function createAccountLifecycleService(
   database: Pick<
     LocalLedgerDatabase,
-    "loadRuntimeMetadata" | "getAccountHistorySummary" | "updateAccount"
+    | "loadRuntimeMetadata"
+    | "getAccountHistorySummary"
+    | "updateAccount"
+    | "archiveAccount"
+    | "restoreAccount"
   >
 ): AccountLifecycleService {
   function currentAccount(accountId: string): Account {
@@ -44,5 +50,15 @@ export function createAccountLifecycleService(
     return database.updateAccount({ accountId: account.id, ...normalized });
   }
 
-  return { getHistorySummary, updateAccount };
+  function archiveAccount(accountId: string, archivedAtIso = new Date().toISOString()): Account {
+    const account = currentAccount(accountId);
+    return database.archiveAccount(account.id, archivedAtIso);
+  }
+
+  function restoreAccount(accountId: string): Account {
+    const account = currentAccount(accountId);
+    return database.restoreAccount(account.id);
+  }
+
+  return { getHistorySummary, updateAccount, archiveAccount, restoreAccount };
 }

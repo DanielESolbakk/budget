@@ -225,6 +225,7 @@ describe("renderer budget API resolution", () => {
   });
 
   it.each([
+    ["account restoration", (api: BudgetApi) => api.accounts.restore("preview-account")],
     ["file dialog", (api: BudgetApi) => api.dialogs.chooseImportStatementPath()],
     ["import history", (api: BudgetApi) => api.import.history.list()],
     ["CSV profiles", (api: BudgetApi) => api.import.profiles.list()],

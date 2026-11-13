@@ -12,6 +12,28 @@ type AccountCoverageRepository = Pick<LocalLedgerDatabase,
 >;
 
 export function createAccountCoverageRepository(db: DatabaseSync): AccountCoverageRepository {
+  function getWritableAccount(accountId: string): {
+    household_id: string;
+    currency_code: string;
+  } {
+    const account = db.prepare(`
+      SELECT household_id, currency_code, archived_at_iso
+      FROM accounts
+      WHERE id = ?
+    `).get(accountId) as {
+      household_id: string;
+      currency_code: string;
+      archived_at_iso: string | null;
+    } | undefined;
+    if (account === undefined) {
+      throw new Error(`Account not found: ${accountId}`);
+    }
+    if (account.archived_at_iso !== null) {
+      throw new Error("Archived accounts are read-only. Restore this account to add or change records.");
+    }
+    return account;
+  }
+
   function saveAccountStatementCoveragePeriod(period: AccountStatementCoveragePeriod): void {
     const isValidDate = (value: string): boolean =>
       /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -33,12 +55,7 @@ export function createAccountCoverageRepository(db: DatabaseSync): AccountCovera
     ) {
       throw new Error("Account statement coverage period is invalid.");
     }
-    const account = db.prepare(
-      "SELECT household_id, currency_code FROM accounts WHERE id = ?"
-    ).get(period.accountId) as { household_id: string; currency_code: string } | undefined;
-    if (account === undefined) {
-      throw new Error(`Account not found: ${period.accountId}`);
-    }
+    const account = getWritableAccount(period.accountId);
     if (period.currencyCode !== account.currency_code) {
       throw new Error("Account coverage currency must match the account currency.");
     }
@@ -96,12 +113,7 @@ export function createAccountCoverageRepository(db: DatabaseSync): AccountCovera
     ) {
       throw new Error("Account balance checkpoint is invalid.");
     }
-    const account = db.prepare(
-      "SELECT currency_code FROM accounts WHERE id = ?"
-    ).get(checkpoint.accountId) as { currency_code: string } | undefined;
-    if (account === undefined) {
-      throw new Error(`Account not found: ${checkpoint.accountId}`);
-    }
+    const account = getWritableAccount(checkpoint.accountId);
     if (checkpoint.currencyCode !== account.currency_code) {
       throw new Error("Account checkpoint currency must match the account currency.");
     }

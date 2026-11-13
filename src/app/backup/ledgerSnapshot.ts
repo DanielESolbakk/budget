@@ -52,10 +52,11 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
   ).run(snapshot.household.id, JSON.stringify(reportingPeriodRule));
 
   const insertAccount = db.prepare(
-    "INSERT INTO accounts (id, household_id, name, currency_code) VALUES (?, ?, ?, ?)"
+    "INSERT INTO accounts (id, household_id, name, currency_code, archived_at_iso) VALUES (?, ?, ?, ?, ?)"
   );
   for (const account of snapshot.accounts) {
-    insertAccount.run(account.id, account.householdId, account.name, account.currencyCode);
+    insertAccount.run(account.id, account.householdId, account.name, account.currencyCode,
+      account.archivedAtIso ?? null);
   }
 
   const insertProperty = db.prepare(
@@ -367,13 +368,14 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
 
   const accounts = db
     .prepare(
-      "SELECT id, household_id, name, currency_code FROM accounts ORDER BY id"
+      "SELECT id, household_id, name, currency_code, archived_at_iso FROM accounts ORDER BY id"
     )
     .all() as Array<{
     id: string;
     household_id: string;
     name: string;
     currency_code: string;
+    archived_at_iso: string | null;
   }>;
 
   const transactions = db
@@ -549,6 +551,7 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
       householdId: account.household_id,
       name: account.name,
       currencyCode: account.currency_code,
+      ...(account.archived_at_iso === null ? {} : { archivedAtIso: account.archived_at_iso }),
     })),
     transactions: mappedTransactions,
     ...(mappedPendingObservations.length === 0

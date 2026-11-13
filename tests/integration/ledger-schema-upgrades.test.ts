@@ -7,6 +7,44 @@ import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlit
 import type { CategorizationDecision } from "../../src/domain/types.js";
 
 describe("ledger schema extraction compatibility", () => {
+  it("adds archive lifecycle state to existing accounts without changing their identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-account-archive-schema-"));
+    const dbPath = join(directory, "ledger.sqlite");
+    let ledger: ReturnType<typeof createLocalLedgerDatabase> | undefined;
+    let raw: DatabaseSync | undefined;
+    try {
+      ledger = createLocalLedgerDatabase({ dbPath, seedData: {
+        household: { id: "hh", name: "Synthetic", createdAtIso: "2026-01-01T00:00:00Z" },
+        accounts: [{ id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" }],
+        transactions: [], importJobs: [], monthlyCategoryTargets: [],
+      } });
+      ledger.close();
+      ledger = undefined;
+
+      raw = new DatabaseSync(dbPath);
+      const accountColumns = raw.prepare("PRAGMA table_info(accounts)")
+        .all() as Array<{ name: string }>;
+      if (accountColumns.some((column) => column.name === "archived_at_iso")) {
+        raw.exec("ALTER TABLE accounts DROP COLUMN archived_at_iso");
+      }
+      raw.close();
+      raw = undefined;
+
+      ledger = createLocalLedgerDatabase({ dbPath });
+      expect(ledger.loadLedgerSnapshotData().accounts).toEqual([
+        { id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" },
+      ]);
+      raw = new DatabaseSync(dbPath);
+      expect((raw.prepare("PRAGMA table_info(accounts)").all() as Array<{ name: string }>)
+        .map((column) => column.name)).toContain("archived_at_iso");
+      expect(raw.prepare("PRAGMA integrity_check").get()).toMatchObject({ integrity_check: "ok" });
+    } finally {
+      raw?.close();
+      ledger?.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("upgrades populated reconciliation, correction, undo and backup history without losing recovery data", () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-recovery-schema-"));
     const dbPath = join(directory, "ledger.sqlite");

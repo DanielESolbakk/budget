@@ -133,6 +133,8 @@ export interface AccountsApi {
   getHistorySummary: (accountId: string) => Promise<AccountHistorySummary>;
   create: (input: AccountInput) => Promise<Account>;
   update: (input: AccountUpdateInput) => Promise<Account>;
+  archive: (accountId: string) => Promise<Account>;
+  restore: (accountId: string) => Promise<Account>;
 }
 
 export interface SetupApi {
@@ -314,6 +316,8 @@ const budgetApi: BudgetApi = {
       ipcRenderer.invoke("account:getHistorySummary", accountId),
     create: (input): Promise<Account> => ipcRenderer.invoke("account:create", input),
     update: (input): Promise<Account> => ipcRenderer.invoke("account:update", input),
+    archive: (accountId: string): Promise<Account> => ipcRenderer.invoke("account:archive", accountId),
+    restore: (accountId: string): Promise<Account> => ipcRenderer.invoke("account:restore", accountId),
   },
   dashboard: {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),

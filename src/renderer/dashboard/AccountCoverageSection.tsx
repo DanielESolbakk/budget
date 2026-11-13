@@ -46,6 +46,9 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+const ARCHIVED_ACCOUNT_HISTORY_MESSAGE =
+  "Archived account. Historical coverage and checkpoints are read-only. Restore this account to make changes.";
+
 interface AccountCoverageData {
   periods: AccountStatementCoveragePeriod[];
   checkpoints: AccountBalanceCheckpoint[];
@@ -100,7 +103,10 @@ export function AccountCoverageSection({
     React.useState<AccountInputValidationError | null>(null);
   const [accountError, setAccountError] = React.useState<string | null>(null);
   const [accountStatus, setAccountStatus] = React.useState<string | null>(null);
+  const [accountActionError, setAccountActionError] = React.useState<string | null>(null);
   const [isCreatingAccount, setIsCreatingAccount] = React.useState(false);
+  const [archivingAccountId, setArchivingAccountId] = React.useState<string | null>(null);
+  const [restoringAccountId, setRestoringAccountId] = React.useState<string | null>(null);
   const [editingAccountId, setEditingAccountId] = React.useState<string | null>(null);
   const [editAccountName, setEditAccountName] = React.useState("");
   const [editAccountCurrencyCode, setEditAccountCurrencyCode] = React.useState("NOK");
@@ -108,7 +114,6 @@ export function AccountCoverageSection({
   const [editAccountFieldError, setEditAccountFieldError] =
     React.useState<AccountInputValidationError | null>(null);
   const [editAccountError, setEditAccountError] = React.useState<string | null>(null);
-  const [editAccountStatus, setEditAccountStatus] = React.useState<string | null>(null);
   const [isLoadingEditContext, setIsLoadingEditContext] = React.useState(false);
   const [isUpdatingAccount, setIsUpdatingAccount] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -121,6 +126,9 @@ export function AccountCoverageSection({
   const previousEditingAccountId = React.useRef<string | null>(null);
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
   const accountImportJobs = importJobs.filter((job) => job.accountId === selectedAccountId);
+  const activeAccountCount = accounts.filter((account) => account.archivedAtIso === undefined).length;
+  const isSelectedAccountArchived = selectedAccount?.archivedAtIso !== undefined;
+  const isAccountActionInProgress = archivingAccountId !== null || restoringAccountId !== null;
 
   React.useEffect(() => {
     let active = true;
@@ -128,14 +136,16 @@ export function AccountCoverageSection({
       window.budgetApi.accounts.getCurrent(),
       window.budgetApi.import.history.list(),
     ])
-      .then(([current, loadedImportJobs]) => {
+      .then(async ([current, loadedImportJobs]) => {
         if (!active) return;
         if (current === null) {
           throw new Error("Household account is unavailable.");
         }
-        setAccounts(current.accounts);
+        const householdAccounts = await window.budgetApi.accounts.list(current.householdId);
+        if (!active) return;
+        setAccounts(householdAccounts);
         setImportJobs(loadedImportJobs);
-        setSelectedAccountId((selected) => selected || current.accounts[0]?.id || "");
+        setSelectedAccountId((selected) => selected || householdAccounts[0]?.id || "");
         setIsLoading(false);
       })
       .catch((loadError: unknown) => {
@@ -230,7 +240,6 @@ export function AccountCoverageSection({
     setEditAccountHistory(null);
     setEditAccountFieldError(null);
     setEditAccountError(null);
-    setEditAccountStatus(null);
     setAccountStatus(null);
     setIsLoadingEditContext(true);
 
@@ -252,7 +261,6 @@ export function AccountCoverageSection({
     setEditAccountHistory(null);
     setEditAccountFieldError(null);
     setEditAccountError(null);
-    setEditAccountStatus(null);
     setIsLoadingEditContext(false);
   }
 
@@ -267,7 +275,6 @@ export function AccountCoverageSection({
 
     setEditAccountFieldError(null);
     setEditAccountError(null);
-    setEditAccountStatus(null);
     setAccountStatus(null);
     let input: ReturnType<typeof normalizeAccountUpdateInput>;
     try {
@@ -294,7 +301,7 @@ export function AccountCoverageSection({
       setSelectedAccountId((current) => current === account.id ? updatedAccount.id : current);
       setEditingAccountId(null);
       setEditAccountHistory(null);
-      setEditAccountStatus("Account updated.");
+      setAccountStatus("Account updated.");
       onAccountsChanged();
     } catch (updateError: unknown) {
       const detail = updateError instanceof Error ? ` Details: ${updateError.message}` : "";
@@ -306,6 +313,50 @@ export function AccountCoverageSection({
     }
   }
 
+  async function archiveAccount(account: Account): Promise<void> {
+    if (isAccountActionInProgress) return;
+    const confirmed = window.confirm(
+      `Archive ${account.name}? It will no longer appear in account pickers for new transactions or imports, or in active-balance summaries. Its transactions, statement periods, checkpoints, and exports will remain available.`
+    );
+    if (!confirmed) return;
+
+    setAccountActionError(null);
+    setAccountStatus(null);
+    setArchivingAccountId(account.id);
+    try {
+      const archivedAccount = await window.budgetApi.accounts.archive(account.id);
+      setAccounts((current) => current.map((candidate) =>
+        candidate.id === archivedAccount.id ? archivedAccount : candidate
+      ));
+      setAccountStatus(`${account.name} has been archived.`);
+      onAccountsChanged();
+    } catch (archiveError: unknown) {
+      setAccountActionError(errorMessage(archiveError, "Unable to archive the account."));
+    } finally {
+      setArchivingAccountId(null);
+    }
+  }
+
+  async function restoreAccount(account: Account): Promise<void> {
+    if (isAccountActionInProgress) return;
+
+    setAccountActionError(null);
+    setAccountStatus(null);
+    setRestoringAccountId(account.id);
+    try {
+      const restoredAccount = await window.budgetApi.accounts.restore(account.id);
+      setAccounts((current) => current.map((candidate) =>
+        candidate.id === restoredAccount.id ? restoredAccount : candidate
+      ));
+      setAccountStatus(`${account.name} has been restored.`);
+      onAccountsChanged();
+    } catch (restoreError: unknown) {
+      setAccountActionError(errorMessage(restoreError, "Unable to restore the account."));
+    } finally {
+      setRestoringAccountId(null);
+    }
+  }
+
   function focusCheckpointEntry(): void {
     checkpointFormRef.current?.scrollIntoView({ block: "center" });
     checkpointDateInputRef.current?.focus();
@@ -313,6 +364,10 @@ export function AccountCoverageSection({
 
   async function saveCoveragePeriod(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (isSelectedAccountArchived) {
+      setError(ARCHIVED_ACCOUNT_HISTORY_MESSAGE);
+      return;
+    }
     if (selectedAccount === undefined || startDateIso === "" || endDateIso === "" || sourceName.trim() === "") {
       setError("Choose an account, coverage dates, and a statement source.");
       return;
@@ -344,6 +399,10 @@ export function AccountCoverageSection({
   }
 
   async function confirmPeriod(period: AccountStatementCoveragePeriod): Promise<void> {
+    if (isSelectedAccountArchived) {
+      setError(ARCHIVED_ACCOUNT_HISTORY_MESSAGE);
+      return;
+    }
     setError(null);
     setStatusMessage(null);
     try {
@@ -361,6 +420,10 @@ export function AccountCoverageSection({
 
   async function saveCheckpoint(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (isSelectedAccountArchived) {
+      setError(ARCHIVED_ACCOUNT_HISTORY_MESSAGE);
+      return;
+    }
     const balanceMinor = parseAmountMinor(checkpointBalance);
     if (
       selectedAccount === undefined ||
@@ -410,6 +473,9 @@ export function AccountCoverageSection({
             {accounts.map((account) => {
               const isEditing = editingAccountId === account.id;
               const accountHasHistory = isEditing && hasAccountHistory(editAccountHistory);
+              const cannotArchiveLastActive =
+                account.archivedAtIso === undefined && activeAccountCount <= 1;
+              const lastActiveGuidanceId = `last-active-account-guidance-${account.id}`;
               return (
                 <li key={account.id}>
                   {isEditing ? (
@@ -508,19 +574,56 @@ export function AccountCoverageSection({
                       <div className="account-management-summary">
                         <strong>{account.name}</strong>
                         <span>{account.currencyCode}</span>
+                        {account.archivedAtIso !== undefined && <span>Archived</span>}
                       </div>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        aria-label={`Edit account ${account.name}`}
-                        ref={(element) => {
-                          if (element === null) editButtonRefs.current.delete(account.id);
-                          else editButtonRefs.current.set(account.id, element);
-                        }}
-                        onClick={() => void beginAccountEdit(account)}
-                      >
-                        Edit
-                      </button>
+                      <div className="account-management-actions">
+                        {account.archivedAtIso === undefined && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            aria-label={`Edit account ${account.name}`}
+                            ref={(element) => {
+                              if (element === null) editButtonRefs.current.delete(account.id);
+                              else editButtonRefs.current.set(account.id, element);
+                            }}
+                            onClick={() => void beginAccountEdit(account)}
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {account.archivedAtIso === undefined ? (
+                          <div className="account-management-archive-action">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              aria-label={`Archive account ${account.name}`}
+                              aria-describedby={cannotArchiveLastActive ? lastActiveGuidanceId : undefined}
+                              disabled={cannotArchiveLastActive || isAccountActionInProgress}
+                              onClick={() => void archiveAccount(account)}
+                            >
+                              {archivingAccountId === account.id ? "Archiving..." : "Archive"}
+                            </button>
+                            {cannotArchiveLastActive && (
+                              <span
+                                className="account-management-action-hint"
+                                id={lastActiveGuidanceId}
+                              >
+                                You cannot archive the last active account. Add another active account first.
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            aria-label={`Restore account ${account.name}`}
+                            disabled={isAccountActionInProgress}
+                            onClick={() => void restoreAccount(account)}
+                          >
+                            {restoringAccountId === account.id ? "Restoring..." : "Restore"}
+                          </button>
+                        )}
+                      </div>
                     </>
                   )}
                 </li>
@@ -528,9 +631,12 @@ export function AccountCoverageSection({
             })}
           </ul>
         )}
-        {editAccountStatus !== null && (
+        {accountActionError !== null && (
+          <p className="account-coverage-message is-error" role="alert">{accountActionError}</p>
+        )}
+        {accountStatus !== null && (
           <p className="account-coverage-message is-success" role="status" aria-label="Account management status">
-            {editAccountStatus}
+            {accountStatus}
           </p>
         )}
         <form
@@ -577,11 +683,6 @@ export function AccountCoverageSection({
           {accountError !== null && (
             <p className="account-coverage-message is-error" role="alert">{accountError}</p>
           )}
-          {accountStatus !== null && (
-            <p className="account-coverage-message is-success" role="status" aria-label="Account management status">
-              {accountStatus}
-            </p>
-          )}
           <button type="submit" disabled={isCreatingAccount}>
             {isCreatingAccount ? "Adding account..." : "Add account"}
           </button>
@@ -601,7 +702,10 @@ export function AccountCoverageSection({
             onChange={(event) => setSelectedAccountId(event.target.value)}
           >
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>{account.name} ({account.currencyCode})</option>
+              <option key={account.id} value={account.id}>
+                {account.name} ({account.currencyCode})
+                {account.archivedAtIso === undefined ? "" : " — Archived"}
+              </option>
             ))}
           </select>
         </label>
@@ -612,6 +716,16 @@ export function AccountCoverageSection({
         </p>
       </div>
 
+      {isSelectedAccountArchived && (
+        <p
+          className="account-coverage-message"
+          role="status"
+          aria-label="Archived account history"
+        >
+          {ARCHIVED_ACCOUNT_HISTORY_MESSAGE}
+        </p>
+      )}
+
       <div className="account-coverage-forms">
         <form className="account-coverage-form" aria-label="Record statement coverage" onSubmit={(event) => void saveCoveragePeriod(event)}>
           <div className="account-coverage-form-heading">
@@ -620,21 +734,36 @@ export function AccountCoverageSection({
           </div>
           <label>
             Statement start date
-            <input type="date" value={startDateIso} onChange={(event) => setStartDateIso(event.target.value)} />
+            <input
+              type="date"
+              value={startDateIso}
+              disabled={isSelectedAccountArchived}
+              onChange={(event) => setStartDateIso(event.target.value)}
+            />
           </label>
           <label>
             Statement end date
-            <input type="date" value={endDateIso} onChange={(event) => setEndDateIso(event.target.value)} />
+            <input
+              type="date"
+              value={endDateIso}
+              disabled={isSelectedAccountArchived}
+              onChange={(event) => setEndDateIso(event.target.value)}
+            />
           </label>
           <label>
             Statement source
-            <input value={sourceName} onChange={(event) => setSourceName(event.target.value)} />
+            <input
+              value={sourceName}
+              disabled={isSelectedAccountArchived}
+              onChange={(event) => setSourceName(event.target.value)}
+            />
           </label>
           <label>
             Coverage source type
             <select
               aria-label="Coverage source type"
               value={sourceType}
+              disabled={isSelectedAccountArchived}
               onChange={(event) => {
                 setSourceType(event.target.value as AccountStatementCoveragePeriod["sourceType"]);
                 setImportJobId("");
@@ -651,6 +780,7 @@ export function AccountCoverageSection({
               <select
                 aria-label="Coverage import job"
                 value={importJobId}
+                disabled={isSelectedAccountArchived}
                 onChange={(event) => {
                   const selectedJobId = event.target.value;
                   setImportJobId(selectedJobId);
@@ -669,7 +799,10 @@ export function AccountCoverageSection({
               </select>
             </label>
           )}
-          <button type="submit" disabled={selectedAccountId === "" || isLoading}>
+          <button
+            type="submit"
+            disabled={selectedAccountId === "" || isLoading || isSelectedAccountArchived}
+          >
             Save statement period
           </button>
         </form>
@@ -690,6 +823,7 @@ export function AccountCoverageSection({
               ref={checkpointDateInputRef}
               type="date"
               value={checkpointDateIso}
+              disabled={isSelectedAccountArchived}
               onChange={(event) => setCheckpointDateIso(event.target.value)}
             />
           </label>
@@ -698,16 +832,24 @@ export function AccountCoverageSection({
             <input
               inputMode="decimal"
               value={checkpointBalance}
+              disabled={isSelectedAccountArchived}
               onChange={(event) => setCheckpointBalance(event.target.value)}
               aria-describedby="checkpoint-balance-hint"
             />
           </label>
           <label>
             Checkpoint source
-            <input value={checkpointSource} onChange={(event) => setCheckpointSource(event.target.value)} />
+            <input
+              value={checkpointSource}
+              disabled={isSelectedAccountArchived}
+              onChange={(event) => setCheckpointSource(event.target.value)}
+            />
           </label>
           <p id="checkpoint-balance-hint">Enter the account balance in {selectedAccount?.currencyCode ?? "account currency"}.</p>
-          <button type="submit" disabled={selectedAccountId === "" || isLoading}>
+          <button
+            type="submit"
+            disabled={selectedAccountId === "" || isLoading || isSelectedAccountArchived}
+          >
             Save balance checkpoint
           </button>
         </form>
@@ -780,7 +922,12 @@ export function AccountCoverageSection({
                   <p className="account-coverage-period-description">
                     This period is saved but unconfirmed. Confirm it only after checking the statement dates and source.
                   </p>
-                  <button className="action-secondary" type="button" onClick={() => void confirmPeriod(period)}>
+                  <button
+                    className="action-secondary"
+                    type="button"
+                    disabled={isSelectedAccountArchived}
+                    onClick={() => void confirmPeriod(period)}
+                  >
                     Confirm coverage
                   </button>
                 </>
@@ -791,6 +938,7 @@ export function AccountCoverageSection({
                   <button
                     className="action-secondary"
                     type="button"
+                    disabled={isSelectedAccountArchived}
                     onClick={focusCheckpointEntry}
                   >
                     Add or review balance checkpoints

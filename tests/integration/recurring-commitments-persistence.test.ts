@@ -21,7 +21,10 @@ import type {
   RecurringCommitmentSchedule,
   Transaction,
 } from "../../src/domain/types.js";
-import type { LedgerSnapshotData } from "../../src/domain/backup/snapshotContract.js";
+import {
+  SNAPSHOT_VERSION,
+  type LedgerSnapshotData,
+} from "../../src/domain/backup/snapshotContract.js";
 
 const household: Household = {
   id: "household-recurring",
@@ -856,7 +859,7 @@ describe("recurring commitments in backup snapshots", () => {
     try {
       const snapshot = buildBackupSnapshot(snapshotInput);
 
-      expect(snapshot.metadata.version).toBe("11");
+      expect(snapshot.metadata.version).toBe(SNAPSHOT_VERSION);
       expect(Reflect.get(snapshot, "recurringCommitments")).toEqual([commitment]);
       expect(Reflect.get(snapshot, "recurringCommitmentPaymentLinks")).toEqual([paymentLink]);
       expect(Reflect.get(snapshot, "recurringCommitmentDecisions")).toEqual([decision]);

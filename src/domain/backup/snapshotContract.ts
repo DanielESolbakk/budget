@@ -22,10 +22,10 @@ import type {
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 
 /** Snapshot format version – increment when the serialized recovery contract changes. */
-export const SNAPSHOT_VERSION = "11" as const;
+export const SNAPSHOT_VERSION = "12" as const;
 
 export type SnapshotVersion =
-  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | typeof SNAPSHOT_VERSION;
+  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | typeof SNAPSHOT_VERSION;
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {

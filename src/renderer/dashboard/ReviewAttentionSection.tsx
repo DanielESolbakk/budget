@@ -35,9 +35,10 @@ async function loadAccountCoverageSummary(): Promise<AccountCoverageSummaryData>
   if (current === null) {
     throw new Error("Household accounts are unavailable.");
   }
+  const accounts = await window.budgetApi.accounts.list(current.householdId);
 
   const accountSummaries: AccountPeriodSummary[] = await Promise.all(
-    current.accounts.map(async (account) => ({
+    accounts.map(async (account) => ({
       account,
       periods: await window.budgetApi.accountCoverage.listPeriods(account.id),
     }))
@@ -61,7 +62,7 @@ async function loadAccountCoverageSummary(): Promise<AccountCoverageSummaryData>
     assessment.reconciliationStatus === "mismatch";
 
   return {
-    accountCount: current.accounts.length,
+    accountCount: accounts.length,
     accountsWithoutPeriods: accountSummaries
       .filter(({ periods }) => periods.length === 0)
       .map(({ account }) => account.name),

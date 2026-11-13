@@ -15,6 +15,7 @@ import type {
 import type { SpendableCashEstimateRequest } from "../shared/spendableCashContracts.js";
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import { createRecurringCommitmentService } from "./recurringCommitmentService.js";
+import { selectActiveAccounts } from "../shared/accountLifecycle.js";
 export type { SpendableCashEstimateRequest } from "../shared/spendableCashContracts.js";
 
 export interface SpendableCashService {
@@ -146,7 +147,7 @@ export function createSpendableCashService(
     }
     const evaluatedAtIso = now().toISOString();
     const snapshot = database.loadLedgerSnapshotData();
-    const accounts = database.getAccountsForHousehold(metadata.household.id);
+    const accounts = selectActiveAccounts(database.getAccountsForHousehold(metadata.household.id));
     const accountIds = new Set(input.selectedAccountIds);
     const selectedAccounts = accounts.filter((account) => accountIds.has(account.id));
     const balances = selectedAccounts.map((account) =>

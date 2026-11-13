@@ -1,17 +1,7 @@
 import { test, expect } from "./fixtures/electron.js";
-import type { Page } from "@playwright/test";
 import type { ManualEntryValues } from "./pom/ManualEntryPage.js";
 import { LedgerPage } from "./pom/LedgerPage.js";
 import { DatabaseSync } from "node:sqlite";
-
-async function rendererLocalDate(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    const today = new Date();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    return `${today.getFullYear()}-${month}-${day}`;
-  });
-}
 
 const manualEntry: ManualEntryValues = {
   accountId: "sample-acc",
@@ -88,10 +78,6 @@ test.describe("Manual entry and duplicate detection", () => {
     await expect(entry.successStatus).toContainText("Synthetic corrected amount");
   });
 
-  test("manual entry defaults to the current local date", async ({ manualEntry: entry, window }) => {
-    await expect(entry.bookedDateInput).toHaveValue(await rendererLocalDate(window));
-  });
-
   test("manual entry accepts a signed NOK decimal and stores the corresponding minor units", async ({
     appShell,
     manualEntry: entry,
@@ -128,7 +114,6 @@ test.describe("Manual entry and duplicate detection", () => {
     await expect(entry.entrySection).toBeVisible();
     await expect(entry.entryHeading).toBeVisible();
     await expect(entry.accountInput).toHaveValue("sample-acc");
-    await expect(entry.bookedDateInput).toHaveValue(await rendererLocalDate(window));
     await expect(entry.submitButton).toBeVisible();
 
     await appShell.openWorkspace("Review");

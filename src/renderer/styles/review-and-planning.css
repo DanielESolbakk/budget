@@ -573,6 +573,28 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   padding-block: 0.55rem;
 }
 
+.account-management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.account-management-archive-action {
+  display: grid;
+  justify-items: end;
+  gap: 0.25rem;
+}
+
+.account-management-action-hint {
+  max-width: 22rem;
+  color: var(--paper-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: right;
+}
+
 .account-management-summary {
   display: flex;
   min-width: 0;
@@ -609,6 +631,25 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
+}
+
+@media (max-width: 680px) {
+  .account-management-list li {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .account-management-actions {
+    justify-content: flex-start;
+  }
+
+  .account-management-archive-action {
+    justify-items: start;
+  }
+
+  .account-management-action-hint {
+    text-align: left;
+  }
 }
 
 .reporting-preferences-section {
