@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver the first usable version of Budget Planner in a sequence that stabilizes domain, import, categorization, and privacy-critical workflows before broader UI polish.
+Deliver the first usable version of Budget Planner in a sequence that stabilizes domain, import, categorization, and privacy-critical workflows before broader UI polish. The approved E7 expansion adds non-destructive management of multiple local household ledgers after the single-ledger persistence and desktop workflows are stable.
 
 ## Phase Sequence
 
@@ -64,6 +64,21 @@ Exit criteria:
 - Required automated coverage exists for risk-bearing behavior
 - Performance is acceptable for expected local usage
 
+### Phase 5: Local Household Ledger Management (E7)
+
+- Record the accepted local-ledger registry, database-location, legacy-adoption, and active-runtime decisions in an ADR before implementation.
+- Register the existing local database in place without rewriting or moving its records.
+- Implement separate SQLite ledgers, active-ledger switching, and read/write/import isolation.
+- Add distinct desktop workflows for creating and switching household ledgers and for starting fresh without removing the previous ledger.
+- Keep backup and restore scoped to a clearly identified household ledger.
+
+Exit criteria:
+
+- Existing installations open their original household ledger after upgrade.
+- A user can create and switch ledgers without cross-ledger reads or writes.
+- “Start fresh” creates and activates a new ledger while keeping the previous ledger available and unchanged.
+- Unit, integration, and Playwright coverage verifies adoption, isolation, recovery, restart persistence, and local-only behavior.
+
 ## Workstream Dependencies
 
 | Workstream | Depends on | Blocks |
@@ -75,6 +90,7 @@ Exit criteria:
 | Categorization engine | Schema and import pipeline | Review workflow, dashboard accuracy |
 | Desktop shell and UI | Schema, import, categorization | End-to-end flows |
 | Backup, export, privacy verification | Stable schema and shell | Release readiness |
+| Household-ledger management (E7) | Stable SQLite persistence, backup/restore, Electron main-process lifecycle, and setup flow | Safe creation, selection, switching, and fresh-ledger workflows |
 | Automated tests | Working slices in each prior workstream | Feature completion and merge readiness |
 
 ## Validation Plan
@@ -93,6 +109,13 @@ Exit criteria:
 ### During UI Delivery
 
 - Add Playwright coverage for file selection, import review, correction, dismissal, dashboard, forecast, export, and backup flows
+
+### During Household Ledger Management
+
+- Add unit coverage for profile validation, registry paths, and active-ledger state transitions.
+- Add integration coverage for legacy adoption, two-database isolation, backup/restore identity, and failure recovery.
+- Add Playwright coverage for create/switch and “Start fresh” as separate user workflows, including compact-window controls and an isolated Electron user-data directory on relaunch.
+- Use synthetic household and transaction records only; verify the default flow makes no outbound network requests.
 
 ### Before Release Readiness
 
@@ -113,14 +136,14 @@ This repository uses two test frameworks with distinct, non-overlapping ownershi
 
 ### Playwright (Electron runtime smoke)
 
-- **Scope**: desktop runtime flow validation — window boot, root render, preload bridge availability, forecast section output, and CI failure artifact retention.
+- **Scope**: desktop runtime flow validation — window boot, root render, preload bridge availability, critical household-ledger journeys, and CI failure artifact retention.
 - **Entry points**: `tests/playwright/` (specs and POM modules).
 - **Runs in**: launched Electron process via Playwright `_electron` API.  Requires a built app (`npm run build`) and the Electron binary.
 - **Command**: `npm run test:e2e:playwright`.
 - **POM convention**: use `tests/playwright/pom/` for reusable page-object abstractions; keep business assertions in specs.
 - **Locator strategy**: prefer `getByRole` role-first locators; use `getByText` for unique prose; avoid CSS selectors.
 - **Assertions**: use Playwright web-first assertions (`expect(locator).toBeVisible()`); never use fixed timeout sleeps.
-- **Isolation**: each spec file is self-contained with explicit `beforeAll`/`afterAll` lifecycle for the Electron application instance.
+- **Isolation**: use the shared Electron fixture to create a per-test database and isolated `--user-data-dir`; relaunches that verify persistence reuse both isolated paths and wait for the user-visible record selection before asserting compact-window details.
 - **CI artifacts**: traces (`test-results/`) and HTML report (`playwright-report/`) are retained on failure.
 
 ### Decision rule
@@ -144,11 +167,14 @@ Once scaffolding exists, the repository must provide CI scripts for:
 
 - PDF variability: mitigate with bank-specific parser adapters and sanitized fixtures.
 - Native SQLite packaging: mitigate with explicit packaging documentation and early build validation on Windows.
+- Legacy database adoption and path handling: retain the existing file in place, test configured paths explicitly, and fail visibly rather than selecting another ledger.
+- Ledger-switch lifecycle: invalidate or finish work tied to the previous database before rebinding main-process services, and verify isolation across imports, backup, and restore.
+- Restore identity mismatch: identify both the active household and snapshot household before replacement and block silent cross-ledger restore.
 - LLM implementation drift: mitigate with acceptance-criteria-to-test mapping, PR guardrails, and issue-ready planning docs.
 - Public repository exposure: mitigate with sanitized fixtures, repo-relative documentation, and gitignored local-only artifact paths.
 
 ## Immediate Next Actions
 
-1. Create ADR and glossary artifacts.
-2. Create the GitHub issue breakdown from these docs.
-3. Scaffold the initial Electron and TypeScript workspace once the issue plan is accepted.
+1. Complete the E7 ADR and household-ledger planning updates.
+2. Link the E7 Feature, Stories, and layer-specific Test issues, then validate the issue hierarchy.
+3. Begin implementation only after the ADR and issue plan are owner-approved and assignment prerequisites are satisfied.

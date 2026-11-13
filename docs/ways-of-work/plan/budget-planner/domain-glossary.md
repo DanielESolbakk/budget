@@ -6,7 +6,8 @@ Use these terms consistently in planning docs, code, tests, and issue templates.
 
 | Term | Definition | Notes |
 | --- | --- | --- |
-| household | The local budgeting context managed by one user across one or more accounts. | First release supports one household user. |
+| household | The local budgeting context managed by one user across one or more accounts. | One local user can manage one or more household ledgers on this device. |
+| household ledger | One household and its financial records stored in a separate local SQLite database. | One local user may manage multiple household ledgers; records are not merged between them. |
 | account | A source or destination ledger account such as checking, savings, or credit card. | Accounts belong to a household. |
 | transaction | A dated financial record with amount, direction, account, and provenance. | Imported or manually entered. |
 | category | A user-visible spending or income classification for transactions. | Default categories are editable. |

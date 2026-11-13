@@ -427,6 +427,65 @@
       "type": "feature",
       "title": "Localization (i18n) scaffolding (future potential, deferred)",
       "parentKeys": ["E6"]
+    },
+    {
+      "key": "E7",
+      "type": "epic",
+      "title": "Local household ledger management"
+    },
+    {
+      "key": "F7.1",
+      "type": "feature",
+      "title": "Local household ledger management",
+      "parentKeys": ["E7"]
+    },
+    {
+      "key": "S7.1.1",
+      "type": "story",
+      "title": "Create and switch between local household ledgers",
+      "parentKeys": ["F7.1"]
+    },
+    {
+      "key": "T7.1.1.1",
+      "type": "test",
+      "title": "Unit coverage for local household ledger validation and registry",
+      "parentKeys": ["S7.1.1"]
+    },
+    {
+      "key": "T7.1.1.2",
+      "type": "test",
+      "title": "Integration coverage for legacy adoption, switching, and restore isolation",
+      "parentKeys": ["S7.1.1"]
+    },
+    {
+      "key": "T7.1.1.3",
+      "type": "test",
+      "title": "Playwright coverage for creating and switching household ledgers",
+      "parentKeys": ["S7.1.1"]
+    },
+    {
+      "key": "S7.1.2",
+      "type": "story",
+      "title": "Start fresh in a new local household ledger",
+      "parentKeys": ["F7.1"]
+    },
+    {
+      "key": "T7.1.2.1",
+      "type": "test",
+      "title": "Unit coverage for starting fresh and cancel/failure behavior",
+      "parentKeys": ["S7.1.2"]
+    },
+    {
+      "key": "T7.1.2.2",
+      "type": "test",
+      "title": "Integration coverage for new-ledger activation and prior-ledger preservation",
+      "parentKeys": ["S7.1.2"]
+    },
+    {
+      "key": "T7.1.2.3",
+      "type": "test",
+      "title": "Playwright coverage for the start-fresh workflow",
+      "parentKeys": ["S7.1.2"]
     }
   ]
 }

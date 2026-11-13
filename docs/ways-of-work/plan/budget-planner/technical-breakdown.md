@@ -2,7 +2,7 @@
 
 ## Architecture Summary
 
-The application uses Electron for the desktop shell, React for the renderer, TypeScript for application code, and SQLite for local persistence. The Electron main process and service layer own business logic. The renderer is limited to presentation and user interaction.
+The application uses Electron for the desktop shell, React for the renderer, TypeScript for application code, and SQLite for local persistence. One local user can manage multiple independent household ledgers, with one SQLite database per household. The Electron main process and service layer own business logic. The renderer is limited to presentation and user interaction.
 
 ## Runtime Boundaries
 
@@ -13,6 +13,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Ledger, search, filters, and review UI
 - Budget and forecast views
 - Backup and export UI
+- Household-ledger selection, creation, and “Start fresh” actions
 
 ### Main Process And Services
 
@@ -25,6 +26,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Categorization rules and confidence logic
 - Forecast calculations
 - Backup and export services
+- Household-ledger registry, active database lifecycle, and identity validation
 - No-network verification hooks
 
 ### Shared Layer
@@ -33,6 +35,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Validation contracts
 - Result types and error envelopes
 - Shared enums and constants
+- Validated household-ledger profile and active-ledger contracts
 
 ## Module Breakdown
 
@@ -64,6 +67,17 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Categorization review isolates low-confidence and uncategorized transactions.
 - Correction actions update the transaction record and retain provenance.
 
+### Household Ledger Management
+
+- Each household ledger is an independent SQLite database. A separate local registry identifies saved household ledgers and the currently active ledger; registry metadata contains no transaction content.
+- Electron main owns registry access, the active database connection, service construction, and runtime-state updates. Responsibility-group IPC handlers receive declared active-ledger context and do not own connections or cache copied mutable runtime values.
+- A ledger switch validates and opens the destination before changing the active context. It invalidates in-flight work tied to the previous ledger, refreshes renderer state, and closes the previous connection only after it is safe to do so. Failed switching leaves the current ledger active.
+- Existing installations register their current database in place. Adoption does not move, rewrite, or delete household, account, transaction, import, setting, or recovery records.
+- Creating a household ledger initializes its SQLite schema and household/account records independently. The previous database remains available and unchanged.
+- “Start fresh” is a distinct, explicit user action that creates and activates a new household ledger; it is not a database reset or permanent deletion.
+- Backup and restore operations identify their target household ledger. A snapshot with a different household identity cannot silently replace the active ledger.
+- The browser preview remains synthetic and does not implement household-ledger persistence or switching; these operations are explicitly desktop-only.
+
 ### Budgeting And Forecasting
 
 - Monthly budget target service stores and aggregates per-category targets.
@@ -79,6 +93,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 ### Core Entities
 
 - household
+- household ledger
 - account
 - transaction
 - category
@@ -108,6 +123,11 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 ## Persistence Notes
 
 - Use additive schema evolution with explicit migrations.
+- Keep one SQLite database per household. Store a local household-ledger registry separately from transaction databases; the registry records only stable ledger identity, display name, database location, and active selection.
+- Adopt an existing default database in place on first run after the registry is introduced. Do not copy, move, rewrite, or delete its saved records as part of adoption.
+- Keep active database ownership in Electron main. IPC responsibility groups receive stable resolver/context dependencies rather than creating connections or retaining stale database references.
+- Keep `BUDGET_DB_PATH` available as an explicit isolated test/development database override; never silently bypass a configured path or fall back to another household ledger.
+- Treat backup snapshot household identity as a restore boundary. Require an explicit target and visible mismatch handling before replacing data.
 - Store import provenance for each transaction and review item.
 - Preserve source file identity, page number, raw row text, and parser diagnostics for review and audit.
 - Keep valid transaction persistence separate from unresolved-row and dismissal state.
@@ -140,6 +160,8 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Categorization rules and confidence logic
 - Forecast calculations
 - Export serializers
+- Household-ledger profile validation, registry path handling, and active-ledger resolution
+- Failure/cancellation state transitions that preserve the prior active ledger
 
 ### Integration
 
@@ -149,6 +171,9 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Budget target persistence and aggregation
 - Backup restore integrity
 - No-network verification harness for protected workflows
+- Legacy database adoption without record changes
+- Independent database creation, active-ledger switching, and read/write/import isolation
+- Backup/restore identity handling across two synthetic household ledgers
 
 ### End-to-End
 
@@ -160,6 +185,9 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - View forecast
 - Export data
 - Restore backup
+- Create and switch household ledgers, including a restart with isolated Electron user data
+- Start fresh, cancel or confirm, then verify the prior ledger remains selectable and unchanged
+- Verify the household controls remain discoverable and operable at desktop and compact window sizes
 
 ## Open Technical Risks
 
@@ -169,6 +197,9 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Review-state complexity across three input formats
 - Drift between seeded categories and user-corrected rules
 - Ensuring no-network verification remains meaningful in development and packaged builds
+- Preserving a stable active-ledger context while IPC handlers and asynchronous imports are in flight
+- Adopting legacy database paths without breaking existing installations or explicit test database paths
+- Preventing backup restore from replacing a different household ledger without a clear user decision
 
 ## Decisions To Lock In ADRs
 
@@ -177,3 +208,4 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Import review row states and correction audit schema
 - Shared validation library choice
 - Desktop test harness split for Vitest e2e smoke and Playwright runtime e2e
+- Local household-ledger registry format, new-ledger location, legacy adoption, and runtime switching lifecycle

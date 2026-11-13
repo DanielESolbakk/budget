@@ -20,6 +20,7 @@
 - [ ] Create epic issue: Categorization and correction workflow
 - [ ] Create epic issue: Dashboard, budgeting, and forecasting
 - [ ] Create epic issue: Privacy, backup, export, and release quality
+- [x] Owner creates Epic issue: Local household ledger management (#527)
 - [ ] Set priority and value tier in the epic issue form
 - [ ] Apply priority and value labels if repository label automation or conventions require them
 - [ ] Add each epic to the project board
@@ -67,6 +68,18 @@
 - [ ] Feature: No-network verification
 - [ ] Enabler: Performance harness and packaging validation
 - [ ] Test: Backup/export, no-network, and performance coverage
+
+### Local household ledger management (E7)
+
+- [x] Feature F7.1: Local household ledger management (#528)
+- [x] Story S7.1.1: Create and switch between local household ledgers (#529)
+- [x] Story S7.1.2: Start fresh in a new local household ledger while retaining the previous ledger (#534)
+- [x] Story S7.1.1 Test issues: Unit #531, Integration #532, Playwright #533
+- [x] Story S7.1.2 Test issues: Unit #535, Integration #536, Playwright #537
+- [ ] Owner links the Feature and all six Test issues in Epic #527 before planning validation
+- [ ] Run one fresh Planning Issue Validation dispatch after all issue bodies and links are saved
+- [ ] Accept the proposed local household-ledger registry and runtime-switching ADR before implementation
+- [x] Include backup/restore identity handling and no-network behavior in the delivery issue scopes
 
 ## Story Creation Checklist
 
