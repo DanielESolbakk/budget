@@ -327,6 +327,13 @@ test.describe("account archiving", () => {
     await expect(window.getByRole("status", { name: "Account management status" }))
       .toContainText("Savings account added in NOK.");
 
+    await window.getByRole("button", { name: "Edit account Checking" }).click();
+    const checkingEditForm = window.getByRole("form", { name: "Edit account Checking" });
+    await checkingEditForm.getByLabel("Account name").fill("Checking");
+    await checkingEditForm.getByRole("button", { name: "Save account changes" }).click();
+    await expect(window.getByRole("status", { name: "Account management status" }))
+      .toHaveText("Account updated.");
+
     const database = new DatabaseSync(databasePath);
     let checkingAccountId: string;
     try {
@@ -399,8 +406,11 @@ test.describe("account archiving", () => {
     });
     await archiveAccountButton.click();
     expect(cancelDialogMessage).toContain("Checking");
-    expect(cancelDialogMessage).toContain("active account selections");
-    expect(cancelDialogMessage).toContain("transactions, statement periods, checkpoints, and exports");
+    expect(cancelDialogMessage)
+      .toContain("no longer appear in account pickers for new transactions or imports");
+    expect(cancelDialogMessage).toContain("active-balance summaries");
+    expect(cancelDialogMessage)
+      .toContain("transactions, statement periods, checkpoints, and exports will remain available");
     await expect(window.getByRole("list", { name: "Household accounts" }))
       .toContainText("Checking");
 
@@ -411,8 +421,11 @@ test.describe("account archiving", () => {
     });
     await archiveAccountButton.click();
     expect(archiveDialogMessage).toContain("Checking");
-    await expect(window.getByRole("status", { name: "Account management status" }))
-      .toContainText("Checking has been archived.");
+    const accountManagementStatus = window.getByRole("status", {
+      name: "Account management status",
+    });
+    await expect(accountManagementStatus).toHaveCount(1);
+    await expect(accountManagementStatus).toHaveText("Checking has been archived.");
     await expect(window.getByRole("list", { name: "Household accounts" })
       .getByRole("listitem").filter({ hasText: "Checking" })).toContainText("Archived");
     await expect(window.getByRole("button", { name: "Edit account Checking" })).toHaveCount(0);

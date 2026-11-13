@@ -114,7 +114,6 @@ export function AccountCoverageSection({
   const [editAccountFieldError, setEditAccountFieldError] =
     React.useState<AccountInputValidationError | null>(null);
   const [editAccountError, setEditAccountError] = React.useState<string | null>(null);
-  const [editAccountStatus, setEditAccountStatus] = React.useState<string | null>(null);
   const [isLoadingEditContext, setIsLoadingEditContext] = React.useState(false);
   const [isUpdatingAccount, setIsUpdatingAccount] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -241,7 +240,6 @@ export function AccountCoverageSection({
     setEditAccountHistory(null);
     setEditAccountFieldError(null);
     setEditAccountError(null);
-    setEditAccountStatus(null);
     setAccountStatus(null);
     setIsLoadingEditContext(true);
 
@@ -263,7 +261,6 @@ export function AccountCoverageSection({
     setEditAccountHistory(null);
     setEditAccountFieldError(null);
     setEditAccountError(null);
-    setEditAccountStatus(null);
     setIsLoadingEditContext(false);
   }
 
@@ -278,7 +275,6 @@ export function AccountCoverageSection({
 
     setEditAccountFieldError(null);
     setEditAccountError(null);
-    setEditAccountStatus(null);
     setAccountStatus(null);
     let input: ReturnType<typeof normalizeAccountUpdateInput>;
     try {
@@ -305,7 +301,7 @@ export function AccountCoverageSection({
       setSelectedAccountId((current) => current === account.id ? updatedAccount.id : current);
       setEditingAccountId(null);
       setEditAccountHistory(null);
-      setEditAccountStatus("Account updated.");
+      setAccountStatus("Account updated.");
       onAccountsChanged();
     } catch (updateError: unknown) {
       const detail = updateError instanceof Error ? ` Details: ${updateError.message}` : "";
@@ -320,7 +316,7 @@ export function AccountCoverageSection({
   async function archiveAccount(account: Account): Promise<void> {
     if (isAccountActionInProgress) return;
     const confirmed = window.confirm(
-      `Archive ${account.name}? It will be removed from active account selections, but its transactions, statement periods, checkpoints, and exports will be retained.`
+      `Archive ${account.name}? It will no longer appear in account pickers for new transactions or imports, or in active-balance summaries. Its transactions, statement periods, checkpoints, and exports will remain available.`
     );
     if (!confirmed) return;
 
@@ -634,11 +630,6 @@ export function AccountCoverageSection({
               );
             })}
           </ul>
-        )}
-        {editAccountStatus !== null && (
-          <p className="account-coverage-message is-success" role="status" aria-label="Account management status">
-            {editAccountStatus}
-          </p>
         )}
         {accountActionError !== null && (
           <p className="account-coverage-message is-error" role="alert">{accountActionError}</p>

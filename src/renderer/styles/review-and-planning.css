@@ -590,8 +590,8 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
 .account-management-action-hint {
   max-width: 22rem;
   color: var(--paper-muted);
-  font-size: 0.8rem;
-  line-height: 1.35;
+  font-size: 0.875rem;
+  line-height: 1.5;
   text-align: right;
 }
 
