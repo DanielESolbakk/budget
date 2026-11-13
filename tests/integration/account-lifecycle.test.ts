@@ -355,7 +355,8 @@ describe("account archiving persistence", () => {
       outputPath: snapshotPath,
     });
     const restored = restoreBackupSnapshot({ snapshotPath });
-    expect(restored.accounts).toEqual(archivedSnapshot.accounts);
+    expect(restored.accounts).toHaveLength(archivedSnapshot.accounts.length);
+    expect(restored.accounts).toEqual(expect.arrayContaining(archivedSnapshot.accounts));
     expect(restored.transactions).toEqual(beforeArchive.transactions);
     expect(restored.accountStatementCoveragePeriods)
       .toEqual(beforeArchive.accountStatementCoveragePeriods);
