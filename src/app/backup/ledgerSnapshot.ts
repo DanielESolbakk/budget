@@ -33,7 +33,6 @@ import {
 } from "./ledgerTransactionRows.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 import { createCategoryRepository } from "./categoryRepository.js";
-import { collectCategoryReferenceIds } from "../../domain/categorization/categoryCatalog.js";
 
 type LedgerSnapshotReaders = Pick<LocalLedgerDatabase,
   | "listExchangeRates"
@@ -55,9 +54,7 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
   ).run(snapshot.household.id, JSON.stringify(reportingPeriodRule));
 
   const categoryRepository = createCategoryRepository(db);
-  categoryRepository.seedCategories(
-    snapshot.household, snapshot.categories, collectCategoryReferenceIds(snapshot),
-  );
+  categoryRepository.seedCategories(snapshot.household, snapshot.categories);
   const categoryIds = categoryRepository.listCategories(snapshot.household.id).map((category) => category.id);
 
   const insertAccount = db.prepare(

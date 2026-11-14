@@ -1,6 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
 import {
-  collectCategoryReferenceIds,
   normalizeCategoryName,
   seedCategoryCatalog,
   validateCategoryName,
@@ -12,7 +11,7 @@ import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 type CategoryRepository = Pick<LocalLedgerDatabase,
   "listCategories" | "createCategoryRecord" | "updateCategoryRecordLabel"
 > & {
-  seedCategories: (household: Household, categories?: readonly Category[], referencedCategoryIds?: readonly string[]) => void;
+  seedCategories: (household: Household, categories?: readonly Category[]) => void;
 };
 
 export function createCategoryRepository(db: DatabaseSync): CategoryRepository {
@@ -48,12 +47,10 @@ export function createCategoryRepository(db: DatabaseSync): CategoryRepository {
   function seedCategories(
     household: Household,
     existingCategories: readonly Category[] = listCategories(household.id),
-    referencedCategoryIds: readonly string[] = [],
   ): void {
     const categories = seedCategoryCatalog({
       householdId: household.id,
       categories: existingCategories,
-      referencedCategoryIds: [...storedCategoryReferenceIds(household.id), ...referencedCategoryIds],
       createdAtIso: new Date().toISOString(),
     });
     const insertCategory = db.prepare(`
@@ -67,48 +64,6 @@ export function createCategoryRepository(db: DatabaseSync): CategoryRepository {
         normalizeCategoryName(category.label).toLowerCase(), category.createdAtIso, category.updatedAtIso,
       );
     }
-  }
-
-  function storedCategoryReferenceIds(householdId: string): string[] {
-    // Targets, rules, and archived evidence belong to the single local household.
-    const scalarReferences = db.prepare(`
-      SELECT category_id AS categoryId FROM transactions WHERE household_id = ?
-      UNION SELECT category_id FROM monthly_category_targets
-      UNION SELECT category_id FROM merchant_category_rules
-      UNION SELECT category_id FROM merchant_correction_provenance
-      UNION SELECT category_id FROM same_merchant_propagation_operations
-      UNION SELECT before_category_id FROM same_merchant_propagation_changes
-      UNION SELECT after_category_id FROM same_merchant_propagation_changes
-    `).all(householdId);
-    const ids = new Set(collectCategoryReferenceIds(scalarReferences));
-    const evidence = db.prepare(`
-      SELECT categorization_json AS payload, 'transactions.categorization_json' AS source
-        FROM transactions WHERE household_id = ? AND categorization_json IS NOT NULL
-      UNION ALL SELECT category_allocations_json, 'transactions.category_allocations_json'
-        FROM transactions WHERE household_id = ? AND category_allocations_json IS NOT NULL
-      UNION ALL SELECT original_categorization_json, 'merchant_correction_provenance.original_categorization_json'
-        FROM merchant_correction_provenance WHERE original_categorization_json IS NOT NULL
-      UNION ALL SELECT before_categorization_json, 'same_merchant_propagation_changes.before_categorization_json'
-        FROM same_merchant_propagation_changes WHERE before_categorization_json IS NOT NULL
-      UNION ALL SELECT after_categorization_json, 'same_merchant_propagation_changes.after_categorization_json'
-        FROM same_merchant_propagation_changes WHERE after_categorization_json IS NOT NULL
-      UNION ALL SELECT baseline_json, 'import_job_transaction_baselines.baseline_json'
-        FROM import_job_transaction_baselines
-      UNION ALL SELECT correction_json, 'import_review_items.correction_json'
-        FROM import_review_items WHERE household_id = ? AND correction_json IS NOT NULL
-      UNION ALL SELECT filters_json, 'saved_ledger_views.filters_json' FROM saved_ledger_views
-    `).all(householdId, householdId, householdId);
-    for (const row of evidence) {
-      if (typeof row.payload !== "string" || typeof row.source !== "string") {
-        throw new Error("Stored category evidence is invalid.");
-      }
-      try {
-        for (const id of collectCategoryReferenceIds(JSON.parse(row.payload))) ids.add(id);
-      } catch (error) {
-        throw new Error(`Stored category evidence is invalid: ${row.source}.`, { cause: error });
-      }
-    }
-    return [...ids].sort();
   }
 
   function createCategoryRecord(input: Category): void {

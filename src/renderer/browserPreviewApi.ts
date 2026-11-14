@@ -14,7 +14,7 @@ import {
   type ReportingPeriodRule,
 } from "../shared/applicationPreferences.js";
 import { toLocalYearMonth } from "../domain/date/localDateDefaults.js";
-import { collectCategoryReferenceIds, seedCategoryCatalog } from "../domain/categorization/categoryCatalog.js";
+import { seedCategoryCatalog } from "../domain/categorization/categoryCatalog.js";
 import type { Account, Transaction } from "../domain/types.js";
 import type { BudgetApi } from "./preload.js";
 
@@ -147,7 +147,6 @@ export function resolveRendererBudgetApi(
       list: async () => seedCategoryCatalog({
         householdId: PREVIEW_HOUSEHOLD_ID,
         categories: [],
-        referencedCategoryIds: collectCategoryReferenceIds(transactions),
         createdAtIso: `${selectedYearMonth}-01T00:00:00.000Z`,
       }).sort((left, right) => left.label.localeCompare(right.label)),
       create: desktopOnlyAction,

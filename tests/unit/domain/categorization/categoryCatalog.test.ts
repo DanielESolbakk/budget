@@ -86,7 +86,6 @@ describe("category catalog seeding", () => {
     const seeded = seedCategoryCatalog({
       householdId: "household-1",
       categories: [groceries, custom],
-      referencedCategoryIds: ["groceries", "custom-car"],
       createdAtIso,
     });
 
@@ -111,35 +110,15 @@ describe("category catalog seeding", () => {
     expect(groceries.label).toBe("Food");
   });
 
-  it("backfills unknown referenced IDs exactly once without rewriting their identity", () => {
-    const seeded = seedCategoryCatalog({
-      householdId: "household-1",
-      categories: [groceries],
-      referencedCategoryIds: [" car-repairs ", " car-repairs ", "groceries"],
-      createdAtIso,
-    });
-
-    expect(seeded.filter((category) => category.id === " car-repairs ")).toEqual([{
-      id: " car-repairs ",
-      householdId: "household-1",
-      label: "car-repairs",
-      createdAtIso,
-      updatedAtIso: createdAtIso,
-    }]);
-    expect(seeded.find((category) => category.id === "groceries")).toEqual(groceries);
-  });
-
   it("does not reset labels or creation metadata when seeded again", () => {
     const seeded = seedCategoryCatalog({
       householdId: "household-1",
       categories: [groceries, custom],
-      referencedCategoryIds: ["car-repairs"],
       createdAtIso,
     });
     const reseeded = seedCategoryCatalog({
       householdId: "household-1",
       categories: seeded,
-      referencedCategoryIds: ["car-repairs", "groceries"],
       createdAtIso: "2026-12-01T00:00:00.000Z",
     });
 
@@ -152,20 +131,19 @@ describe("category catalog seeding", () => {
     expect(() => seedCategoryCatalog({
       householdId: "household-2",
       categories: [groceries],
-      referencedCategoryIds: [],
       createdAtIso,
     })).toThrow(/household/i);
   });
 
   it.each([
     { override: { id: "" }, error: /category.*id/i },
+    { override: { id: " custom-car " }, error: /category.*id/i },
     { override: { label: " \t " }, error: /non-empty string/i },
     { override: { createdAtIso: "not-a-date" }, error: /timestamp/i },
   ])("rejects malformed stored metadata during seeding: $override", ({ override, error }) => {
     expect(() => seedCategoryCatalog({
       householdId: "household-1",
       categories: [{ ...custom, ...override }],
-      referencedCategoryIds: [],
       createdAtIso,
     })).toThrow(error);
   });
@@ -174,25 +152,14 @@ describe("category catalog seeding", () => {
     expect(() => seedCategoryCatalog({
       householdId: "household-1",
       categories: [groceries, { ...groceries, label: "Groceries & food" }],
-      referencedCategoryIds: [],
       createdAtIso,
     })).toThrow(/duplicate.*category/i);
-  });
-
-  it.each(["", " \t "])("rejects an empty referenced category ID %j", (id) => {
-    expect(() => seedCategoryCatalog({
-      householdId: "household-1",
-      categories: [],
-      referencedCategoryIds: [id],
-      createdAtIso,
-    })).toThrow(/category.*id/i);
   });
 
   it("requires a household identity before seeding categories", () => {
     expect(() => seedCategoryCatalog({
       householdId: " ",
       categories: [],
-      referencedCategoryIds: [],
       createdAtIso,
     })).toThrow(/household.*id/i);
   });
@@ -217,13 +184,13 @@ describe("category references in ledger state and immutable evidence", () => {
     })).toEqual(["after", "allocation", "before", "current", "historical", "matching", "rule", "selected", "target"]);
   });
 
-  it("retains raw legacy identities and ignores explicit uncategorized references", () => {
+  it("deduplicates category references and ignores explicit uncategorized references", () => {
     expect(collectCategoryReferenceIds([
-      { categoryId: " legacy-id " },
-      { categoryId: " legacy-id " },
+      { categoryId: "category-car" },
+      { categoryId: "category-car" },
       { beforeCategoryId: null },
       { categoryId: undefined },
-    ])).toEqual([" legacy-id "]);
+    ])).toEqual(["category-car"]);
   });
 
   it.each([{ categoryId: "" }, { categoryId: 42 }, { afterCategoryId: [] }])(

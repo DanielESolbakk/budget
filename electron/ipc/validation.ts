@@ -50,10 +50,10 @@ export function parseCategoryCreateInput(input: unknown): CategoryCreateInput {
 export function parseCategoryRenameInput(input: unknown): CategoryRenameInput {
   const { label } = parseCategoryCreateInput(input);
   if (typeof input !== "object" || input === null ||
-    !("categoryId" in input) || typeof input.categoryId !== "string" || input.categoryId.trim().length === 0) {
+    !("categoryId" in input)) {
     throw new Error("categoryId must be a non-empty string.");
   }
-  return { categoryId: input.categoryId, label };
+  return { categoryId: parseNonEmptyString(input.categoryId, "categoryId"), label };
 }
 
 export function parseSpendableCashEstimateRequest(input: unknown): SpendableCashEstimateRequest {

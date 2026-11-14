@@ -474,111 +474,32 @@ describe("household category persistence", () => {
     });
   });
 
-  it("backfills unregistered current and archived category IDs without rewriting their evidence", async () => {
-    await withIsolatedLedger({}, ({ dbPath }) => {
-      const originalEvidence = JSON.stringify({ categoryId: "legacy-evidence" });
-      const correctionEvidence = JSON.stringify({ categoryId: "legacy-correction-evidence" });
-      const baseline = JSON.stringify({ householdId: "hh-isolated", categoryId: "legacy-baseline" });
+  it("reopens the saved catalog without inspecting unrelated archived evidence", async () => {
+    await withIsolatedLedger({}, ({ ledger, dbPath }) => {
+      ledger.createCategoryRecord(customCategory);
+      const categories = ledger.listCategories("hh-isolated");
       const raw = new DatabaseSync(dbPath);
       try {
-        raw.exec("DROP TABLE categories");
-        raw.prepare(`INSERT INTO transactions (
-          id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
-          category_id, category_allocations_json, categorization_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-          "legacy-tx", "hh-isolated", "acc-isolated", "2026-05-01", -10000, "Synthetic workshop",
-          "legacy-current", JSON.stringify([
-            { categoryId: "legacy-split", amountMinor: -7500 },
-            { categoryId: "legacy-fees", amountMinor: -2500 },
-          ]), originalEvidence,
-        );
-        raw.prepare("INSERT INTO monthly_category_targets VALUES (?, ?, ?)").run("2026-05", "legacy-target", 50000);
-        raw.prepare("INSERT INTO merchant_category_rules VALUES (?, ?)").run("SYNTHETIC WORKSHOP", "legacy-rule-target");
         raw.prepare(`INSERT INTO merchant_correction_provenance (
           id, source_transaction_id, merchant_alias, category_id, corrected_at_iso, original_categorization_json
         ) VALUES (?, ?, ?, ?, ?, ?)`).run(
-          "legacy-correction-record", "deleted-source", "SYNTHETIC SHOP", "legacy-correction",
-          "2026-05-02T00:00:00Z", correctionEvidence,
-        );
-        raw.prepare(`INSERT INTO same_merchant_propagation_operations (
-          id, source_transaction_id, merchant_alias, category_id, applied_at_iso, undone_at_iso
-        ) VALUES (?, ?, ?, ?, ?, ?)`).run(
-          "legacy-operation", "deleted-source", "SYNTHETIC SHOP", "legacy-operation-category",
-          "2026-05-02T00:00:00Z", "2026-05-03T00:00:00Z",
-        );
-        raw.prepare(`INSERT INTO same_merchant_propagation_changes (
-          operation_id, transaction_id, before_category_id, after_category_id,
-          before_categorization_json, after_categorization_json
-        ) VALUES (?, ?, ?, ?, ?, ?)`).run(
-          "legacy-operation", "deleted-source", "legacy-before", "legacy-after",
-          JSON.stringify({ categoryId: "legacy-before-evidence" }),
-          JSON.stringify({ categoryId: "legacy-after-evidence" }),
-        );
-        raw.prepare("INSERT INTO import_job_transaction_baselines VALUES (?, ?, ?)")
-          .run("deleted-import", "deleted-source", baseline);
-        raw.prepare("INSERT INTO saved_ledger_views VALUES (?, ?, ?)")
-          .run("legacy-view", "Synthetic legacy filter", JSON.stringify({ categoryId: "legacy-filter" }));
-      } finally {
-        raw.close();
-      }
-      const reopened = createLocalLedgerDatabase({ dbPath });
-      try {
-        expect(reopened.listCategories("hh-isolated").map((category) => category.id)).toEqual(expect.arrayContaining([
-          "legacy-current", "legacy-split", "legacy-fees", "legacy-evidence", "legacy-target", "legacy-rule-target",
-          "legacy-correction", "legacy-correction-evidence", "legacy-operation-category", "legacy-before",
-          "legacy-after", "legacy-before-evidence", "legacy-after-evidence", "legacy-baseline", "legacy-filter",
-        ]));
-        expect(reopened.getTransactionById("legacy-tx")).toMatchObject({
-          categoryId: "legacy-current", amountMinor: -10000,
-          categoryAllocations: [
-            { categoryId: "legacy-split", amountMinor: -7500 },
-            { categoryId: "legacy-fees", amountMinor: -2500 },
-          ],
-        });
-        const evidence = new DatabaseSync(dbPath);
-        try {
-          expect(evidence.prepare("SELECT categorization_json FROM transactions WHERE id = ?")
-            .get("legacy-tx")?.categorization_json).toBe(originalEvidence);
-          expect(evidence.prepare("SELECT original_categorization_json FROM merchant_correction_provenance WHERE id = ?")
-            .get("legacy-correction-record")?.original_categorization_json).toBe(correctionEvidence);
-          expect(evidence.prepare("SELECT baseline_json FROM import_job_transaction_baselines WHERE transaction_id = ?")
-            .get("deleted-source")?.baseline_json).toBe(baseline);
-        } finally {
-          evidence.close();
-        }
-      } finally {
-        reopened.close();
-      }
-    });
-  });
-
-  it("reports invalid stored category evidence without seeding a partial catalog", async () => {
-    await withIsolatedLedger({}, ({ dbPath }) => {
-      const raw = new DatabaseSync(dbPath);
-      try {
-        raw.exec("DROP TABLE categories");
-        raw.prepare(`INSERT INTO transactions (
-          id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw, categorization_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-          "invalid-evidence", "hh-isolated", "acc-isolated", "2026-05-01", -1000, "Synthetic workshop", "not-json",
+          "archived-correction", "deleted-source", "SYNTHETIC SHOP", "category-car-001",
+          "2026-05-02T00:00:00Z", "not-json",
         );
       } finally {
         raw.close();
       }
       expect(() => {
         const reopened = createLocalLedgerDatabase({ dbPath });
-        reopened.close();
-      }).toThrow(/stored category evidence/i);
-      const evidence = new DatabaseSync(dbPath);
-      try {
-        expect(evidence.prepare("SELECT COUNT(*) AS count FROM categories").get()?.count).toBe(0);
-        expect(evidence.prepare("SELECT amount_minor FROM transactions WHERE id = ?")
-          .get("invalid-evidence")?.amount_minor).toBe(-1000);
-      } finally {
-        evidence.close();
-      }
+        try {
+          expect(reopened.listCategories("hh-isolated")).toEqual(categories);
+        } finally {
+          reopened.close();
+        }
+      }).not.toThrow();
     });
   });
+
 });
 
 describe("category management service", () => {

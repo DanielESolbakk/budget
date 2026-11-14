@@ -6,7 +6,6 @@ export function buildRendererCategoryCatalogFixture(): ReturnType<typeof useCate
     categories: seedCategoryCatalog({
       householdId: "hh-1",
       categories: [],
-      referencedCategoryIds: [],
       createdAtIso: "2026-05-01T00:00:00.000Z",
     }),
     loading: false,

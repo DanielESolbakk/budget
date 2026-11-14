@@ -66,13 +66,12 @@ export function validateCategoryName(
 interface CategoryCatalogSeedInput {
   householdId: string;
   categories: readonly Category[];
-  referencedCategoryIds: readonly string[];
   createdAtIso: string;
 }
 
 export function validateCategoryRecord(category: Category): Category {
-  if (typeof category.id !== "string" || category.id.trim().length === 0) {
-    throw new Error("Category ID is required.");
+  if (typeof category.id !== "string" || category.id.trim().length === 0 || category.id !== category.id.trim()) {
+    throw new Error("Category ID must be non-empty without surrounding whitespace.");
   }
   if (typeof category.householdId !== "string" || category.householdId.trim().length === 0) {
     throw new Error("Category household ID is required.");
@@ -106,20 +105,6 @@ export function seedCategoryCatalog(input: CategoryCatalogSeedInput): Category[]
         id: option.id,
         householdId: input.householdId,
         label: option.label,
-        createdAtIso: input.createdAtIso,
-        updatedAtIso: input.createdAtIso,
-      });
-    }
-  }
-  for (const id of input.referencedCategoryIds) {
-    if (id.trim().length === 0) {
-      throw new Error("Referenced category ID must be a non-empty string.");
-    }
-    if (!categories.has(id)) {
-      categories.set(id, {
-        id,
-        householdId: input.householdId,
-        label: normalizeCategoryName(id),
         createdAtIso: input.createdAtIso,
         updatedAtIso: input.createdAtIso,
       });

@@ -301,8 +301,13 @@ describe("ledger recovery runtime contracts", () => {
     const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
 
     try {
+      database.createCategoryRecord({
+        id: "income", householdId: HOUSEHOLD.id, label: "Income",
+        createdAtIso: "2026-05-01T00:00:00Z", updatedAtIso: "2026-05-01T00:00:00Z",
+      });
       database.replaceLedgerSnapshotData({
         ...createSnapshotData(),
+        categories: database.listCategories(HOUSEHOLD.id),
         transactions,
       });
       const ledgerState = database.loadLedgerSnapshotData();

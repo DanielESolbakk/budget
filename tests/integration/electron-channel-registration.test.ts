@@ -212,20 +212,20 @@ describe("Electron channel registration and live ledger wiring", () => {
     }
   });
 
-  it("preserves opaque legacy IDs when renaming through IPC", async () => {
+  it("normalizes request whitespace when renaming a category through IPC", async () => {
     createHousehold();
     const database = createLocalLedgerDatabase({ dbPath });
     try {
       const householdId = database.loadRuntimeMetadata()!.household.id;
       database.createCategoryRecord({
-        id: " legacy-category ", householdId, label: "Legacy category",
+        id: "category-workshop", householdId, label: "Workshop",
         createdAtIso: "2026-05-01T00:00:00.000Z", updatedAtIso: "2026-05-01T00:00:00.000Z",
       });
       await expect(Promise.resolve().then(() => invoke("category:rename", {
-        categoryId: " legacy-category ", label: "Recovered category",
-      }))).resolves.toMatchObject({ id: " legacy-category ", label: "Recovered category" });
+        categoryId: " category-workshop ", label: "Vehicle repairs",
+      }))).resolves.toMatchObject({ id: "category-workshop", label: "Vehicle repairs" });
       expect(database.listCategories(householdId)).toContainEqual(expect.objectContaining({
-        id: " legacy-category ", label: "Recovered category",
+        id: "category-workshop", label: "Vehicle repairs",
       }));
     } finally {
       database.close();
