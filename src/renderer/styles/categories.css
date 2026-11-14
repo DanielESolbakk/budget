@@ -1,0 +1,94 @@
+.category-management-dialog {
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  color: var(--paper);
+  box-shadow: 0 1rem 3rem rgb(23 54 75 / 24%);
+}
+
+.category-management-dialog::backdrop {
+  background: rgb(23 54 75 / 56%);
+}
+
+.category-management-heading,
+.category-management-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.category-management-heading h2 {
+  margin: 0;
+}
+
+.category-management-dialog > p {
+  color: var(--paper-muted);
+}
+
+.category-management-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.category-management-form label {
+  display: grid;
+  gap: 0.4rem;
+  flex: 1 1 12rem;
+}
+
+.category-management-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.category-management-dialog h3 {
+  margin: 1.5rem 0 0.5rem;
+}
+
+.category-management-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.category-management-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.category-management-list li > span {
+  overflow-wrap: anywhere;
+}
+
+.category-management-list form {
+  width: 100%;
+}
+
+.category-management-error,
+.category-catalog-error {
+  color: var(--error);
+  background: var(--error-soft);
+  padding: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .category-management-dialog {
+    padding: 1rem;
+  }
+
+  .category-management-form > button,
+  .category-management-actions {
+    width: 100%;
+  }
+}

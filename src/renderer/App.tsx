@@ -27,6 +27,7 @@ import { TransactionsWorkspace } from "./workspaces/TransactionsWorkspace.js";
 import type { LedgerFilterRequest } from "./dashboard/LedgerSection.js";
 import { formatReportingPeriodRange } from "./reportingPeriodDisplay.js";
 import type { ReviewState } from "./workspaces/types.js";
+import { CategoryCatalogProvider } from "./categories/CategoryCatalogContext.js";
 
 const DEFAULT_YEAR_MONTH = toLocalYearMonth(new Date());
 const SELECTED_YEAR_MONTH_SESSION_KEY = "budget-planner.selected-review-month";
@@ -409,6 +410,7 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
         : "header-status";
 
   return (
+    <CategoryCatalogProvider enabled={setupRequired === false} refreshKey={refreshCounter}>
     <div className="app-shell">
       {isBrowserPreview && (
         <div className="browser-preview-banner" role="status">
@@ -694,5 +696,6 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
         </main>
       </div>
     </div>
+    </CategoryCatalogProvider>
   );
 }

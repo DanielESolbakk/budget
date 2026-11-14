@@ -157,6 +157,85 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect(invoke("setup:isRequired")).toBe(true);
   });
 
+  it("persists category commands with main-owned identity, household, and timestamps", async () => {
+    createHousehold();
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const householdId = database.loadRuntimeMetadata()!.household.id;
+      const created = await Promise.resolve().then(() => invoke("category:create", {
+        label: "  Car \t repairs  ",
+        id: "renderer-category",
+        householdId: "renderer-household",
+        createdAtIso: "1970-01-01T00:00:00.000Z",
+        updatedAtIso: "1970-01-01T00:00:00.000Z",
+      }));
+      const persisted = database.listCategories(householdId).find((category) => category.label === "Car repairs");
+      expect(persisted).toMatchObject({ label: "Car repairs", householdId });
+      if (persisted === undefined) throw new Error("Expected persisted category.");
+      expect(persisted.id).not.toBe("renderer-category");
+      expect(persisted.createdAtIso).not.toBe("1970-01-01T00:00:00.000Z");
+      expect(created).toEqual(persisted);
+      await expect(Promise.resolve().then(() => invoke("category:rename", {
+        categoryId: persisted.id, label: " Vehicle \t maintenance ",
+      }))).resolves.toMatchObject({
+        id: persisted.id, label: "Vehicle maintenance", householdId, createdAtIso: persisted.createdAtIso,
+      });
+      expect(invoke("category:list")).toEqual(database.listCategories(householdId));
+      expect(database.listCategories(householdId)).toContainEqual(expect.objectContaining({
+        id: persisted.id, label: "Vehicle maintenance",
+      }));
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects malformed and duplicate category commands without changing the catalog", async () => {
+    createHousehold();
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const householdId = database.loadRuntimeMetadata()!.household.id;
+      const before = database.listCategories(householdId);
+      const requests = [
+        { channel: "category:create", input: [], error: /object/i },
+        { channel: "category:create", input: { label: 42 }, error: /label/i },
+        { channel: "category:create", input: { label: "" }, error: /label/i },
+        { channel: "category:create", input: { label: " groceries \t & food " }, error: /already exists/i },
+        { channel: "category:rename", input: { categoryId: 42, label: "Food" }, error: /categoryId/i },
+        { channel: "category:rename", input: { categoryId: "missing", label: "Food" }, error: /not found/i },
+      ];
+      for (const { channel, input, error } of requests) {
+        await expect(Promise.resolve().then(() => invoke(channel, input))).rejects.toThrow(error);
+        expect(database.listCategories(householdId)).toEqual(before);
+      }
+    } finally {
+      database.close();
+    }
+  });
+
+  it("preserves opaque legacy IDs when renaming through IPC", async () => {
+    createHousehold();
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const householdId = database.loadRuntimeMetadata()!.household.id;
+      database.createCategoryRecord({
+        id: " legacy-category ", householdId, label: "Legacy category",
+        createdAtIso: "2026-05-01T00:00:00.000Z", updatedAtIso: "2026-05-01T00:00:00.000Z",
+      });
+      await expect(Promise.resolve().then(() => invoke("category:rename", {
+        categoryId: " legacy-category ", label: "Recovered category",
+      }))).resolves.toMatchObject({ id: " legacy-category ", label: "Recovered category" });
+      expect(database.listCategories(householdId)).toContainEqual(expect.objectContaining({
+        id: " legacy-category ", label: "Recovered category",
+      }));
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects category access before household setup instead of returning an empty catalog", async () => {
+    await expect(Promise.resolve().then(() => invoke("category:list"))).rejects.toThrow(/household/i);
+  });
+
   it("rejects foreign senders, child frames and foreign origins on every channel before side effects", async () => {
     const window = harness.windows[0]!;
     const events = [

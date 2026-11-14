@@ -2,6 +2,7 @@ import type {
   AccountBalanceCheckpoint,
   AccountStatementCoveragePeriod,
   Account,
+  Category,
   ExchangeRate,
   Household,
   HoldingRecord,
@@ -22,10 +23,10 @@ import type {
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 
 /** Snapshot format version – increment when the serialized recovery contract changes. */
-export const SNAPSHOT_VERSION = "12" as const;
+export const SNAPSHOT_VERSION = "13" as const;
 
 export type SnapshotVersion =
-  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | typeof SNAPSHOT_VERSION;
+  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | typeof SNAPSHOT_VERSION;
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {
@@ -49,6 +50,7 @@ export interface SnapshotMetadata {
 export interface BackupSnapshot {
   metadata: SnapshotMetadata;
   household: Household;
+  categories: Category[];
   accounts: Account[];
   transactions: Transaction[];
   pendingObservations?: PendingTransactionObservation[];
@@ -78,6 +80,7 @@ export interface BackupSnapshot {
  */
 export interface LedgerSnapshotData {
   household: Household;
+  categories?: Category[];
   accounts: Account[];
   transactions: Transaction[];
   pendingObservations?: PendingTransactionObservation[];
@@ -160,6 +163,7 @@ export interface RestoreSnapshotInput {
 /** Output produced by a successful restore. */
 export interface RestoreSnapshotOutput {
   household: Household;
+  categories?: Category[];
   accounts: Account[];
   transactions: Transaction[];
   pendingObservations?: PendingTransactionObservation[];

@@ -14,6 +14,8 @@ import { normalizeMerchantName } from "../../src/domain/merchant/normalizeMercha
 import type { ManualEntryInput } from "../../src/domain/types.js";
 import type { LedgerChannelContext } from "./context.js";
 import {
+  parseCategoryCreateInput,
+  parseCategoryRenameInput,
   parseImportReviewCorrectionRequest,
   parseImportReviewDismissalRequest,
   parseNonEmptyString,
@@ -27,6 +29,7 @@ export function registerReviewLedgerChannels({
   ipcMain,
   assertTrustedRenderer,
   localLedgerDatabase,
+  categoryManagementService,
   sampleHousehold,
   runtimeState,
   learnedCategoryRules,
@@ -36,12 +39,38 @@ export function registerReviewLedgerChannels({
   | "ipcMain"
   | "assertTrustedRenderer"
   | "localLedgerDatabase"
+  | "categoryManagementService"
   | "sampleHousehold"
   | "runtimeState"
   | "learnedCategoryRules"
   | "ledgerOperationCoordinator"
   | "applyTransactionListTestControl"
 >): void {
+
+  ipcMain.handle("category:list", (event) => {
+    assertTrustedRenderer(event);
+    return categoryManagementService.list();
+  });
+
+  ipcMain.handle("category:create", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const validated = parseCategoryCreateInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const category = categoryManagementService.create(validated);
+      runtimeState.ledgerGeneration += 1;
+      return category;
+    });
+  });
+
+  ipcMain.handle("category:rename", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const validated = parseCategoryRenameInput(input);
+    return ledgerOperationCoordinator.runExclusive(() => {
+      const category = categoryManagementService.rename(validated);
+      runtimeState.ledgerGeneration += 1;
+      return category;
+    });
+  });
 
   ipcMain.handle(
     "transaction:addManual",

@@ -2,6 +2,7 @@ import React from "react";
 import type { DashboardViewContract } from "../../shared/dashboard.js";
 import { categoryDisplayName } from "./categoryDisplayName.js";
 import { formatNokAmountMinor } from "../formatNokAmountMinor.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 
 function renderTarget(minor: number | null): string {
   if (minor === null) {
@@ -22,6 +23,7 @@ export interface TargetVsActualSectionProps {
 }
 
 export function TargetVsActualSection({ viewContract }: TargetVsActualSectionProps): React.JSX.Element {
+  const { categories } = useCategoryCatalog();
   if (viewContract.state === "loading") {
     return (
       <section id="target-vs-actual" aria-label="Target vs Actual" tabIndex={0}>
@@ -78,7 +80,7 @@ export function TargetVsActualSection({ viewContract }: TargetVsActualSectionPro
         <tbody>
           {rows.map((row) => (
             <tr key={row.categoryId ?? "uncategorized"}>
-              <td data-label="Category">{categoryDisplayName(row.categoryId)}</td>
+              <td data-label="Category">{categoryDisplayName(row.categoryId, undefined, categories)}</td>
               <td data-label="Target">{renderTarget(row.targetMinor)}</td>
               <td data-label="Actual">{formatNokAmountMinor(row.actualMinor)}</td>
               <td data-label="Over/under target">{isIncomplete && row.targetMinor !== null ? "Incomplete" : renderDifference(row.deltaMinor)}</td>

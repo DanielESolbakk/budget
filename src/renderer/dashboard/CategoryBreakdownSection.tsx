@@ -1,6 +1,7 @@
 import React from "react";
 import type { DashboardViewContract } from "../../shared/dashboard.js";
 import { categoryDisplayName } from "./categoryDisplayName.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 
 const MINOR_UNITS_PER_NOK = 100;
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
@@ -19,6 +20,7 @@ export interface CategoryBreakdownSectionProps {
 }
 
 export function CategoryBreakdownSection({ viewContract }: CategoryBreakdownSectionProps): React.JSX.Element {
+  const { categories } = useCategoryCatalog();
   if (viewContract.state === "loading") {
     return (
       <section aria-label="Category Breakdown">
@@ -56,7 +58,7 @@ export function CategoryBreakdownSection({ viewContract }: CategoryBreakdownSect
             ) : (
               <ul className="financial-rows">
                 {categoryBreakdownByFlow.spending.entries.map((entry) => {
-                  const label = categoryDisplayName(entry.categoryId, entry.label);
+                  const label = categoryDisplayName(entry.categoryId, entry.label, categories);
                   return (
                     <li
                       key={entry.categoryId ?? "uncategorized"}
@@ -77,7 +79,7 @@ export function CategoryBreakdownSection({ viewContract }: CategoryBreakdownSect
             ) : (
               <ul className="financial-rows">
                 {categoryBreakdownByFlow.inflows.entries.map((entry) => {
-                  const label = categoryDisplayName(entry.categoryId, entry.label);
+                  const label = categoryDisplayName(entry.categoryId, entry.label, categories);
                   return (
                     <li
                       key={entry.categoryId ?? "uncategorized"}

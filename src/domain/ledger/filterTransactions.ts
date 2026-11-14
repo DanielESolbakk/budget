@@ -107,17 +107,18 @@ function compareTransactions(
   left: Transaction,
   right: Transaction,
   sortBy: TransactionSortField,
-  sortDirection: TransactionSortDirection
+  sortDirection: TransactionSortDirection,
+  categories: readonly { id: string; label: string }[],
 ): number {
   const leftValue = sortBy === "bookedAtIso"
     ? bookingTimeStart(left.bookedAtIso)
     : sortBy === "categoryId"
-      ? CATEGORY_OPTIONS.find((category) => category.id === left.categoryId)?.label ?? left.categoryId ?? "Uncategorized"
+      ? categories.find((category) => category.id === left.categoryId)?.label ?? left.categoryId ?? "Uncategorized"
       : left[sortBy] ?? "";
   const rightValue = sortBy === "bookedAtIso"
     ? bookingTimeStart(right.bookedAtIso)
     : sortBy === "categoryId"
-      ? CATEGORY_OPTIONS.find((category) => category.id === right.categoryId)?.label ?? right.categoryId ?? "Uncategorized"
+      ? categories.find((category) => category.id === right.categoryId)?.label ?? right.categoryId ?? "Uncategorized"
       : right[sortBy] ?? "";
   const comparison = typeof leftValue === "number" && typeof rightValue === "number"
     ? leftValue - rightValue
@@ -166,7 +167,8 @@ function compareBookingTimes(left: string, right: string): number {
 
 export function filterTransactions(
   transactions: readonly Transaction[],
-  query: TransactionQuery
+  query: TransactionQuery,
+  categories: readonly { id: string; label: string }[] = CATEGORY_OPTIONS,
 ): Transaction[] {
   const { bookedFromMs, bookedToMs } = resolveTransactionDateBounds(query);
 
@@ -201,13 +203,15 @@ export function filterTransactions(
       left,
       right,
       query.sortBy ?? "bookedAtIso",
-      query.sortDirection ?? "desc"
+      query.sortDirection ?? "desc",
+      categories,
     ));
 }
 
 export function queryTransactions(
   transactions: readonly Transaction[],
-  query: TransactionQuery
+  query: TransactionQuery,
+  categories: readonly { id: string; label: string }[] = CATEGORY_OPTIONS,
 ): TransactionPage {
   const page = query.page ?? 1;
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
@@ -218,7 +222,7 @@ export function queryTransactions(
     throw new RangeError(`pageSize must be an integer between 1 and ${MAX_TRANSACTION_PAGE_SIZE}.`);
   }
 
-  const filtered = filterTransactions(transactions, query);
+  const filtered = filterTransactions(transactions, query, categories);
   const start = (page - 1) * pageSize;
   return {
     transactions: filtered.slice(start, start + pageSize),

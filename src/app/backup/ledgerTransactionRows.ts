@@ -44,7 +44,10 @@ export function merchantSearchValue(transaction: Pick<Transaction, "merchantRaw"
   return `${transaction.merchantRaw}\n${transaction.merchantAlias ?? ""}`.toUpperCase();
 }
 
-export function mapTransactionRow(transaction: TransactionRow): Transaction {
+export function mapTransactionRow(
+  transaction: TransactionRow,
+  allowedCategoryIds: readonly string[] = CATEGORY_OPTIONS.map((category) => category.id),
+): Transaction {
   const mapped: Transaction = {
     id: transaction.id,
     householdId: transaction.household_id,
@@ -79,14 +82,17 @@ export function mapTransactionRow(transaction: TransactionRow): Transaction {
     validateTransactionCategoryAllocations(
       mapped,
       allocations,
-      CATEGORY_OPTIONS.map((category) => category.id)
+      allowedCategoryIds
     );
     mapped.categoryAllocations = allocations;
   }
   return mapped;
 }
 
-export function serializeTransactionCategoryAllocations(transaction: Transaction): string | null {
+export function serializeTransactionCategoryAllocations(
+  transaction: Transaction,
+  allowedCategoryIds: readonly string[] = CATEGORY_OPTIONS.map((category) => category.id),
+): string | null {
   if (transaction.categoryAllocations === undefined || transaction.categoryAllocations.length === 0) {
     return null;
   }
@@ -97,7 +103,7 @@ export function serializeTransactionCategoryAllocations(transaction: Transaction
   validateTransactionCategoryAllocations(
     transaction,
     allocations,
-    CATEGORY_OPTIONS.map((category) => category.id)
+    allowedCategoryIds
   );
   return JSON.stringify(allocations);
 }

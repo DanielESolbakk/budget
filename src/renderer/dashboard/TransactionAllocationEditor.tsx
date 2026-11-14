@@ -1,6 +1,6 @@
 import React from "react";
 import type { Transaction } from "../../domain/types.js";
-import { CATEGORY_OPTIONS } from "../import/categoryOptions.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 import { formatMinorUnits } from "../../domain/money/minorUnits.js";
 
 export interface AllocationDraft {
@@ -55,6 +55,7 @@ export function TransactionAllocationEditor({
   onClear,
   onCancel,
 }: TransactionAllocationEditorProps): React.JSX.Element {
+  const { categories, loading, error: catalogError } = useCategoryCatalog();
   const remainingMinor = BigInt(transaction.amountMinor) - totalMinor;
   const overAllocatedMinor = remainingMinor !== 0n &&
       transaction.amountMinor !== 0 &&
@@ -121,13 +122,13 @@ export function TransactionAllocationEditor({
                   aria-label={`Allocation category ${index + 1}`}
                   aria-invalid={categoryHasError || undefined}
                   aria-describedby={categoryHasError ? "transaction-allocation-error" : undefined}
-                  disabled={isSaving}
+                  disabled={isSaving || loading || catalogError !== null}
                   value={allocation.categoryId}
                   onChange={(event) => onUpdate(index, { categoryId: event.target.value })}
                   onBlur={onBalanceBlur}
                 >
                   <option value="">Choose a category</option>
-                  {CATEGORY_OPTIONS.map((category) => (
+                  {categories.map((category) => (
                     <option key={category.id} value={category.id}>{category.label}</option>
                   ))}
                 </select>

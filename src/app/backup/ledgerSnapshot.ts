@@ -32,12 +32,15 @@ import {
   parseSourceType,
 } from "./ledgerTransactionRows.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
+import { createCategoryRepository } from "./categoryRepository.js";
+import { collectCategoryReferenceIds } from "../../domain/categorization/categoryCatalog.js";
 
 type LedgerSnapshotReaders = Pick<LocalLedgerDatabase,
   | "listExchangeRates"
   | "listHoldingRecords"
   | "listLoanRecords"
   | "getReportingPeriodRule"
+  | "listCategories"
 >;
 
 export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): void {
@@ -50,6 +53,12 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
   db.prepare(
     "INSERT INTO household_preferences (household_id, reporting_period_rule_json) VALUES (?, ?)"
   ).run(snapshot.household.id, JSON.stringify(reportingPeriodRule));
+
+  const categoryRepository = createCategoryRepository(db);
+  categoryRepository.seedCategories(
+    snapshot.household, snapshot.categories, collectCategoryReferenceIds(snapshot),
+  );
+  const categoryIds = categoryRepository.listCategories(snapshot.household.id).map((category) => category.id);
 
   const insertAccount = db.prepare(
     "INSERT INTO accounts (id, household_id, name, currency_code, archived_at_iso) VALUES (?, ?, ?, ?, ?)"
@@ -178,7 +187,7 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
       transaction.categoryId ?? null,
       transaction.importJobId ?? null,
       transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
-      serializeTransactionCategoryAllocations(transaction)
+      serializeTransactionCategoryAllocations(transaction, categoryIds)
     );
   }
 
@@ -357,7 +366,7 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
 }
 
 export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshotReaders): LedgerSnapshotData {
-  const { listExchangeRates, listHoldingRecords, listLoanRecords, getReportingPeriodRule } = readers;
+  const { listExchangeRates, listHoldingRecords, listLoanRecords, getReportingPeriodRule, listCategories } = readers;
   const householdRow = db
     .prepare("SELECT id, name, created_at_iso FROM households ORDER BY id LIMIT 1")
     .get() as { id: string; name: string; created_at_iso: string } | undefined;
@@ -365,6 +374,8 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
   if (!householdRow) {
     throw new Error("Local SQLite database has no household record to back up.");
   }
+  const categories = listCategories(householdRow.id);
+  const categoryIds = categories.map((category) => category.id);
 
   const accounts = db
     .prepare(
@@ -501,7 +512,7 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
   `).all(householdRow.id).map(mapRecurringCommitmentDecisionRow);
 
   const mappedTransactions: Transaction[] = transactions.map((transaction) => {
-    const mapped = mapTransactionRow(transaction);
+    const mapped = mapTransactionRow(transaction, categoryIds);
     if (transaction.categorization_json !== null) {
       mapped.categorization = JSON.parse(transaction.categorization_json) as CategorizationDecision;
     }
@@ -546,6 +557,7 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
       name: householdRow.name,
       createdAtIso: householdRow.created_at_iso,
     },
+    categories,
     accounts: accounts.map((account) => ({
       id: account.id,
       householdId: account.household_id,

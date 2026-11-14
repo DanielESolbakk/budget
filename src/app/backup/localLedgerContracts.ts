@@ -11,6 +11,7 @@ import type {
   AccountStatementCoveragePeriod,
   Account,
   CategorizationDecision,
+  Category,
   Household,
   HoldingRecord,
   HoldingRecordRevision,
@@ -49,6 +50,9 @@ export interface LocalLedgerRuntimeMetadata {
 }
 
 export interface LocalLedgerDatabase {
+  listCategories: (householdId: string) => Category[];
+  createCategoryRecord: (category: Category) => void;
+  updateCategoryRecordLabel: (householdId: string, categoryId: string, label: string, updatedAtIso: string) => void;
   hasHousehold: () => boolean;
   createInitialHouseholdAndAccount: (input: {
     householdName: string;

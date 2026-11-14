@@ -1,6 +1,8 @@
 import React from "react";
 import { LedgerSection, type LedgerFilterRequest } from "../dashboard/LedgerSection.js";
 import { CategoryReviewSection, type UncategorizedQueueState } from "../import/CategoryReviewSection.js";
+import { CategoryManagementDialog } from "../categories/CategoryManagementDialog.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 
 interface TransactionsWorkspaceProps {
   isActive: boolean;
@@ -23,6 +25,8 @@ export function TransactionsWorkspace({
   isReportSelected,
   onBackToReview,
 }: TransactionsWorkspaceProps): React.JSX.Element {
+  const { categories, loading, error } = useCategoryCatalog();
+  const [managingCategories, setManagingCategories] = React.useState(false);
   const [uncategorizedQueueState, setUncategorizedQueueState] = React.useState<UncategorizedQueueState>({
     count: 0,
     isReady: false,
@@ -40,7 +44,13 @@ export function TransactionsWorkspace({
       <div className="destination-heading">
         <h2>Transactions</h2>
         <p>Search the ledger and review missing or uncertain category decisions.</p>
+        <button type="button" className="action-secondary" disabled={loading || error !== null}
+          onClick={() => setManagingCategories(true)}>Manage categories</button>
       </div>
+      {managingCategories && isActive && (
+        <CategoryManagementDialog key={categories[0]?.householdId} onClose={() => setManagingCategories(false)}
+          onSaved={onCategorySaved} />
+      )}
       {filterRequest !== null && filterRequest !== undefined && (
         <div className="ledger-report-context">
           <button type="button" className="action-secondary" onClick={onBackToReview}>

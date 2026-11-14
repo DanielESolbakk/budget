@@ -6,7 +6,7 @@ import type {
 } from "../../app/import/manualEntry.js";
 import type { Account, ManualEntryInput, ManualEntryValidationErrorCode } from "../../domain/types.js";
 import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
-import { CATEGORY_OPTIONS } from "./categoryOptions.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 import { parseNokAmountMinor } from "../parseNokAmountMinor.js";
 
 interface ManualEntryFormValues {
@@ -82,6 +82,7 @@ interface ManualEntrySectionProps {
 }
 
 export function ManualEntrySection({ refreshKey, onEntrySuccess, onOpenLedger, onReviewUncategorized }: ManualEntrySectionProps): React.JSX.Element {
+  const { categories } = useCategoryCatalog();
   const [householdId, setHouseholdId] = React.useState<string | null>(null);
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [accountState, setAccountState] = React.useState<"loading" | "ready" | "error">("loading");
@@ -259,7 +260,7 @@ export function ManualEntrySection({ refreshKey, onEntrySuccess, onOpenLedger, o
           disabled={entryState.status === "pending"}
         >
           <option value="">Leave uncategorized for review</option>
-          {CATEGORY_OPTIONS.map((category) => (
+          {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.label}
             </option>

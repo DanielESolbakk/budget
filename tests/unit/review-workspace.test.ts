@@ -10,6 +10,11 @@ import { TargetVsActualSection } from "../../src/renderer/dashboard/TargetVsActu
 import type { ReviewState } from "../../src/renderer/workspaces/types.js";
 import type { ReportingPeriodRule } from "../../src/shared/applicationPreferences.js";
 
+vi.mock("../../src/renderer/categories/CategoryCatalogContext.js", async () => {
+  const { buildRendererCategoryCatalogFixture } = await import("../helpers/buildRendererCategoryCatalogFixture.js");
+  return { useCategoryCatalog: () => buildRendererCategoryCatalogFixture() };
+});
+
 describe("review period navigation", () => {
   afterEach(() => vi.useRealTimers());
 

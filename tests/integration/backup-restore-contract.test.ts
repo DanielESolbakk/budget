@@ -650,7 +650,8 @@ describe("backup/restore contract", () => {
         target: { yearMonth: "2026-05", categoryId: "groceries", targetMinor: -1 },
       },
     ])("rejects a restored target with $name", ({ target }) => {
-      const snapshot = buildRestoreSnapshot({ monthlyCategoryTargets: [target] });
+      const snapshot = buildRestoreSnapshot();
+      snapshot.monthlyCategoryTargets = [target];
 
       withSnapshotFile(snapshot, (snapshotPath) => {
         expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(

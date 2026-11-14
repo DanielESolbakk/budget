@@ -10,6 +10,7 @@ import type {
   SameMerchantPropagationOperation,
 } from "../../domain/types.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
+import { createCategoryIdReader } from "./categoryRepository.js";
 
 type CorrectionRepository = Pick<LocalLedgerDatabase,
   | "updateTransactionCategory"
@@ -41,8 +42,11 @@ export function createCorrectionRepository(db: DatabaseSync): CorrectionReposito
     db.exec("BEGIN");
     try {
       const originalCategorizationRow = db
-        .prepare("SELECT categorization_json FROM transactions WHERE id = ?")
-        .get(transactionId) as { categorization_json: string | null } | undefined;
+        .prepare("SELECT household_id, categorization_json FROM transactions WHERE id = ?")
+        .get(transactionId) as { household_id: string; categorization_json: string | null } | undefined;
+      if (originalCategorizationRow === undefined) {
+        throw new Error(`Transaction not found: ${transactionId}`);
+      }
       const correctionProvenance = createCorrectionProvenance({
         id: randomUUID(),
         sourceTransactionId: transactionId,
@@ -57,7 +61,7 @@ export function createCorrectionRepository(db: DatabaseSync): CorrectionReposito
                 originalCategorizationRow.categorization_json
               ) as CategorizationDecision,
             }),
-      });
+      }, createCategoryIdReader(db)(originalCategorizationRow.household_id));
       updateTransactionCategory(transactionId, rule.categoryId);
       if (categorization !== undefined) {
         db.prepare("UPDATE transactions SET categorization_json = ? WHERE id = ?").run(

@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
 import { validateReportingPeriodRule } from "../../shared/applicationPreferences.js";
+import { collectCategoryReferenceIds, seedCategoryCatalog } from "../../domain/categorization/categoryCatalog.js";
 import {
   SNAPSHOT_VERSION,
   type BackupSnapshot,
@@ -33,6 +34,12 @@ function sortJsonValueRecursively(value: unknown): unknown {
  */
 export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
   const createdAtIso = input.createdAtIso ?? new Date().toISOString();
+  const categories = seedCategoryCatalog({
+    householdId: input.household.id,
+    categories: input.categories ?? [],
+    referencedCategoryIds: collectCategoryReferenceIds(input),
+    createdAtIso,
+  }).sort((left, right) => left.id.localeCompare(right.id));
 
   const accounts = [...input.accounts].sort((a, b) => a.id.localeCompare(b.id));
   const transactions = [...input.transactions].sort((a, b) => a.id.localeCompare(b.id));
@@ -131,6 +138,7 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
       accountCount: accounts.length,
     },
     household: input.household,
+    categories,
     accounts,
     transactions,
     ...(pendingObservations.length === 0 ? {} : { pendingObservations }),
