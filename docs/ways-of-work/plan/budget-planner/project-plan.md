@@ -11,6 +11,8 @@ Budget Planner is a local-first desktop budget application for one household use
 - Review queue for low-confidence outcomes
 - Monthly dashboards, budget targets, and simple forecasting
 - Local backup and export
+- Activity automation, beginning with a local category catalog and create,
+  rename, and safe merge workflows; see [Activity automation plan](activity-automation-plan.md).
 
 ## Success Criteria
 
@@ -84,6 +86,9 @@ graph TD
 - Feature: Merchant normalization
 - Feature: Rule evaluation and confidence scoring
 - Feature: Review queue and correction loop
+- Feature F3.4: Category catalog and user-managed categories (#585)
+- Story S3.4.1: Create and rename categories (#587); Tests #589, #590, #591
+- Story S3.4.2: Preview and safely merge categories (#588); Tests #592, #593, #594
 - Enabler: Rule persistence and provenance model
 - Test: Categorization fixtures and regression coverage
 
@@ -109,6 +114,10 @@ graph TD
 - P1: Desktop ledger, dashboards, targets, simple forecast
 - P1: Backup, export, no-network verification, release-quality automation
 - P2: Niceties that improve usability but do not block first usable release
+- Approved next Activity workstream: F3.4 category management, then offline
+  merchant recognition, unknown-merchant learning, safe batch review, and
+  recurring suggestions. Only F3.4 is materialized for this planning batch;
+  later workstreams require their own concrete readiness checks.
 
 ## GitHub Project Board Guidance
 

@@ -9,7 +9,7 @@ Use these terms consistently in planning docs, code, tests, and issue templates.
 | household | The local budgeting context managed by one user across one or more accounts. | First release supports one household user. |
 | account | A source or destination ledger account such as checking, savings, or credit card. | Accounts belong to a household. |
 | transaction | A dated financial record with amount, direction, account, and provenance. | Imported or manually entered. |
-| category | A user-visible spending or income classification for transactions. | Default categories are editable. |
+| category | A user-visible spending or income classification for transactions, identified independently of its editable display name. | Planned F3.4 management preserves stable IDs; merged categories remain inactive records resolving to their active destination. |
 | merchant alias | A normalized merchant representation used to map raw merchant text to stable names. | Supports deterministic categorization. |
 | categorization rule | A deterministic rule that maps transaction signals to categories and confidence. | Refined by user corrections. |
 | import job | A tracked import execution for CSV, PDF, or manual batch activity. | Must include status and provenance metadata. |

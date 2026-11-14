@@ -49,6 +49,9 @@ The user needs a modern local desktop tool to understand income and expenses wit
 - Manual transaction entry
 - Duplicate detection and import provenance
 - Default editable categories
+- Expanded built-in and custom categories with stable IDs, renaming, and
+  previewed/confirmed safe merges under F3.4; see
+  [Activity automation plan](activity-automation-plan.md).
 - Merchant normalization and rule-based categorization with confidence scoring
 - Review queue for low-confidence or unmatched transactions
 - Search, filter, and manual correction workflows
@@ -91,6 +94,11 @@ The user needs a modern local desktop tool to understand income and expenses wit
 - The application must categorize using deterministic rules before any future smarter local automation.
 - The application must attach a confidence score or equivalent review signal to classification results.
 - The application must allow user corrections and use those corrections to refine future rule behavior.
+- F3.4 must persist category labels and identity locally, preserve existing
+  category references during migration/rename, and require explicit confirmation
+  before merging current references and summing colliding monthly targets.
+- Category catalog and merge state must survive backup/restore without rewriting
+  original financial values or historical correction/import evidence.
 
 ### Ledger And Review
 

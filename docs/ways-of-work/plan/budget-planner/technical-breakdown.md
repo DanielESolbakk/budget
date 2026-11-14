@@ -53,6 +53,15 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Categorization rule evaluation applies user and seeded rules in deterministic order.
 - Confidence scoring distinguishes auto-accept, review, and uncategorized outcomes.
 - User corrections create or refine local categorization rules for future imports.
+- F3.4 plans a persisted category catalog with stable IDs, additive legacy
+  registration, user-managed labels, and inactive merged-category resolution.
+  Category services and repository transactions own merge calculations and
+  writes; renderer controls only selection, preview, and confirmation.
+- Category merge preserves immutable correction/import/propagation evidence,
+  consolidates current allocations, sums colliding targets safely, and resolves
+  old rule/undo category IDs without reactivating merged categories. Snapshot
+  contracts retain catalog and merge evidence. See
+  [Activity automation plan](activity-automation-plan.md) for migration and tests.
 
 ### Ledger And Review
 
