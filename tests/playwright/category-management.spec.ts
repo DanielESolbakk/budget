@@ -62,6 +62,192 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       await appShell.openWorkspace("Transactions");
     });
 
+    test.describe("contextual category management", () => {
+      test.use({ categoryScenario: "large" });
+      test("keeps a manual entry draft when creating a category beside its picker", async ({
+        window, appShell, categoryManagement, databasePath,
+      }) => {
+        await appShell.openWorkspace("Import");
+        await appShell.selectImportFormat("Manual transaction");
+        const manual = new ManualEntryPage(window);
+        await manual.accountInput.selectOption("sample-acc");
+        await manual.bookedDateInput.fill("2026-05-24");
+        await manual.amountInput.fill("-25.50");
+        await manual.merchantInput.fill("Verksted Nordlys");
+        await manual.categoryInput.selectOption("groceries");
+        await expect(manual.entrySection.getByRole("button", { name: "Manage categories for manual entry" })).toBeVisible();
+        await categoryManagement.openFrom("Manage categories for manual entry");
+        await categoryManagement.create("Car repairs");
+        await expect(categoryManagement.result).toContainText("Created Car repairs");
+        await categoryManagement.close();
+        await expect(manual.categoryInput).toBeFocused();
+        await expect(manual.accountInput).toHaveValue("sample-acc");
+        await expect(manual.bookedDateInput).toHaveValue("2026-05-24");
+        await expect(manual.amountInput).toHaveValue("-25.50");
+        await expect(manual.merchantInput).toHaveValue("Verksted Nordlys");
+        await expect(manual.categoryInput).toHaveValue("groceries");
+        await manual.categoryInput.selectOption({ label: "Car repairs" });
+        const categoryId = await manual.categoryInput.inputValue();
+        const before = createLocalLedgerDatabase({ dbPath: databasePath });
+        try {
+          expect(before.loadLedgerSnapshotData().transactions).toHaveLength(2);
+        } finally { before.close(); }
+        await manual.submitButton.click();
+        await expect(manual.successStatus).toContainText("Verksted Nordlys");
+        const saved = createLocalLedgerDatabase({ dbPath: databasePath });
+        try {
+          expect(saved.loadLedgerSnapshotData().transactions.find((item) => item.merchantRaw === "Verksted Nordlys"))
+            .toMatchObject({ accountId: "sample-acc", bookedAtIso: "2026-05-24",
+              amountMinor: -2550, categoryId });
+        } finally { saved.close(); }
+      });
+
+      test("keeps an edited target amount and month when renaming beside its picker", async ({
+        window, appShell, categoryManagement, databasePath,
+      }) => {
+        await appShell.openWorkspace("Review");
+        await new DashboardPage(window).selectMonth("2026-05");
+        await window.getByText("Manage category targets", { exact: true }).click();
+        const targets = new CategoryTargetPage(window);
+        await targets.editTargetButton("groceries").click();
+        await targets.targetAmountInput.fill("345.67");
+        await expect(targets.section.getByRole("button", { name: "Manage categories for budget targets" })).toBeVisible();
+        await categoryManagement.openFrom("Manage categories for budget targets");
+        await categoryManagement.rename("Groceries & food", "Household food");
+        await expect(categoryManagement.result).toContainText("Renamed to Household food");
+        await categoryManagement.close();
+        await expect(targets.targetAmountInput).toBeFocused();
+        await expect(targets.categorySelect).toHaveValue("groceries");
+        await expect(targets.categorySelect).toBeDisabled();
+        await expect(targets.targetAmountInput).toHaveValue("345.67");
+        await expect(targets.section).toContainText("Household food");
+        const before = createLocalLedgerDatabase({ dbPath: databasePath });
+        try {
+          expect(before.loadLedgerSnapshotData().monthlyCategoryTargets)
+            .toEqual([{ yearMonth: "2026-05", categoryId: "groceries", targetMinor: 20000 }]);
+        } finally { before.close(); }
+        await targets.saveButton.click();
+        await expect(targets.savedConfirmation).toBeVisible();
+        const saved = createLocalLedgerDatabase({ dbPath: databasePath });
+        try {
+          expect(saved.loadLedgerSnapshotData().monthlyCategoryTargets)
+            .toEqual([{ yearMonth: "2026-05", categoryId: "groceries", targetMinor: 34567 }]);
+        } finally { saved.close(); }
+      });
+
+      for (const context of ["review", "allocations"] as const) {
+        test(`keeps an unsaved ${context} choice when cancelling category management`, async ({
+          window, categoryManagement, databasePath,
+        }) => {
+          const review = new ReviewQueuePage(window);
+          const workshop = new LedgerPage(window).transaction("Verksted Solglimt");
+          if (context === "allocations") {
+            await workshop.getByRole("button", { name: "Edit category allocations for Verksted Solglimt" }).click();
+          }
+          const region = context === "review" ? review.reviewItem("Verksted Solglimt")
+            : window.getByRole("region", { name: "Transaction category allocations for Verksted Solglimt" });
+          const picker = context === "review" ? review.categorySelect("Verksted Solglimt")
+            : region.getByLabel("Allocation category 1");
+          if (context === "review") {
+            await expect.poll(async () => {
+              const guidance = await region.getByRole("paragraph").first().boundingBox();
+              const category = await picker.boundingBox();
+              if (guidance === null || category === null) throw new Error("Expected the category choice and its guidance.");
+              return guidance.width + 1 >= category.width;
+            }, { message: "Future-learning guidance must span the category choice instead of collapsing beside it." })
+              .toBe(true);
+          }
+          await picker.selectOption("fees");
+          if (context === "allocations") await region.getByLabel("Allocation amount 1").fill("-100.50");
+          const openerName = context === "review" ? "Manage categories for Verksted Solglimt"
+            : "Manage categories for allocation 1";
+          await expect(region.getByRole("button", { name: openerName, exact: true })).toBeVisible();
+          await categoryManagement.openFrom(openerName);
+          await categoryManagement.newName.fill("Unsaved household category");
+          await categoryManagement.close();
+          await expect(picker).toBeFocused();
+          await expect(picker).toHaveValue("fees");
+          if (context === "allocations") await expect(region.getByLabel("Allocation amount 1")).toHaveValue("-100.50");
+          const unchanged = createLocalLedgerDatabase({ dbPath: databasePath });
+          try {
+            const snapshot = unchanged.loadLedgerSnapshotData();
+            expect(snapshot.transactions.find((item) => item.id === "tx-workshop"))
+              .toMatchObject({ amountMinor: -12000 });
+            expect(snapshot.transactions.find((item) => item.id === "tx-workshop")?.categoryId).toBeUndefined();
+            expect(snapshot.categories?.some((category) => category.label === "Unsaved household category")).toBe(false);
+          } finally { unchanged.close(); }
+        });
+      }
+    });
+
+    test("returns to an allocation draft after dismissing a committed category with a failed refresh", async ({
+      window, categoryManagement, databasePath,
+    }) => {
+      const workshop = new LedgerPage(window).transaction("Verksted Solglimt");
+      await workshop.getByRole("button", { name: "Edit category allocations for Verksted Solglimt" }).click();
+      const allocations = window.getByRole("region", { name: "Transaction category allocations for Verksted Solglimt" });
+      const picker = allocations.getByLabel("Allocation category 1");
+      await picker.selectOption("fees");
+      await allocations.getByLabel("Allocation amount 1").fill("-100.50");
+      const originalLedger = createLocalLedgerDatabase({ dbPath: databasePath });
+      const originalTransactions = originalLedger.loadLedgerSnapshotData().transactions;
+      originalLedger.close();
+      const database = new DatabaseSync(databasePath);
+      try {
+        database.exec(`
+          CREATE TRIGGER category_allocation_refresh_fault AFTER INSERT ON categories
+          WHEN NEW.label = 'Household repairs'
+          BEGIN UPDATE categories SET created_at_iso = 'invalid' WHERE id = NEW.id; END;
+        `);
+        await categoryManagement.openFrom("Manage categories for allocation 1");
+        await categoryManagement.create("Household repairs");
+        await expect(categoryManagement.error).toContainText("The category was saved");
+        await expect(picker).toBeDisabled();
+        database.exec(`
+          DROP TRIGGER category_allocation_refresh_fault;
+          UPDATE categories SET created_at_iso = '2026-05-01T00:00:00Z' WHERE label = 'Household repairs';
+        `);
+        await categoryManagement.close();
+        await expect(picker).toBeEnabled();
+        await expect(picker).toBeFocused();
+        await expect(picker).toHaveValue("fees");
+        await expect(allocations.getByLabel("Allocation amount 1")).toHaveValue("-100.50");
+        const unchangedLedger = createLocalLedgerDatabase({ dbPath: databasePath });
+        try {
+          expect(unchangedLedger.loadLedgerSnapshotData().transactions).toEqual(originalTransactions);
+          expect(unchangedLedger.listCategories("sample-hh").filter((category) => category.label === "Household repairs"))
+            .toHaveLength(1);
+        } finally { unchangedLedger.close(); }
+      } finally { database.close(); }
+    });
+
+    test("reads optional category help without submitting or losing a draft", async ({
+      categoryManagement, databasePath,
+    }) => {
+      await categoryManagement.open();
+      await categoryManagement.newName.fill("Household repairs");
+      const help = categoryManagement.dialog.getByRole("group", { name: "How categories work", exact: true });
+      await expect(help).toBeVisible();
+      await expect(categoryManagement.newName).toHaveAccessibleDescription(/unique/i);
+      const summary = help.getByText("How categories work", { exact: true });
+      const explanation = help.getByRole("paragraph", { includeHidden: true }).first();
+      await expect(explanation).toBeHidden();
+      await summary.press("Enter");
+      await expect(explanation).toBeVisible();
+      await expect(categoryManagement.newName).toHaveValue("Household repairs");
+      await summary.press("Enter");
+      await expect(explanation).toBeHidden();
+      await expect(categoryManagement.result).toBeEmpty();
+      const unchanged = createLocalLedgerDatabase({ dbPath: databasePath });
+      try {
+        expect(unchanged.loadLedgerSnapshotData().categories?.some((category) => category.label === "Household repairs"))
+          .toBe(false);
+      } finally { unchanged.close(); }
+      await categoryManagement.newName.press("Enter");
+      await expect(categoryManagement.result).toContainText("Created Household repairs");
+      await expect(categoryManagement.newName).toHaveValue("");
+    });
+
     test("creates and renames a category that remains selectable after relaunch", async ({
       window, appShell, categoryManagement, databasePath, electronApp,
     }, testInfo) => {
@@ -182,7 +368,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       await expect(categoryManagement.newName).toHaveValue("   ");
       await expect(categoryManagement.newName).toBeFocused();
       await expect(categoryManagement.newName).toHaveAttribute("aria-invalid", "true");
-      await expect(categoryManagement.newName).toHaveAttribute("aria-describedby", "category-management-error");
+      await expect(categoryManagement.newName).toHaveAttribute("aria-describedby", /(?:^|\s)category-management-error(?:\s|$)/);
       await categoryManagement.create("  HEALTH  ");
       await expect(categoryManagement.error).toContainText("already exists");
       await expect(categoryManagement.error).toContainText("Choose a different name");
@@ -199,6 +385,40 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
 
     test.describe("large category catalog", () => {
       test.use({ categoryScenario: "large" });
+      test("searches names without creating categories or losing rename drafts and retains the query after saves", async ({
+        categoryManagement,
+      }) => {
+        await categoryManagement.open();
+        await categoryManagement.newName.fill("Unsaved household category");
+        await expect(categoryManagement.searchInput).toBeVisible();
+        await categoryManagement.searchInput.fill("  SYNTHETIC   category 49  ");
+        await categoryManagement.searchInput.press("Enter");
+        const list = categoryManagement.dialog.getByRole("list", { name: "Household categories" });
+        await expect(list.getByRole("listitem")).toHaveCount(1);
+        await expect(categoryManagement.newName).toHaveValue("Unsaved household category");
+        await expect(categoryManagement.result).toBeEmpty();
+        const name = "Synthetic category 49 with a long household label";
+        await categoryManagement.dialog.getByRole("button", { name: `Rename ${name}`, exact: true }).click();
+        const rename = categoryManagement.dialog.getByRole("textbox", { name: "Category name", exact: true });
+        await rename.fill("Uncommitted rename");
+        await expect(categoryManagement.searchInput).toBeDisabled();
+        await categoryManagement.dialog.getByRole("button", { name: "Cancel rename", exact: true }).click();
+        await expect(categoryManagement.searchInput).toHaveValue("  SYNTHETIC   category 49  ");
+        await expect(categoryManagement.category(name)).toHaveCount(1);
+        await categoryManagement.rename(name, "Revised household label");
+        await expect(categoryManagement.result).toContainText("Renamed to Revised household label");
+        await expect(categoryManagement.searchInput).toHaveValue("  SYNTHETIC   category 49  ");
+        await expect(list.getByRole("listitem")).toHaveCount(0);
+        await expect(categoryManagement.dialog).toContainText("No categories match your search");
+        await categoryManagement.create("Car repairs");
+        await expect(categoryManagement.result).toContainText("Created Car repairs");
+        await expect(categoryManagement.searchInput).toHaveValue("  SYNTHETIC   category 49  ");
+        await categoryManagement.dialog.getByRole("button", { name: "Clear search", exact: true }).click();
+        await expect(categoryManagement.searchInput).toBeFocused();
+        await expect(list.getByRole("listitem")).toHaveCount(65);
+        await expect(categoryManagement.category("Revised household label")).toHaveCount(1);
+        await expect(categoryManagement.category("Car repairs")).toHaveCount(1);
+      });
       test("keeps Close reachable after scrolling the catalog at compact size or desktop zoom", async ({
         categoryManagement, electronApp, window,
       }, testInfo) => {
@@ -239,7 +459,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
         await expect(renameName).toHaveValue("  HEALTH  ");
         await expect(renameName).toBeFocused();
         await expect(renameName).toHaveAttribute("aria-invalid", "true");
-        await expect(renameName).toHaveAttribute("aria-describedby", "category-management-error");
+        await expect(renameName).toHaveAttribute("aria-describedby", /(?:^|\s)category-management-error(?:\s|$)/);
         const rejected = createLocalLedgerDatabase({ dbPath: databasePath });
         try {
           expect(rejected.loadLedgerSnapshotData()).toEqual(original);

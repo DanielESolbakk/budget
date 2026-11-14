@@ -480,6 +480,11 @@ section[aria-label="PDF Import"] .import-reconciliation-status.is-accounted {
   font-weight: 700;
 }
 
+.review-queue-action > p,
+.review-queue-action > label {
+  grid-column: 1 / -1;
+}
+
 .review-queue-action button {
   margin: 0;
   white-space: nowrap;

@@ -51,22 +51,41 @@
   margin-top: 0;
 }
 
-.category-management-form {
+.category-management-form,
+.category-management-search {
   display: flex;
   align-items: end;
   flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.category-management-form label {
+.category-management-form label,
+.category-management-search label {
   display: grid;
   gap: 0.4rem;
   flex: 1 1 12rem;
 }
 
-.category-management-form input {
+.category-management-form input,
+.category-management-search input {
   width: 100%;
   min-width: 0;
+}
+
+.category-management-search + p {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.category-management-help {
+  margin: 0.75rem 0;
+}
+
+.category-management-help summary {
+  cursor: pointer;
+}
+
+.category-management-help p {
+  color: var(--paper-muted);
 }
 
 .category-management-dialog h3 {

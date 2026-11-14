@@ -5,6 +5,7 @@ import type {
   Transaction,
 } from "../../domain/types.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
+import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
 
 function getCategorizationReviewReason(transaction: Transaction): string | undefined {
@@ -324,7 +325,9 @@ export function CategoryReviewSection({
         </details>
       ) : transactions.length > 0 ? (
         <ul className="review-queue-list">
-          {transactions.map((transaction) => (
+          {transactions.map((transaction) => {
+            const categoryInputRef = React.createRef<HTMLSelectElement>();
+            return (
             <li className="review-queue-item" key={transaction.id} aria-label={`Review ${transaction.merchantRaw}`}>
               <div className="review-queue-details">
                 <strong>{transaction.merchantRaw}</strong>
@@ -358,6 +361,7 @@ export function CategoryReviewSection({
                 <label htmlFor={`category-for-${transaction.id}`}>
                   <span>Choose a category</span>
                   <select
+                    ref={categoryInputRef}
                     id={`category-for-${transaction.id}`}
                     aria-label={`Category for ${transaction.merchantRaw}`}
                     aria-describedby={`category-scope-${transaction.id}`}
@@ -377,6 +381,8 @@ export function CategoryReviewSection({
                     ))}
                   </select>
                 </label>
+                <CategoryManagementButton label={`Manage categories for ${transaction.merchantRaw}`}
+                  returnFocusRef={categoryInputRef} disabled={savingTransactionId === transaction.id} />
                 <button
                   type="button"
                   aria-describedby={`category-scope-${transaction.id}`}
@@ -390,7 +396,8 @@ export function CategoryReviewSection({
                 </button>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : null}
       <dialog

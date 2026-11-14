@@ -7,6 +7,7 @@ import type {
 import type { Account, ManualEntryInput, ManualEntryValidationErrorCode } from "../../domain/types.js";
 import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
+import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { parseNokAmountMinor } from "../parseNokAmountMinor.js";
 
 interface ManualEntryFormValues {
@@ -89,6 +90,7 @@ export function ManualEntrySection({ refreshKey, onEntrySuccess, onOpenLedger, o
   const [formValues, setFormValues] = React.useState<ManualEntryFormValues>(() => createInitialFormValues());
   const [entryState, setEntryState] = React.useState<ManualEntryState>({ status: "idle" });
   const [accountRetryKey, setAccountRetryKey] = React.useState(0);
+  const categoryInputRef = React.useRef<HTMLSelectElement>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -254,6 +256,7 @@ export function ManualEntrySection({ refreshKey, onEntrySuccess, onOpenLedger, o
         <label htmlFor="manual-category-id">Category (optional)</label>
         <select
           id="manual-category-id"
+          ref={categoryInputRef}
           {...validationAttributes("categoryId")}
           value={formValues.categoryId}
           onChange={(event) => updateField("categoryId", event.target.value)}
@@ -266,6 +269,8 @@ export function ManualEntrySection({ refreshKey, onEntrySuccess, onOpenLedger, o
             </option>
           ))}
         </select>
+        <CategoryManagementButton label="Manage categories for manual entry"
+          returnFocusRef={categoryInputRef} disabled={entryState.status === "pending"} />
         {renderFieldError("categoryId")}
 
         <button

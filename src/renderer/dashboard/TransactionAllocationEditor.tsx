@@ -1,6 +1,7 @@
 import React from "react";
 import type { Transaction } from "../../domain/types.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
+import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { formatMinorUnits } from "../../domain/money/minorUnits.js";
 
 export interface AllocationDraft {
@@ -104,6 +105,7 @@ export function TransactionAllocationEditor({
       </div>
       <div className="transaction-allocation-rows">
         {allocations.map((allocation, index) => {
+          const categoryInputRef = index === 0 ? firstCategoryRef : React.createRef<HTMLSelectElement>();
           const errorForIndex = error?.field?.index === index ? error : null;
           const categoryHasError = errorForIndex?.field?.name === "category";
           const amountHasError = errorForIndex?.field?.name === "amount";
@@ -118,7 +120,7 @@ export function TransactionAllocationEditor({
               <label>
                 Allocation category {index + 1}
                 <select
-                  ref={index === 0 ? firstCategoryRef : undefined}
+                  ref={categoryInputRef}
                   aria-label={`Allocation category ${index + 1}`}
                   aria-invalid={categoryHasError || undefined}
                   aria-describedby={categoryHasError ? "transaction-allocation-error" : undefined}
@@ -133,6 +135,10 @@ export function TransactionAllocationEditor({
                   ))}
                 </select>
               </label>
+              <div className="transaction-allocation-category-management">
+                <CategoryManagementButton label={`Manage categories for allocation ${index + 1}`}
+                  returnFocusRef={categoryInputRef} disabled={isSaving} />
+              </div>
               <label>
                 Allocation amount {index + 1}
                 <input

@@ -1,11 +1,13 @@
 import React from "react";
 import type { Category } from "../../domain/types.js";
+import { CategoryManagementDialog } from "./CategoryManagementDialog.js";
 
 interface CategoryCatalogState {
   categories: readonly Category[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<boolean>;
+  openManagement: (returnFocus: HTMLElement) => void;
 }
 
 const CategoryCatalogContext = React.createContext<CategoryCatalogState | undefined>(undefined);
@@ -13,11 +15,14 @@ const CategoryCatalogContext = React.createContext<CategoryCatalogState | undefi
 export function CategoryCatalogProvider({
   enabled,
   refreshKey,
+  onCategorySaved,
   children,
-}: { enabled: boolean; refreshKey: number; children: React.ReactNode }): React.JSX.Element {
+}: { enabled: boolean; refreshKey: number; onCategorySaved: () => void; children: React.ReactNode }): React.JSX.Element {
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [managementReturnFocus, setManagementReturnFocus] = React.useState<HTMLElement | null>(null);
+  const pendingReturnFocus = React.useRef<HTMLElement | null>(null);
   const generation = React.useRef(0);
   const refresh = React.useCallback(async (): Promise<boolean> => {
     const request = ++generation.current;
@@ -44,8 +49,17 @@ export function CategoryCatalogProvider({
     return () => { generation.current += 1; };
   }, [enabled, refreshKey, refresh]);
 
+  React.useEffect(() => {
+    const target = pendingReturnFocus.current;
+    if (managementReturnFocus !== null || loading || target === null || target.matches(":disabled")) return;
+    pendingReturnFocus.current = null;
+    if (target.isConnected && document.activeElement === document.body) target.focus();
+  }, [managementReturnFocus, loading]);
+
   return (
-    <CategoryCatalogContext.Provider value={{ categories, loading, error, refresh }}>
+    <CategoryCatalogContext.Provider value={{
+      categories, loading, error, refresh, openManagement: setManagementReturnFocus,
+    }}>
       {enabled && error !== null && (
         <div className="category-catalog-error" role="alert">
           <p>Categories could not be loaded: {error}</p>
@@ -55,6 +69,14 @@ export function CategoryCatalogProvider({
         </div>
       )}
       {children}
+      {enabled && managementReturnFocus !== null && (
+        <CategoryManagementDialog key={categories[0]?.householdId}
+          returnFocus={managementReturnFocus} onClose={() => {
+            pendingReturnFocus.current = managementReturnFocus;
+            setManagementReturnFocus(null);
+          }}
+          onSaved={onCategorySaved} />
+      )}
     </CategoryCatalogContext.Provider>
   );
 }

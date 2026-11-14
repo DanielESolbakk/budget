@@ -11,5 +11,6 @@ export function buildRendererCategoryCatalogFixture(): ReturnType<typeof useCate
     loading: false,
     error: null,
     refresh: async () => true,
+    openManagement: () => { throw new Error("Static catalog fixtures cannot open category management."); },
   };
 }

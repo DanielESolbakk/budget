@@ -1447,6 +1447,11 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   gap: 0.35rem;
 }
 
+.transaction-allocation-category-management {
+  grid-column: 1;
+  grid-row: 2;
+}
+
 .transaction-allocation-actions {
   display: flex;
   flex-wrap: wrap;

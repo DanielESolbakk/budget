@@ -410,7 +410,8 @@ export function App({ isBrowserPreview = false }: AppProps = {}): React.JSX.Elem
         : "header-status";
 
   return (
-    <CategoryCatalogProvider enabled={setupRequired === false} refreshKey={refreshCounter}>
+    <CategoryCatalogProvider enabled={setupRequired === false} refreshKey={refreshCounter}
+      onCategorySaved={() => setRefreshCounter((counter) => counter + 1)}>
     <div className="app-shell">
       {isBrowserPreview && (
         <div className="browser-preview-banner" role="status">

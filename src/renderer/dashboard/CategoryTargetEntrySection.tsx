@@ -1,6 +1,7 @@
 import React from "react";
 import type { MonthlyCategoryTarget } from "../../domain/types.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
+import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { categoryDisplayName } from "./categoryDisplayName.js";
 import { parseNokAmountMinor } from "../parseNokAmountMinor.js";
 import { formatNokAmountMinor } from "../formatNokAmountMinor.js";
@@ -243,6 +244,9 @@ export function CategoryTargetEntrySection({
               <option key={category.id} value={category.id}>{category.label}</option>
             ))}
           </select>
+          <CategoryManagementButton label="Manage categories for budget targets"
+            returnFocusRef={editingCategoryId === null ? categoryInputRef : amountInputRef}
+            disabled={formState.status === "saving"} />
           {formState.status === "validation" && formState.field === "category" && (
             <p id="target-category-error" role="alert">{formState.message}</p>
           )}

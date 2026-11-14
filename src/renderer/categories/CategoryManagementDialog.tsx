@@ -1,6 +1,7 @@
 import React from "react";
 import { useCategoryCatalog } from "./CategoryCatalogContext.js";
 import { categorySaveError } from "./categorySaveError.js";
+import { filterCategoryCatalog } from "./filterCategoryCatalog.js";
 
 interface SavedCategoryChange {
   mode: "create" | "rename";
@@ -11,11 +12,13 @@ interface SavedCategoryChange {
 export function CategoryManagementDialog({
   onClose,
   onSaved,
-}: { onClose: () => void; onSaved: () => void }): React.JSX.Element {
+  returnFocus,
+}: { onClose: () => void; onSaved: () => void; returnFocus?: HTMLElement }): React.JSX.Element {
   const { categories, loading, error: catalogError, refresh } = useCategoryCatalog();
   const [newName, setNewName] = React.useState("");
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [renameName, setRenameName] = React.useState("");
+  const [search, setSearch] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [saveFailure, setSaveFailure] = React.useState<{
@@ -27,9 +30,10 @@ export function CategoryManagementDialog({
   const dialogRef = React.useRef<HTMLDialogElement>(null);
   const newNameRef = React.useRef<HTMLInputElement>(null);
   const renameRef = React.useRef<HTMLInputElement>(null);
+  const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const dialog = dialogRef.current;
     if (dialog !== null && !dialog.open) dialog.showModal();
     newNameRef.current?.focus();
@@ -37,7 +41,7 @@ export function CategoryManagementDialog({
       if (dialog?.open) dialog.close();
       opener?.focus();
     };
-  }, []);
+  }, [returnFocus]);
 
   React.useEffect(() => {
     if (editingId !== null) renameRef.current?.focus();
@@ -108,6 +112,8 @@ export function CategoryManagementDialog({
 
   const unavailable = saving || loading || catalogError !== null || pendingSave !== null;
   const invalidRename = saveFailure?.mode === "rename" && saveFailure.nameInvalid;
+  const visibleCategories = filterCategoryCatalog(categories, search);
+  const searchUnavailable = saving || pendingSave !== null || editingId !== null;
   const errorFeedback = (error !== null || catalogError !== null) && (
     <div id="category-management-error" role="alert" className="category-management-error">
       <p>{error ?? catalogError}</p>
@@ -135,13 +141,16 @@ export function CategoryManagementDialog({
         <p id="category-management-guidance">
           Make categories fit your household. Renaming keeps transactions, budget targets, and merchant rules linked.
         </p>
+        <p id="category-name-guidance" className="field-help">
+          Examples: Car repairs or Pets. Names must be unique, ignoring capitalization and extra spaces.
+        </p>
         <form className="category-management-form" onSubmit={(event) => { event.preventDefault(); void save("create"); }}>
           <label>
             New category name
             <input ref={newNameRef} value={newName} required disabled={saving}
               aria-invalid={saveFailure?.mode === "create" && saveFailure.nameInvalid || undefined}
               aria-describedby={saveFailure?.mode === "create" && saveFailure.nameInvalid
-                ? "category-management-error" : undefined}
+                ? "category-name-guidance category-management-error" : "category-name-guidance"}
               onChange={(event) => {
                 setNewName(event.target.value);
                 if (saveFailure?.mode === "create" && saveFailure.nameInvalid) {
@@ -154,10 +163,38 @@ export function CategoryManagementDialog({
         </form>
         {!invalidRename && errorFeedback}
         <p role="status" aria-label="Category management result">{result}</p>
+        <details className="category-management-help" aria-label="How categories work">
+          <summary>How categories work</summary>
+          <p>Creating a category only adds a choice. Select it and save a transaction or budget target to use it.</p>
+          <p>Renaming updates the name in current views without moving transactions or changing amounts.
+            Allocations, merchant rules and budget targets stay linked.</p>
+          <p>Changes stay on this device and are included in new backups. Existing backup snapshots remain unchanged.</p>
+        </details>
         <h3>Your categories</h3>
+        <div className="category-management-search">
+          <label>
+            Find a category
+            <input type="search" ref={searchRef} value={search} disabled={searchUnavailable}
+              aria-describedby={editingId !== null ? "category-search-result category-search-editing" : "category-search-result"}
+              onChange={(event) => setSearch(event.target.value)} />
+          </label>
+          {search !== "" && (
+            <button type="button" className="action-secondary" disabled={searchUnavailable}
+              onClick={() => { setSearch(""); searchRef.current?.focus(); }}>Clear search</button>
+          )}
+        </div>
+        <p id="category-search-result" role="status" aria-label="Category search results">
+          {visibleCategories.length} of {categories.length} categories
+        </p>
+        {editingId !== null && (
+          <p id="category-search-editing" className="field-help">Finish or cancel renaming before searching again.</p>
+        )}
         {loading && <p role="status">Updating categories...</p>}
+        {!loading && catalogError === null && visibleCategories.length === 0 && (
+          <p>No categories match your search. Clear search to browse all categories.</p>
+        )}
         <ul className="category-management-list" aria-label="Household categories">
-          {categories.map((category) => (
+          {visibleCategories.map((category) => (
             <li key={category.id}>
               {editingId === category.id ? (
                 <form className="category-management-form" onSubmit={(event) => { event.preventDefault(); void save("rename"); }}>
@@ -165,7 +202,8 @@ export function CategoryManagementDialog({
                     Category name
                     <input ref={renameRef} value={renameName} required disabled={saving || pendingSave !== null}
                       aria-invalid={invalidRename || undefined}
-                      aria-describedby={invalidRename ? "category-management-error" : undefined}
+                      aria-describedby={invalidRename
+                        ? "category-name-guidance category-management-error" : "category-name-guidance"}
                       onChange={(event) => {
                         setRenameName(event.target.value);
                         if (invalidRename) {
