@@ -66,6 +66,18 @@ Exit criteria:
 
 ## Workstream Dependencies
 
+### Approved Activity Automation Follow-On
+
+Follow [Activity automation plan](activity-automation-plan.md). Deliver F3.4
+create/rename (#587) before merge (#588), with layer-specific Tests #589-#594
+planned before product implementation. Fresh structural validation, semantic
+planning checks, and runtime prerequisites gate implementation. Use observed
+red-green-refactor cycles; planning issue creation is not passing test evidence.
+
+The subsequent merchant-recognition, unknown-merchant learning, batch-review,
+and recurring-suggestion workstreams remain roadmap scope until concrete
+Story/Test planning and behavioral decisions are complete.
+
 | Workstream | Depends on | Blocks |
 | --- | --- | --- |
 | ADR and glossary | None | Schema, technical breakdown, consistent issue writing |

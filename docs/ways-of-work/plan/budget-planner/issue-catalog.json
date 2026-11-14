@@ -138,6 +138,60 @@
       "parentKeys": ["E3"]
     },
     {
+      "key": "F3.4",
+      "type": "feature",
+      "title": "Category catalog and user-managed categories",
+      "parentKeys": ["E3"]
+    },
+    {
+      "key": "S3.4.1",
+      "type": "story",
+      "title": "Create and rename household transaction categories",
+      "parentKeys": ["F3.4"]
+    },
+    {
+      "key": "S3.4.2",
+      "type": "story",
+      "title": "Preview and safely merge household transaction categories",
+      "parentKeys": ["F3.4"]
+    },
+    {
+      "key": "T3.4.1.1",
+      "type": "test",
+      "title": "Unit coverage for category catalog validation",
+      "parentKeys": ["S3.4.1"]
+    },
+    {
+      "key": "T3.4.1.2",
+      "type": "test",
+      "title": "Integration coverage for category persistence and recovery",
+      "parentKeys": ["S3.4.1"]
+    },
+    {
+      "key": "T3.4.1.3",
+      "type": "test",
+      "title": "Playwright coverage for Activity category creation and renaming",
+      "parentKeys": ["S3.4.1"]
+    },
+    {
+      "key": "T3.4.2.1",
+      "type": "test",
+      "title": "Unit coverage for category merge planning and conservation",
+      "parentKeys": ["S3.4.2"]
+    },
+    {
+      "key": "T3.4.2.2",
+      "type": "test",
+      "title": "Integration coverage for atomic category merge and recovery",
+      "parentKeys": ["S3.4.2"]
+    },
+    {
+      "key": "T3.4.2.3",
+      "type": "test",
+      "title": "Playwright coverage for category merge preview and confirmation",
+      "parentKeys": ["S3.4.2"]
+    },
+    {
       "key": "S3.3.1",
       "type": "story",
       "title": "Preview and undo same-merchant correction propagation",
