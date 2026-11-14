@@ -15,7 +15,7 @@ import { RecoveryPage } from "./pom/RecoveryPage.js";
 
 const test = base.extend<{
   categoryManagement: CategoryManagementPage;
-  categoryScenario: "create" | "rename";
+  categoryScenario: "create" | "rename" | "large";
 }>({
   categoryScenario: ["create", { option: true }],
   databasePath: async ({ databasePath, categoryScenario }, use) => {
@@ -29,6 +29,11 @@ const test = base.extend<{
           id: categoryId, householdId: "sample-hh", label: "Car repairs",
           createdAtIso: "2026-05-01T00:00:00Z", updatedAtIso: "2026-05-01T00:00:00Z",
         }] } : {}),
+        ...(categoryScenario === "large" ? { categories: Array.from({ length: 50 }, (_, index) => ({
+          id: `category-large-${index}`, householdId: "sample-hh",
+          label: `Synthetic category ${String(index).padStart(2, "0")} with a long household label`,
+          createdAtIso: "2026-05-01T00:00:00Z", updatedAtIso: "2026-05-01T00:00:00Z",
+        })) } : {}),
         transactions: [{
           id: "tx-workshop", householdId: "sample-hh", accountId: "sample-acc",
           bookedAtIso: "2026-05-23", amountMinor: -12000, currencyCode: "NOK", merchantRaw: "Verksted Solglimt",
@@ -173,17 +178,48 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
     test("retains a rejected duplicate draft and returns focus on Escape", async ({ categoryManagement }) => {
       await categoryManagement.open();
       await categoryManagement.create("   ");
-      await expect(categoryManagement.error).toContainText("non-empty");
+      await expect(categoryManagement.error).toContainText("Enter a category name");
       await expect(categoryManagement.newName).toHaveValue("   ");
+      await expect(categoryManagement.newName).toBeFocused();
+      await expect(categoryManagement.newName).toHaveAttribute("aria-invalid", "true");
+      await expect(categoryManagement.newName).toHaveAttribute("aria-describedby", "category-management-error");
       await categoryManagement.create("  HEALTH  ");
       await expect(categoryManagement.error).toContainText("already exists");
+      await expect(categoryManagement.error).toContainText("Choose a different name");
+      await expect(categoryManagement.error).not.toContainText("remote method");
       await expect(categoryManagement.newName).toHaveValue("  HEALTH  ");
+      await expect(categoryManagement.newName).toBeFocused();
       await expect(categoryManagement.category("Health")).toHaveCount(1);
       await categoryManagement.create("Car repairs");
       await expect(categoryManagement.result).toContainText("Created Car repairs");
       await categoryManagement.newName.press("Escape");
       await expect(categoryManagement.dialog).not.toBeVisible();
       await expect(categoryManagement.opener).toBeFocused();
+    });
+
+    test.describe("large category catalog", () => {
+      test.use({ categoryScenario: "large" });
+      test("keeps Close reachable after scrolling the catalog at compact size or desktop zoom", async ({
+        categoryManagement, electronApp, window,
+      }, testInfo) => {
+        if (viewport.width === 1280) {
+          await electronApp.evaluate(({ BrowserWindow }) => {
+            const mainWindow = BrowserWindow.getAllWindows()[0];
+            if (mainWindow === undefined) throw new Error("Expected the isolated Electron window.");
+            mainWindow.webContents.setZoomFactor(2);
+          });
+        }
+        await categoryManagement.open();
+        const lastName = "Synthetic category 49 with a long household label";
+        await categoryManagement.category(lastName).scrollIntoViewIfNeeded();
+        await expect(categoryManagement.dialog.getByRole("button", { name: `Rename ${lastName}`, exact: true }))
+          .toBeInViewport({ ratio: 1 });
+        await expect(categoryManagement.dialog.getByRole("button", { name: "Close category management", exact: true }))
+          .toBeInViewport({ ratio: 1 });
+        await window.screenshot({ path: testInfo.outputPath(`category-scroll-${viewport.width}.png`) });
+        await categoryManagement.close();
+        await expect(categoryManagement.opener).toBeFocused();
+      });
     });
 
     test.describe("independently assigned category", () => {
@@ -196,7 +232,22 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
         before.close();
         await expect(new LedgerPage(window).transaction("Verksted Solglimt")).toContainText("Car repairs");
         await categoryManagement.open();
-        await categoryManagement.rename("Car repairs", "Vehicle repairs");
+        await categoryManagement.rename("Car repairs", "  HEALTH  ");
+        const renameName = categoryManagement.dialog.getByRole("textbox", { name: "Category name", exact: true });
+        await expect(categoryManagement.error).toContainText("Choose a different name");
+        await expect(categoryManagement.error).not.toContainText("remote method");
+        await expect(renameName).toHaveValue("  HEALTH  ");
+        await expect(renameName).toBeFocused();
+        await expect(renameName).toHaveAttribute("aria-invalid", "true");
+        await expect(renameName).toHaveAttribute("aria-describedby", "category-management-error");
+        const rejected = createLocalLedgerDatabase({ dbPath: databasePath });
+        try {
+          expect(rejected.loadLedgerSnapshotData()).toEqual(original);
+        } finally {
+          rejected.close();
+        }
+        await renameName.fill("Vehicle repairs");
+        await renameName.press("Enter");
         await expect(categoryManagement.result).toContainText("Renamed to Vehicle repairs");
         await expect(categoryManagement.newName).toBeFocused();
         await categoryManagement.close();

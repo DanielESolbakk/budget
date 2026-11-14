@@ -1,13 +1,30 @@
 .category-management-dialog {
   width: min(38rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 2rem);
-  overflow: auto;
+  overflow: hidden;
   padding: 1.5rem;
   border: 1px solid var(--line-strong);
   border-radius: 0.5rem;
   background: var(--panel);
   color: var(--paper);
   box-shadow: 0 1rem 3rem rgb(23 54 75 / 24%);
+}
+
+.category-management-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.category-management-heading {
+  flex: none;
+}
+
+.category-management-body {
+  overflow: auto;
+  min-height: 0;
+  padding: 0.5rem;
+  margin: -0.5rem;
 }
 
 .category-management-dialog::backdrop {
@@ -26,8 +43,12 @@
   margin: 0;
 }
 
-.category-management-dialog > p {
+.category-management-body > p {
   color: var(--paper-muted);
+}
+
+.category-management-body > p:first-child {
+  margin-top: 0;
 }
 
 .category-management-form {
@@ -73,6 +94,10 @@
 
 .category-management-list form {
   width: 100%;
+}
+
+.category-management-form > .category-management-error {
+  flex-basis: 100%;
 }
 
 .category-management-error,

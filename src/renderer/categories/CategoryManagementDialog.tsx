@@ -1,5 +1,6 @@
 import React from "react";
 import { useCategoryCatalog } from "./CategoryCatalogContext.js";
+import { categorySaveError } from "./categorySaveError.js";
 
 interface SavedCategoryChange {
   mode: "create" | "rename";
@@ -17,6 +18,9 @@ export function CategoryManagementDialog({
   const [renameName, setRenameName] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [saveFailure, setSaveFailure] = React.useState<{
+    mode: "create" | "rename"; nameInvalid: boolean;
+  } | null>(null);
   const [result, setResult] = React.useState("");
   const [pendingSave, setPendingSave] = React.useState<SavedCategoryChange | null>(null);
   const closedRef = React.useRef(false);
@@ -43,10 +47,17 @@ export function CategoryManagementDialog({
     if (!saving && result !== "" && editingId === null) newNameRef.current?.focus();
   }, [saving, result, editingId]);
 
+  React.useEffect(() => {
+    if (!saving && saveFailure !== null && !closedRef.current) {
+      (saveFailure.mode === "create" ? newNameRef : renameRef).current?.focus();
+    }
+  }, [saving, saveFailure]);
+
   function finishSavedChange(change: SavedCategoryChange): void {
     if (!closedRef.current) {
       setPendingSave(null);
       setError(null);
+      setSaveFailure(null);
       setResult(change.mode === "create" ? `Created ${change.label}.` : `Renamed to ${change.label}.`);
       if (change.mode === "create") {
         setNewName((current) => current === change.submittedName ? "" : current);
@@ -71,6 +82,7 @@ export function CategoryManagementDialog({
   async function save(mode: "create" | "rename"): Promise<void> {
     setSaving(true);
     setError(null);
+    setSaveFailure(null);
     setResult("");
     let saved = false;
     try {
@@ -86,14 +98,25 @@ export function CategoryManagementDialog({
       }
       finishSavedChange(change);
     } catch (failure) {
-      const message = failure instanceof Error ? failure.message : "Unable to save the category.";
+      const { message, nameInvalid } = categorySaveError(failure);
       setError(saved ? `The category was saved, but refreshing failed: ${message}` : message);
+      if (!saved) setSaveFailure({ mode, nameInvalid });
     } finally {
       setSaving(false);
     }
   }
 
   const unavailable = saving || loading || catalogError !== null || pendingSave !== null;
+  const invalidRename = saveFailure?.mode === "rename" && saveFailure.nameInvalid;
+  const errorFeedback = (error !== null || catalogError !== null) && (
+    <div id="category-management-error" role="alert" className="category-management-error">
+      <p>{error ?? catalogError}</p>
+      {(catalogError !== null || pendingSave !== null) && (
+        <button type="button" className="action-secondary" disabled={loading}
+          onClick={() => void retryCatalog()}>Retry categories</button>
+      )}
+    </div>
+  );
   return (
     <dialog
       ref={dialogRef}
@@ -108,60 +131,78 @@ export function CategoryManagementDialog({
         <button type="button" className="action-secondary" aria-label="Close category management"
           disabled={saving} onClick={close}>Close</button>
       </div>
-      <p id="category-management-guidance">
-        Make categories fit your household. Renaming keeps transactions, budget targets, and merchant rules linked.
-      </p>
-      <form className="category-management-form" onSubmit={(event) => { event.preventDefault(); void save("create"); }}>
-        <label>
-          New category name
-          <input ref={newNameRef} value={newName} required disabled={saving}
-            onChange={(event) => setNewName(event.target.value)} />
-        </label>
-        <button type="submit" disabled={unavailable}>Create category</button>
-      </form>
-      {(error !== null || catalogError !== null) && (
-        <div role="alert" className="category-management-error">
-          <p>{error ?? catalogError}</p>
-          {(catalogError !== null || pendingSave !== null) && (
-            <button type="button" className="action-secondary" disabled={loading}
-              onClick={() => void retryCatalog()}>Retry categories</button>
-          )}
-        </div>
-      )}
-      <p role="status" aria-label="Category management result">{result}</p>
-      <h3>Your categories</h3>
-      {loading && <p role="status">Updating categories...</p>}
-      <ul className="category-management-list" aria-label="Household categories">
-        {categories.map((category) => (
-          <li key={category.id}>
-            {editingId === category.id ? (
-              <form className="category-management-form" onSubmit={(event) => { event.preventDefault(); void save("rename"); }}>
-                <label>
-                  Category name
-                  <input ref={renameRef} value={renameName} required disabled={saving || pendingSave !== null}
-                    onChange={(event) => setRenameName(event.target.value)} />
-                </label>
-                <div className="category-management-actions">
-                  <button type="submit" disabled={unavailable}>Save name</button>
-                  <button type="button" className="action-secondary" disabled={saving || pendingSave !== null}
-                    onClick={() => setEditingId(null)}>Cancel rename</button>
-                </div>
-              </form>
-            ) : (
-              <>
-                <span>{category.label}</span>
-                <button type="button" className="action-secondary" disabled={unavailable}
-                  aria-label={`Rename ${category.label}`} onClick={() => {
-                    setEditingId(category.id);
-                    setRenameName(category.label);
-                    setError(null);
-                    setResult("");
-                  }}>Rename</button>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
+      <div className="category-management-body">
+        <p id="category-management-guidance">
+          Make categories fit your household. Renaming keeps transactions, budget targets, and merchant rules linked.
+        </p>
+        <form className="category-management-form" onSubmit={(event) => { event.preventDefault(); void save("create"); }}>
+          <label>
+            New category name
+            <input ref={newNameRef} value={newName} required disabled={saving}
+              aria-invalid={saveFailure?.mode === "create" && saveFailure.nameInvalid || undefined}
+              aria-describedby={saveFailure?.mode === "create" && saveFailure.nameInvalid
+                ? "category-management-error" : undefined}
+              onChange={(event) => {
+                setNewName(event.target.value);
+                if (saveFailure?.mode === "create" && saveFailure.nameInvalid) {
+                  setSaveFailure(null);
+                  setError(null);
+                }
+              }} />
+          </label>
+          <button type="submit" disabled={unavailable}>Create category</button>
+        </form>
+        {!invalidRename && errorFeedback}
+        <p role="status" aria-label="Category management result">{result}</p>
+        <h3>Your categories</h3>
+        {loading && <p role="status">Updating categories...</p>}
+        <ul className="category-management-list" aria-label="Household categories">
+          {categories.map((category) => (
+            <li key={category.id}>
+              {editingId === category.id ? (
+                <form className="category-management-form" onSubmit={(event) => { event.preventDefault(); void save("rename"); }}>
+                  <label>
+                    Category name
+                    <input ref={renameRef} value={renameName} required disabled={saving || pendingSave !== null}
+                      aria-invalid={invalidRename || undefined}
+                      aria-describedby={invalidRename ? "category-management-error" : undefined}
+                      onChange={(event) => {
+                        setRenameName(event.target.value);
+                        if (invalidRename) {
+                          setSaveFailure(null);
+                          setError(null);
+                        }
+                      }} />
+                  </label>
+                  <div className="category-management-actions">
+                    <button type="submit" disabled={unavailable}>Save name</button>
+                    <button type="button" className="action-secondary" disabled={saving || pendingSave !== null}
+                      onClick={() => {
+                        setEditingId(null);
+                        setSaveFailure(null);
+                        setError(null);
+                        newNameRef.current?.focus();
+                      }}>Cancel rename</button>
+                  </div>
+                  {invalidRename && errorFeedback}
+                </form>
+              ) : (
+                <>
+                  <span>{category.label}</span>
+                  <button type="button" className="action-secondary" disabled={unavailable}
+                    aria-label={`Rename ${category.label}`} onClick={() => {
+                      setEditingId(category.id);
+                      setRenameName(category.label);
+                      setError(null);
+                      setSaveFailure(null);
+                      setResult("");
+                    }}>Rename</button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
     </dialog>
   );
 }
