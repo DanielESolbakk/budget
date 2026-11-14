@@ -127,13 +127,15 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       });
       await expect(manualEntry.successStatus).toContainText("Added Manual workshop to your ledger.");
       const saved = createLocalLedgerDatabase({ dbPath: databasePath });
+      let savedState: ReturnType<typeof saved.loadLedgerSnapshotData>;
       try {
+        savedState = saved.loadLedgerSnapshotData();
         expect(saved.getTransactionById("tx-workshop")).toMatchObject({
           amountMinor: -12000, categoryAllocations: [
             { categoryId, amountMinor: -10000 }, { categoryId: "fees", amountMinor: -2000 },
           ],
         });
-        expect(saved.loadLedgerSnapshotData().transactions.find(({ merchantRaw }) => merchantRaw === "Manual workshop"))
+        expect(savedState.transactions.find(({ merchantRaw }) => merchantRaw === "Manual workshop"))
           .toMatchObject({ categoryId, amountMinor: -2500 });
       } finally {
         saved.close();
@@ -157,6 +159,12 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
         await restartedCategories.close();
         await expect(new LedgerPage(restartedWindow).transaction("Verksted Solglimt")).toContainText("Vehicle care");
         await expect(new LedgerPage(restartedWindow).transaction("Manual workshop")).toContainText("Vehicle care");
+        const restartedLedger = createLocalLedgerDatabase({ dbPath: databasePath });
+        try {
+          expect(restartedLedger.loadLedgerSnapshotData()).toEqual(savedState);
+        } finally {
+          restartedLedger.close();
+        }
       } finally {
         await restartedApp.close();
       }
