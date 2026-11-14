@@ -22,7 +22,8 @@ const versions = [
   { version: "10", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring] },
   { version: "11", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring] },
   { version: "12", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring] },
-  { version: "13", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring, "categories"] },
+  { version: "13", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring,
+    "categories", "recoveryHistory"] },
 ];
 
 function snapshot(version: string, required: string[]): Record<string, unknown> {
@@ -35,6 +36,9 @@ function snapshot(version: string, required: string[]): Record<string, unknown> 
       ? { reportingPeriodRule: { type: "calendar-month" } }
       : {}),
     ...Object.fromEntries(required.map(name => [name, []])),
+    ...(version === "13" ? { recoveryHistory: {
+      merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
+    } } : {}),
   };
 }
 
@@ -54,7 +58,9 @@ describe("backup historical version capabilities", () => {
     withSnapshot(snapshot(version, required), snapshotPath => {
       expect(restoreBackupSnapshot({ snapshotPath })).toEqual({
         household: { id: "hh", name: "Synthetic", createdAtIso: "2026-01-01T00:00:00Z" },
-        ...(version === "13" ? { categories: [] } : {}),
+        ...(version === "13" ? { categories: [], recoveryHistory: {
+          merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
+        } } : {}),
         accounts: [{ id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" }],
         transactions: [], importJobs: [], monthlyCategoryTargets: [], merchantCategoryRules: [],
         accountStatementCoveragePeriods: [], accountBalanceCheckpoints: [], exchangeRates: [],

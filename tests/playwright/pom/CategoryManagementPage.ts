@@ -18,7 +18,7 @@ export class CategoryManagementPage {
   async rename(name: string, replacement: string): Promise<void> {
     await this.dialog.getByRole("button", { name: `Rename ${name}`, exact: true }).click();
     await this.dialog.getByRole("textbox", { name: "Category name", exact: true }).fill(replacement);
-    await this.dialog.getByRole("button", { name: "Save name", exact: true }).click();
+    await this.dialog.getByRole("textbox", { name: "Category name", exact: true }).press("Enter");
   }
   async close(): Promise<void> {
     await this.dialog.getByRole("button", { name: "Close category management", exact: true }).click();

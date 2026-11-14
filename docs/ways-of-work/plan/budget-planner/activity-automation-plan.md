@@ -64,6 +64,11 @@ Do not infer those decisions from a merchant name or add placeholder Test issues
   are out of scope. Stable IDs, current history, and backup/restore remain required.
 - Category IDs have no surrounding whitespace. Display-name normalization does
   not change identity.
+- New version-13 backups preserve correction and same-merchant propagation
+  evidence, import-operation state, and original serialized undo baselines.
+  Restore retains safe undo for unchanged imported transactions, protects changed
+  records, and retains completed undo outcomes. Historical versions 1-12 keep
+  their existing capabilities; missing evidence is not invented.
 
 ### Preview And Merge (#588)
 

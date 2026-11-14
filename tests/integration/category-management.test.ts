@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { buildBackupSnapshot, createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { describe, expect, it } from "vitest";
-import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { createLocalLedgerDatabase, type LocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { createCategoryManagementService } from "../../src/app/categoryManagementService.js";
 import { applyCategorizationCorrection } from "../../src/app/reviewService.js";
 import { withIsolatedLedger } from "../helpers/isolatedLedger.js";
@@ -17,6 +17,20 @@ const customCategory: Category = {
   createdAtIso: "2026-05-01T00:00:00.000Z",
   updatedAtIso: "2026-05-01T00:00:00.000Z",
 };
+
+function importBaselines(dbPath: string) {
+  const database = new DatabaseSync(dbPath);
+  try {
+    return database.prepare(`SELECT import_job_id, transaction_id, baseline_json
+      FROM import_job_transaction_baselines ORDER BY import_job_id, transaction_id`).all().map((row) => {
+      if (typeof row.baseline_json !== "string") throw new Error("Expected a saved import baseline.");
+      const baseline: unknown = JSON.parse(row.baseline_json);
+      return { importJobId: row.import_job_id, transactionId: row.transaction_id, baseline };
+    });
+  } finally {
+    database.close();
+  }
+}
 
 describe("household category persistence", () => {
   it("uses a custom catalog category for a correction and its future merchant rule", async () => {
@@ -149,12 +163,16 @@ describe("household category persistence", () => {
   });
 
   it("renames a category without rewriting financial references or categorization evidence", async () => {
-    await withIsolatedLedger({}, ({ ledger, dbPath }) => {
+    await withIsolatedLedger({}, ({ ledger, dbPath, directory }) => {
       ledger.createCategoryRecord(customCategory);
-      ledger.appendTransactions([{
+      ledger.appendImportJobAndTransactions({
+        id: "import-car", householdId: "hh-isolated", sourceType: "csv", sourceName: "synthetic-car.csv",
+        startedAtIso: "2026-05-23T00:00:00Z", finishedAtIso: "2026-05-23T00:00:01Z",
+        candidateCount: 2, provenance: { sourceIdentity: "synthetic-car", accountId: "acc-isolated" },
+      }, [{
         id: "tx-car", householdId: "hh-isolated", accountId: "acc-isolated",
         bookedAtIso: "2026-05-23", amountMinor: -24900, currencyCode: "NOK",
-        merchantRaw: "Mekonomen Stavanger", categoryId: "category-car-001",
+        merchantRaw: "Mekonomen Stavanger", categoryId: "category-car-001", importJobId: "import-car", sourceType: "csv",
         categorization: {
           status: "categorized", confidence: 0.9, confidenceLevel: "high",
           requiresReview: false,
@@ -167,6 +185,13 @@ describe("household category persistence", () => {
             categoryId: "category-car-001", priority: 0,
           }],
         },
+      }, {
+        id: "tx-car-split", householdId: "hh-isolated", accountId: "acc-isolated",
+        bookedAtIso: "2026-05-23", amountMinor: -15000, currencyCode: "NOK", merchantRaw: "Biltema Stavanger",
+        sourceType: "csv", importJobId: "import-car",
+        categoryAllocations: [
+          { categoryId: "category-car-001", amountMinor: -10000 }, { categoryId: "fees", amountMinor: -5000 },
+        ],
       }]);
       ledger.upsertMonthlyCategoryTarget({
         yearMonth: "2026-05", categoryId: "category-car-001", targetMinor: 50000,
@@ -174,7 +199,18 @@ describe("household category persistence", () => {
       ledger.upsertMerchantCategoryRule({
         merchantAlias: "MEKONOMEN STAVANGER", categoryId: "category-car-001",
       });
+      ledger.updateTransactionCategoryAndRule("tx-car", {
+        merchantAlias: "MEKONOMEN STAVANGER", categoryId: "category-car-001",
+      });
       const before = ledger.loadLedgerSnapshotData();
+      const corrections = ledger.listMerchantCorrectionProvenance();
+      const history = ledger.listImportJobHistory("hh-isolated");
+      const baselines = importBaselines(dbPath);
+      expect(corrections).toHaveLength(1);
+      expect(baselines).toHaveLength(2);
+      const archivePath = join(directory, "before-category-rename.json");
+      createBackupSnapshot({ ...before, outputPath: archivePath, createdAtIso: "2026-05-31T00:00:00Z" });
+      const archivedBytes = readFileSync(archivePath, "utf8");
       ledger.updateCategoryRecordLabel(
         "hh-isolated", "category-car-001", "  Vehicle   repairs ", "2026-06-01T00:00:00.000Z",
       );
@@ -182,8 +218,16 @@ describe("household category persistence", () => {
       expect(after.transactions).toEqual(before.transactions);
       expect(after.monthlyCategoryTargets).toEqual(before.monthlyCategoryTargets);
       expect(after.merchantCategoryRules).toEqual(before.merchantCategoryRules);
+      expect(ledger.listMerchantCorrectionProvenance()).toEqual(corrections);
+      expect(ledger.listImportJobHistory("hh-isolated")).toEqual(history);
+      expect(importBaselines(dbPath)).toEqual(baselines);
+      expect(readFileSync(archivePath, "utf8")).toBe(archivedBytes);
       const reopened = createLocalLedgerDatabase({ dbPath });
       try {
+        expect(reopened.loadLedgerSnapshotData().transactions).toEqual(before.transactions);
+        expect(reopened.listMerchantCorrectionProvenance()).toEqual(corrections);
+        expect(reopened.listImportJobHistory("hh-isolated")).toEqual(history);
+        expect(importBaselines(dbPath)).toEqual(baselines);
         expect(reopened.listCategories("hh-isolated").find((category) => category.id === "category-car-001"))
           .toEqual({
             id: "category-car-001", householdId: "hh-isolated", label: "Vehicle repairs",
@@ -206,6 +250,128 @@ describe("household category persistence", () => {
         reopened.close();
       }
     });
+  });
+
+  async function withRestoredPropagation(
+    run: (recovered: LocalLedgerDatabase, operationId: string, originalTransactions: Transaction[]) => void,
+  ): Promise<void> {
+    await withIsolatedLedger({}, ({ ledger, directory }) => {
+      ledger.createCategoryRecord(customCategory);
+      for (const [index, id] of ["source", "first", "second"].entries()) {
+        ledger.appendTransactions([{
+          id, householdId: "hh-isolated", accountId: "acc-isolated", bookedAtIso: "2026-05-23",
+          amountMinor: -(index + 1) * 10000, currencyCode: "NOK", merchantRaw: "Mekonomen Stavanger",
+          categorization: {
+            status: "unmatched", confidence: 0, confidenceLevel: "low", requiresReview: true, matchingRules: [],
+          },
+        }]);
+      }
+      applyCategorizationCorrection(ledger, new Map(), "source", "category-car-001");
+      const beforePropagation = ledger.loadLedgerSnapshotData();
+      const propagation = ledger.applySameMerchantPropagation({
+        sourceTransactionId: "source", merchantAlias: "MEKONOMEN STAVANGER",
+        categoryId: "category-car-001", transactionIds: ["first", "second"],
+      });
+      const snapshotPath = join(directory, "active-propagation.json");
+      createBackupSnapshot({
+        ...ledger.loadLedgerSnapshotData(), outputPath: snapshotPath, createdAtIso: "2026-06-02T00:00:00Z",
+      });
+      const recovered = createLocalLedgerDatabase({
+        dbPath: join(directory, "active-propagation.sqlite"), seedData: restoreBackupSnapshot({ snapshotPath }),
+      });
+      try {
+        run(recovered, propagation.id, beforePropagation.transactions);
+      } finally {
+        recovered.close();
+      }
+    });
+  }
+
+  it("restores active propagation undo for unchanged transactions", async () => {
+    await withRestoredPropagation((recovered, operationId, originalTransactions) => {
+      expect(recovered.undoSameMerchantPropagation(operationId)).toBe(true);
+      expect(recovered.loadLedgerSnapshotData().transactions).toEqual(originalTransactions);
+      expect(recovered.undoSameMerchantPropagation(operationId)).toBe(false);
+    });
+  });
+
+  it("restores active propagation undo that atomically protects a later correction", async () => {
+    await withRestoredPropagation((recovered, operationId) => {
+      applyCategorizationCorrection(recovered, new Map(), "second", "fees");
+      const beforeFailure = recovered.loadLedgerSnapshotData();
+      expect(() => recovered.undoSameMerchantPropagation(operationId)).toThrow(/changed.*second/i);
+      expect(recovered.loadLedgerSnapshotData()).toEqual(beforeFailure);
+    });
+  });
+
+  it("restores correction and propagation evidence with import undo that protects changed transactions", async () => {
+      await withIsolatedLedger({}, ({ ledger, directory }) => {
+        ledger.createCategoryRecord(customCategory);
+        ledger.appendImportJobAndTransactions({
+          id: "import-history", householdId: "hh-isolated", sourceType: "csv", sourceName: "synthetic-history.csv",
+          startedAtIso: "2026-05-23T00:00:00Z", finishedAtIso: "2026-05-23T00:00:01Z",
+          candidateCount: 2, provenance: { sourceIdentity: "synthetic-history", accountId: "acc-isolated" },
+        }, ["source", "target"].map((id, index): Transaction => ({
+          id, householdId: "hh-isolated", accountId: "acc-isolated", bookedAtIso: "2026-05-23",
+          amountMinor: -(index + 1) * 10000, currencyCode: "NOK", merchantRaw: "Mekonomen Stavanger",
+          importJobId: "import-history", sourceType: "csv", sourceReference: `synthetic-history.csv:row-${index + 1}`,
+          categorization: {
+            status: "unmatched", confidence: 0, confidenceLevel: "low", requiresReview: true, matchingRules: [],
+          },
+        })));
+        applyCategorizationCorrection(ledger, new Map(), "source", "category-car-001");
+        const propagation = ledger.applySameMerchantPropagation({
+          sourceTransactionId: "source", merchantAlias: "MEKONOMEN STAVANGER",
+          categoryId: "category-car-001", transactionIds: ["target"],
+        });
+        expect(ledger.undoSameMerchantPropagation(propagation.id)).toBe(true);
+        ledger.updateCategoryRecordLabel("hh-isolated", "category-car-001", "Vehicle repairs", "2026-06-01T00:00:00Z");
+        const original = ledger.loadLedgerSnapshotData();
+        const corrections = ledger.listMerchantCorrectionProvenance();
+        const propagations = ledger.listSameMerchantPropagationOperations();
+        const history = ledger.listImportJobHistory("hh-isolated");
+        const snapshotPath = join(directory, "history-recovery.json");
+        createBackupSnapshot({ ...original, outputPath: snapshotPath, createdAtIso: "2026-06-02T00:00:00Z" });
+        const recovered = createLocalLedgerDatabase({
+          dbPath: join(directory, "history-recovered.sqlite"), seedData: restoreBackupSnapshot({ snapshotPath }),
+        });
+        try {
+          expect(recovered.listMerchantCorrectionProvenance()).toEqual(corrections);
+          expect(recovered.listSameMerchantPropagationOperations()).toEqual(propagations);
+          expect(recovered.listImportJobHistory("hh-isolated")).toEqual(history);
+          expect(recovered.undoSameMerchantPropagation(propagation.id)).toBe(false);
+          expect(recovered.loadLedgerSnapshotData().transactions).toEqual(original.transactions);
+          expect(recovered.undoImportJob("import-history")).toMatchObject({
+            removedCount: 1, retainedCount: 1, alreadyUndone: false,
+            retainedTransactions: [{ id: "source", reason: "changed-after-import" }],
+          });
+          expect(recovered.getTransactionById("source")).toMatchObject({
+            amountMinor: -10000, categoryId: "category-car-001",
+          });
+          expect(recovered.getTransactionById("target")).toBeUndefined();
+          expect(recovered.listMerchantCategoryRules()).toEqual(original.merchantCategoryRules);
+          const undoneHistory = recovered.listImportJobHistory("hh-isolated");
+          const secondSnapshotPath = join(directory, "undone-history.json");
+          createBackupSnapshot({
+            ...recovered.loadLedgerSnapshotData(), outputPath: secondSnapshotPath, createdAtIso: "2026-06-03T00:00:00Z",
+          });
+          const reopened = createLocalLedgerDatabase({
+            dbPath: join(directory, "undone-history-recovered.sqlite"),
+            seedData: restoreBackupSnapshot({ snapshotPath: secondSnapshotPath }),
+          });
+          try {
+            expect(reopened.listImportJobHistory("hh-isolated")).toEqual(undoneHistory);
+            expect(reopened.undoImportJob("import-history")).toMatchObject({
+              removedCount: 1, retainedCount: 1, alreadyUndone: true,
+            });
+            expect(reopened.getTransactionById("source")?.amountMinor).toBe(-10000);
+          } finally {
+            reopened.close();
+          }
+        } finally {
+          recovered.close();
+        }
+      });
   });
 
   it.each([
@@ -311,6 +477,39 @@ describe("household category persistence", () => {
     });
   });
 
+  it.each([
+    { name: "negative operation count", candidateCount: -1, householdId: "hh-isolated" },
+    { name: "foreign undo baseline", candidateCount: 1, householdId: "foreign-household" },
+  ])("rejects malformed current-format recovery history: $name", async ({ candidateCount, householdId }) => {
+    await withIsolatedLedger({}, ({ ledger, directory }) => {
+      ledger.appendImportJob({
+        id: "archive", householdId: "hh-isolated", sourceType: "csv", sourceName: "synthetic-history.csv",
+        startedAtIso: "2026-05-23T00:00:00Z",
+      });
+      const snapshotPath = join(directory, "invalid-history.json");
+      writeFileSync(snapshotPath, JSON.stringify({
+        ...buildBackupSnapshot(ledger.loadLedgerSnapshotData()),
+        recoveryHistory: {
+          merchantCorrections: [], sameMerchantPropagations: [],
+          importOperations: [{
+            importJobId: "archive", accountId: "acc-isolated", candidateCount, importedCount: 1, duplicateCount: 0,
+            undoAvailable: true, undoRemovedCount: 0, undoRetainedCount: 0,
+            transactionBaselines: [{
+              transactionId: "archived-row",
+              serializedTransaction: JSON.stringify({
+                id: "archived-row", householdId, accountId: "acc-isolated", bookedAtIso: "2026-05-23",
+                amountMinor: -10000, merchantRaw: "Synthetic workshop", currencyCode: "NOK", sourceType: "csv",
+                sourceReference: "synthetic-history.csv:row-1", categoryId: null, categoryAllocations: null,
+                importJobId: "archive",
+              }),
+            }],
+          }],
+        },
+      }), "utf8");
+      expect(() => restoreBackupSnapshot({ snapshotPath })).toThrow(/recovery history/i);
+    });
+  });
+
   it("rejects a current snapshot whose financial category reference is missing from its catalog", async () => {
     await withIsolatedLedger({}, ({ ledger, directory }) => {
       const snapshotPath = join(directory, "missing-category-reference.json");
@@ -399,22 +598,54 @@ describe("household category persistence", () => {
     });
   });
 
+  it("rejects saved undo baselines whose import operation is missing instead of dropping recovery evidence", async () => {
+    await withIsolatedLedger({}, ({ ledger, dbPath }) => {
+      ledger.appendImportJobAndTransactions({
+        id: "orphan-history", householdId: "hh-isolated", sourceType: "csv",
+        sourceName: "synthetic.csv", startedAtIso: "2026-05-01T00:00:00Z",
+      }, [{
+        id: "orphan-transaction", householdId: "hh-isolated", accountId: "acc-isolated",
+        bookedAtIso: "2026-05-01", amountMinor: -1250, merchantRaw: "Synthetic Kiwi",
+        currencyCode: "NOK", sourceType: "csv", importJobId: "orphan-history",
+      }]);
+      const original = ledger.getTransactionsForAccount("acc-isolated");
+      const raw = new DatabaseSync(dbPath);
+      try {
+        raw.exec("DELETE FROM import_job_operations");
+        expect(() => ledger.loadLedgerSnapshotData()).toThrow(/baseline.*operation/i);
+        expect(ledger.getTransactionsForAccount("acc-isolated")).toEqual(original);
+      } finally {
+        raw.close();
+      }
+    });
+  });
+
   it("conserves 10,000 synthetic transactions across rename, restart, and backup recovery", async () => {
-    await withIsolatedLedger({}, ({ ledger, directory, dbPath }) => {
+    await withIsolatedLedger({ seed: {
+      household: { id: "hh-isolated", name: "Synthetic household", createdAtIso: "2026-01-01T00:00:00Z" },
+      accounts: [
+        { id: "acc-isolated", householdId: "hh-isolated", name: "Brukskonto", currencyCode: "NOK" },
+        { id: "acc-sek", householdId: "hh-isolated", name: "Sparekonto", currencyCode: "SEK" },
+      ],
+      transactions: [], importJobs: [], monthlyCategoryTargets: [],
+    } }, ({ ledger, directory, dbPath }) => {
       ledger.createCategoryRecord(customCategory);
       const transactions: Transaction[] = Array.from({ length: 10_000 }, (_, index) => ({
         id: `tx-${String(index).padStart(5, "0")}`,
         householdId: "hh-isolated",
-        accountId: "acc-isolated",
+        accountId: index % 4 < 2 ? "acc-isolated" : "acc-sek",
         bookedAtIso: `2026-05-${String(index % 28 + 1).padStart(2, "0")}`,
-        currencyCode: "NOK",
+        currencyCode: index % 4 < 2 ? "NOK" : "SEK",
+        sourceType: "csv",
+        importJobId: index % 4 < 2 ? "import-nok" : "import-sek",
+        sourceReference: `synthetic-statement:row-${index}`,
         ...(index % 2 === 0 ? {
           merchantRaw: "Mekonomen Stavanger",
-          amountMinor: -10000,
-          categoryAllocations: [
+          amountMinor: index % 4 === 0 ? -10000 : -30000,
+          ...(index % 4 === 0 ? { categoryAllocations: [
             { categoryId: "category-car-001", amountMinor: -8000 },
             { categoryId: "fees", amountMinor: -2000 },
-          ],
+          ] } : { categoryId: "category-car-001" }),
           categorization: {
             status: "categorized", confidence: 0.9, confidenceLevel: "high", requiresReview: false,
             selectedRule: {
@@ -426,47 +657,91 @@ describe("household category persistence", () => {
           },
         } : {
           merchantRaw: "Arbeidsgiver AS",
-          amountMinor: 20000,
+          amountMinor: index % 4 === 1 ? 20000 : 40000,
           categoryId: "salary",
         }),
       }));
-      expect(ledger.appendTransactions(transactions)).toBe(10_000);
+      for (const [accountId, importJobId] of [["acc-isolated", "import-nok"], ["acc-sek", "import-sek"]] as const) {
+        expect(ledger.appendImportJobAndTransactions({
+          id: importJobId, householdId: "hh-isolated", sourceType: "csv", sourceName: `${importJobId}.csv`,
+          startedAtIso: "2026-05-31T00:00:00Z", finishedAtIso: "2026-05-31T00:00:01Z",
+          candidateCount: 5000, provenance: { sourceIdentity: importJobId, accountId },
+        }, transactions.filter((transaction) => transaction.accountId === accountId))).toBe(5000);
+      }
       ledger.upsertMonthlyCategoryTarget({
         yearMonth: "2026-05", categoryId: "category-car-001", targetMinor: 40_000_000,
       });
       ledger.upsertMerchantCategoryRule({ merchantAlias: "MEKONOMEN STAVANGER", categoryId: "category-car-001" });
+      ledger.upsertMerchantCategoryRule({ merchantAlias: "ARBEIDSGIVER AS", categoryId: "salary" });
+      const before = ledger.loadLedgerSnapshotData();
+      const baselines = importBaselines(dbPath);
+      const history = ledger.listImportJobHistory("hh-isolated");
+      expect(baselines).toHaveLength(10_000);
+      expect(before.transactions).toEqual(transactions);
+      const archivePath = join(directory, "large-before-rename.json");
+      createBackupSnapshot({ ...before, outputPath: archivePath, createdAtIso: "2026-05-31T00:00:00Z" });
+      const archivedBytes = readFileSync(archivePath, "utf8");
+
+      function assertConserved(database: LocalLedgerDatabase, databasePath: string): void {
+        const { categories, ...data } = database.loadLedgerSnapshotData();
+        const { categories: originalCategories, ...originalData } = before;
+        expect(data).toEqual(originalData);
+        expect(data.transactions).toHaveLength(10_000);
+        expect(categories?.slice().sort((left, right) => left.id.localeCompare(right.id)))
+          .toEqual(originalCategories?.map((category) => category.id === "category-car-001" ? {
+            ...category, label: "Vehicle maintenance", updatedAtIso: "2026-06-01T00:00:00.000Z",
+          } : category).sort((left, right) => left.id.localeCompare(right.id)));
+        expect(categories).toHaveLength(15);
+        for (const [accountId, currency] of [["acc-isolated", "NOK"], ["acc-sek", "SEK"]] as const) {
+          const records = database.getTransactionsForAccount(accountId);
+          expect(records).toHaveLength(5000);
+          expect(new Set(records.map(({ currencyCode }) => currencyCode))).toEqual(new Set([currency]));
+          expect(records.reduce((sum, { amountMinor }) => sum + amountMinor, 0)).toBe(25_000_000);
+        }
+        expect(database.queryTransactions("hh-isolated", { categoryId: "category-car-001" }).totalCount).toBe(5000);
+        expect(database.listImportJobHistory("hh-isolated")).toEqual(history);
+        expect(importBaselines(databasePath)).toEqual(baselines);
+        expect(readFileSync(archivePath, "utf8")).toBe(archivedBytes);
+      }
       ledger.updateCategoryRecordLabel(
         "hh-isolated", "category-car-001", "Vehicle maintenance", "2026-06-01T00:00:00.000Z",
       );
+      assertConserved(ledger, dbPath);
       const reopened = createLocalLedgerDatabase({ dbPath });
       try {
+        assertConserved(reopened, dbPath);
         const snapshot = reopened.loadLedgerSnapshotData();
-        expect(snapshot.transactions).toEqual(transactions);
-        expect(reopened.queryTransactions("hh-isolated", { categoryId: "category-car-001" }).totalCount).toBe(5000);
         const snapshotPath = join(directory, "large-catalog.json");
         createBackupSnapshot({ ...snapshot, outputPath: snapshotPath, createdAtIso: "2026-06-02T00:00:00.000Z" });
         const recovered = createLocalLedgerDatabase({
           dbPath: join(directory, "large-recovered.sqlite"), seedData: restoreBackupSnapshot({ snapshotPath }),
         });
         try {
+          assertConserved(recovered, join(directory, "large-recovered.sqlite"));
           const recoveredSnapshot = recovered.loadLedgerSnapshotData();
-          expect(recoveredSnapshot.transactions).toEqual(transactions);
-          expect(recovered.listMonthlyTotals("hh-isolated")).toEqual([{
-            yearMonth: "2026-05", totalMinor: 50_000_000,
-          }]);
           expect(recoveredSnapshot.monthlyCategoryTargets).toEqual([{
             yearMonth: "2026-05", categoryId: "category-car-001", targetMinor: 40_000_000,
           }]);
-          expect(recoveredSnapshot.merchantCategoryRules).toEqual([{
-            merchantAlias: "MEKONOMEN STAVANGER", categoryId: "category-car-001",
-          }]);
+          expect(recoveredSnapshot.merchantCategoryRules).toEqual(before.merchantCategoryRules);
           expect(recovered.listCategories("hh-isolated").find((category) => category.id === "category-car-001"))
             .toMatchObject({
               label: "Vehicle maintenance", createdAtIso: "2026-05-01T00:00:00.000Z",
               updatedAtIso: "2026-06-01T00:00:00.000Z",
             });
+          expect(recovered.undoImportJob("import-nok")).toMatchObject({
+            removedCount: 5000, retainedCount: 0, retainedTransactions: [],
+          });
+          expect(recovered.getTransactionsForAccount("acc-isolated")).toEqual([]);
+          expect(recovered.loadLedgerSnapshotData().transactions)
+            .toEqual(before.transactions.filter((transaction) => transaction.accountId === "acc-sek"));
         } finally {
           recovered.close();
+        }
+        const reopenedAgain = createLocalLedgerDatabase({ dbPath });
+        try {
+          assertConserved(reopenedAgain, dbPath);
+        } finally {
+          reopenedAgain.close();
         }
       } finally {
         reopened.close();

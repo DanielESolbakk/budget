@@ -3,6 +3,7 @@ import { SNAPSHOT_VERSION } from "../../domain/backup/snapshotContract.js";
 import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
 import type { Category } from "../../domain/types.js";
 import { collectCategoryReferenceIds, validateCategoryRecord } from "../../domain/categorization/categoryCatalog.js";
+import { validateRecoveryHistory } from "./snapshotHistoryValidation.js";
 import {
   validateReportingPeriodRule,
   type ReportingPeriodRule,
@@ -187,6 +188,10 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
   const accountCurrencies = new Map(
     accounts.map((account) => [account.id, account.currencyCode] as const)
   );
+  const recoveryHistory = hasCategoryCatalog
+    ? validateRecoveryHistory(value.recoveryHistory, value.household.id, accountIds,
+      new Set(importJobs.map((job) => job.id)), categories.map((category) => category.id), snapshotPath)
+    : { merchantCorrections: [], sameMerchantPropagations: [], importOperations: [] };
   const { requiresHouseholdShares } = capabilities;
   validateProperties(properties, value.household.id, snapshotPath, requiresHouseholdShares);
   validatePropertyValuations(
@@ -270,6 +275,7 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
   return {
     ...(value as unknown as BackupSnapshot),
     categories,
+    recoveryHistory,
     accountStatementCoveragePeriods,
     accountBalanceCheckpoints,
     exchangeRates,

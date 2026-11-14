@@ -18,7 +18,14 @@ describe("legacy import-history backfill recovery", () => {
           merchantRaw: "SYNTHETIC KIWI", currencyCode: "NOK", sourceType: "csv",
         }]);
       }
-      const before = ledger.loadLedgerSnapshotData();
+      const { recoveryHistory: originalHistory, ...before } = ledger.loadLedgerSnapshotData();
+      expect(originalHistory?.importOperations).toHaveLength(2);
+      function assertFinancialStateUnchanged(database: typeof ledger): void {
+        const { recoveryHistory, ...current } = database.loadLedgerSnapshotData();
+        expect(current).toEqual(before);
+        expect(recoveryHistory?.merchantCorrections).toEqual(originalHistory?.merchantCorrections);
+        expect(recoveryHistory?.sameMerchantPropagations).toEqual(originalHistory?.sameMerchantPropagations);
+      }
       const raw = new DatabaseSync(dbPath);
       try {
         raw.exec(`
@@ -32,7 +39,8 @@ describe("legacy import-history backfill recovery", () => {
         expect(() => history.backfillImportJobHistory()).toThrow("synthetic later backfill failure");
         expect(raw.prepare("SELECT * FROM import_job_operations").all()).toEqual([]);
         expect(raw.prepare("SELECT * FROM import_job_transaction_baselines").all()).toEqual([]);
-        expect(ledger.loadLedgerSnapshotData()).toEqual(before);
+        assertFinancialStateUnchanged(ledger);
+        expect(ledger.loadLedgerSnapshotData().recoveryHistory?.importOperations).toEqual([]);
         raw.exec("DROP TRIGGER synthetic_backfill_failure");
         history.backfillImportJobHistory();
         history.backfillImportJobHistory();
@@ -46,7 +54,11 @@ describe("legacy import-history backfill recovery", () => {
       }
       const reopened = createLocalLedgerDatabase({ dbPath });
       try {
-        expect(reopened.loadLedgerSnapshotData()).toEqual(before);
+        assertFinancialStateUnchanged(reopened);
+        expect(reopened.loadLedgerSnapshotData().recoveryHistory?.importOperations).toMatchObject([
+          { importJobId: "first", undoAvailable: false, transactionBaselines: [] },
+          { importJobId: "second", undoAvailable: false, transactionBaselines: [] },
+        ]);
         expect(reopened.listImportJobHistory("hh-isolated")).toMatchObject([
           { id: "second", importedCount: 1, undoAvailable: false },
           { id: "first", importedCount: 1, undoAvailable: false },
@@ -55,7 +67,7 @@ describe("legacy import-history backfill recovery", () => {
           removedCount: 0, retainedCount: 1,
           retainedTransactions: [{ id: "tx-first", amountMinor: -1250, reason: "baseline-unavailable" }],
         });
-        expect(reopened.loadLedgerSnapshotData()).toEqual(before);
+        assertFinancialStateUnchanged(reopened);
       } finally {
         reopened.close();
       }

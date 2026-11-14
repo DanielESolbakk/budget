@@ -1,6 +1,12 @@
 import React from "react";
 import { useCategoryCatalog } from "./CategoryCatalogContext.js";
 
+interface SavedCategoryChange {
+  mode: "create" | "rename";
+  label: string;
+  submittedName: string;
+}
+
 export function CategoryManagementDialog({
   onClose,
   onSaved,
@@ -12,6 +18,8 @@ export function CategoryManagementDialog({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState("");
+  const [pendingSave, setPendingSave] = React.useState<SavedCategoryChange | null>(null);
+  const closedRef = React.useRef(false);
   const dialogRef = React.useRef<HTMLDialogElement>(null);
   const newNameRef = React.useRef<HTMLInputElement>(null);
   const renameRef = React.useRef<HTMLInputElement>(null);
@@ -35,6 +43,31 @@ export function CategoryManagementDialog({
     if (!saving && result !== "" && editingId === null) newNameRef.current?.focus();
   }, [saving, result, editingId]);
 
+  function finishSavedChange(change: SavedCategoryChange): void {
+    if (!closedRef.current) {
+      setPendingSave(null);
+      setError(null);
+      setResult(change.mode === "create" ? `Created ${change.label}.` : `Renamed to ${change.label}.`);
+      if (change.mode === "create") {
+        setNewName((current) => current === change.submittedName ? "" : current);
+      } else {
+        setEditingId(null);
+        setRenameName("");
+      }
+      onSaved();
+    }
+  }
+
+  function close(): void {
+    closedRef.current = true;
+    if (pendingSave !== null) onSaved();
+    onClose();
+  }
+
+  async function retryCatalog(): Promise<void> {
+    if (await refresh() && pendingSave !== null) finishSavedChange(pendingSave);
+  }
+
   async function save(mode: "create" | "rename"): Promise<void> {
     setSaving(true);
     setError(null);
@@ -45,14 +78,13 @@ export function CategoryManagementDialog({
         ? await window.budgetApi.categories.create({ label: newName })
         : await window.budgetApi.categories.rename({ categoryId: editingId ?? "", label: renameName });
       saved = true;
+      const change = { mode, label: category.label, submittedName: mode === "create" ? newName : renameName };
+      setPendingSave(change);
       if (!await refresh()) {
         setError("The category was saved, but the list could not refresh. Retry categories before making another change.");
         return;
       }
-      setResult(mode === "create" ? `Created ${category.label}.` : `Renamed to ${category.label}.`);
-      if (mode === "create") setNewName("");
-      else setEditingId(null);
-      onSaved();
+      finishSavedChange(change);
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : "Unable to save the category.";
       setError(saved ? `The category was saved, but refreshing failed: ${message}` : message);
@@ -61,20 +93,20 @@ export function CategoryManagementDialog({
     }
   }
 
-  const unavailable = saving || loading || catalogError !== null;
+  const unavailable = saving || loading || catalogError !== null || pendingSave !== null;
   return (
     <dialog
       ref={dialogRef}
       className="category-management-dialog"
       aria-labelledby="category-management-heading"
       aria-describedby="category-management-guidance"
-      aria-busy={saving}
-      onCancel={(event) => { event.preventDefault(); if (!saving) onClose(); }}
+      aria-busy={saving || loading}
+      onCancel={(event) => { event.preventDefault(); if (!saving) close(); }}
     >
       <div className="category-management-heading">
         <h2 id="category-management-heading">Manage categories</h2>
         <button type="button" className="action-secondary" aria-label="Close category management"
-          disabled={saving} onClick={onClose}>Close</button>
+          disabled={saving} onClick={close}>Close</button>
       </div>
       <p id="category-management-guidance">
         Make categories fit your household. Renaming keeps transactions, budget targets, and merchant rules linked.
@@ -90,9 +122,9 @@ export function CategoryManagementDialog({
       {(error !== null || catalogError !== null) && (
         <div role="alert" className="category-management-error">
           <p>{error ?? catalogError}</p>
-          {catalogError !== null && (
+          {(catalogError !== null || pendingSave !== null) && (
             <button type="button" className="action-secondary" disabled={loading}
-              onClick={() => void refresh()}>Retry categories</button>
+              onClick={() => void retryCatalog()}>Retry categories</button>
           )}
         </div>
       )}
@@ -106,12 +138,12 @@ export function CategoryManagementDialog({
               <form className="category-management-form" onSubmit={(event) => { event.preventDefault(); void save("rename"); }}>
                 <label>
                   Category name
-                  <input ref={renameRef} value={renameName} required disabled={saving}
+                  <input ref={renameRef} value={renameName} required disabled={saving || pendingSave !== null}
                     onChange={(event) => setRenameName(event.target.value)} />
                 </label>
                 <div className="category-management-actions">
                   <button type="submit" disabled={unavailable}>Save name</button>
-                  <button type="button" className="action-secondary" disabled={saving}
+                  <button type="button" className="action-secondary" disabled={saving || pendingSave !== null}
                     onClick={() => setEditingId(null)}>Cancel rename</button>
                 </div>
               </form>

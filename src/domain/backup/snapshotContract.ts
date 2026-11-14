@@ -11,6 +11,7 @@ import type {
   LoanBalanceSnapshot,
   LoanRecord,
   MerchantCategoryRule,
+  MerchantCorrectionProvenance,
   MonthlyCategoryTarget,
   PendingTransactionObservation,
   PropertyRecord,
@@ -18,6 +19,7 @@ import type {
   RecurringCommitment,
   RecurringCommitmentDecision,
   RecurringCommitmentPaymentLink,
+  SameMerchantPropagationOperation,
   Transaction,
 } from "../types.js";
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
@@ -27,6 +29,25 @@ export const SNAPSHOT_VERSION = "13" as const;
 
 export type SnapshotVersion =
   | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | typeof SNAPSHOT_VERSION;
+
+export interface ImportOperationSnapshot {
+  importJobId: string;
+  accountId?: string;
+  candidateCount: number;
+  importedCount: number;
+  duplicateCount: number;
+  undoAvailable: boolean;
+  undoneAtIso?: string;
+  undoRemovedCount: number;
+  undoRetainedCount: number;
+  transactionBaselines: Array<{ transactionId: string; serializedTransaction: string }>;
+}
+
+export interface LedgerRecoveryHistory {
+  merchantCorrections: MerchantCorrectionProvenance[];
+  sameMerchantPropagations: SameMerchantPropagationOperation[];
+  importOperations: ImportOperationSnapshot[];
+}
 
 /** Deterministic metadata written into every snapshot. */
 export interface SnapshotMetadata {
@@ -51,6 +72,7 @@ export interface BackupSnapshot {
   metadata: SnapshotMetadata;
   household: Household;
   categories: Category[];
+  recoveryHistory: LedgerRecoveryHistory;
   accounts: Account[];
   transactions: Transaction[];
   pendingObservations?: PendingTransactionObservation[];
@@ -81,6 +103,7 @@ export interface BackupSnapshot {
 export interface LedgerSnapshotData {
   household: Household;
   categories?: Category[];
+  recoveryHistory?: LedgerRecoveryHistory;
   accounts: Account[];
   transactions: Transaction[];
   pendingObservations?: PendingTransactionObservation[];
@@ -164,6 +187,7 @@ export interface RestoreSnapshotInput {
 export interface RestoreSnapshotOutput {
   household: Household;
   categories?: Category[];
+  recoveryHistory?: LedgerRecoveryHistory;
   accounts: Account[];
   transactions: Transaction[];
   pendingObservations?: PendingTransactionObservation[];

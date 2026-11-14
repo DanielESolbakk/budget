@@ -43,6 +43,7 @@ interface BackupSnapshotCatalogStore {
 function createSnapshotData(): LedgerSnapshotData {
   return {
     household: HOUSEHOLD,
+    recoveryHistory: { merchantCorrections: [], sameMerchantPropagations: [], importOperations: [] },
     categories: [
       { id: "dining", label: "Dining" },
       { id: "fees", label: "Fees" },

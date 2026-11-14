@@ -64,7 +64,7 @@ test.describe("Keyboard accessibility smoke", () => {
     const categorySelect = reviewQueue.categorySelect("MERCHANT-005");
     await expect(categorySelect).toBeVisible();
     await categorySelect.focus();
-    await window.keyboard.press("ArrowDown");
+    await window.keyboard.press("g");
     await window.keyboard.press("Enter");
     await expect(categorySelect).toHaveValue("groceries");
 

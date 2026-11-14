@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -11,7 +11,7 @@ import {
   vi,
 } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
-import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { buildBackupSnapshot, createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 
 const harness = vi.hoisted(() => {
@@ -459,6 +459,43 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect(invoke("import:preflight:cancel", requestId)).toBe(false);
     previewId(await invoke(`import:${format}Preview`, { requestId, filePath }));
     expect(await invoke("import:history:list")).toEqual([]);
+  });
+
+  it("rejects a malformed category snapshot through restore IPC without replacing destination data or runtime", async () => {
+    createHousehold();
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const metadata = database.loadRuntimeMetadata();
+      if (metadata === null || metadata.accounts[0] === undefined) throw new Error("Expected a synthetic household.");
+      database.appendTransactions([{
+        id: "protected-transaction", householdId: metadata.household.id, accountId: metadata.accounts[0].id,
+        bookedAtIso: "2026-05-23", amountMinor: -12345, currencyCode: "NOK",
+        merchantRaw: "Synthetic protected workshop", categoryId: "groceries",
+      }]);
+      const original = database.loadLedgerSnapshotData();
+      const accountContext = invoke("account:getCurrent");
+      const snapshotPath = join(directory, "invalid-category-restore.json");
+      writeFileSync(snapshotPath, JSON.stringify({
+        ...buildBackupSnapshot(original), categories: [],
+      }), "utf8");
+      await expect(invoke("backup:restore", { snapshotPath })).rejects.toThrow(/Invalid snapshot categories/i);
+      expect(database.loadLedgerSnapshotData()).toEqual(original);
+      expect(database.listBackupSnapshots()).toEqual([]);
+      expect(invoke("account:getCurrent")).toEqual(accountContext);
+      expect(await invoke("transaction:list")).toMatchObject({
+        transactions: [{ id: "protected-transaction", amountMinor: -12345, categoryId: "groceries" }],
+      });
+    } finally {
+      database.close();
+    }
+    const reopened = createLocalLedgerDatabase({ dbPath });
+    try {
+      expect(reopened.getTransactionById("protected-transaction")).toMatchObject({
+        amountMinor: -12345, categoryId: "groceries",
+      });
+    } finally {
+      reopened.close();
+    }
   });
 
   it("uses restored household/accounts/targets across channel groups and invalidates both preview formats", async () => {

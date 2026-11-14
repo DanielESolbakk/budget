@@ -33,6 +33,7 @@ import {
 } from "./ledgerTransactionRows.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 import { createCategoryRepository } from "./categoryRepository.js";
+import { insertLedgerRecoveryHistory, readLedgerRecoveryHistory } from "./ledgerRecoveryHistory.js";
 
 type LedgerSnapshotReaders = Pick<LocalLedgerDatabase,
   | "listExchangeRates"
@@ -360,6 +361,7 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
   for (const rule of snapshot.merchantCategoryRules ?? []) {
     insertMerchantCategoryRule.run(rule.merchantAlias, rule.categoryId);
   }
+  if (snapshot.recoveryHistory !== undefined) insertLedgerRecoveryHistory(db, snapshot.recoveryHistory);
 }
 
 export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshotReaders): LedgerSnapshotData {
@@ -567,6 +569,10 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
       ? {}
       : { pendingObservations: mappedPendingObservations }),
     importJobs: mappedImportJobs,
+    recoveryHistory: readLedgerRecoveryHistory(
+      db, householdRow.id, new Set(accounts.map((account) => account.id)),
+      new Set(mappedImportJobs.map((job) => job.id)), categoryIds,
+    ),
     monthlyCategoryTargets: monthlyCategoryTargets.map((target) => ({
       yearMonth: target.year_month,
       categoryId: target.category_id,
