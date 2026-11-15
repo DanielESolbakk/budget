@@ -48,7 +48,9 @@ export function CategoryManagementDialog({
   }, [editingId]);
 
   React.useEffect(() => {
-    if (!saving && result !== "" && editingId === null) newNameRef.current?.focus();
+    if (!saving && result !== "" && editingId === null && document.activeElement === document.body) {
+      newNameRef.current?.focus();
+    }
   }, [saving, result, editingId]);
 
   React.useEffect(() => {

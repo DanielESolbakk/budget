@@ -286,9 +286,22 @@ test.describe("transaction category editing", () => {
 
     const manager = new CategoryManagementPage(window);
     await manager.openFrom("Manage categories for this transaction");
-    await manager.rename("Housing", "Household housing");
+    await manager.dialog.getByRole("button", { name: "Rename Housing", exact: true }).click();
+    await manager.dialog.getByRole("textbox", { name: "Category name", exact: true })
+      .fill("Household housing");
+    const focusDestination = manager.dialog.getByText("How categories work", { exact: true });
+    const saveName = manager.dialog.getByRole("button", { name: "Save name", exact: true });
+    const saveNameHandle = await saveName.elementHandle();
+    if (saveNameHandle === null) throw new Error("Expected the category rename save button.");
+    await focusDestination.evaluate((target, button) => {
+      if (!(target instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) {
+        throw new Error("Expected the category-management focus target and save button.");
+      }
+      button.click();
+      target.focus();
+    }, saveNameHandle);
     await expect(manager.result).toContainText("Renamed to Household housing");
-    await expect(manager.newName).toBeFocused();
+    await expect(focusDestination).toBeFocused();
     await manager.close();
 
     await expect(category).toBeFocused();
