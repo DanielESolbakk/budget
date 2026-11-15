@@ -156,6 +156,7 @@ test.describe("transaction category editing", () => {
     const splitEditor = editor.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
+    await expect(splitEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
     await splitEditor.getByLabel("Allocation category 1").selectOption("groceries");
     await splitEditor.getByLabel("Allocation amount 1").fill("-40");
     await splitEditor.getByLabel("Allocation category 2").selectOption("housing");
@@ -164,6 +165,7 @@ test.describe("transaction category editing", () => {
 
     await expect(editor.getByRole("combobox", { name: "Category for Kiwi" })).toHaveValue("housing");
     await expect(remember).not.toBeChecked();
+    await editor.getByRole("combobox", { name: "Category for Kiwi" }).selectOption("fuel");
     await editor.getByRole("button", { name: "Split across categories" }).click();
     await expect(splitEditor.getByLabel("Allocation category 1")).toHaveValue("groceries");
     await expect(splitEditor.getByLabel("Allocation amount 1")).toHaveValue("-40");
@@ -174,6 +176,48 @@ test.describe("transaction category editing", () => {
     await expect(editor).toBeHidden();
     await expect(row).toContainText("Groceries & food");
     await expect(row).not.toContainText("Housing");
+  });
+
+  test("explains before saving that a split leaves remembered categories unchanged", async ({
+    appShell,
+    databasePath,
+    window,
+  }) => {
+    setRememberedCategory(databasePath, "fuel");
+    await appShell.openWorkspace("Transactions");
+    const editor = await new LedgerPage(window).openCategoryEditor("Kiwi");
+    await expect(editor.getByRole("checkbox", { name: "Remember for this merchant" })).toBeChecked();
+    await editor.getByRole("button", { name: "Split across categories" }).click();
+    const split = editor.getByRole("region", { name: "Transaction category allocations for Kiwi" });
+    await expect(split).toContainText("Splitting does not change remembered categories for this merchant.");
+    await expect(split.getByRole("button", { name: "Save split for Kiwi" }))
+      .toHaveAccessibleDescription("Splitting does not change remembered categories for this merchant.");
+    await split.getByLabel("Allocation amount 1").fill("-40");
+    await split.getByLabel("Allocation category 2").selectOption("housing");
+    await split.getByLabel("Allocation amount 2").fill("-32");
+    await split.getByRole("button", { name: "Save split for Kiwi" }).click();
+    await expect(editor).toBeHidden();
+    const database = createLocalLedgerDatabase({ dbPath: databasePath });
+    try {
+      expect(database.listMerchantCategoryRules()).toEqual([{ merchantAlias: "KIWI", categoryId: "fuel" }]);
+    } finally {
+      database.close();
+    }
+  });
+
+  test("does not treat an untouched seeded split as an unsaved edit", async ({ appShell, window }) => {
+    await appShell.openWorkspace("Transactions");
+    const editor = await new LedgerPage(window).openCategoryEditor("Kiwi");
+    const category = editor.getByRole("combobox", { name: "Category for Kiwi" });
+    await category.selectOption("housing");
+    await editor.getByRole("button", { name: "Split across categories" }).click();
+    await editor.getByRole("button", { name: "Use one category" }).click();
+    await category.selectOption("groceries");
+    await window.getByRole("row", { name: "Ledger transaction Rema 1000" })
+      .getByRole("button", { name: "Edit category for Rema 1000" }).click();
+
+    await expect(window.getByRole("region", { name: "Edit category for Rema 1000" })).toBeVisible();
+    await expect(window.getByRole("alert").filter({ hasText: "Unsaved category changes." })).toHaveCount(0);
   });
 
   test("saves a one-off correction without changing the remembered merchant category", async ({

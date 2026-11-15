@@ -233,8 +233,12 @@ export function TransactionAllocationEditor({
         <p className="transaction-allocation-field-error" id="transaction-allocation-error" role="alert">{error.message}</p>
       )}
       <div className="transaction-allocation-actions">
+        <p className="transaction-allocation-consequence" id="transaction-allocation-consequence">
+          Splitting does not change remembered categories for this merchant.
+        </p>
         {isSaving && <p className="transaction-allocation-saving">Saving allocation changes.</p>}
         <button type="button" disabled={isSaving || loading || catalogError !== null} onClick={onSave}
+          aria-describedby="transaction-allocation-consequence"
           aria-label={isSaving ? "Saving split..." : `Save split for ${transaction.merchantRaw}`}>
           {isSaving ? "Saving split..." : "Save split"}
         </button>

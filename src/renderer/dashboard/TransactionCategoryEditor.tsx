@@ -77,6 +77,8 @@ export function TransactionCategoryEditor({
   const [error, setError] = React.useState<string | null>(null);
   const [allocationStatusMessage, setAllocationStatusMessage] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
+  const hasOpenedSplitRef = React.useRef(initialMode === "split");
+  const initialSplitDraftRef = React.useRef(initialAllocations);
   const categoryRef = React.useRef<HTMLSelectElement>(null);
   const splitCategoryRef = React.useRef<HTMLSelectElement>(null);
   const lastEditingControlRef = React.useRef<HTMLElement | null>(null);
@@ -88,7 +90,7 @@ export function TransactionCategoryEditor({
   const isDirty = mode !== initialMode ||
     categoryId !== initialCategoryId ||
     rememberForMerchant !== initialRemember ||
-    !sameAllocationDraft(allocations, initialAllocations);
+    !sameAllocationDraft(allocations, initialSplitDraftRef.current);
   const allocationAmounts = allocations.map((allocation) => parseSignedAmountMinor(allocation.amountText));
   const invalidAmountIndex = allocations.findIndex((allocation, index) =>
     allocation.amountText.trim() !== "" && allocationAmounts[index] === null
@@ -333,7 +335,18 @@ export function TransactionCategoryEditor({
               disabled={isSaving}
             />
             <button type="button" className="action-secondary" disabled={isSaving}
-              onClick={() => { setError(null); setMode("split"); }}>
+              onClick={() => {
+                if (!hasOpenedSplitRef.current) {
+                  const seededAllocations = allocations.map((allocation, index) =>
+                    index === 0 ? { ...allocation, categoryId } : allocation
+                  );
+                  initialSplitDraftRef.current = seededAllocations;
+                  setAllocations(seededAllocations);
+                  hasOpenedSplitRef.current = true;
+                }
+                setError(null);
+                setMode("split");
+              }}>
               Split across categories
             </button>
           </div>

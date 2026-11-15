@@ -1526,6 +1526,12 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   margin-left: auto;
 }
 
+.transaction-allocation-consequence {
+  flex-basis: 100%;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+}
+
 .transaction-allocation-saving {
   flex: 1 0 100%;
   margin: 0;
