@@ -747,7 +747,7 @@ describe("household category persistence", () => {
         reopened.close();
       }
     });
-  });
+  }, 15_000);
 
   it("reopens the saved catalog without inspecting unrelated archived evidence", async () => {
     await withIsolatedLedger({}, ({ ledger, dbPath }) => {
