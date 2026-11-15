@@ -24,8 +24,8 @@ interface TransactionAllocationEditorProps {
   onRemove: (index: number) => void;
   onAdd: () => void;
   onSave: () => void;
-  onClear: () => void;
   onCancel: () => void;
+  cancelLabel?: string;
 }
 
 export function TransactionAllocationEditor({
@@ -44,8 +44,8 @@ export function TransactionAllocationEditor({
   onRemove,
   onAdd,
   onSave,
-  onClear,
   onCancel,
+  cancelLabel = "Cancel allocation editing",
 }: TransactionAllocationEditorProps): React.JSX.Element {
   const { categories, loading, error: catalogError } = useCategoryCatalog();
   const editorRef = React.useRef<HTMLElement>(null);
@@ -234,15 +234,9 @@ export function TransactionAllocationEditor({
           {isSaving ? "Saving split..." : "Save split"}
         </button>
         <button className="action-secondary" type="button" disabled={isSaving} onClick={onCancel}
-          aria-label="Cancel allocation editing">
+          aria-label={cancelLabel}>
           Cancel
         </button>
-        {transaction.categoryAllocations?.length ? (
-          <button className="action-secondary transaction-allocation-clear" type="button" disabled={isSaving} onClick={onClear}
-            aria-label={`Remove saved split for ${transaction.merchantRaw}`}>
-            Remove saved split
-          </button>
-        ) : null}
       </div>
     </section>
   );

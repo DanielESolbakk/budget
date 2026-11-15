@@ -490,7 +490,7 @@ describe("household category persistence", () => {
       writeFileSync(snapshotPath, JSON.stringify({
         ...buildBackupSnapshot(ledger.loadLedgerSnapshotData()),
         recoveryHistory: {
-          merchantCorrections: [], sameMerchantPropagations: [],
+          merchantCorrections: [], transactionCategoryEdits: [], sameMerchantPropagations: [],
           importOperations: [{
             importJobId: "archive", accountId: "acc-isolated", candidateCount, importedCount: 1, duplicateCount: 0,
             undoAvailable: true, undoRemovedCount: 0, undoRetainedCount: 0,

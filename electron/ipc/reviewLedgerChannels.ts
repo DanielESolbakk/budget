@@ -4,8 +4,10 @@ import { submitManualEntry, type ManualEntryResponse } from "../../src/app/impor
 import { applySameMerchantPropagation, previewSameMerchantPropagation, undoSameMerchantPropagation } from "../../src/app/reviewQueue.js";
 import {
   applyCategorizationCorrection,
+  applyTransactionCategoryEdit,
   applyImportReviewCorrection,
   dismissImportReviewItem,
+  getTransactionCategoryEditContext,
   listCategorizationReviewQueue,
 } from "../../src/app/reviewService.js";
 import type { SavedLedgerView } from "../../src/domain/ledger/filterTransactions.js";
@@ -22,6 +24,7 @@ import {
   parseSameMerchantPropagationInput,
   parseSameMerchantPropagationPreviewRequest,
   parseTransactionCategoryAllocations,
+  parseTransactionCategoryEditInput,
   parseTransactionFilters,
   parseTransactionQuery,
 } from "./validation.js";
@@ -276,6 +279,49 @@ export function registerReviewLedgerChannels({
     assertTrustedRenderer(event);
     return localLedgerDatabase.deleteSavedLedgerView(parseNonEmptyString(viewId, "viewId"));
   });
+
+  ipcMain.handle(
+    "transaction:categoryEditContext",
+    (event, transactionId: unknown) => {
+      assertTrustedRenderer(event);
+      return ledgerOperationCoordinator.runExclusive(() => {
+        const id = parseNonEmptyString(transactionId, "transactionId");
+        const transaction = localLedgerDatabase.getTransactionById(id);
+        if (transaction === undefined || transaction.householdId !== sampleHousehold.id) {
+          throw new Error(`Transaction not found: ${id}`);
+        }
+        return getTransactionCategoryEditContext(
+          localLedgerDatabase,
+          id,
+          runtimeState.databaseGeneration
+        );
+      });
+    }
+  );
+
+  ipcMain.handle(
+    "transaction:editCategory",
+    (event, input: unknown) => {
+      assertTrustedRenderer(event);
+      const request = parseTransactionCategoryEditInput(input);
+      return ledgerOperationCoordinator.runExclusive(() => {
+        const transaction = localLedgerDatabase.getTransactionById(request.transactionId);
+        if (transaction === undefined || transaction.householdId !== sampleHousehold.id) {
+          throw new Error(`Transaction not found: ${request.transactionId}`);
+        }
+        const result = applyTransactionCategoryEdit(
+          localLedgerDatabase,
+          learnedCategoryRules,
+          request,
+          runtimeState.databaseGeneration
+        );
+        if (result.ok && (result.transactionChanged || result.merchantRuleEffect === "updated")) {
+          runtimeState.ledgerGeneration += 1;
+        }
+        return result;
+      });
+    }
+  );
 
   ipcMain.handle(
     "transaction:updateCategory",

@@ -24,6 +24,8 @@ const versions = [
   { version: "12", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring] },
   { version: "13", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring,
     "categories", "recoveryHistory"] },
+  { version: "14", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring,
+    "categories", "recoveryHistory"] },
 ];
 
 function snapshot(version: string, required: string[]): Record<string, unknown> {
@@ -32,12 +34,13 @@ function snapshot(version: string, required: string[]): Record<string, unknown> 
     household: { id: "hh", name: "Synthetic", createdAtIso: "2026-01-01T00:00:00Z" },
     accounts: [{ id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" }],
     transactions: [], importJobs: [], monthlyCategoryTargets: [],
-    ...(version === "11" || version === "12" || version === "13"
+    ...(version === "11" || version === "12" || version === "13" || version === "14"
       ? { reportingPeriodRule: { type: "calendar-month" } }
       : {}),
     ...Object.fromEntries(required.map(name => [name, []])),
-    ...(version === "13" ? { recoveryHistory: {
+    ...(version === "13" || version === "14" ? { recoveryHistory: {
       merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
+      ...(version === "14" ? { transactionCategoryEdits: [] } : {}),
     } } : {}),
   };
 }
@@ -58,8 +61,9 @@ describe("backup historical version capabilities", () => {
     withSnapshot(snapshot(version, required), snapshotPath => {
       expect(restoreBackupSnapshot({ snapshotPath })).toEqual({
         household: { id: "hh", name: "Synthetic", createdAtIso: "2026-01-01T00:00:00Z" },
-        ...(version === "13" ? { categories: [], recoveryHistory: {
+        ...(version === "13" || version === "14" ? { categories: [], recoveryHistory: {
           merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
+          transactionCategoryEdits: [],
         } } : {}),
         accounts: [{ id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" }],
         transactions: [], importJobs: [], monthlyCategoryTargets: [], merchantCategoryRules: [],
@@ -139,7 +143,7 @@ describe("backup historical version capabilities", () => {
     });
   });
 
-  it.each(["0", "14", "01", 10, null])("rejects unsupported version %j", version => {
+  it.each(["0", "15", "01", 10, null])("rejects unsupported version %j", version => {
     const value = snapshot("10", versions[9]!.required);
     value.metadata = { version, createdAtIso: "2026-05-01T00:00:00Z", accountCount: 1, transactionCount: 0 };
     withSnapshot(value, snapshotPath => {

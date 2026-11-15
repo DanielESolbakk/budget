@@ -48,10 +48,12 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
   );
   const importJobs = [...input.importJobs].sort((a, b) => a.id.localeCompare(b.id));
   const recoveryHistory = validateRecoveryHistory(input.recoveryHistory ?? {
-    merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
+    merchantCorrections: [], transactionCategoryEdits: [], sameMerchantPropagations: [], importOperations: [],
   }, input.household.id, new Set(accounts.map((account) => account.id)),
-  new Set(importJobs.map((job) => job.id)), categories.map((category) => category.id), "backup");
+  new Set(importJobs.map((job) => job.id)), categories.map((category) => category.id), "backup",
+  new Set(transactions.map((transaction) => transaction.id)));
   recoveryHistory.merchantCorrections.sort((left, right) => left.id.localeCompare(right.id));
+  recoveryHistory.transactionCategoryEdits.sort((left, right) => left.id.localeCompare(right.id));
   recoveryHistory.sameMerchantPropagations.sort((left, right) => left.id.localeCompare(right.id));
   recoveryHistory.importOperations.sort((left, right) => left.importJobId.localeCompare(right.importJobId));
   for (const operation of recoveryHistory.sameMerchantPropagations) {

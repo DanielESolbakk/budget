@@ -318,6 +318,23 @@ export function ensureSchema(db: DatabaseSync): void {
       original_categorization_json TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS transaction_category_edit_provenance (
+      id TEXT PRIMARY KEY,
+      source_transaction_id TEXT NOT NULL,
+      merchant_alias TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('single', 'split')),
+      category_id TEXT,
+      allocations_json TEXT,
+      previous_category_id TEXT,
+      previous_allocations_json TEXT,
+      remember_for_merchant INTEGER NOT NULL CHECK (remember_for_merchant IN (0, 1)),
+      merchant_rule_effect TEXT NOT NULL CHECK (
+        merchant_rule_effect IN ('updated', 'already-matching', 'not-requested', 'unavailable')
+      ),
+      actor TEXT NOT NULL DEFAULT 'local-user',
+      corrected_at_iso TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS same_merchant_propagation_operations (
       id TEXT PRIMARY KEY,
       source_transaction_id TEXT NOT NULL,
@@ -537,6 +554,8 @@ export function ensureSchema(db: DatabaseSync): void {
       ON transactions (household_id, category_allocations_json);
     CREATE INDEX IF NOT EXISTS idx_merchant_correction_provenance_corrected_at
       ON merchant_correction_provenance (corrected_at_iso, id);
+    CREATE INDEX IF NOT EXISTS idx_transaction_category_edit_provenance_corrected_at
+      ON transaction_category_edit_provenance (corrected_at_iso, id);
     CREATE INDEX IF NOT EXISTS idx_same_merchant_propagation_applied_at
       ON same_merchant_propagation_operations (applied_at_iso, id);
     CREATE INDEX IF NOT EXISTS idx_backup_snapshots_saved_at

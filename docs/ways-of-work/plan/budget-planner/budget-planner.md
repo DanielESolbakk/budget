@@ -55,6 +55,8 @@ The user needs a modern local desktop tool to understand income and expenses wit
 - Merchant normalization and rule-based categorization with confidence scoring
 - Review queue for low-confidence or unmatched transactions
 - Search, filter, and manual correction workflows
+- Category-first inline transaction edits with optional future-only merchant
+  learning and validated allocation splitting
 - Monthly category targets
 - Simple forward cashflow projection
 - Backup and export workflows
@@ -130,6 +132,9 @@ The user needs a modern local desktop tool to understand income and expenses wit
 - [ ] AC8: A user can view a simple forecast for future cashflow based on current data.
 - [ ] AC9: A user can export data and create a backup snapshot locally.
 - [ ] AC10: Default workflows handling transaction content do not send data externally.
+- [ ] AC11: A household user can edit one transaction's category inline, choose
+  whether to remember it for future matches, and split or replace its
+  allocations without changing its source amount or unrelated history.
 
 ## Success Metrics
 

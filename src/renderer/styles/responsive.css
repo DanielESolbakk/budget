@@ -334,6 +334,23 @@
     flex-wrap: wrap;
   }
 
+  .transaction-category-heading {
+    flex-wrap: wrap;
+  }
+
+  .transaction-category-single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transaction-category-actions button,
+  .transaction-category-navigation button {
+    flex: 1 1 100%;
+  }
+
+  .ledger-category-editor-row > td {
+    padding: 0.35rem;
+  }
+
   .transaction-allocation-clear {
     margin-left: 0;
     flex-basis: 100%;
@@ -348,6 +365,18 @@
   section.transaction-allocation-editor {
     overflow: clip;
     min-width: 0;
+  }
+
+  section.ledger-section.has-category-editor {
+    overflow: visible;
+  }
+
+  .ledger-section.has-category-editor section.transaction-allocation-editor {
+    overflow: visible;
+  }
+
+  .ledger-section.has-category-editor .transaction-category-editor {
+    overflow: visible;
   }
 
   .ledger-allocation-panel {

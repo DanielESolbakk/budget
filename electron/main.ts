@@ -145,7 +145,7 @@ const learnedCategoryRules = new Map(
 const importPreviewRegistry = new ImportPreviewRegistry();
 const ledgerOperationCoordinator = new LedgerOperationCoordinator();
 let mainWindow: BrowserWindow | undefined;
-const runtimeState = { ledgerGeneration: 0 };
+const runtimeState = { ledgerGeneration: 0, databaseGeneration: 0 };
 const activeImportPreflights = new Map<string, { cancelled: boolean }>();
 
 // Refresh shared objects in place so registered channels observe setup and restore.

@@ -53,6 +53,13 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Categorization rule evaluation applies user and seeded rules in deterministic order.
 - Confidence scoring distinguishes auto-accept, review, and uncategorized outcomes.
 - User corrections create or refine local categorization rules for future imports.
+- Inline ledger edits use a shared single-category/split intent and expected
+  transaction/rule state. The repository atomically saves the selected
+  transaction, manual categorization provenance, optional future-only merchant
+  rule, allocation replacement, and recovery history. Unchanged matching edits
+  are no-ops; stale records and rules are rejected. Backup format 14 retains
+  edit history while format 13 remains restorable. Validated IPC owns the
+  desktop-only read/write boundary; browser preview rejects edit writes.
 - F3.4 plans a persisted category catalog with stable IDs, additive legacy
   registration, user-managed labels, and inactive merged-category resolution.
   Category services and repository transactions own merge calculations and

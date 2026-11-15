@@ -55,6 +55,8 @@ const snapshotCapabilities = {
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
   "12": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
+  "13": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+    ...holdingCollections, ...recurringCollections, "categories"], requiresHouseholdShares: true },
   [SNAPSHOT_VERSION]: { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections, "categories"], requiresHouseholdShares: true },
 };
@@ -78,6 +80,12 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
   const hasCategoryCatalog = capabilities.requiredCollections.some((collection) => collection === "categories");
   if (hasCategoryCatalog && !Array.isArray(value.categories)) {
     throw new Error(`Invalid snapshot categories: ${snapshotPath}`);
+  }
+  if (
+    metadata.version === SNAPSHOT_VERSION &&
+    (!isRecord(value.recoveryHistory) || !Array.isArray(value.recoveryHistory.transactionCategoryEdits))
+  ) {
+    throw new Error(`Invalid snapshot transaction category edit history: ${snapshotPath}`);
   }
   if ((metadata.version === "11" || metadata.version === "12" || metadata.version === SNAPSHOT_VERSION) &&
     value.reportingPeriodRule === undefined) {
@@ -190,8 +198,11 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
   );
   const recoveryHistory = hasCategoryCatalog
     ? validateRecoveryHistory(value.recoveryHistory, value.household.id, accountIds,
-      new Set(importJobs.map((job) => job.id)), categories.map((category) => category.id), snapshotPath)
-    : { merchantCorrections: [], sameMerchantPropagations: [], importOperations: [] };
+      new Set(importJobs.map((job) => job.id)), categories.map((category) => category.id), snapshotPath,
+      new Set(transactions.flatMap((transaction) =>
+        isRecord(transaction) && typeof transaction.id === "string" ? [transaction.id] : []
+      )))
+    : { merchantCorrections: [], transactionCategoryEdits: [], sameMerchantPropagations: [], importOperations: [] };
   const { requiresHouseholdShares } = capabilities;
   validateProperties(properties, value.household.id, snapshotPath, requiresHouseholdShares);
   validatePropertyValuations(

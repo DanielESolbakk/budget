@@ -2,6 +2,7 @@ import { _electron as electron, type Locator, type Page } from "@playwright/test
 import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
+import { LedgerPage } from "./pom/LedgerPage.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
@@ -38,7 +39,7 @@ test.describe("transaction category allocations", () => {
   }) => {
     await appShell.openWorkspace("Transactions");
     const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
@@ -81,7 +82,7 @@ test.describe("transaction category allocations", () => {
     await appShell.openWorkspace("Transactions");
     const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
     await expect(transactionRow).toBeVisible();
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
@@ -100,17 +101,17 @@ test.describe("transaction category allocations", () => {
     await expect(transactionRow).toContainText("Groceries & food");
     await expect(transactionRow).toContainText("Housing");
     await expect(transactionRow).toContainText(/72,00\s*kr/);
-    await expect(transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }))
+    await expect(transactionRow.getByRole("button", { name: "Edit category for Kiwi" }))
       .toBeVisible();
   });
 
-  test("removes a saved split and restores the original categorization", async ({
+  test("replaces a saved split with one category without changing the source amount", async ({
     appShell,
     window,
   }) => {
     await appShell.openWorkspace("Transactions");
     const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
@@ -123,21 +124,22 @@ test.describe("transaction category allocations", () => {
     await expect(transactionRow).toContainText("Housing");
 
     await window.setViewportSize({ width: 1280, height: 800 });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
-    const restoreButton = allocationEditor.getByRole("button").filter({ hasText: /^Remove saved split$/ });
-    await expect(restoreButton).toBeVisible();
-    await expect(restoreButton).toHaveAccessibleName("Remove saved split for Kiwi");
+    await new LedgerPage(window).openSplitEditor("Kiwi");
+    const categoryEditor = window.getByRole("region", { name: "Edit category for Kiwi" });
+    await categoryEditor.getByRole("button", { name: "Use one category" }).click();
+    await expect(categoryEditor).toContainText("replaces the entire saved split");
 
     await window.setViewportSize({ width: 390, height: 844 });
     const horizontalOverflow = await window.evaluate(() =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth
     );
     expect(horizontalOverflow).toBe(false);
-    await restoreButton.click();
+    await categoryEditor.getByRole("button", { name: "Save category for Kiwi" }).click();
 
     await expect(allocationEditor).toBeHidden();
     await expect(transactionRow).toContainText("Groceries & food");
     await expect(transactionRow).not.toContainText("Housing");
+    await expect(transactionRow).toContainText(/72,00\s*kr/);
   });
 
   test("shows a partial balance and incomplete-row status until the draft is valid", async ({
@@ -145,8 +147,7 @@ test.describe("transaction category allocations", () => {
     window,
   }) => {
     await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
@@ -176,8 +177,7 @@ test.describe("transaction category allocations", () => {
     window,
   }) => {
     await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
@@ -203,8 +203,7 @@ test.describe("transaction category allocations", () => {
     window,
   }) => {
     await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const ledger = window.getByRole("region", { name: "Ledger" });
     const allocationEditor = ledger.getByRole("region", {
@@ -239,8 +238,7 @@ test.describe("transaction category allocations", () => {
     window,
   }) => {
     await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const ledger = window.getByRole("region", { name: "Ledger" });
     const allocationEditor = ledger.getByRole("region", {
@@ -253,14 +251,13 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
 
     await expect(allocationEditor).toBeHidden();
-    await expect(ledger.getByRole("status", { name: "Allocation status" }))
-      .toContainText("Allocations saved for Kiwi.");
+    await expect(ledger.getByRole("status", { name: "Category edit status" }))
+      .toContainText("Category saved");
   });
 
   test("labels an excess allocation as over-allocated", async ({ appShell, window }) => {
     await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
@@ -278,8 +275,7 @@ test.describe("transaction category allocations", () => {
     window,
   }) => {
     await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
@@ -320,8 +316,7 @@ test.describe("transaction category allocations", () => {
   }) => {
     await appShell.openWorkspace("Transactions");
     await window.setViewportSize({ width: 390, height: 844 });
-    const transactionRow = window.getByRole("row", { name: /^Ledger transaction SYNTHETIC BANK DESCRIPTION/ });
-    await transactionRow.getByRole("button", { name: /^Edit category allocations for/ }).click();
+    await new LedgerPage(window).openSplitEditor(longDescription);
 
     const allocationEditor = window.getByRole("region", {
       name: /^Transaction category allocations for SYNTHETIC BANK DESCRIPTION/,
@@ -372,13 +367,7 @@ test.describe("transaction category allocations", () => {
     window,
   }) => {
     await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    const editButton = transactionRow.getByRole("button", {
-      name: "Edit category allocations for Kiwi",
-    });
-    await editButton.focus();
-    await window.keyboard.press("Enter");
-
+    await new LedgerPage(window).openSplitEditor("Kiwi", true);
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
@@ -409,7 +398,7 @@ test.describe("transaction category allocations", () => {
   }) => {
     await appShell.openWorkspace("Transactions");
     const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
@@ -421,7 +410,7 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(transactionRow).toContainText("Groceries & food");
 
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
     await allocationEditor.getByLabel("Allocation amount 1").fill("-30.00");
     await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
 
@@ -438,9 +427,7 @@ test.describe("transaction category allocations", () => {
     await appShell.openWorkspace("Transactions");
     await window.setViewportSize({ width: 1280, height: 800 });
     const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).focus();
-    await window.keyboard.press("Enter");
-
+    await new LedgerPage(window).openSplitEditor("Kiwi", true);
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
@@ -460,7 +447,7 @@ test.describe("transaction category allocations", () => {
     await expect(transactionRow).toContainText(/72,00\s*kr/);
 
     await window.setViewportSize({ width: 390, height: 844 });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).focus();
+    await transactionRow.getByRole("button", { name: "Edit category for Kiwi" }).focus();
     await window.keyboard.press("Enter");
     await expect(allocationEditor.getByLabel("Allocation category 1")).toBeFocused();
     await allocationEditor.getByLabel("Allocation amount 1").fill("-33.00");
@@ -469,7 +456,7 @@ test.describe("transaction category allocations", () => {
     await window.keyboard.press("Enter");
     await expect(transactionRow).toContainText(/72,00\s*kr/);
     await expect(allocationEditor).toBeHidden();
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).focus();
+    await transactionRow.getByRole("button", { name: "Edit category for Kiwi" }).focus();
     await window.keyboard.press("Enter");
     await expect(allocationEditor.getByLabel("Allocation amount 1")).toHaveValue("-33.00");
     await expect(allocationEditor.getByLabel("Allocation amount 2")).toHaveValue("-39.00");
@@ -481,8 +468,7 @@ test.describe("transaction category allocations", () => {
 
   test("retains the reordered category sequence after saving allocations", async ({ appShell, window }) => {
     await appShell.openWorkspace("Transactions");
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
@@ -498,7 +484,7 @@ test.describe("transaction category allocations", () => {
 
     await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(allocationEditor).toBeHidden();
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
     await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("groceries");
   });
@@ -511,7 +497,7 @@ test.describe("transaction category allocations", () => {
   }) => {
     await appShell.openWorkspace("Transactions");
     const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    await new LedgerPage(window).openSplitEditor("Kiwi");
 
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
@@ -542,7 +528,7 @@ test.describe("transaction category allocations", () => {
       await expect(restartedRow).toContainText("Groceries & food");
       await expect(restartedRow).toContainText("Housing");
 
-      await restartedRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+      await new LedgerPage(restartedWindow).openSplitEditor("Kiwi");
       const restartedEditor = restartedWindow.getByRole("region", {
         name: "Transaction category allocations for Kiwi",
       });

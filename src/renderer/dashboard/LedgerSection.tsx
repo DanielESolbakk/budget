@@ -14,16 +14,15 @@ import type {
   Account,
   Transaction,
 } from "../../domain/types.js";
+import type {
+  TransactionCategoryEditContext,
+  TransactionCategoryEditInput,
+  TransactionCategoryEditResult,
+} from "../../shared/transactionCategoryEdit.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
-import { formatCurrencyAmount, getCurrencyFormatter } from "../formatCurrencyAmount.js";
+import { formatCurrencyAmount } from "../formatCurrencyAmount.js";
 import { formatMinorUnits, minorUnitsToDecimal } from "../../domain/money/minorUnits.js";
-import { parseSignedAmountMinor as allocationAmountToMinor } from "../amountInputs.js";
-import {
-  TransactionAllocationEditor,
-  type AllocationEditorError,
-  type AllocationDraft,
-} from "./TransactionAllocationEditor.js";
-import { parseAllocationDraft } from "./transactionAllocationDraft.js";
+import { TransactionCategoryEditor } from "./TransactionCategoryEditor.js";
 
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
   style: "currency",
@@ -99,7 +98,7 @@ export interface LedgerFilterRequest {
 }
 
 export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isReportSelected }: LedgerSectionProps): React.JSX.Element {
-  const { categories, loading: categoryCatalogLoading, error: categoryCatalogError } = useCategoryCatalog();
+  const { categories } = useCategoryCatalog();
   function categoryLabel(categoryId: string): string {
     return categories.find((category) => category.id === categoryId)?.label ?? categoryId;
   }
@@ -135,15 +134,21 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   const [isLoading, setIsLoading] = React.useState(true);
   const [isFilterPending, setIsFilterPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [editingAllocationTransactionId, setEditingAllocationTransactionId] = React.useState<string | null>(null);
-  const [allocationDraft, setAllocationDraft] = React.useState<AllocationDraft[]>([]);
-  const [allocationError, setAllocationError] = React.useState<AllocationEditorError | null>(null);
-  const [isAllocationSaving, setIsAllocationSaving] = React.useState(false);
-  const [allocationStatusMessage, setAllocationStatusMessage] = React.useState("");
+  const [categoryEditContext, setCategoryEditContext] = React.useState<TransactionCategoryEditContext | null>(null);
+  const [pendingCategoryEdit, setPendingCategoryEdit] = React.useState<{
+    transaction: Transaction;
+    trigger: HTMLButtonElement;
+  } | null>(null);
+  const [isCategoryEditDirty, setIsCategoryEditDirty] = React.useState(false);
+  const [isCategoryEditLoading, setIsCategoryEditLoading] = React.useState(false);
+  const [categoryEditStatusMessage, setCategoryEditStatusMessage] = React.useState("");
   const [retryKey, setRetryKey] = React.useState(0);
   const hasMountedFilterEffect = React.useRef(false);
-  const firstAllocationCategoryRef = React.useRef<HTMLSelectElement>(null);
-  const allocationTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const categoryEditDirtyRef = React.useRef(false);
+  const categoryEditTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const categoryTriggerRefs = React.useRef(new Map<string, HTMLButtonElement>());
+  const pendingSavedFocusId = React.useRef<string | null>(null);
+  const ledgerHeadingRef = React.useRef<HTMLHeadingElement>(null);
   const merchantInputRef = React.useRef<HTMLInputElement>(null);
 
   function updateFilters(action: React.SetStateAction<TransactionFilters>): void {
@@ -365,152 +370,113 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     setQuery((current) => ({ ...current, page }));
   }
 
-  function editAllocations(transaction: Transaction, trigger: HTMLButtonElement): void {
-    const allocations = transaction.categoryAllocations?.length
-      ? transaction.categoryAllocations.map((allocation) => ({
-          categoryId: allocation.categoryId,
-          amountText: minorUnitsToDecimal(allocation.amountMinor),
-        }))
-      : [
-          {
-            categoryId: transaction.categoryId ?? "",
-            amountText: minorUnitsToDecimal(transaction.amountMinor),
-          },
-          { categoryId: "", amountText: "" },
-        ];
-    allocationTriggerRef.current = trigger;
-    setAllocationDraft(allocations);
-    setAllocationError(null);
-    setAllocationStatusMessage("");
-    setEditingAllocationTransactionId(transaction.id);
-  }
-
-  function closeAllocationEditor(): void {
-    setEditingAllocationTransactionId(null);
-    window.requestAnimationFrame(() => allocationTriggerRef.current?.focus());
-  }
-
-  React.useEffect(() => {
-    if (editingAllocationTransactionId !== null) {
-      firstAllocationCategoryRef.current?.focus();
+  async function openCategoryEditor(transaction: Transaction, trigger: HTMLButtonElement, clearStatus = true): Promise<void> {
+    categoryEditTriggerRef.current = trigger;
+    setCategoryEditContext(null);
+    setIsCategoryEditDirty(false);
+    categoryEditDirtyRef.current = false;
+    setPendingCategoryEdit(null);
+    if (clearStatus) setCategoryEditStatusMessage("");
+    setIsCategoryEditLoading(true);
+    try {
+      const context = await window.budgetApi.ledger.getCategoryEditContext(transaction.id);
+      setCategoryEditContext(context);
+    } catch (editError: unknown) {
+      setCategoryEditStatusMessage(
+        editError instanceof Error ? editError.message : "Unable to open transaction category editing."
+      );
+    } finally {
+      setIsCategoryEditLoading(false);
     }
-  }, [editingAllocationTransactionId]);
+  }
 
-  async function saveAllocations(transaction: Transaction): Promise<void> {
-    setAllocationStatusMessage("");
-    const draft = parseAllocationDraft(transaction.amountMinor, allocationDraft, categories.map((category) => category.id));
-    if (!draft.ok) {
-      setAllocationError(draft.error);
+  function requestCategoryEditor(transaction: Transaction, trigger: HTMLButtonElement): void {
+    if (isCategoryEditLoading) return;
+    if (categoryEditContext?.transaction.id === transaction.id) return;
+    if (categoryEditContext !== null && categoryEditDirtyRef.current) {
+      setPendingCategoryEdit({ transaction, trigger });
       return;
     }
-
-    setAllocationError(null);
-    setIsAllocationSaving(true);
-    setAllocationStatusMessage(`Saving allocations for ${transaction.merchantRaw}.`);
-    try {
-      const result = await window.budgetApi.ledger.updateCategoryAllocations({
-        transactionId: transaction.id,
-        allocations: draft.allocations,
-      });
-      if (!result.ok) {
-        setAllocationError({ message: result.message });
-        setAllocationStatusMessage("");
-        return;
-      }
-      setTransactions((current) =>
-        current.map((item) => item.id === result.transaction.id ? result.transaction : item)
-      );
-      setAllocationStatusMessage(`Allocations saved for ${transaction.merchantRaw}.`);
-      setRetryKey((current) => current + 1);
-      closeAllocationEditor();
-    } catch (saveError: unknown) {
-      setAllocationError(
-        {
-          message: saveError instanceof Error
-            ? saveError.message
-            : "Unable to save transaction category allocations.",
-        }
-      );
-      setAllocationStatusMessage("");
-    } finally {
-      setIsAllocationSaving(false);
-    }
+    void openCategoryEditor(transaction, trigger);
   }
 
-  async function clearAllocations(transaction: Transaction): Promise<void> {
-    setAllocationError(null);
-    setIsAllocationSaving(true);
-    setAllocationStatusMessage(`Restoring one category for ${transaction.merchantRaw}.`);
-    try {
-      const result = await window.budgetApi.ledger.updateCategoryAllocations({
-        transactionId: transaction.id,
-        allocations: [],
-      });
-      if (!result.ok) {
-        setAllocationError({ message: result.message });
-        setAllocationStatusMessage("");
-        return;
-      }
-      setTransactions((current) =>
-        current.map((item) => item.id === result.transaction.id ? result.transaction : item)
-      );
-      setRetryKey((current) => current + 1);
-      setAllocationStatusMessage(`Split removed for ${transaction.merchantRaw}.`);
-      closeAllocationEditor();
-    } catch (clearError: unknown) {
-      setAllocationError(
-        {
-          message: clearError instanceof Error
-            ? clearError.message
-            : "Unable to remove the transaction split.",
-        }
-      );
-      setAllocationStatusMessage("");
-    } finally {
-      setIsAllocationSaving(false);
-    }
-  }
-
-  function updateAllocationDraft(index: number, update: Partial<AllocationDraft>): void {
-    setAllocationError(null);
-    setAllocationStatusMessage("");
-    setAllocationDraft((current) =>
-      current.map((allocation, currentIndex) =>
-        currentIndex === index ? { ...allocation, ...update } : allocation
-      )
-    );
-  }
-
-  function addAllocationDraft(): void {
-    setAllocationError(null);
-    setAllocationStatusMessage("");
-    setAllocationDraft((current) => [
-      ...current,
-      { categoryId: "", amountText: "" },
-    ]);
-  }
-
-  function moveAllocationDraft(index: number, direction: -1 | 1): void {
-    setAllocationError(null);
-    setAllocationStatusMessage("");
-    setAllocationDraft((current) => {
-      const targetIndex = index + direction;
-      const currentAllocation = current[index];
-      const targetAllocation = current[targetIndex];
-      if (currentAllocation === undefined || targetAllocation === undefined) return current;
-
-      const next = [...current];
-      next[index] = targetAllocation;
-      next[targetIndex] = currentAllocation;
-      return next;
+  function closeCategoryEditor(): void {
+    setCategoryEditContext(null);
+    setPendingCategoryEdit(null);
+    setIsCategoryEditDirty(false);
+    categoryEditDirtyRef.current = false;
+    window.requestAnimationFrame(() => {
+      if (categoryEditTriggerRef.current?.isConnected) categoryEditTriggerRef.current.focus();
+      else ledgerHeadingRef.current?.focus();
     });
   }
 
-  function removeAllocationDraft(index: number): void {
-    setAllocationError(null);
-    setAllocationStatusMessage("");
-    setAllocationDraft((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  const reportCategoryEditDirty = React.useCallback((dirty: boolean): void => {
+    categoryEditDirtyRef.current = dirty;
+    setIsCategoryEditDirty(dirty);
+  }, []);
+
+  async function saveCategoryEdit(input: TransactionCategoryEditInput): Promise<TransactionCategoryEditResult> {
+    return window.budgetApi.ledger.editCategory(input);
   }
+
+  function categoryEditSaved(result: Extract<TransactionCategoryEditResult, { ok: true }>): void {
+    setTransactions((current) =>
+      current.map((item) => item.id === result.transaction.id ? result.transaction : item)
+    );
+    pendingSavedFocusId.current = result.transaction.id;
+    setRetryKey((current) => current + 1);
+    setCategoryEditStatusMessage(result.transactionChanged
+      ? result.merchantRuleEffect === "updated"
+        ? "Category saved and remembered for future matching transactions. Existing history was not changed."
+        : result.merchantRuleEffect === "unavailable"
+          ? "Category saved for this transaction only. Remembering was unavailable for this merchant."
+          : result.merchantRuleEffect === "already-matching"
+            ? "Category saved. The remembered category already matched."
+            : "Category saved for this transaction only. Existing remembered categories were not changed."
+      : result.merchantRuleEffect === "updated"
+        ? "Remembered category saved for future matching transactions. Existing history was not changed."
+        : result.merchantRuleEffect === "already-matching"
+          ? "No transaction change was needed. The remembered category already matched."
+          : "No category changes were needed.");
+    setCategoryEditContext(null);
+    setIsCategoryEditDirty(false);
+    categoryEditDirtyRef.current = false;
+    const pending = pendingCategoryEdit;
+    setPendingCategoryEdit(null);
+    if (pending !== null) {
+      void openCategoryEditor(pending.transaction, pending.trigger, false);
+    } else {
+      window.requestAnimationFrame(() => {
+        if (categoryEditTriggerRef.current?.isConnected) categoryEditTriggerRef.current.focus();
+        else ledgerHeadingRef.current?.focus();
+      });
+    }
+  }
+
+  function discardAndSwitchCategoryEditor(): void {
+    if (pendingCategoryEdit === null) return;
+    const pending = pendingCategoryEdit;
+    setCategoryEditContext(null);
+    setPendingCategoryEdit(null);
+    setIsCategoryEditDirty(false);
+    categoryEditDirtyRef.current = false;
+    void openCategoryEditor(pending.transaction, pending.trigger, false);
+  }
+
+  React.useEffect(() => {
+    const transactionId = pendingSavedFocusId.current;
+    if (transactionId === null || loadedRetryKey !== retryKey || isLoading) return;
+    pendingSavedFocusId.current = null;
+    if (transactions.some((transaction) => transaction.id === transactionId)) {
+      window.requestAnimationFrame(() => categoryTriggerRefs.current.get(transactionId)?.focus());
+      return;
+    }
+    setCategoryEditStatusMessage((message) =>
+      `${message} The transaction no longer matches the active filters.`
+    );
+    ledgerHeadingRef.current?.focus();
+  }, [transactions, loadedRetryKey, retryKey, isLoading]);
 
   const currentPage = query.page ?? 1;
   const reportFiltersChanged = filterRequest !== null && filterRequest !== undefined &&
@@ -534,66 +500,13 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     ...(filters.amountFromMinor === undefined && filters.amountToMinor === undefined ? [] : ["Amount range"]),
   ];
   const hasFiltersToClear = activeFilters.length > 0 || amountFrom !== "" || amountTo !== "";
-  const allocationSourceTransaction = transactions.find(
-    (transaction) => transaction.id === editingAllocationTransactionId
-  );
-  const allocationAmounts = allocationDraft.map((allocation) =>
-    allocationAmountToMinor(allocation.amountText)
-  );
-  const incompleteAllocationCount = allocationDraft.filter((allocation, index) =>
-    allocation.categoryId === "" || allocationAmounts[index] === null
-  ).length;
-  const allocationTotalMinor = allocationAmounts.reduce<bigint>(
-    (total, amount) => total + BigInt(amount ?? 0),
-    0n
-  );
-  const canReorderAllocations = allocationDraft.every((allocation) =>
-    allocation.categoryId !== "" && allocationAmountToMinor(allocation.amountText) !== null
-  );
-  const allocationCurrencyCode = allocationSourceTransaction === undefined
-    ? "NOK"
-    : allocationSourceTransaction.currencyCode ??
-      accounts.find((account) => account.id === allocationSourceTransaction.accountId)?.currencyCode ??
-      "NOK";
-  const allocationCurrencyFormatter = getCurrencyFormatter(allocationCurrencyCode);
-
-  function announceAllocationBalance(): void {
-    if (allocationSourceTransaction === undefined) return;
-
-    const draft = parseAllocationDraft(
-      allocationSourceTransaction.amountMinor, allocationDraft, categories.map((category) => category.id)
-    );
-    const remainingMinor = BigInt(allocationSourceTransaction.amountMinor) - allocationTotalMinor;
-    const isOverAllocated = remainingMinor !== 0n &&
-      allocationSourceTransaction.amountMinor !== 0 &&
-      (remainingMinor < 0n) !== (allocationSourceTransaction.amountMinor < 0);
-    const totalLabel = incompleteAllocationCount === 0
-      ? "Allocation total"
-      : "Current allocation total";
-    const balanceLabel = isOverAllocated
-      ? "Over-allocated by"
-      : incompleteAllocationCount === 0
-        ? "Remaining to allocate"
-        : "Balance after entered amounts";
-    const incompleteMessage = incompleteAllocationCount === 1
-      ? "1 allocation is incomplete"
-      : `${incompleteAllocationCount} allocations are incomplete`;
-    const balanceAmount = isOverAllocated && remainingMinor < 0n ? -remainingMinor : remainingMinor;
-    const message = [
-      categoryCatalogLoading ? "Loading categories" :
-        categoryCatalogError !== null ? "Retry loading categories before saving" :
-          draft.ok ? "Ready to save" : draft.error.message.replace(/\.$/, ""),
-      `${totalLabel}: ${formatMinorUnits(allocationTotalMinor, allocationCurrencyFormatter)}`,
-      ...(incompleteAllocationCount === 0 ? [] : [incompleteMessage]),
-      `${balanceLabel}: ${formatMinorUnits(balanceAmount, allocationCurrencyFormatter)}`,
-    ];
-
-    setAllocationStatusMessage(`${message.join(". ")}.`);
-  }
-
   return (
-    <section aria-label="Ledger" aria-busy={isLoading || isFilterPending}>
-      <h2>Ledger</h2>
+    <section
+      className={categoryEditContext === null ? "ledger-section" : "ledger-section has-category-editor"}
+      aria-label="Ledger"
+      aria-busy={isLoading || isFilterPending}
+    >
+      <h2 ref={ledgerHeadingRef} tabIndex={-1}>Ledger</h2>
       {filterRequest !== null && filterRequest !== undefined && (
         <div className="ledger-report-context">
           <div>
@@ -616,14 +529,17 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
         </div>
       )}
       <p
-        id="transaction-allocation-status"
+        id="transaction-category-edit-status"
         className="visually-hidden"
         role="status"
-        aria-label="Allocation status"
+        aria-label="Category edit status"
         aria-live="polite"
         aria-atomic="true"
       >
-        {allocationStatusMessage}
+        {categoryEditStatusMessage || (isCategoryEditDirty && categoryEditContext !== null
+          ? "Unsaved category changes."
+          : isCategoryEditLoading ? "Loading transaction category editor."
+          : "")}
       </p>
       <form className="ledger-filters" aria-label="Ledger filters" onSubmit={(event) => event.preventDefault()}>
         <div className="ledger-quick-filters">
@@ -824,7 +740,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
       )}
       {hasLoaded && transactions.length > 0 && (
         <div
-          className="ledger-table-scroll"
+          className={`ledger-table-scroll${categoryEditContext === null ? "" : " has-category-editor"}`}
           role="region"
           aria-label="Ledger transactions"
           tabIndex={0}
@@ -838,7 +754,10 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
             });
           }}
         >
-          <table className="ledger-table" aria-label="Ledger transactions">
+          <table
+            className={`ledger-table${categoryEditContext === null ? "" : " ledger-table-editing"}`}
+            aria-label="Ledger transactions"
+          >
             <thead>
               <tr>
                 <th scope="col" aria-sort={sortDirectionFor("bookedAtIso")}>
@@ -866,7 +785,6 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
                     Account{query.sortBy === "accountId" && <span className="ledger-sort-direction" aria-hidden="true">{query.sortDirection === "asc" ? "ASC" : "DESC"}</span>}
                   </button>
                 </th>
-                <th scope="col" aria-label="Allocation actions">Allocations</th>
               </tr>
             </thead>
             <tbody>
@@ -894,51 +812,53 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
                         </div>
                       </td>
                       <td className="ledger-amount">{formatCurrencyAmount(transaction.amountMinor, currencyCode)}</td>
-                      <td>{categoryName}</td>
-                      <td>{accountName}</td>
                       <td>
                         <button
-                          className="action-secondary"
+                          ref={(element) => {
+                            if (element === null) categoryTriggerRefs.current.delete(transaction.id);
+                            else categoryTriggerRefs.current.set(transaction.id, element);
+                          }}
+                          className="ledger-category-trigger"
                           type="button"
-                          aria-label={`Edit category allocations for ${transaction.merchantRaw}`}
-                          aria-expanded={editingAllocationTransactionId === transaction.id}
-                          aria-controls={editingAllocationTransactionId === transaction.id
-                            ? "transaction-allocation-editor"
+                          aria-label={`${transaction.categoryId === undefined && !transaction.categoryAllocations?.length
+                            ? "Choose category"
+                            : "Edit category"} for ${transaction.merchantRaw}`}
+                          aria-expanded={categoryEditContext?.transaction.id === transaction.id}
+                          aria-controls={categoryEditContext?.transaction.id === transaction.id
+                            ? "transaction-category-editor"
                             : undefined}
-                          onClick={(event) => editAllocations(transaction, event.currentTarget)}
+                          disabled={isCategoryEditLoading}
+                          onClick={(event) => requestCategoryEditor(transaction, event.currentTarget)}
                         >
-                          {transaction.categoryAllocations?.length ? "Edit allocations" : "Allocate categories"}
+                          {transaction.categoryId === undefined && !transaction.categoryAllocations?.length
+                            ? "Choose category"
+                            : categoryName}
                         </button>
                       </td>
+                      <td>{accountName}</td>
                     </tr>
+                    {categoryEditContext?.transaction.id === transaction.id && (
+                      <tr className="ledger-category-editor-row">
+                        <td colSpan={5}>
+                          <TransactionCategoryEditor
+                            key={transaction.id}
+                            context={categoryEditContext}
+                            navigationPrompt={pendingCategoryEdit !== null}
+                            onDirtyChange={reportCategoryEditDirty}
+                            onSave={saveCategoryEdit}
+                            onSaved={categoryEditSaved}
+                            onCancel={closeCategoryEditor}
+                            onKeepEditing={() => setPendingCategoryEdit(null)}
+                            onDiscardAndSwitch={discardAndSwitchCategoryEditor}
+                          />
+                        </td>
+                      </tr>
+                    )}
                   </React.Fragment>
                 );
               })}
             </tbody>
           </table>
-        </div>
-      )}
-      {allocationSourceTransaction !== undefined && (
-        <div className="ledger-allocation-panel">
-          <TransactionAllocationEditor
-            transaction={allocationSourceTransaction}
-            allocations={allocationDraft}
-            canReorder={canReorderAllocations}
-            totalMinor={allocationTotalMinor}
-            incompleteAllocationCount={incompleteAllocationCount}
-            currencyFormatter={allocationCurrencyFormatter}
-            error={allocationError}
-            isSaving={isAllocationSaving}
-            firstCategoryRef={firstAllocationCategoryRef}
-            onBalanceBlur={announceAllocationBalance}
-            onUpdate={updateAllocationDraft}
-            onMove={moveAllocationDraft}
-            onRemove={removeAllocationDraft}
-            onAdd={addAllocationDraft}
-            onSave={() => void saveAllocations(allocationSourceTransaction)}
-            onClear={() => void clearAllocations(allocationSourceTransaction)}
-            onCancel={closeAllocationEditor}
-          />
         </div>
       )}
       {hasLoaded && error === null && (

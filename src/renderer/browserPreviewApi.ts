@@ -236,6 +236,8 @@ export function resolveRendererBudgetApi(
     },
     ledger: {
       list: desktopOnlyAction,
+      getCategoryEditContext: desktopOnlyAction,
+      editCategory: desktopOnlyAction,
       updateCategoryAllocations: desktopOnlyAction,
       savedViews: {
         list: desktopOnlyAction,

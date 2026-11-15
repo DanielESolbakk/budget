@@ -62,8 +62,12 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
 
   return {
     household: snapshot.household,
-    ...(snapshot.metadata.version === SNAPSHOT_VERSION ? { categories: snapshot.categories } : {}),
-    ...(snapshot.metadata.version === SNAPSHOT_VERSION ? { recoveryHistory: snapshot.recoveryHistory } : {}),
+    ...(snapshot.metadata.version === "13" || snapshot.metadata.version === SNAPSHOT_VERSION
+      ? { categories: snapshot.categories }
+      : {}),
+    ...(snapshot.metadata.version === "13" || snapshot.metadata.version === SNAPSHOT_VERSION
+      ? { recoveryHistory: snapshot.recoveryHistory }
+      : {}),
     accounts: snapshot.accounts,
     transactions: snapshot.transactions,
     ...(snapshot.pendingObservations === undefined

@@ -367,13 +367,15 @@ export function createLocalLedgerDatabase(
   const {
     updateTransactionCategory,
     updateTransactionCategoryAndRule,
+    applyTransactionCategoryEdit,
     listMerchantCorrectionProvenance,
+    listTransactionCategoryEdits,
     applySameMerchantPropagation,
     listSameMerchantPropagationOperations,
     undoSameMerchantPropagation,
     listMerchantCategoryRules,
     upsertMerchantCategoryRule,
-  } = createCorrectionRepository(db);
+  } = createCorrectionRepository(db, { getTransactionById });
 
   const {
     createPropertyRecord,
@@ -467,6 +469,7 @@ export function createLocalLedgerDatabase(
         DELETE FROM import_job_operations;
         DELETE FROM same_merchant_propagation_changes;
         DELETE FROM same_merchant_propagation_operations;
+        DELETE FROM transaction_category_edit_provenance;
         DELETE FROM merchant_correction_provenance;
         DELETE FROM recurring_commitment_payment_links;
         DELETE FROM recurring_commitment_decisions;
@@ -741,7 +744,9 @@ export function createLocalLedgerDatabase(
     appendTransactions,
     updateTransactionCategory,
     updateTransactionCategoryAndRule,
+    applyTransactionCategoryEdit,
     listMerchantCorrectionProvenance,
+    listTransactionCategoryEdits,
     applySameMerchantPropagation,
     listSameMerchantPropagationOperations,
     undoSameMerchantPropagation,

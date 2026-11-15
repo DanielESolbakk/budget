@@ -334,6 +334,7 @@ export interface CategorizationDecision {
   confidence: number;
   confidenceLevel: CategorizationConfidenceLevel;
   requiresReview: boolean;
+  decisionSource?: "rule" | "manual";
   selectedRule?: CategorizationRuleProvenance;
   matchingRules: CategorizationRuleProvenance[];
 }
@@ -353,6 +354,21 @@ export interface MerchantCorrectionProvenance {
   actor: CorrectionActor;
   correctedAtIso: string;
   originalCategorization?: CategorizationDecision;
+}
+
+export interface TransactionCategoryEditProvenance {
+  id: string;
+  sourceTransactionId: string;
+  merchantAlias: string;
+  mode: "single" | "split";
+  categoryId?: string;
+  allocations?: TransactionCategoryAllocation[];
+  previousCategoryId?: string;
+  previousAllocations?: TransactionCategoryAllocation[];
+  rememberForMerchant: boolean;
+  merchantRuleEffect: "updated" | "already-matching" | "not-requested" | "unavailable";
+  actor: CorrectionActor;
+  correctedAtIso: string;
 }
 
 export interface SameMerchantPropagationChange {
