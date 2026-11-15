@@ -162,7 +162,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
           await picker.selectOption("fees");
           if (context === "allocations") await region.getByLabel("Allocation amount 1").fill("-100.50");
           const openerName = context === "review" ? "Manage categories for Verksted Solglimt"
-            : "Manage categories for allocation 1";
+            : "Manage categories for this split";
           const originalLedger = createLocalLedgerDatabase({ dbPath: databasePath });
           const original = originalLedger.loadLedgerSnapshotData();
           originalLedger.close();
@@ -170,7 +170,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
           await categoryManagement.openFrom(openerName);
           await categoryManagement.newName.fill("Unsaved household category");
           await categoryManagement.close();
-          await expect(picker).toBeFocused();
+          await expect(context === "review" ? picker : region.getByRole("button", { name: openerName })).toBeFocused();
           await expect(picker).toHaveValue("fees");
           if (context === "allocations") await expect(region.getByLabel("Allocation amount 1")).toHaveValue("-100.50");
           if (context === "review") {
@@ -226,7 +226,8 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
             WHEN NEW.label = 'Household repairs'
             BEGIN UPDATE categories SET created_at_iso = 'invalid' WHERE id = NEW.id; END;
           `);
-          await categoryManagement.openFrom("Manage categories for allocation 1");
+          const manager = allocations.getByRole("button", { name: "Manage categories for this split", exact: true });
+          await categoryManagement.openFrom("Manage categories for this split");
           await categoryManagement.create("Household repairs");
           await expect(categoryManagement.error).toContainText("The category was saved");
           await expect(picker).toBeDisabled();
@@ -258,7 +259,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
             } finally { await amountHandle?.dispose(); }
           }
           await expect(picker).toBeEnabled();
-          await expect(focusDestination === "origin" ? picker : amountInput).toBeFocused();
+          await expect(focusDestination === "origin" ? manager : amountInput).toBeFocused();
           await expect(picker).toHaveValue("fees");
           await expect(amountInput).toHaveValue("-100.50");
           const unchangedLedger = createLocalLedgerDatabase({ dbPath: databasePath });

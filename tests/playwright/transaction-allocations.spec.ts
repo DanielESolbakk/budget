@@ -25,6 +25,13 @@ test.describe("transaction category allocations", () => {
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
+    await expect.soft(allocationEditor.getByRole("heading", { name: "Split transaction", exact: true })).toBeVisible();
+    await expect.soft(allocationEditor.getByRole("button", { name: "Manage categories for this split", exact: true }))
+      .toHaveCount(1);
+    await expect.soft(allocationEditor.getByRole("status", { name: "Split draft status" }))
+      .toContainText("Finish category and amount for row 2");
+    await expect.soft(allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }))
+      .toHaveText("Save split");
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("groceries");
     await expect(allocationEditor.getByLabel("Allocation amount 1")).toHaveValue("-72.00");
     await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("");
@@ -34,11 +41,12 @@ test.describe("transaction category allocations", () => {
     await expect(allocationEditor.getByText(/Balance after entered amounts:/))
       .toContainText(/0,00\s*kr/);
     await expect(allocationEditor).toContainText("1 allocation is incomplete.");
-    await expect(allocationEditor).toContainText(
-      "Your saved transaction stays unchanged. Adjust the first amount, then choose a second category and amount."
-    );
+    await expect(allocationEditor).toContainText("Changes apply only when you save.");
+    await allocationEditor.getByText("Row actions", { exact: true }).first().click();
     await expect(allocationEditor.getByRole("button", { name: "Move allocation 1 down" }))
       .toBeDisabled();
+    await expect(allocationEditor.getByRole("group", { name: "Allocation 1", exact: true }))
+      .toContainText("Finish all rows before reordering.");
     await allocationEditor.getByRole("button", { name: "Add allocation" }).click();
     await expect(allocationEditor.getByLabel("Allocation category 3")).toHaveValue("");
     await expect(allocationEditor.getByLabel("Allocation amount 3")).toHaveValue("");
@@ -131,6 +139,19 @@ test.describe("transaction category allocations", () => {
     await expect(allocationEditor.getByText(/Balance after entered amounts:/))
       .toContainText(/0,00\s*kr/);
     await expect(allocationEditor).toContainText("1 allocation is incomplete.");
+    const status = allocationEditor.getByRole("status", { name: "Split draft status" });
+    await expect(status).not.toContainText("Ready to save");
+    await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
+    await allocationEditor.getByLabel("Allocation amount 2").fill("0");
+    await expect(status).toContainText("non-zero");
+    await allocationEditor.getByLabel("Allocation amount 1").fill("-80");
+    await allocationEditor.getByLabel("Allocation amount 2").fill("8");
+    await expect(status).toContainText("source transaction sign");
+    await allocationEditor.getByLabel("Allocation amount 1").fill("-40");
+    await allocationEditor.getByLabel("Allocation amount 2").fill("-20");
+    await expect(status).toContainText(/12,00\s*kr remaining/);
+    await allocationEditor.getByLabel("Allocation amount 2").fill("-32");
+    await expect(status).toHaveText("Ready to save");
   });
 
   test("associates category errors with their field and clears them after correction", async ({
@@ -151,6 +172,9 @@ test.describe("transaction category allocations", () => {
     await expect(error).toHaveText("Choose a category for allocation 2.");
     await expect(secondCategory).toHaveAttribute("aria-invalid", "true");
     await expect(secondCategory).toHaveAttribute("aria-describedby", "transaction-allocation-error");
+    await expect(secondCategory).toBeFocused();
+    await expect(allocationEditor.getByRole("group", { name: "Allocation 2", exact: true }).getByRole("alert"))
+      .toHaveText("Choose a category for allocation 2.");
 
     await secondCategory.selectOption("housing");
     await expect(error).toHaveCount(0);
@@ -270,7 +294,7 @@ test.describe("transaction category allocations", () => {
     const allocationEditor = window.getByRole("region", {
       name: "Transaction category allocations for Kiwi",
     });
-    const balance = allocationEditor.getByText(/Balance after entered amounts:/);
+    const balance = allocationEditor.getByRole("status", { name: "Split draft status" });
     const addButton = allocationEditor.getByRole("button", { name: "Add allocation" });
     for (let index = 0; index < 4; index++) {
       await addButton.click();
@@ -308,12 +332,16 @@ test.describe("transaction category allocations", () => {
     const removeButton = allocationEditor.getByRole("button", { name: "Remove allocation 3" });
     await expect(thirdCategory).toBeVisible();
     await expect(addButton).toBeFocused();
-    await window.keyboard.press("Shift+Tab");
+    const thirdActions = allocationEditor.getByText("Row actions", { exact: true }).nth(2);
+    await thirdActions.focus();
+    await window.keyboard.press("Enter");
+    await tabTo(window, removeButton);
     await expect(removeButton).toBeFocused();
     await window.keyboard.press("Enter");
 
     await expect(thirdCategory).toHaveCount(0);
-    await expect(allocationEditor.getByRole("button", { name: /Remove allocation/ })).toHaveCount(0);
+    await expect(allocationEditor.getByRole("button", { name: /Remove allocation/, includeHidden: true })).toHaveCount(0);
+    await expect(addButton).toBeFocused();
   });
 
   test("announces an invalid sum and preserves the previous allocations", async ({
@@ -361,6 +389,7 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
+    await allocationEditor.getByText("Row actions", { exact: true }).first().click();
     const moveDown = allocationEditor.getByRole("button", { name: "Move allocation 1 down" });
     await moveDown.focus();
     await window.keyboard.press("Enter");
@@ -403,6 +432,7 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
+    await allocationEditor.getByText("Row actions", { exact: true }).first().click();
     await allocationEditor.getByRole("button", { name: "Move allocation 1 down" }).click();
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
     await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("groceries");
