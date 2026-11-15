@@ -35,7 +35,9 @@ test.describe("transaction category editing", () => {
       element.closest("tr")?.previousElementSibling?.getAttribute("aria-label")
     )).toBe("Ledger transaction Kiwi");
     await expect(editor).toContainText("KIWI");
-    await expect(editor.getByRole("checkbox", { name: "Remember for this merchant" })).toBeChecked();
+    const remember = editor.getByRole("checkbox", { name: "Remember for this merchant" });
+    await expect(remember).toBeChecked();
+    await expect(remember).toHaveAccessibleDescription(/Matching merchant: KIWI.*No category is currently remembered.*future matching transactions/s);
     await expect(editor).toContainText("future matching transactions");
     await expect(editor).toContainText("Existing history will not change.");
 
@@ -69,6 +71,7 @@ test.describe("transaction category editing", () => {
       expect(rememberBounds?.width).toBeLessThanOrEqual(24);
       await editor.getByText("Remember for this merchant", { exact: true }).click();
       await expect(remember).not.toBeChecked();
+      await expect(remember).toHaveAccessibleDescription(/transaction-only correction/);
       await editor.getByText("Remember for this merchant", { exact: true }).click();
       await expect(remember).toBeChecked();
       await category.focus();
@@ -76,6 +79,8 @@ test.describe("transaction category editing", () => {
       await expect(remember).toBeFocused();
       await window.keyboard.press("Tab");
       await expect(manage).toBeFocused();
+      await window.keyboard.press("Tab");
+      await expect(split).toBeFocused();
       await window.keyboard.press("Tab");
       await expect(save).toBeFocused();
       await expect(save).toBeInViewport();
@@ -560,7 +565,7 @@ test.describe("transaction category editing", () => {
       await expect(category).toHaveValue("fuel");
       await expect(editor).toContainText("Matching merchant: KIWI");
       await expect(editor).toContainText("No category is currently remembered for this merchant.");
-      await expect(editor).toContainText("Remember Fuel for future matching transactions.");
+      await expect(editor).toContainText("For future matching transactions, use Fuel.");
       await expect(editor).toContainText("Existing history will not change.");
       await expect(editor.getByRole("region", { name: "Transaction category allocations for Kiwi" }))
         .toHaveCount(0);
@@ -570,6 +575,8 @@ test.describe("transaction category editing", () => {
       await category.focus();
       await window.keyboard.press("Tab");
       await window.keyboard.press("Tab");
+      await window.keyboard.press("Tab");
+      await expect(editor.getByRole("button", { name: "Split across categories" })).toBeFocused();
       await window.keyboard.press("Tab");
       await expect(save).toBeFocused();
       await window.keyboard.press("Enter");
@@ -593,7 +600,7 @@ test.describe("transaction category editing", () => {
       await secondEditor.getByRole("combobox", { name: "Category for Kiwi" }).selectOption("groceries");
       await expect(secondEditor).toContainText("Currently remembered category: Fuel.");
       await expect(secondEditor)
-        .toContainText("Remember Groceries & food for future matching transactions.");
+        .toContainText("For future matching transactions, use Groceries & food.");
       await expect(secondEditor).toContainText("Existing history will not change.");
       await secondEditor.getByRole("button", { name: "Save category for Kiwi" }).click();
       await expect(row).toContainText("Groceries & food");

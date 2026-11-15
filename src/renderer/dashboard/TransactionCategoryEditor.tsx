@@ -81,6 +81,7 @@ export function TransactionCategoryEditor({
   const splitCategoryRef = React.useRef<HTMLSelectElement>(null);
   const lastEditingControlRef = React.useRef<HTMLElement | null>(null);
   const hadNavigationPromptRef = React.useRef(false);
+  const learningDetailsId = React.useId();
   const currencyCode = transaction.currencyCode ?? "NOK";
   const currencyFormatter = getCurrencyFormatter(currencyCode);
   const categoryLabel = (id: string): string => categories.find((category) => category.id === id)?.label ?? id;
@@ -259,25 +260,19 @@ export function TransactionCategoryEditor({
             <time dateTime={transaction.bookedAtIso}>
               {bookedDateFormatter.format(new Date(transaction.bookedAtIso))}
             </time>
-            <span>Matching merchant: <strong>{merchantAlias || "No matching alias"}</strong></span>
           </p>
         </div>
         <strong>{formatMinorUnits(transaction.amountMinor, currencyFormatter)}</strong>
       </header>
 
-      <div className="transaction-category-mode-actions" role="group" aria-label="Category edit mode">
-        {mode === "single" ? (
-          <button type="button" className="action-secondary" disabled={isSaving}
-            onClick={() => { setError(null); setMode("split"); }}>
-            Split across categories
-          </button>
-        ) : (
+      {mode === "split" && (
+        <div className="transaction-category-mode-actions" role="group" aria-label="Category edit mode">
           <button type="button" className="action-secondary" disabled={isSaving}
             onClick={() => { setError(null); setMode("single"); }}>
             Use one category
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {mode === "single" ? (
         <div className="transaction-category-single">
@@ -287,8 +282,9 @@ export function TransactionCategoryEditor({
             </p>
           )}
           <label>
-            Category for {transaction.merchantRaw}
-            <select ref={categoryRef} value={categoryId} disabled={isSaving || loading || catalogError !== null}
+            Category
+            <select ref={categoryRef} value={categoryId} aria-label={`Category for ${transaction.merchantRaw}`}
+              disabled={isSaving || loading || catalogError !== null}
               onChange={(event) => { setCategoryId(event.target.value); setError(null); }}>
               <option value="">Choose a category</option>
               {categories.map((category) => (
@@ -296,32 +292,42 @@ export function TransactionCategoryEditor({
               ))}
             </select>
           </label>
-          <p className="transaction-category-rule-state">{rememberedLabel}</p>
           {merchantAlias === "" ? (
-            <p className="transaction-category-learning-help">
-              Remembering is unavailable because this description has no matching merchant alias. This change will apply only to this transaction.
-            </p>
+            <div className="transaction-category-learning-details">
+              <p>Matching merchant: <strong>No matching alias</strong></p>
+              <p>Remembering is unavailable because this description has no matching merchant alias. This change will apply only to this transaction.</p>
+            </div>
           ) : (
-            <>
+            <div className="transaction-category-learning">
               <label className="transaction-category-remember">
-                <input type="checkbox" checked={rememberForMerchant} disabled={isSaving}
+                <input type="checkbox" checked={rememberForMerchant} disabled={isSaving} aria-describedby={learningDetailsId}
                   onChange={(event) => setRememberForMerchant(event.target.checked)} />
                 Remember for this merchant
               </label>
-              <p className="transaction-category-learning-help">
-                {rememberForMerchant
-                  ? `Remember ${categoryId === "" ? "the selected category" : categoryLabel(categoryId)} for future matching transactions. Existing history will not change.`
-                  : `This is a transaction-only correction. ${merchantCategoryRule === null
-                    ? "No remembered category will be changed."
-                    : `The remembered ${categoryLabel(merchantCategoryRule.categoryId)} category will remain unchanged.`} Existing history will not change.`}
-              </p>
-            </>
+              <div id={learningDetailsId} className="transaction-category-learning-details">
+                <p>Matching merchant: <strong>{merchantAlias}</strong></p>
+                <p>{rememberedLabel}</p>
+                <p>
+                  {rememberForMerchant
+                    ? `For future matching transactions, use ${categoryId === "" ? "the selected category" : categoryLabel(categoryId)}. Existing history will not change.`
+                    : `This is a transaction-only correction. ${merchantCategoryRule === null
+                      ? "No remembered category will be changed."
+                      : `The remembered ${categoryLabel(merchantCategoryRule.categoryId)} category will remain unchanged.`} Existing history will not change.`}
+                </p>
+              </div>
+            </div>
           )}
-          <CategoryManagementButton
-            label="Manage categories for this transaction"
-            returnFocusRef={categoryRef}
-            disabled={isSaving}
-          />
+          <div className="transaction-category-mode-actions" role="group" aria-label="More category options">
+            <CategoryManagementButton
+              label="Manage categories for this transaction"
+              returnFocusRef={categoryRef}
+              disabled={isSaving}
+            />
+            <button type="button" className="action-secondary" disabled={isSaving}
+              onClick={() => { setError(null); setMode("split"); }}>
+              Split across categories
+            </button>
+          </div>
         </div>
       ) : (
         <div className="transaction-category-split">

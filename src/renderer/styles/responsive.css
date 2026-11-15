@@ -338,10 +338,6 @@
     flex-wrap: wrap;
   }
 
-  .transaction-category-single {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .transaction-category-actions button,
   .transaction-category-navigation button {
     flex: 1 1 100%;
