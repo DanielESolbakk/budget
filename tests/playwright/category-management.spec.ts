@@ -146,6 +146,13 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
           if (context === "allocations") {
             await ledger.openSplitEditor("Verksted Solglimt");
           } else if (context === "category") {
+            const transaction = ledger.transaction("Verksted Solglimt");
+            await expect(transaction.getByRole("button", {
+              name: "Choose category for Verksted Solglimt",
+            })).toBeVisible();
+            await expect(transaction.getByRole("button", {
+              name: /Allocate categories|Edit category allocations/,
+            })).toHaveCount(0);
             await ledger.openCategoryEditor("Verksted Solglimt");
           }
           const region = context === "review" ? review.reviewItem("Verksted Solglimt")

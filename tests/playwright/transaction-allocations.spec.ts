@@ -101,6 +101,8 @@ test.describe("transaction category allocations", () => {
     await expect(transactionRow).toContainText("Groceries & food");
     await expect(transactionRow).toContainText("Housing");
     await expect(transactionRow).toContainText(/72,00\s*kr/);
+    await expect(transactionRow.getByRole("button", { name: /Allocate categories|Edit category allocations/ }))
+      .toHaveCount(0);
     await expect(transactionRow.getByRole("button", { name: "Edit category for Kiwi" }))
       .toBeVisible();
   });
