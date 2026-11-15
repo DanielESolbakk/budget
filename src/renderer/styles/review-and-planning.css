@@ -1441,13 +1441,8 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
 }
 
 .transaction-allocation-summary {
-  display: grid;
-  gap: 0.25rem;
   padding: 0.6rem 0.75rem;
   background: var(--panel-soft);
-}
-
-.transaction-allocation-summary > [role="status"] {
   color: var(--paper);
   font-size: 0.875rem;
   font-weight: 600;
@@ -1456,10 +1451,11 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
 
 .transaction-allocation-totals summary,
 .transaction-allocation-row-actions summary {
+  min-height: 44px;
   cursor: pointer;
   color: var(--paper-muted);
   font-size: 0.8rem;
-  padding: 0.35rem 0;
+  padding: 0.7rem 0;
 }
 
 .transaction-allocation-totals summary:focus-visible,
@@ -1483,7 +1479,7 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   font-size: 0.75rem;
 }
 
-.transaction-allocation-summary strong {
+.transaction-allocation-metrics strong {
   color: var(--paper);
   font-size: 0.95rem;
   font-variant-numeric: tabular-nums;

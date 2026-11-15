@@ -2,8 +2,26 @@ import { _electron as electron, type Locator, type Page } from "@playwright/test
 import { join } from "node:path";
 import { test, expect } from "./fixtures/electron.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 
 const MAIN_ENTRY = join(process.cwd(), "out", "main", "index.js");
+const longDescription = "SYNTHETIC BANK DESCRIPTION 7332 01.01 NOK 72.00 KOLUMBUS Kurs: 1.0000 representative long imported description. ".repeat(4);
+const longDescriptionTest = test.extend({
+  databasePath: async ({ databasePath }, use) => {
+    const ledger = createLocalLedgerDatabase({ dbPath: databasePath, seedData: {
+      household: { id: "sample-hh", name: "Synthetic household", createdAtIso: "2026-01-01T00:00:00Z" },
+      accounts: [{ id: "sample-acc", householdId: "sample-hh", name: "Brukskonto", currencyCode: "NOK" }],
+      transactions: [{
+        id: "tx-long", householdId: "sample-hh", accountId: "sample-acc",
+        bookedAtIso: "2026-05-23", amountMinor: -7200, currencyCode: "NOK",
+        merchantRaw: longDescription, categoryId: "groceries",
+      }],
+      importJobs: [], monthlyCategoryTargets: [],
+    } });
+    ledger.close();
+    await use(databasePath);
+  },
+});
 
 async function tabTo(window: Page, target: Locator): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -30,8 +48,8 @@ test.describe("transaction category allocations", () => {
       .toHaveCount(1);
     await expect.soft(allocationEditor.getByRole("status", { name: "Split draft status" }))
       .toContainText("Finish category and amount for row 2");
-    await expect.soft(allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }))
-      .toHaveText("Save split");
+    const saveButton = allocationEditor.getByRole("button").filter({ hasText: /^Save split$/ });
+    await expect.soft(saveButton).toHaveAccessibleName("Save split for Kiwi");
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("groceries");
     await expect(allocationEditor.getByLabel("Allocation amount 1")).toHaveValue("-72.00");
     await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("");
@@ -50,7 +68,7 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByRole("button", { name: "Add allocation" }).click();
     await expect(allocationEditor.getByLabel("Allocation category 3")).toHaveValue("");
     await expect(allocationEditor.getByLabel("Allocation amount 3")).toHaveValue("");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(allocationEditor.getByRole("alert"))
       .toContainText("Choose a category for allocation 2.");
     await expect(transactionRow).toContainText("Groceries & food");
@@ -77,7 +95,7 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
 
     await expect(transactionRow).toContainText("Groceries & food");
     await expect(transactionRow).toContainText("Housing");
@@ -101,15 +119,14 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(transactionRow).toContainText("Housing");
 
     await window.setViewportSize({ width: 1280, height: 800 });
     await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
-    const restoreButton = allocationEditor.getByRole("button", {
-      name: "Remove split for Kiwi",
-    });
+    const restoreButton = allocationEditor.getByRole("button").filter({ hasText: /^Remove saved split$/ });
     await expect(restoreButton).toBeVisible();
+    await expect(restoreButton).toHaveAccessibleName("Remove saved split for Kiwi");
 
     await window.setViewportSize({ width: 390, height: 844 });
     const horizontalOverflow = await window.evaluate(() =>
@@ -166,7 +183,7 @@ test.describe("transaction category allocations", () => {
       name: "Transaction category allocations for Kiwi",
     });
     const secondCategory = allocationEditor.getByLabel("Allocation category 2");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
 
     const error = allocationEditor.getByRole("alert");
     await expect(error).toHaveText("Choose a category for allocation 2.");
@@ -201,6 +218,20 @@ test.describe("transaction category allocations", () => {
     await expect(status).toContainText("Current allocation total");
     await expect(status).toContainText(/32,00\s*kr/);
     await expect(status).toContainText("1 allocation is incomplete");
+    await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
+    const secondAmount = allocationEditor.getByLabel("Allocation amount 2");
+    await firstAmount.fill("-72");
+    await secondAmount.fill("0");
+    await secondAmount.press("Tab");
+    await expect.soft(status).toContainText("non-zero");
+    await firstAmount.fill("-80");
+    await secondAmount.fill("8");
+    await secondAmount.press("Tab");
+    await expect.soft(status).toContainText("source transaction sign");
+    await firstAmount.fill("-40");
+    await secondAmount.fill("-32");
+    await secondAmount.press("Tab");
+    await expect.soft(status).toContainText("Ready to save");
   });
 
   test("announces successful allocation saves after the editor closes", async ({
@@ -219,7 +250,7 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
 
     await expect(allocationEditor).toBeHidden();
     await expect(ledger.getByRole("status", { name: "Allocation status" }))
@@ -271,7 +302,7 @@ test.describe("transaction category allocations", () => {
     await window.setViewportSize({ width: 390, height: 844 });
 
     await window.setViewportSize({ width: 1280, height: 800 });
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(allocationEditor.getByRole("alert"))
       .toHaveText("Category allocations must sum exactly to the source transaction amount.");
     await window.setViewportSize({ width: 390, height: 844 });
@@ -282,17 +313,18 @@ test.describe("transaction category allocations", () => {
     expect(editorWidth).toBeLessThanOrEqual(390);
   });
 
-  test("keeps the allocation balance in view while editing on a compact window", async ({
+  longDescriptionTest("keeps the allocation balance in view while editing on a compact window", async ({
     appShell,
     window,
+    electronApp,
   }) => {
     await appShell.openWorkspace("Transactions");
     await window.setViewportSize({ width: 390, height: 844 });
-    const transactionRow = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
+    const transactionRow = window.getByRole("row", { name: /^Ledger transaction SYNTHETIC BANK DESCRIPTION/ });
+    await transactionRow.getByRole("button", { name: /^Edit category allocations for/ }).click();
 
     const allocationEditor = window.getByRole("region", {
-      name: "Transaction category allocations for Kiwi",
+      name: /^Transaction category allocations for SYNTHETIC BANK DESCRIPTION/,
     });
     const balance = allocationEditor.getByRole("status", { name: "Split draft status" });
     const addButton = allocationEditor.getByRole("button", { name: "Add allocation" });
@@ -306,6 +338,33 @@ test.describe("transaction category allocations", () => {
       document.documentElement.scrollWidth > document.documentElement.clientWidth
     );
     expect(horizontalOverflow).toBe(false);
+    for (const summary of [
+      allocationEditor.getByText("Split details", { exact: true }),
+      allocationEditor.getByText("Row actions", { exact: true }).first(),
+    ]) {
+      expect.soft(await summary.evaluate((element) => element.getBoundingClientRect().height))
+        .toBeGreaterThanOrEqual(44);
+    }
+    await allocationEditor.getByText("Split details", { exact: true }).click();
+    await expect(allocationEditor.getByText(`Original description: ${longDescription}`, { exact: true })).toBeVisible();
+    for (const context of [
+      { width: 390, height: 844, zoom: 1 },
+      { width: 1280, height: 800, zoom: 2 },
+    ]) {
+      await window.setViewportSize({ width: context.width, height: context.height });
+      await electronApp.evaluate(({ webContents }, zoom) => webContents.getAllWebContents()
+        .filter((contents) => contents.getType() === "window")
+        .forEach((contents) => contents.setZoomFactor(zoom)), context.zoom);
+      await allocationEditor.getByLabel("Allocation category 1").focus();
+      for (let step = 0; step < 4; step++) await window.keyboard.press("Tab");
+      const secondAmount = allocationEditor.getByLabel("Allocation amount 2");
+      await expect(secondAmount).toBeFocused();
+      await expect.poll(() => secondAmount.evaluate((input) => {
+        const box = input.getBoundingClientRect();
+        return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === input;
+      })).toBe(true);
+      await expect(balance).toBeInViewport();
+    }
   });
 
   test("adds and removes allocation rows with keyboard navigation", async ({
@@ -359,12 +418,12 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(transactionRow).toContainText("Groceries & food");
 
     await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
     await allocationEditor.getByLabel("Allocation amount 1").fill("-30.00");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
 
     await expect(allocationEditor.getByRole("alert"))
       .toHaveText("Category allocations must sum exactly to the source transaction amount.");
@@ -394,7 +453,7 @@ test.describe("transaction category allocations", () => {
     await moveDown.focus();
     await window.keyboard.press("Enter");
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).focus();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).focus();
     await window.keyboard.press("Enter");
     await expect(transactionRow).toContainText("Housing");
     await expect(transactionRow).toContainText("Groceries & food");
@@ -406,7 +465,7 @@ test.describe("transaction category allocations", () => {
     await expect(allocationEditor.getByLabel("Allocation category 1")).toBeFocused();
     await allocationEditor.getByLabel("Allocation amount 1").fill("-33.00");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-39.00");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).focus();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).focus();
     await window.keyboard.press("Enter");
     await expect(transactionRow).toContainText(/72,00\s*kr/);
     await expect(allocationEditor).toBeHidden();
@@ -437,7 +496,7 @@ test.describe("transaction category allocations", () => {
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
     await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("groceries");
 
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(allocationEditor).toBeHidden();
     await transactionRow.getByRole("button", { name: "Edit category allocations for Kiwi" }).click();
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("housing");
@@ -461,7 +520,7 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40.00");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32.00");
-    await allocationEditor.getByRole("button", { name: "Save allocations for Kiwi" }).click();
+    await allocationEditor.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(transactionRow).toContainText("Groceries & food");
     await expect(transactionRow).toContainText("Housing");
 

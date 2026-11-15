@@ -237,6 +237,10 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
             await expect(picker).toBeDisabled();
             await amountInput.focus();
             await expect(amountInput).toBeFocused();
+            await amountInput.press("Tab");
+            await expect(window.getByRole("status", { name: "Allocation status", exact: true }))
+              .toContainText("Retry loading categories");
+            await amountInput.focus();
           }
           database.exec(`
             DROP TRIGGER category_allocation_refresh_fault;
@@ -320,7 +324,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       await allocations.getByLabel("Allocation amount 1").fill("-100.00");
       await allocations.getByLabel("Allocation category 2").selectOption({ label: "Fees" });
       await allocations.getByLabel("Allocation amount 2").fill("-20.00");
-      await allocations.getByRole("button", { name: "Save allocations for Verksted Solglimt" }).click();
+      await allocations.getByRole("button", { name: "Save split for Verksted Solglimt" }).click();
       await expect(workshop).toContainText("Car repairs");
       await expect(workshop).toContainText("Fees");
       await appShell.openWorkspace("Review");

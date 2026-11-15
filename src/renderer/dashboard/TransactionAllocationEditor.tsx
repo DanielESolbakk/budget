@@ -98,36 +98,36 @@ export function TransactionAllocationEditor({
         </strong>
       </header>
       <p className="transaction-allocation-guidance">Changes apply only when you save.</p>
-      <div className="transaction-allocation-summary">
-        <p role="status" aria-label="Split draft status" aria-live="off">{draftStatus}</p>
-        <details className="transaction-allocation-totals">
-          <summary>Split details</summary>
-          <div className="transaction-allocation-metrics">
-            <p>
-              Source transaction:
-              <strong>{formatMinorUnits(transaction.amountMinor, currencyFormatter)}</strong>
+      <p className="transaction-allocation-summary" role="status" aria-label="Split draft status" aria-live="off">
+        {draftStatus}
+      </p>
+      <details className="transaction-allocation-totals">
+        <summary>Split details</summary>
+        <div className="transaction-allocation-metrics">
+          <p>
+            Source transaction:
+            <strong>{formatMinorUnits(transaction.amountMinor, currencyFormatter)}</strong>
+          </p>
+          <p>
+            {incompleteAllocationCount === 0 ? "Allocation total:" : "Allocated so far:"}
+            <strong>{formatMinorUnits(totalMinor, currencyFormatter)}</strong>
+          </p>
+          <p>
+            {overAllocatedMinor === null
+              ? incompleteAllocationCount === 0
+                ? "Remaining to allocate:"
+                : "Balance after entered amounts:"
+              : "Over-allocated by:"}
+            <strong>{formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}</strong>
+          </p>
+          {incompleteAllocationCount > 0 && (
+            <p className="transaction-allocation-incomplete">
+              {incompleteAllocationCount} {incompleteAllocationCount === 1 ? "allocation is" : "allocations are"} incomplete.
             </p>
-            <p>
-              {incompleteAllocationCount === 0 ? "Allocation total:" : "Allocated so far:"}
-              <strong>{formatMinorUnits(totalMinor, currencyFormatter)}</strong>
-            </p>
-            <p>
-              {overAllocatedMinor === null
-                ? incompleteAllocationCount === 0
-                  ? "Remaining to allocate:"
-                  : "Balance after entered amounts:"
-                : "Over-allocated by:"}
-              <strong>{formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}</strong>
-            </p>
-            {incompleteAllocationCount > 0 && (
-              <p className="transaction-allocation-incomplete">
-                {incompleteAllocationCount} {incompleteAllocationCount === 1 ? "allocation is" : "allocations are"} incomplete.
-              </p>
-            )}
-          </div>
-          <p className="transaction-allocation-description">Original description: {transaction.merchantRaw}</p>
-        </details>
-      </div>
+          )}
+        </div>
+        <p className="transaction-allocation-description">Original description: {transaction.merchantRaw}</p>
+      </details>
       <div className="transaction-allocation-rows">
         {allocations.map((allocation, index) => {
           const errorForIndex = error?.field?.index === index ? error : null;
@@ -230,7 +230,7 @@ export function TransactionAllocationEditor({
       <div className="transaction-allocation-actions">
         {isSaving && <p className="transaction-allocation-saving">Saving allocation changes.</p>}
         <button type="button" disabled={isSaving || loading || catalogError !== null} onClick={onSave}
-          aria-label={isSaving ? "Saving allocations" : `Save allocations for ${transaction.merchantRaw}`}>
+          aria-label={isSaving ? "Saving split..." : `Save split for ${transaction.merchantRaw}`}>
           {isSaving ? "Saving split..." : "Save split"}
         </button>
         <button className="action-secondary" type="button" disabled={isSaving} onClick={onCancel}
@@ -239,7 +239,7 @@ export function TransactionAllocationEditor({
         </button>
         {transaction.categoryAllocations?.length ? (
           <button className="action-secondary transaction-allocation-clear" type="button" disabled={isSaving} onClick={onClear}
-            aria-label={`Remove split for ${transaction.merchantRaw}`}>
+            aria-label={`Remove saved split for ${transaction.merchantRaw}`}>
             Remove saved split
           </button>
         ) : null}

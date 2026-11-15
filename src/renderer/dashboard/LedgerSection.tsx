@@ -99,7 +99,7 @@ export interface LedgerFilterRequest {
 }
 
 export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isReportSelected }: LedgerSectionProps): React.JSX.Element {
-  const { categories } = useCategoryCatalog();
+  const { categories, loading: categoryCatalogLoading, error: categoryCatalogError } = useCategoryCatalog();
   function categoryLabel(categoryId: string): string {
     return categories.find((category) => category.id === categoryId)?.label ?? categoryId;
   }
@@ -560,6 +560,9 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   function announceAllocationBalance(): void {
     if (allocationSourceTransaction === undefined) return;
 
+    const draft = parseAllocationDraft(
+      allocationSourceTransaction.amountMinor, allocationDraft, categories.map((category) => category.id)
+    );
     const remainingMinor = BigInt(allocationSourceTransaction.amountMinor) - allocationTotalMinor;
     const isOverAllocated = remainingMinor !== 0n &&
       allocationSourceTransaction.amountMinor !== 0 &&
@@ -577,6 +580,9 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
       : `${incompleteAllocationCount} allocations are incomplete`;
     const balanceAmount = isOverAllocated && remainingMinor < 0n ? -remainingMinor : remainingMinor;
     const message = [
+      categoryCatalogLoading ? "Loading categories" :
+        categoryCatalogError !== null ? "Retry loading categories before saving" :
+          draft.ok ? "Ready to save" : draft.error.message.replace(/\.$/, ""),
       `${totalLabel}: ${formatMinorUnits(allocationTotalMinor, allocationCurrencyFormatter)}`,
       ...(incompleteAllocationCount === 0 ? [] : [incompleteMessage]),
       `${balanceLabel}: ${formatMinorUnits(balanceAmount, allocationCurrencyFormatter)}`,

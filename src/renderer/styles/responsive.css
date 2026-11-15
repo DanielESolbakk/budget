@@ -339,7 +339,7 @@
     flex-basis: 100%;
   }
 
-  .transaction-allocation-summary p {
+  .transaction-allocation-summary {
     min-width: 0;
     overflow-wrap: anywhere;
   }

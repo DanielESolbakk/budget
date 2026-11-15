@@ -150,7 +150,7 @@ test("recorded currency survives review, ledger, allocations and pending trackin
   await expect(ledger.transaction("LOCAL BOOKED").getByRole("cell").nth(2)).toHaveText(/42,00\s+kr/);
   await ledger.transaction("FOREIGN BOOKED").getByRole("button", { name: /Edit category allocations/ }).click();
   const allocation = window.getByRole("region", { name: "Transaction category allocations for FOREIGN BOOKED" });
-  await expect.soft(allocation.locator(".transaction-allocation-summary")).toContainText(/78,00\s+GBP/);
+  await expect.soft(allocation.locator(".transaction-allocation-source")).toContainText(/78,00\s+GBP/);
   await allocation.getByRole("button", { name: "Cancel allocation editing" }).click();
   await reviewQueue.categorySelect("FOREIGN BOOKED").selectOption("groceries");
   await reviewQueue.saveButton("FOREIGN BOOKED").click();
