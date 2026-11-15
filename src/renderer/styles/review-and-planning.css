@@ -1474,6 +1474,10 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   border-bottom: 1px solid var(--line);
 }
 
+.transaction-allocation-row:where(:not(:has(.transaction-allocation-row-actions))) {
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.55fr);
+}
+
 .transaction-allocation-row > label {
   display: grid;
   gap: 0.35rem;

@@ -3,7 +3,7 @@ import type { Transaction } from "../../domain/types.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { formatMinorUnits } from "../../domain/money/minorUnits.js";
-import { parseAllocationDraft, type AllocationDraft, type AllocationEditorError } from "./transactionAllocationDraft.js";
+import { getAllocationRoomGuidance, parseAllocationDraft, type AllocationDraft, type AllocationEditorError } from "./transactionAllocationDraft.js";
 export type { AllocationDraft, AllocationEditorError } from "./transactionAllocationDraft.js";
 
 interface TransactionAllocationEditorProps {
@@ -63,12 +63,14 @@ export function TransactionAllocationEditor({
     : null;
   const draft = parseAllocationDraft(transaction.amountMinor, allocations, categories.map((category) => category.id));
   const incompleteRow = allocations.findIndex((row) => row.categoryId === "" && row.amountText.trim() === "");
+  const roomGuidance = getAllocationRoomGuidance(transaction.amountMinor, totalMinor, allocations);
   let draftStatus: string;
   if (isSaving) draftStatus = "Saving split...";
   else if (loading) draftStatus = "Loading categories...";
   else if (catalogError !== null) draftStatus = "Retry loading categories before saving.";
   else if (invalidAmountIndex >= 0) draftStatus = `Enter a valid amount for row ${invalidAmountIndex + 1}`;
   else if (draft.ok) draftStatus = "Ready to save";
+  else if (roomGuidance !== null) draftStatus = roomGuidance;
   else if (incompleteRow >= 0) draftStatus = `Finish category and amount for row ${incompleteRow + 1}`;
   else if (draft.error.field !== undefined || remainingMinor === 0n) draftStatus = draft.error.message;
   else draftStatus = "Adjust amounts to match the transaction.";
@@ -84,8 +86,15 @@ export function TransactionAllocationEditor({
     >
       <h3>Split transaction</h3>
       <p className="transaction-allocation-guidance">
-        Divide the transaction amount across categories. The amounts must add up to the original amount.
-        Changes apply only when you save.
+        Split amounts must add up to the transaction total. Changes apply only when you save.{" "}
+        <span id="transaction-allocation-amount-guidance">
+          {transaction.amountMinor < 0
+            ? "Use negative amounts. "
+            : transaction.amountMinor > 0
+              ? "Use positive amounts. "
+              : ""}
+          Use a comma or period for decimals.
+        </span>
       </p>
       <p className="transaction-allocation-summary" role="status" aria-label="Split draft status" aria-live="off">
         <span>{draftStatus}</span>
@@ -160,7 +169,9 @@ export function TransactionAllocationEditor({
                 <input
                   aria-label={`Allocation amount ${index + 1}`}
                   aria-invalid={amountHasError || undefined}
-                  aria-describedby={amountHasError ? "transaction-allocation-error" : undefined}
+                  aria-describedby={amountHasError
+                    ? "transaction-allocation-amount-guidance transaction-allocation-error"
+                    : "transaction-allocation-amount-guidance"}
                   disabled={isSaving}
                   inputMode="decimal"
                   value={allocation.amountText}
@@ -170,7 +181,7 @@ export function TransactionAllocationEditor({
                 {amountHasError && <span className="transaction-allocation-field-error"
                   id="transaction-allocation-error" role="alert">{errorForIndex.message}</span>}
               </label>
-              <details className="transaction-allocation-row-actions">
+              {(canReorder || allocations.length > 2) && <details className="transaction-allocation-row-actions">
                 <summary aria-label={`Row actions for allocation ${index + 1}`}>Row actions</summary>
                 <div>
                   {!canReorder && <p>Finish all rows before reordering.</p>}
@@ -207,7 +218,7 @@ export function TransactionAllocationEditor({
                     </button>
                   )}
                 </div>
-              </details>
+              </details>}
             </div>
           );
         })}

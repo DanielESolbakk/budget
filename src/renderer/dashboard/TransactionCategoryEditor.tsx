@@ -6,7 +6,7 @@ import type {
 } from "../../shared/transactionCategoryEdit.js";
 import { formatMinorUnits, minorUnitsToDecimal } from "../../domain/money/minorUnits.js";
 import { TransactionAllocationEditor, type AllocationDraft, type AllocationEditorError } from "./TransactionAllocationEditor.js";
-import { parseAllocationDraft } from "./transactionAllocationDraft.js";
+import { getAllocationRoomGuidance, parseAllocationDraft } from "./transactionAllocationDraft.js";
 import { parseSignedAmountMinor } from "../amountInputs.js";
 import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
@@ -224,7 +224,9 @@ export function TransactionCategoryEditor({
     const message = [
       loading ? "Loading categories" :
         catalogError !== null ? "Retry loading categories before saving" :
-          splitDraft.ok ? "Ready to save" : splitDraft.error.message.replace(/\.$/, ""),
+          splitDraft.ok ? "Ready to save" :
+            getAllocationRoomGuidance(transaction.amountMinor, allocationTotalMinor, allocations) ??
+              splitDraft.error.message.replace(/\.$/, ""),
       `${totalLabel}: ${formatMinorUnits(allocationTotalMinor, currencyFormatter)}`,
       ...(incompleteAllocationCount === 0 ? [] : [incompleteMessage]),
       `${balanceLabel}: ${formatMinorUnits(balanceAmount, currencyFormatter)}`,
