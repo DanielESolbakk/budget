@@ -97,6 +97,14 @@ export interface LedgerFilterRequest {
   description: string;
 }
 
+interface PendingCategoryEditNavigation {
+  message: string;
+  saveLabel: string;
+  discardLabel: string;
+  resume: () => void;
+  onKeepEditing?: () => void;
+}
+
 export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isReportSelected }: LedgerSectionProps): React.JSX.Element {
   const { categories } = useCategoryCatalog();
   function categoryLabel(categoryId: string): string {
@@ -135,10 +143,8 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   const [isFilterPending, setIsFilterPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [categoryEditContext, setCategoryEditContext] = React.useState<TransactionCategoryEditContext | null>(null);
-  const [pendingCategoryEdit, setPendingCategoryEdit] = React.useState<{
-    transaction: Transaction;
-    trigger: HTMLButtonElement;
-  } | null>(null);
+  const [pendingCategoryEdit, setPendingCategoryEdit] =
+    React.useState<PendingCategoryEditNavigation | null>(null);
   const [isCategoryEditDirty, setIsCategoryEditDirty] = React.useState(false);
   const [isCategoryEditLoading, setIsCategoryEditLoading] = React.useState(false);
   const [categoryEditStatusMessage, setCategoryEditStatusMessage] = React.useState("");
@@ -148,22 +154,61 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   const categoryEditTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const categoryTriggerRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const pendingSavedFocusId = React.useRef<string | null>(null);
+  const pendingLedgerNavigationFocusRef = React.useRef<HTMLElement | null>(null);
   const ledgerHeadingRef = React.useRef<HTMLHeadingElement>(null);
   const merchantInputRef = React.useRef<HTMLInputElement>(null);
 
-  function updateFilters(action: React.SetStateAction<TransactionFilters>): void {
+  const requestCategoryEditNavigation = React.useCallback((navigation: PendingCategoryEditNavigation): void => {
+    if (categoryEditContext !== null && categoryEditDirtyRef.current) {
+      setPendingCategoryEdit(navigation);
+      return;
+    }
+
+    setPendingCategoryEdit(null);
+    if (categoryEditContext !== null) {
+      setCategoryEditContext(null);
+      setIsCategoryEditDirty(false);
+      categoryEditDirtyRef.current = false;
+    }
+    navigation.resume();
+  }, [categoryEditContext]);
+
+  const requestLedgerNavigation = React.useCallback((resume: () => void, onKeepEditing?: () => void): void => {
+    const activeElement = document.activeElement;
+    const focusTarget = activeElement instanceof HTMLElement ? activeElement : null;
+    if (categoryEditContext !== null) pendingLedgerNavigationFocusRef.current = focusTarget;
+    requestCategoryEditNavigation({
+      message: "Unsaved category changes. Save or discard them before applying this ledger change.",
+      saveLabel: "Save and apply",
+      discardLabel: "Discard and apply",
+      resume,
+      ...(onKeepEditing === undefined ? {} : { onKeepEditing }),
+    });
+  }, [categoryEditContext, requestCategoryEditNavigation]);
+
+  const applyFilters = React.useCallback((action: React.SetStateAction<TransactionFilters>): void => {
     latestFilterRevision.current += 1;
     setIsFilterPending(true);
     setFilterState(action);
-  }
+  }, []);
+
+  const updateFilters = React.useCallback((
+    action: React.SetStateAction<TransactionFilters>,
+    onKeepEditing?: () => void
+  ): void => {
+    requestLedgerNavigation(() => applyFilters(action), onKeepEditing);
+  }, [applyFilters, requestLedgerNavigation]);
 
   React.useEffect(() => {
     if (filterRequest === null || filterRequest === undefined || lastFilterRequestId.current === filterRequest.id) return;
     lastFilterRequestId.current = filterRequest.id;
     setAmountFrom(amountToInput(filterRequest.filters.amountFromMinor));
     setAmountTo(amountToInput(filterRequest.filters.amountToMinor));
-    updateFilters(filterRequest.filters);
-  }, [filterRequest]);
+    updateFilters(filterRequest.filters, () => {
+      setAmountFrom(amountToInput(filters.amountFromMinor));
+      setAmountTo(amountToInput(filters.amountToMinor));
+    });
+  }, [filterRequest, filters.amountFromMinor, filters.amountToMinor, updateFilters]);
 
   const minimumAmount = amountFrom.trim() === "" ? undefined : parseNokAmountToMinor(amountFrom);
   const maximumAmount = amountTo.trim() === "" ? undefined : parseNokAmountToMinor(amountTo);
@@ -264,33 +309,46 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     };
   }, [filters, hasInvalidFilters]);
 
-  function setFilter(field: LedgerFilterField, value: TransactionFilters[LedgerFilterField]): void {
+  function setFilter(
+    field: LedgerFilterField,
+    value: TransactionFilters[LedgerFilterField],
+    onKeepEditing?: () => void
+  ): void {
     updateFilters((current) => {
       const next: Record<string, unknown> = { ...current };
       if (value === undefined) delete next[field];
       else next[field] = value;
       return next as TransactionFilters;
-    });
+    }, onKeepEditing);
   }
 
   function clearFilters(): void {
     setAmountFrom("");
     setAmountTo("");
-    updateFilters({});
+    updateFilters({}, () => {
+      setAmountFrom(amountToInput(filters.amountFromMinor));
+      setAmountTo(amountToInput(filters.amountToMinor));
+    });
   }
 
   function removeFilter(field: LedgerFilterField): void {
     const nextFilters = { ...filters };
     delete nextFilters[field];
-    updateFilters(nextFilters);
     if (field === "amountMinor" || field === "amountFromMinor") setAmountFrom("");
     if (field === "amountToMinor") setAmountTo("");
+    updateFilters(nextFilters, () => {
+      setAmountFrom(amountToInput(filters.amountFromMinor));
+      setAmountTo(amountToInput(filters.amountToMinor));
+    });
   }
 
   function restoreFilterControls(savedFilters: TransactionFilters): void {
     setAmountFrom(amountToInput(savedFilters.amountFromMinor));
     setAmountTo(amountToInput(savedFilters.amountToMinor));
-    updateFilters(savedFilters);
+    updateFilters(savedFilters, () => {
+      setAmountFrom(amountToInput(filters.amountFromMinor));
+      setAmountTo(amountToInput(filters.amountToMinor));
+    });
   }
 
   function toggleBooleanQuickFilter(field: "uncategorizedOnly" | "largeTransactionsOnly"): void {
@@ -315,7 +373,10 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     else setAmountTo(value);
     const parsed = value.trim() === "" ? undefined : parseNokAmountToMinor(value);
     if (parsed === null) return;
-    setFilter(bound === "from" ? "amountFromMinor" : "amountToMinor", parsed);
+    setFilter(bound === "from" ? "amountFromMinor" : "amountToMinor", parsed, () => {
+      setAmountFrom(amountToInput(filters.amountFromMinor));
+      setAmountTo(amountToInput(filters.amountToMinor));
+    });
   }
 
   async function saveCurrentView(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -351,14 +412,14 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   }
 
   function sortBy(field: TransactionSortField): void {
-    setQuery((current) => ({
+    requestLedgerNavigation(() => setQuery((current) => ({
       ...current,
       sortBy: field,
       sortDirection: current.sortBy === field
         ? current.sortDirection === "asc" ? "desc" : "asc"
         : field === "bookedAtIso" ? "desc" : "asc",
       page: 1,
-    }));
+    })));
   }
 
   function sortDirectionFor(field: TransactionSortField): "ascending" | "descending" | "none" {
@@ -367,7 +428,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   }
 
   function changePage(page: number): void {
-    setQuery((current) => ({ ...current, page }));
+    requestLedgerNavigation(() => setQuery((current) => ({ ...current, page })));
   }
 
   async function openCategoryEditor(transaction: Transaction, trigger: HTMLButtonElement, clearStatus = true): Promise<void> {
@@ -393,14 +454,17 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   function requestCategoryEditor(transaction: Transaction, trigger: HTMLButtonElement): void {
     if (isCategoryEditLoading) return;
     if (categoryEditContext?.transaction.id === transaction.id) return;
-    if (categoryEditContext !== null && categoryEditDirtyRef.current) {
-      setPendingCategoryEdit({ transaction, trigger });
-      return;
-    }
-    void openCategoryEditor(transaction, trigger);
+    requestCategoryEditNavigation({
+      message: "Unsaved category changes. Save or discard them before switching transactions.",
+      saveLabel: "Save and switch",
+      discardLabel: "Discard and switch",
+      resume: () => { void openCategoryEditor(transaction, trigger, false); },
+    });
   }
 
   function closeCategoryEditor(): void {
+    pendingCategoryEdit?.onKeepEditing?.();
+    pendingLedgerNavigationFocusRef.current = null;
     setCategoryEditContext(null);
     setPendingCategoryEdit(null);
     setIsCategoryEditDirty(false);
@@ -409,6 +473,12 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
       if (categoryEditTriggerRef.current?.isConnected) categoryEditTriggerRef.current.focus();
       else ledgerHeadingRef.current?.focus();
     });
+  }
+
+  function keepEditingCategoryEdit(): void {
+    pendingCategoryEdit?.onKeepEditing?.();
+    pendingLedgerNavigationFocusRef.current = null;
+    setPendingCategoryEdit(null);
   }
 
   const reportCategoryEditDirty = React.useCallback((dirty: boolean): void => {
@@ -421,10 +491,11 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   }
 
   function categoryEditSaved(result: Extract<TransactionCategoryEditResult, { ok: true }>): void {
+    const pending = pendingCategoryEdit;
     setTransactions((current) =>
       current.map((item) => item.id === result.transaction.id ? result.transaction : item)
     );
-    pendingSavedFocusId.current = result.transaction.id;
+    pendingSavedFocusId.current = pending === null ? result.transaction.id : null;
     setRetryKey((current) => current + 1);
     setCategoryEditStatusMessage(result.transactionChanged
       ? result.merchantRuleEffect === "updated"
@@ -442,10 +513,9 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     setCategoryEditContext(null);
     setIsCategoryEditDirty(false);
     categoryEditDirtyRef.current = false;
-    const pending = pendingCategoryEdit;
     setPendingCategoryEdit(null);
     if (pending !== null) {
-      void openCategoryEditor(pending.transaction, pending.trigger, false);
+      pending.resume();
     } else {
       window.requestAnimationFrame(() => {
         if (categoryEditTriggerRef.current?.isConnected) categoryEditTriggerRef.current.focus();
@@ -461,7 +531,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     setPendingCategoryEdit(null);
     setIsCategoryEditDirty(false);
     categoryEditDirtyRef.current = false;
-    void openCategoryEditor(pending.transaction, pending.trigger, false);
+    pending.resume();
   }
 
   React.useEffect(() => {
@@ -486,6 +556,15 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     !isLoading && !isFilterPending && !hasInvalidFilters && error === null &&
     haveSameTransactionFilters(filters, query) &&
     (filterRequest === null || filterRequest === undefined || lastFilterRequestId.current === filterRequest.id);
+  React.useEffect(() => {
+    const focusTarget = pendingLedgerNavigationFocusRef.current;
+    if (focusTarget === null || !resultsAreCurrent) return;
+    pendingLedgerNavigationFocusRef.current = null;
+    window.requestAnimationFrame(() => {
+      if (focusTarget.isConnected) focusTarget.focus();
+      else ledgerHeadingRef.current?.focus();
+    });
+  }, [resultsAreCurrent]);
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
   const activeFilters = getActiveFilters(filters, accounts, categories);
@@ -843,12 +922,16 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
                           <TransactionCategoryEditor
                             key={transaction.id}
                             context={categoryEditContext}
-                            navigationPrompt={pendingCategoryEdit !== null}
+                            navigationPrompt={pendingCategoryEdit === null ? null : {
+                              message: pendingCategoryEdit.message,
+                              saveLabel: pendingCategoryEdit.saveLabel,
+                              discardLabel: pendingCategoryEdit.discardLabel,
+                            }}
                             onDirtyChange={reportCategoryEditDirty}
                             onSave={saveCategoryEdit}
                             onSaved={categoryEditSaved}
                             onCancel={closeCategoryEditor}
-                            onKeepEditing={() => setPendingCategoryEdit(null)}
+                            onKeepEditing={keepEditingCategoryEdit}
                             onDiscardAndSwitch={discardAndSwitchCategoryEditor}
                           />
                         </td>

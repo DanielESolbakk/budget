@@ -16,7 +16,11 @@ const bookedDateFormatter = new Intl.DateTimeFormat("nb-NO", { dateStyle: "mediu
 
 interface TransactionCategoryEditorProps {
   context: TransactionCategoryEditContext;
-  navigationPrompt: boolean;
+  navigationPrompt: {
+    message: string;
+    saveLabel: string;
+    discardLabel: string;
+  } | null;
   onDirtyChange: (dirty: boolean) => void;
   onSave: (input: TransactionCategoryEditInput) => Promise<TransactionCategoryEditResult>;
   onSaved: (result: Extract<TransactionCategoryEditResult, { ok: true }>) => void;
@@ -75,6 +79,8 @@ export function TransactionCategoryEditor({
   const [isSaving, setIsSaving] = React.useState(false);
   const categoryRef = React.useRef<HTMLSelectElement>(null);
   const splitCategoryRef = React.useRef<HTMLSelectElement>(null);
+  const lastEditingControlRef = React.useRef<HTMLElement | null>(null);
+  const hadNavigationPromptRef = React.useRef(false);
   const currencyCode = transaction.currencyCode ?? "NOK";
   const currencyFormatter = getCurrencyFormatter(currencyCode);
   const categoryLabel = (id: string): string => categories.find((category) => category.id === id)?.label ?? id;
@@ -99,7 +105,7 @@ export function TransactionCategoryEditor({
     allocation.categoryId !== "" && allocationAmounts[index] !== null
   );
 
-  React.useEffect(() => onDirtyChange(isDirty), [isDirty, onDirtyChange]);
+  React.useLayoutEffect(() => onDirtyChange(isDirty), [isDirty, onDirtyChange]);
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       if (mode === "single") categoryRef.current?.focus();
@@ -107,6 +113,14 @@ export function TransactionCategoryEditor({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [mode]);
+  React.useLayoutEffect(() => {
+    if (hadNavigationPromptRef.current && navigationPrompt === null) {
+      if (lastEditingControlRef.current?.isConnected) lastEditingControlRef.current.focus();
+      else if (mode === "split") splitCategoryRef.current?.focus();
+      else categoryRef.current?.focus();
+    }
+    hadNavigationPromptRef.current = navigationPrompt !== null;
+  }, [navigationPrompt, mode]);
 
   async function save(): Promise<void> {
     setError(null);
@@ -217,6 +231,14 @@ export function TransactionCategoryEditor({
     }
   }
 
+  function rememberEditingControl(event: React.FocusEvent<HTMLElement>): void {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || target.closest(".transaction-category-navigation") !== null) return;
+    if (target.matches("button, input, select, textarea, [tabindex]")) {
+      lastEditingControlRef.current = target;
+    }
+  }
+
   const rememberedLabel = merchantCategoryRule === null
     ? "No category is currently remembered for this merchant."
     : `Currently remembered category: ${categoryLabel(merchantCategoryRule.categoryId)}.`;
@@ -228,6 +250,7 @@ export function TransactionCategoryEditor({
       aria-label={`Edit category for ${transaction.merchantRaw}`}
       aria-busy={isSaving}
       onKeyDown={handleKeyDown}
+      onFocusCapture={rememberEditingControl}
     >
       <header className="transaction-category-heading">
         <div>
@@ -335,12 +358,12 @@ export function TransactionCategoryEditor({
 
       {error !== null && <p className="transaction-category-error" role="alert">{error}</p>}
       {catalogError !== null && <p className="transaction-category-error" role="alert">{catalogError}</p>}
-      {navigationPrompt && (
+      {navigationPrompt !== null && (
         <div className="transaction-category-navigation" role="alert">
-          <p>Unsaved category changes. Save or discard them before switching transactions.</p>
-          <button type="button" disabled={isSaving} onClick={() => void save()}>Save and switch</button>
+          <p>{navigationPrompt.message}</p>
+          <button type="button" disabled={isSaving} onClick={() => void save()}>{navigationPrompt.saveLabel}</button>
           <button type="button" className="action-secondary" disabled={isSaving} onClick={onDiscardAndSwitch}>
-            Discard and switch
+            {navigationPrompt.discardLabel}
           </button>
           <button type="button" className="action-secondary" disabled={isSaving} onClick={onKeepEditing}>
             Keep editing

@@ -203,10 +203,43 @@ test.describe("transaction category editing", () => {
     await expect(prompt).toBeVisible();
     await prompt.getByRole("button", { name: "Keep editing" }).click();
     await expect(editor).toBeVisible();
+    await expect(editor.getByRole("combobox", { name: "Category for Kiwi" })).toBeFocused();
 
     await rema.getByRole("button", { name: "Edit category for Rema 1000" }).click();
     await prompt.getByRole("button", { name: "Discard and switch" }).click();
     await expect(window.getByRole("region", { name: "Edit category for Rema 1000" })).toBeVisible();
+  });
+
+  test("requires a decision before filters hide a dirty category edit", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const filters = window.getByRole("form", { name: "Ledger filters" });
+    await new LedgerPage(window).openMoreFilters();
+    const categoryFilter = filters.getByRole("combobox", { name: "Filter category" });
+    const row = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await row.getByRole("button", { name: "Edit category for Kiwi" }).click();
+
+    const editor = window.getByRole("region", { name: "Edit category for Kiwi" });
+    const category = editor.getByRole("combobox", { name: "Category for Kiwi" });
+    await category.selectOption("housing");
+    await categoryFilter.selectOption("housing");
+
+    const prompt = editor.getByRole("alert").filter({ hasText: "Unsaved category changes." });
+    await expect(prompt).toBeVisible();
+    await expect(row).toBeVisible();
+    await expect(category).toHaveValue("housing");
+
+    await prompt.getByRole("button", { name: "Keep editing" }).click();
+    await expect(category).toBeFocused();
+    await expect(categoryFilter).toHaveValue("");
+    await expect(category).toHaveValue("housing");
+
+    await categoryFilter.selectOption("housing");
+    await editor.getByRole("button", { name: "Discard and apply" }).click();
+    await expect(editor).toBeHidden();
+    await expect(row).toBeHidden();
   });
 
   test("restores trigger focus on Escape without saving the draft", async ({ appShell, window }) => {
