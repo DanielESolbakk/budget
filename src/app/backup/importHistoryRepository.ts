@@ -4,6 +4,7 @@ import type { ImportJobHistoryEntry, UndoImportJobResult } from "../../domain/im
 import type { ImportJob, ImportJobProvenance } from "../../domain/types.js";
 import { serializeTransactionForUndo, persistImportJobOperation } from "./importJobPersistence.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
+import { createCategoryIdReader } from "./categoryRepository.js";
 
 type ImportHistoryRepository = Pick<LocalLedgerDatabase,
   | "listImportJobHistory"
@@ -12,6 +13,7 @@ type ImportHistoryRepository = Pick<LocalLedgerDatabase,
 
 export function createImportHistoryRepository(db: DatabaseSync): ImportHistoryRepository {
   function backfillImportJobHistory(): void {
+    const readCategoryIds = createCategoryIdReader(db);
     const legacyJobs = db.prepare(`
       SELECT job.id, job.household_id, job.source_type, job.source_name, job.adapter_id,
         job.candidate_count, job.validation_failure_count, job.started_at_iso,
@@ -58,7 +60,9 @@ export function createImportHistoryRepository(db: DatabaseSync): ImportHistoryRe
             ? {}
             : { provenance: JSON.parse(job.provenance_json) as ImportJobProvenance }),
         };
-        persistImportJobOperation(db, importJob, transactions.map(mapTransactionRow));
+        persistImportJobOperation(db, importJob, transactions.map((row) =>
+          mapTransactionRow(row, row.category_allocations_json == null ? [] : readCategoryIds(row.household_id))
+        ));
         db.prepare("UPDATE import_job_operations SET undo_available = 0 WHERE import_job_id = ?")
           .run(job.id);
       }
@@ -70,6 +74,7 @@ export function createImportHistoryRepository(db: DatabaseSync): ImportHistoryRe
   }
 
   function retainedImportTransactions(importJobId: string): UndoImportJobResult["retainedTransactions"] {
+    const readCategoryIds = createCategoryIdReader(db);
     const transactions = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
         currency_code, source_type, source_reference, category_id, import_job_id,
@@ -88,7 +93,7 @@ export function createImportHistoryRepository(db: DatabaseSync): ImportHistoryRe
     }));
 
     return transactions.map((row) => {
-      const transaction = mapTransactionRow(row);
+      const transaction = mapTransactionRow(row, row.category_allocations_json == null ? [] : readCategoryIds(row.household_id));
       return {
         id: transaction.id,
         bookedAtIso: transaction.bookedAtIso,
@@ -219,7 +224,7 @@ export function createImportHistoryRepository(db: DatabaseSync): ImportHistoryRe
           WHERE reconciled_transaction_id = ?
         `);
         for (const row of transactions) {
-          const transaction = mapTransactionRow(row);
+          const transaction = mapTransactionRow(row, row.category_allocations_json == null ? [] : createCategoryIdReader(db)(row.household_id));
           const baselineJson = baselines.get(transaction.id);
           if (baselineJson !== undefined && serializeTransactionForUndo(transaction) === baselineJson) {
             const result = deleteTransaction.run(transaction.id, importJobId) as { changes: number | bigint };
@@ -257,7 +262,7 @@ export function createImportHistoryRepository(db: DatabaseSync): ImportHistoryRe
       } else {
         retainedCount = transactions.length + pendingObservations.length;
         for (const row of transactions) {
-          const transaction = mapTransactionRow(row);
+          const transaction = mapTransactionRow(row, row.category_allocations_json == null ? [] : createCategoryIdReader(db)(row.household_id));
           retainedTransactions.push({
             id: transaction.id,
             bookedAtIso: transaction.bookedAtIso,

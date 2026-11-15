@@ -8,6 +8,7 @@ import { createAccountCoverageRepository } from "./accountCoverageRepository.js"
 import { createExchangeRateRepository } from "./exchangeRateRepository.js";
 import { createRecurringCommitmentRepository } from "./recurringCommitmentRepository.js";
 import { createReportingPreferencesRepository } from "./reportingPreferencesRepository.js";
+import { createCategoryRepository } from "./categoryRepository.js";
 import { ensureSchema } from "./ledgerSchema.js";
 import { insertLedgerSnapshot, loadLedgerSnapshotData as readLedgerSnapshot } from "./ledgerSnapshot.js";
 import { randomUUID } from "node:crypto";
@@ -96,6 +97,7 @@ function createInitialHouseholdAndAccount(
       .run(household.id, household.name, household.createdAtIso);
     db.prepare("INSERT INTO accounts (id, household_id, name, currency_code) VALUES (?, ?, ?, ?)")
       .run(account.id, account.householdId, account.name, account.currencyCode);
+    createCategoryRepository(db).seedCategories(household);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -304,9 +306,27 @@ export function createLocalLedgerDatabase(
   mkdirSync(dirname(dbPath), { recursive: true });
 
   const db = new DatabaseSync(dbPath);
+  const { listCategories, seedCategories, createCategoryRecord, updateCategoryRecordLabel } = createCategoryRepository(db);
   try {
     ensureSchema(db);
     if (options.seedData !== undefined) seedIfEmpty(db, options.seedData);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const households = db.prepare("SELECT id, name, created_at_iso FROM households").all() as Array<{
+        id: string; name: string; created_at_iso: string;
+      }>;
+      for (const household of households) {
+        seedCategories({
+          id: household.id,
+          name: household.name,
+          createdAtIso: household.created_at_iso,
+        });
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   } catch (error) {
     db.close();
     throw error;
@@ -433,6 +453,7 @@ export function createLocalLedgerDatabase(
       listHoldingRecords,
       listLoanRecords,
       getReportingPeriodRule,
+      listCategories,
     });
   }
 
@@ -441,6 +462,7 @@ export function createLocalLedgerDatabase(
     try {
       db.exec(`
         DELETE FROM household_preferences;
+        DELETE FROM categories;
         DELETE FROM import_job_transaction_baselines;
         DELETE FROM import_job_operations;
         DELETE FROM same_merchant_propagation_changes;
@@ -639,6 +661,9 @@ export function createLocalLedgerDatabase(
   }
 
   return {
+    listCategories,
+    createCategoryRecord,
+    updateCategoryRecordLabel,
     hasHousehold: () => hasHousehold(db),
     createInitialHouseholdAndAccount: (input) => createInitialHouseholdAndAccount(db, input),
     createAccount: (input) => createAccount(db, input),

@@ -6,7 +6,6 @@ import {
 } from "./ledgerTransactionRows.js";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
 import { normalizeMerchantName } from "../../domain/merchant/normalizeMerchantName.js";
 import {
   DEFAULT_TRANSACTION_PAGE_SIZE,
@@ -31,6 +30,7 @@ import type {
 import { isYearMonth } from "../../domain/types.js";
 import { isIsoCalendarDate, nextYearMonth } from "../../domain/date/calendarDate.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
+import { createCategoryIdReader } from "./categoryRepository.js";
 
 type SnapshotReader = Pick<LocalLedgerDatabase,
   | "loadLedgerSnapshotData"
@@ -55,16 +55,12 @@ const transactionSortColumns: Record<TransactionSortField, string> = {
   bookedAtIso: "t.booked_at_iso",
   merchantRaw: "t.merchant_search",
   amountMinor: "t.amount_minor",
-  categoryId: `CASE WHEN t.category_id IS NULL THEN ? ELSE CASE t.category_id ${CATEGORY_OPTIONS
-    .map(() => "WHEN ? THEN ?")
-    .join(" ")} ELSE t.category_id END END`,
+  categoryId: `COALESCE(
+    (SELECT c.label FROM categories AS c WHERE c.household_id = t.household_id AND c.id = t.category_id),
+    t.category_id, 'Uncategorized'
+  ) COLLATE NOCASE`,
   accountId: "COALESCE(a.name, t.account_id)",
 };
-
-const categorySortParameters = [
-  "Uncategorized",
-  ...CATEGORY_OPTIONS.flatMap(({ id, label }) => [id, label]),
-];
 
 export function createTransactionRepository(db: DatabaseSync, readers: SnapshotReader): TransactionRepository {
   const { loadLedgerSnapshotData } = readers;
@@ -94,6 +90,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
   }
 
   function getTransactionsForMonth(householdId: string, yearMonth: string): Transaction[] {
+    const readCategoryIds = createCategoryIdReader(db);
     if (!isYearMonth(yearMonth)) throw new Error(`Invalid dashboard month: ${yearMonth}`);
     const rows = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
@@ -105,7 +102,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
     `).all(householdId, `${yearMonth}-01`, `${nextYearMonth(yearMonth)}-01`) as unknown as
       Array<TransactionRow & { categorization_json: string | null }>;
     return rows.map((row) => {
-      const transaction = mapTransactionRow(row);
+      const transaction = mapTransactionRow(row, row.category_allocations_json == null ? [] : readCategoryIds(row.household_id));
       if (row.categorization_json !== null) {
         transaction.categorization = JSON.parse(row.categorization_json) as CategorizationDecision;
       }
@@ -121,6 +118,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
     if (!isIsoCalendarDate(startDateIso) || !isIsoCalendarDate(endDateExclusiveIso)) {
       throw new Error("Dashboard reporting range must use valid calendar dates.");
     }
+    const readCategoryIds = createCategoryIdReader(db);
     if (startDateIso >= endDateExclusiveIso) {
       throw new Error("Dashboard reporting range end must be after its start.");
     }
@@ -134,7 +132,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
     `).all(householdId, startDateIso, endDateExclusiveIso) as unknown as
       Array<TransactionRow & { categorization_json: string | null }>;
     return rows.map((row) => {
-      const transaction = mapTransactionRow(row);
+      const transaction = mapTransactionRow(row, row.category_allocations_json == null ? [] : readCategoryIds(row.household_id));
       if (row.categorization_json !== null) {
         transaction.categorization = JSON.parse(row.categorization_json) as CategorizationDecision;
       }
@@ -143,6 +141,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
   }
 
   function getTransactionsForAccount(accountId: string): Transaction[] {
+    const readCategoryIds = createCategoryIdReader(db);
     const rows = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
         currency_code, source_type, source_reference, category_id, import_job_id,
@@ -151,7 +150,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
       WHERE account_id = ?
       ORDER BY booked_at_iso ASC, id ASC
     `).all(accountId) as unknown as TransactionRow[];
-    return rows.map(mapTransactionRow);
+    return rows.map((row) => mapTransactionRow(row, row.category_allocations_json == null ? [] : readCategoryIds(row.household_id)));
   }
 
   function listPendingTransactionObservations(
@@ -176,7 +175,9 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
       FROM transactions
       WHERE id = ?
     `).get(transactionId) as TransactionRow | undefined;
-    return row === undefined ? undefined : mapTransactionRow(row);
+    return row === undefined ? undefined : mapTransactionRow(
+      row, row.category_allocations_json == null ? [] : createCategoryIdReader(db)(row.household_id),
+    );
   }
 
   function updateTransactionCategoryAllocations(
@@ -193,7 +194,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
         validateTransactionCategoryAllocations(
           transaction,
           allocations,
-          CATEGORY_OPTIONS.map((category) => category.id)
+          createCategoryIdReader(db)(transaction.householdId)
         );
       }
       const orderedAllocations = allocations.map((allocation) => ({
@@ -232,6 +233,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
   }
 
   function executeTransactionQuery(householdId: string, query: TransactionQuery, allPages: boolean): TransactionPage {
+    const readCategoryIds = createCategoryIdReader(db);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
     if (!Number.isSafeInteger(page) || page < 1) {
@@ -309,7 +311,6 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
 
     const sortBy = query.sortBy ?? "bookedAtIso";
     const sortDirection: TransactionSortDirection = query.sortDirection ?? "desc";
-    const orderParameters = sortBy === "categoryId" ? categorySortParameters : [];
     const transactionRows = db.prepare(`
       SELECT t.id, t.household_id, t.account_id, t.booked_at_iso, t.amount_minor,
         t.merchant_raw, t.currency_code, t.source_type, t.source_reference,
@@ -318,11 +319,11 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
       WHERE ${whereClause}
       ORDER BY ${transactionSortColumns[sortBy]} ${sortDirection.toUpperCase()}, t.id ASC
       ${allPages ? "" : "LIMIT ? OFFSET ?"}
-    `).all(...parameters, ...orderParameters, ...(allPages ? [] : [pageSize, (page - 1) * pageSize])) as unknown as TransactionRow[];
+    `).all(...parameters, ...(allPages ? [] : [pageSize, (page - 1) * pageSize])) as unknown as TransactionRow[];
 
     return {
       transactions: transactionRows.map((row) => ({
-        ...mapTransactionRow(row),
+        ...mapTransactionRow(row, row.category_allocations_json == null ? [] : readCategoryIds(row.household_id)),
         merchantAlias: normalizeMerchantName(row.merchant_raw),
       })),
       totalCount: countRow.total_count,
@@ -341,7 +342,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
         AND NOT EXISTS (SELECT 1 FROM json_each(category_allocations_json))
       ORDER BY substr(booked_at_iso, 1, 10) ASC, id ASC
     `).all(householdId) as unknown as TransactionRow[];
-    return transactions.map(mapTransactionRow);
+    return transactions.map((row) => mapTransactionRow(row, []));
   }
 
   function getAccountsForHousehold(householdId: string): Account[] {

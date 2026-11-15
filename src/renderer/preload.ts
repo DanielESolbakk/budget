@@ -29,6 +29,7 @@ import type {
   AccountCoverageAssessment,
   AccountStatementCoveragePeriod,
   Account,
+  Category,
   HouseholdAccountContext,
   ExchangeRate,
   ForecastEntry,
@@ -95,6 +96,7 @@ import type {
   AccountInput,
   AccountUpdateInput,
 } from "../shared/accountLifecycle.js";
+import type { CategoryCreateInput, CategoryRenameInput } from "../shared/categoryManagement.js";
 
 export interface DashboardApi {
   getData: () => Promise<DashboardData>;
@@ -278,10 +280,17 @@ export interface LoanRegistryApi {
   appendBalance: (input: LoanBalanceInput) => Promise<LoanBalanceSnapshot>;
 }
 
+export interface CategoriesApi {
+  list: () => Promise<Category[]>;
+  create: (input: CategoryCreateInput) => Promise<Category>;
+  rename: (input: CategoryRenameInput) => Promise<Category>;
+}
+
 export interface BudgetApi {
   dashboard: DashboardApi;
   reportingPreferences: ReportingPreferencesApi;
   accounts: AccountsApi;
+  categories: CategoriesApi;
   setup: SetupApi;
   forecast: ForecastApi;
   spendableCash: SpendableCashApi;
@@ -318,6 +327,11 @@ const budgetApi: BudgetApi = {
     update: (input): Promise<Account> => ipcRenderer.invoke("account:update", input),
     archive: (accountId: string): Promise<Account> => ipcRenderer.invoke("account:archive", accountId),
     restore: (accountId: string): Promise<Account> => ipcRenderer.invoke("account:restore", accountId),
+  },
+  categories: {
+    list: (): Promise<Category[]> => ipcRenderer.invoke("category:list"),
+    create: (input): Promise<Category> => ipcRenderer.invoke("category:create", input),
+    rename: (input): Promise<Category> => ipcRenderer.invoke("category:rename", input),
   },
   dashboard: {
     getData: (): Promise<DashboardData> => ipcRenderer.invoke("dashboard:getData"),

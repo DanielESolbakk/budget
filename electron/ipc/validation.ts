@@ -4,6 +4,7 @@ import type { CsvImportPreviewFailure, CsvImportResponse } from "../../src/app/i
 import type { PdfImportResponse } from "../../src/app/import/importPdf.js";
 import { ImportPreviewError } from "../../src/app/import/importPreviewRegistry.js";
 import type { RestoreSnapshotInput } from "../../src/domain/backup/snapshotContract.js";
+import type { CategoryCreateInput, CategoryRenameInput } from "../../src/shared/categoryManagement.js";
 import { validateRecurringCommitmentInput } from "../../src/domain/forecast/recurringCommitments.js";
 import { CSV_COLUMN_NAMES, type CsvColumnKey, type CsvColumnMapping } from "../../src/domain/import/csvRowMapper.js";
 import type { DuplicateImportDecision } from "../../src/domain/import/filterPreviouslyImportedTransactions.js";
@@ -37,6 +38,22 @@ export function parseNonEmptyString(value: unknown, fieldName: string): string {
     throw new Error(`${fieldName} must be a non-empty string.`);
   }
   return value.trim();
+}
+
+export function parseCategoryCreateInput(input: unknown): CategoryCreateInput {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Category details must be an object.");
+  }
+  return { label: parseNonEmptyString("label" in input ? input.label : undefined, "label") };
+}
+
+export function parseCategoryRenameInput(input: unknown): CategoryRenameInput {
+  const { label } = parseCategoryCreateInput(input);
+  if (typeof input !== "object" || input === null ||
+    !("categoryId" in input)) {
+    throw new Error("categoryId must be a non-empty string.");
+  }
+  return { categoryId: parseNonEmptyString(input.categoryId, "categoryId"), label };
 }
 
 export function parseSpendableCashEstimateRequest(input: unknown): SpendableCashEstimateRequest {

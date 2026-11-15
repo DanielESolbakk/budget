@@ -11,6 +11,7 @@ import type {
 } from "../../domain/types.js";
 import { persistTransactionBaseline } from "./importJobPersistence.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
+import { createCategoryIdReader } from "./categoryRepository.js";
 
 type ReviewTransactionReader = Pick<LocalLedgerDatabase,
   | "getTransactionById"
@@ -224,7 +225,7 @@ export function createImportReviewRepository(db: DatabaseSync, readers: ReviewTr
         transaction.categoryId ?? null,
         transaction.importJobId ?? null,
         transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
-        serializeTransactionCategoryAllocations(transaction)
+        serializeTransactionCategoryAllocations(transaction, transaction.categoryAllocations?.length ? createCategoryIdReader(db)(transaction.householdId) : [])
       ) as { changes: number | bigint };
       if (Number(result.changes) !== 1) {
         throw new Error(`Corrected transaction already exists: ${transaction.id}`);

@@ -5,6 +5,7 @@ import {
   type AccountBalanceCheckpoint,
   type AccountStatementCoveragePeriod,
   type Account,
+  type Category,
   type ExchangeRate,
   type Household,
   type HoldingRecord,
@@ -32,6 +33,7 @@ import { validateTransactionCategoryAllocations } from "../../domain/ledger/tran
 import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
 import { isPropertyValuationCorrectionMetadata } from "../../domain/propertyRecordValidation.js";
 import { isIsoCalendarDate } from "../../domain/date/calendarDate.js";
+import { validateCategoryRecord } from "../../domain/categorization/categoryCatalog.js";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -60,6 +62,37 @@ export function validateHousehold(value: unknown, snapshotPath: string): asserts
   }
 }
 
+export function validateCategories(
+  value: unknown, householdId: string, snapshotPath: string,
+): asserts value is Category[] {
+  if (!Array.isArray(value)) invalidSnapshot(snapshotPath, "categories");
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  for (const category of value) {
+    if (!isRecord(category) ||
+      !isNonEmptyString(category.id) || !isNonEmptyString(category.householdId) ||
+      !isNonEmptyString(category.label) || !isNonEmptyString(category.createdAtIso) ||
+      !isNonEmptyString(category.updatedAtIso)) {
+      invalidSnapshot(snapshotPath, "categories");
+    }
+    let validated: Category;
+    try {
+      validated = validateCategoryRecord({
+        id: category.id, householdId: category.householdId, label: category.label,
+        createdAtIso: category.createdAtIso, updatedAtIso: category.updatedAtIso,
+      });
+    } catch (error) {
+      throw new Error(`Invalid snapshot categories: ${snapshotPath}`, { cause: error });
+    }
+    const name = validated.label.toLowerCase();
+    if (validated.householdId !== householdId || ids.has(validated.id) || names.has(name)) {
+      invalidSnapshot(snapshotPath, "categories");
+    }
+    ids.add(validated.id);
+    names.add(name);
+  }
+}
+
 export function validateAccounts(value: unknown[], householdId: string, snapshotPath: string): asserts value is Account[] {
   const accountIds = new Set<string>();
   for (const account of value) {
@@ -84,7 +117,8 @@ export function validateTransactions(
   householdId: string,
   accountIds: Set<string>,
   importJobIds: Set<string>,
-  snapshotPath: string
+  snapshotPath: string,
+  allowedCategoryIds: readonly string[] = CATEGORY_OPTIONS.map((category) => category.id),
 ): asserts value is Transaction[] {
   const transactionIds = new Set<string>();
   for (const transaction of value) {
@@ -121,7 +155,7 @@ export function validateTransactions(
         validateTransactionCategoryAllocations(
           transaction as Pick<Transaction, "amountMinor">,
           transaction.categoryAllocations as TransactionCategoryAllocation[],
-          CATEGORY_OPTIONS.map((category) => category.id)
+          allowedCategoryIds
         );
       } catch {
         invalidSnapshot(snapshotPath, "transaction category allocations");

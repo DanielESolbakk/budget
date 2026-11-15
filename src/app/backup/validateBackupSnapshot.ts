@@ -1,6 +1,9 @@
 import type { BackupSnapshot } from "../../domain/backup/snapshotContract.js";
 import { SNAPSHOT_VERSION } from "../../domain/backup/snapshotContract.js";
 import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
+import type { Category } from "../../domain/types.js";
+import { collectCategoryReferenceIds, validateCategoryRecord } from "../../domain/categorization/categoryCatalog.js";
+import { validateRecoveryHistory } from "./snapshotHistoryValidation.js";
 import {
   validateReportingPeriodRule,
   type ReportingPeriodRule,
@@ -9,6 +12,7 @@ import {
 import {
   isRecord,
   validateHousehold,
+  validateCategories,
   validateAccounts,
   validateTransactions,
   validatePendingObservations,
@@ -49,8 +53,10 @@ const snapshotCapabilities = {
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
   "11": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
-  [SNAPSHOT_VERSION]: { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+  "12": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
+  [SNAPSHOT_VERSION]: { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+    ...holdingCollections, ...recurringCollections, "categories"], requiresHouseholdShares: true },
 };
 
 function isSupportedSnapshotVersion(value: unknown): value is keyof typeof snapshotCapabilities {
@@ -69,7 +75,11 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     );
   }
   const capabilities = snapshotCapabilities[metadata.version];
-  if ((metadata.version === "11" || metadata.version === SNAPSHOT_VERSION) &&
+  const hasCategoryCatalog = capabilities.requiredCollections.some((collection) => collection === "categories");
+  if (hasCategoryCatalog && !Array.isArray(value.categories)) {
+    throw new Error(`Invalid snapshot categories: ${snapshotPath}`);
+  }
+  if ((metadata.version === "11" || metadata.version === "12" || metadata.version === SNAPSHOT_VERSION) &&
     value.reportingPeriodRule === undefined) {
     throw new Error(`Invalid snapshot reportingPeriodRule: ${snapshotPath}`);
   }
@@ -166,12 +176,22 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
   }
 
   validateHousehold(value.household, snapshotPath);
+  let categories: Category[] = [];
+  if (hasCategoryCatalog) {
+    const collection = value.categories;
+    validateCategories(collection, value.household.id, snapshotPath);
+    categories = collection.map(validateCategoryRecord);
+  }
   validateImportJobs(importJobs, value.household.id, snapshotPath);
   validateAccounts(accounts, value.household.id, snapshotPath);
   const accountIds = new Set(accounts.map((account) => account.id));
   const accountCurrencies = new Map(
     accounts.map((account) => [account.id, account.currencyCode] as const)
   );
+  const recoveryHistory = hasCategoryCatalog
+    ? validateRecoveryHistory(value.recoveryHistory, value.household.id, accountIds,
+      new Set(importJobs.map((job) => job.id)), categories.map((category) => category.id), snapshotPath)
+    : { merchantCorrections: [], sameMerchantPropagations: [], importOperations: [] };
   const { requiresHouseholdShares } = capabilities;
   validateProperties(properties, value.household.id, snapshotPath, requiresHouseholdShares);
   validatePropertyValuations(
@@ -202,7 +222,8 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     value.household.id,
     accountIds,
     new Set(importJobs.map((importJob) => importJob.id)),
-    snapshotPath
+    snapshotPath,
+    hasCategoryCatalog ? categories.map((category) => category.id) : undefined,
   );
   validatePendingObservations(
     pendingObservations,
@@ -238,9 +259,23 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     snapshotPath
   );
   validateExchangeRates(exchangeRates, snapshotPath);
+  if (hasCategoryCatalog) {
+    const categoryIds = new Set(categories.map((category) => category.id));
+    let referencedIds: string[];
+    try {
+      referencedIds = collectCategoryReferenceIds(value);
+    } catch (error) {
+      throw new Error(`Invalid snapshot categories: ${snapshotPath}`, { cause: error });
+    }
+    if (referencedIds.some((id) => !categoryIds.has(id))) {
+      throw new Error(`Invalid snapshot categories: a referenced category is missing: ${snapshotPath}`);
+    }
+  }
 
   return {
     ...(value as unknown as BackupSnapshot),
+    categories,
+    recoveryHistory,
     accountStatementCoveragePeriods,
     accountBalanceCheckpoints,
     exchangeRates,

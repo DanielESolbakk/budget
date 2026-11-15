@@ -15,7 +15,7 @@ import type {
   Transaction,
   TransactionCategoryAllocation,
 } from "../../domain/types.js";
-import { CATEGORY_OPTIONS } from "../import/categoryOptions.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 import { formatCurrencyAmount, getCurrencyFormatter } from "../formatCurrencyAmount.js";
 import { formatMinorUnits, minorUnitsToDecimal } from "../../domain/money/minorUnits.js";
 import { parseSignedAmountMinor as allocationAmountToMinor } from "../amountInputs.js";
@@ -47,11 +47,11 @@ function amountToInput(minorUnits: number | undefined): string {
   return minorUnits === undefined ? "" : minorUnitsToDecimal(minorUnits);
 }
 
-function categoryLabel(categoryId: string): string {
-  return CATEGORY_OPTIONS.find((category) => category.id === categoryId)?.label ?? categoryId;
-}
-
-function getActiveFilters(filters: TransactionFilters, accounts: Account[]): ActiveFilter[] {
+function getActiveFilters(
+  filters: TransactionFilters,
+  accounts: Account[],
+  categories: readonly { id: string; label: string }[],
+): ActiveFilter[] {
   const activeFilters: ActiveFilter[] = [];
   if (filters.accountId !== undefined) {
     activeFilters.push({
@@ -71,7 +71,7 @@ function getActiveFilters(filters: TransactionFilters, accounts: Account[]): Act
     activeFilters.push({
       field: "categoryId",
       label: "Category",
-      value: CATEGORY_OPTIONS.find((category) => category.id === filters.categoryId)?.label ?? filters.categoryId,
+      value: categories.find((category) => category.id === filters.categoryId)?.label ?? filters.categoryId,
     });
   }
   if (filters.uncategorizedOnly) activeFilters.push({ field: "uncategorizedOnly", label: "Category", value: "Uncategorized" });
@@ -99,6 +99,10 @@ export interface LedgerFilterRequest {
 }
 
 export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isReportSelected }: LedgerSectionProps): React.JSX.Element {
+  const { categories } = useCategoryCatalog();
+  function categoryLabel(categoryId: string): string {
+    return categories.find((category) => category.id === categoryId)?.label ?? categoryId;
+  }
   const [amountFrom, setAmountFrom] = React.useState("");
   const [amountTo, setAmountTo] = React.useState("");
   const [filters, setFilterState] = React.useState<TransactionFilters>(filterRequest?.filters ?? {});
@@ -532,7 +536,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     (filterRequest === null || filterRequest === undefined || lastFilterRequestId.current === filterRequest.id);
   const pageSize = query.pageSize ?? DEFAULT_TRANSACTION_PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
-  const activeFilters = getActiveFilters(filters, accounts);
+  const activeFilters = getActiveFilters(filters, accounts, categories);
   const activeAdvancedFilterCount = [
     filters.accountId !== undefined,
     filters.categoryId !== undefined,
@@ -683,7 +687,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
               Category
               <select aria-label="Filter category" value={filters.categoryId ?? ""} onChange={(event) => setFilter("categoryId", event.target.value || undefined)}>
                 <option value="">All categories</option>
-                {CATEGORY_OPTIONS.map((category) => (
+                {categories.map((category) => (
                   <option key={category.id} value={category.id}>{category.label}</option>
                 ))}
               </select>

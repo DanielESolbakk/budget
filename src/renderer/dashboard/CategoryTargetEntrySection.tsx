@@ -1,6 +1,7 @@
 import React from "react";
 import type { MonthlyCategoryTarget } from "../../domain/types.js";
-import { CATEGORY_OPTIONS } from "../../domain/categorization/categoryOptions.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
+import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { categoryDisplayName } from "./categoryDisplayName.js";
 import { parseNokAmountMinor } from "../parseNokAmountMinor.js";
 import { formatNokAmountMinor } from "../formatNokAmountMinor.js";
@@ -25,6 +26,7 @@ export function CategoryTargetEntrySection({
   onTargetSaved,
   onFormOpenChange,
 }: CategoryTargetEntrySectionProps): React.JSX.Element {
+  const { categories } = useCategoryCatalog();
   const [targets, setTargets] = React.useState<MonthlyCategoryTarget[]>([]);
   const [loadedMonth, setLoadedMonth] = React.useState<string | null>(null);
   const [isLoadingTargets, setIsLoadingTargets] = React.useState(true);
@@ -41,9 +43,9 @@ export function CategoryTargetEntrySection({
   const formOpenerRef = React.useRef<HTMLButtonElement | null>(null);
   const restoreFocusRef = React.useRef(false);
   const saveRequestRef = React.useRef(0);
-  const editingCategoryLabel = editingCategoryId === null ? null : categoryDisplayName(editingCategoryId);
+  const editingCategoryLabel = editingCategoryId === null ? null : categoryDisplayName(editingCategoryId, undefined, categories);
   const hasEditingCategoryOption =
-    editingCategoryId !== null && CATEGORY_OPTIONS.some((category) => category.id === editingCategoryId);
+    editingCategoryId !== null && categories.some((category) => category.id === editingCategoryId);
 
   React.useEffect(() => {
     let isActive = true;
@@ -191,7 +193,7 @@ export function CategoryTargetEntrySection({
         ) : (
           <ul aria-label="Saved category targets">
             {targets.map((t) => {
-              const label = categoryDisplayName(t.categoryId);
+              const label = categoryDisplayName(t.categoryId, undefined, categories);
               return (
                 <li key={t.categoryId}>
                   <span>{label}: {formatNokAmountMinor(t.targetMinor)}</span>
@@ -238,10 +240,13 @@ export function CategoryTargetEntrySection({
             {!hasEditingCategoryOption && editingCategoryId !== null && (
               <option value={editingCategoryId}>{editingCategoryLabel} (existing category)</option>
             )}
-            {CATEGORY_OPTIONS.map((category) => (
+            {categories.map((category) => (
               <option key={category.id} value={category.id}>{category.label}</option>
             ))}
           </select>
+          <CategoryManagementButton label="Manage categories for budget targets"
+            returnFocusRef={editingCategoryId === null ? categoryInputRef : amountInputRef}
+            disabled={formState.status === "saving"} />
           {formState.status === "validation" && formState.field === "category" && (
             <p id="target-category-error" role="alert">{formState.message}</p>
           )}

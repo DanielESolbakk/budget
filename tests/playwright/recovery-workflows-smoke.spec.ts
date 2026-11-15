@@ -553,6 +553,15 @@ test.describe("Recovery and portability renderer workflows", () => {
           name: "Restored Household",
           createdAtIso: "2026-01-01T00:00:00Z",
         },
+        categories: [
+          {
+            id: "restored",
+            householdId: "sample-hh",
+            label: "Restored",
+            createdAtIso: "2026-01-01T00:00:00Z",
+            updatedAtIso: "2026-01-01T00:00:00Z",
+          },
+        ],
         accounts: [
           { id: "sample-acc", householdId: "sample-hh", name: "Restored account", currencyCode: "NOK" },
         ],
@@ -859,6 +868,15 @@ test.describe("Recovery and portability renderer workflows", () => {
           name: "Cancelled Restore",
           createdAtIso: "2026-01-01T00:00:00Z",
         },
+        categories: [
+          {
+            id: "cancelled",
+            householdId: "sample-hh",
+            label: "Cancelled",
+            createdAtIso: "2026-01-01T00:00:00Z",
+            updatedAtIso: "2026-01-01T00:00:00Z",
+          },
+        ],
         accounts: [
           { id: "sample-acc", householdId: "sample-hh", name: "Restored account", currencyCode: "NOK" },
         ],

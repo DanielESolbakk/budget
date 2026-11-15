@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { join } from "path";
 import { createLocalLedgerDatabase } from "../src/app/backup/localLedgerSqlite.js";
 import { createAccountLifecycleService } from "../src/app/accountLifecycleService.js";
+import { createCategoryManagementService } from "../src/app/categoryManagementService.js";
 import { createCashflowScenarioService } from "../src/app/cashflowScenarioService.js";
 import {
   createMonthlyCategoryTargetStore,
@@ -131,6 +132,7 @@ const localLedgerDatabase = createLocalLedgerDatabase({
     : {}),
 });
 const accountLifecycleService = createAccountLifecycleService(localLedgerDatabase);
+const categoryManagementService = createCategoryManagementService(localLedgerDatabase);
 const propertyRegistry = createPropertyRegistry(localLedgerDatabase);
 const holdingRegistry = createHoldingRegistry(localLedgerDatabase);
 const loanRegistry = createLoanRegistry(localLedgerDatabase);
@@ -333,7 +335,7 @@ app.whenReady().then(async () => {
     ledgerOperationCoordinator, applyRuntimeLedgerSnapshot, applyRecoveryOperationTestDelay,
   });
   registerReviewLedgerChannels({
-    ipcMain, assertTrustedRenderer, localLedgerDatabase, sampleHousehold, runtimeState,
+    ipcMain, assertTrustedRenderer, localLedgerDatabase, categoryManagementService, sampleHousehold, runtimeState,
     learnedCategoryRules, ledgerOperationCoordinator, applyTransactionListTestControl,
   });
 

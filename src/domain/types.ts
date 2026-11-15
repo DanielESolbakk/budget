@@ -4,6 +4,14 @@ export interface Household {
   createdAtIso: string;
 }
 
+export interface Category {
+  id: string;
+  householdId: string;
+  label: string;
+  createdAtIso: string;
+  updatedAtIso: string;
+}
+
 export type SourceTextLineClassification =
   | "document-metadata"
   | "column-header"

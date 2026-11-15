@@ -1,16 +1,20 @@
 import { CATEGORY_OPTIONS } from "../categorization/categoryOptions.js";
 import type { MerchantCorrectionProvenance } from "../types.js";
 
-export function validateCorrectionCategoryId(categoryId: string): void {
-  if (!CATEGORY_OPTIONS.some((category) => category.id === categoryId)) {
+export function validateCorrectionCategoryId(
+  categoryId: string,
+  allowedCategoryIds: readonly string[] = CATEGORY_OPTIONS.map((category) => category.id),
+): void {
+  if (!allowedCategoryIds.includes(categoryId)) {
     throw new Error(`Invalid correction category: ${categoryId}`);
   }
 }
 
 export function createCorrectionProvenance(
-  provenance: MerchantCorrectionProvenance
+  provenance: MerchantCorrectionProvenance,
+  allowedCategoryIds?: readonly string[],
 ): MerchantCorrectionProvenance {
-  validateCorrectionCategoryId(provenance.categoryId);
+  validateCorrectionCategoryId(provenance.categoryId, allowedCategoryIds);
 
   return { ...provenance };
 }

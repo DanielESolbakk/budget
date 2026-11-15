@@ -4,12 +4,9 @@ import type {
   SameMerchantPropagationPreview,
   Transaction,
 } from "../../domain/types.js";
-import { CATEGORY_OPTIONS } from "./categoryOptions.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
+import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { formatCurrencyAmount as formatAmount } from "../formatCurrencyAmount.js";
-
-function getCategoryLabel(categoryId: string): string {
-  return CATEGORY_OPTIONS.find((category) => category.id === categoryId)?.label ?? categoryId;
-}
 
 function getCategorizationReviewReason(transaction: Transaction): string | undefined {
   const categorization = transaction.categorization;
@@ -37,6 +34,10 @@ export function CategoryReviewSection({
   onUncategorizedQueueStateChange,
   focusFirstRequest,
 }: CategoryReviewSectionProps): React.JSX.Element {
+  const { categories } = useCategoryCatalog();
+  function getCategoryLabel(categoryId: string): string {
+    return categories.find((category) => category.id === categoryId)?.label ?? categoryId;
+  }
   const [transactions, setTransactions] = React.useState<Transaction[]>([]);
   const [selectedCategories, setSelectedCategories] = React.useState<Record<string, string>>({});
   const [hasLoaded, setHasLoaded] = React.useState(false);
@@ -144,7 +145,7 @@ export function CategoryReviewSection({
       focusQueueHeading.current = nextTransaction === undefined;
       setTransactions((current) => current.filter((item) => item.id !== transaction.id));
       setReviewedCount((current) => current + 1);
-      const categoryLabel = CATEGORY_OPTIONS.find((category) => category.id === categoryId)?.label ?? categoryId;
+      const categoryLabel = getCategoryLabel(categoryId);
       setSaveStatus(result.futureMatchingChanged
         ? `Category saved. Future matching for this merchant will use ${categoryLabel}.`
         : "Category saved. Future matching was unchanged.");
@@ -324,7 +325,9 @@ export function CategoryReviewSection({
         </details>
       ) : transactions.length > 0 ? (
         <ul className="review-queue-list">
-          {transactions.map((transaction) => (
+          {transactions.map((transaction) => {
+            const categoryInputRef = React.createRef<HTMLSelectElement>();
+            return (
             <li className="review-queue-item" key={transaction.id} aria-label={`Review ${transaction.merchantRaw}`}>
               <div className="review-queue-details">
                 <strong>{transaction.merchantRaw}</strong>
@@ -358,6 +361,7 @@ export function CategoryReviewSection({
                 <label htmlFor={`category-for-${transaction.id}`}>
                   <span>Choose a category</span>
                   <select
+                    ref={categoryInputRef}
                     id={`category-for-${transaction.id}`}
                     aria-label={`Category for ${transaction.merchantRaw}`}
                     aria-describedby={`category-scope-${transaction.id}`}
@@ -370,13 +374,15 @@ export function CategoryReviewSection({
                     }
                   >
                     <option value="">Choose category</option>
-                    {CATEGORY_OPTIONS.map((category) => (
+                    {categories.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.label}
                       </option>
                     ))}
                   </select>
                 </label>
+                <CategoryManagementButton label={`Manage categories for ${transaction.merchantRaw}`}
+                  returnFocusRef={categoryInputRef} disabled={savingTransactionId === transaction.id} />
                 <button
                   type="button"
                   aria-describedby={`category-scope-${transaction.id}`}
@@ -390,7 +396,8 @@ export function CategoryReviewSection({
                 </button>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : null}
       <dialog

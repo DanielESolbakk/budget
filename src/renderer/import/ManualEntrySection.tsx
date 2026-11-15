@@ -6,7 +6,8 @@ import type {
 } from "../../app/import/manualEntry.js";
 import type { Account, ManualEntryInput, ManualEntryValidationErrorCode } from "../../domain/types.js";
 import { toLocalIsoDate } from "../../domain/date/localDateDefaults.js";
-import { CATEGORY_OPTIONS } from "./categoryOptions.js";
+import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
+import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { parseNokAmountMinor } from "../parseNokAmountMinor.js";
 
 interface ManualEntryFormValues {
@@ -82,12 +83,14 @@ interface ManualEntrySectionProps {
 }
 
 export function ManualEntrySection({ refreshKey, onEntrySuccess, onOpenLedger, onReviewUncategorized }: ManualEntrySectionProps): React.JSX.Element {
+  const { categories } = useCategoryCatalog();
   const [householdId, setHouseholdId] = React.useState<string | null>(null);
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [accountState, setAccountState] = React.useState<"loading" | "ready" | "error">("loading");
   const [formValues, setFormValues] = React.useState<ManualEntryFormValues>(() => createInitialFormValues());
   const [entryState, setEntryState] = React.useState<ManualEntryState>({ status: "idle" });
   const [accountRetryKey, setAccountRetryKey] = React.useState(0);
+  const categoryInputRef = React.useRef<HTMLSelectElement>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -253,18 +256,21 @@ export function ManualEntrySection({ refreshKey, onEntrySuccess, onOpenLedger, o
         <label htmlFor="manual-category-id">Category (optional)</label>
         <select
           id="manual-category-id"
+          ref={categoryInputRef}
           {...validationAttributes("categoryId")}
           value={formValues.categoryId}
           onChange={(event) => updateField("categoryId", event.target.value)}
           disabled={entryState.status === "pending"}
         >
           <option value="">Leave uncategorized for review</option>
-          {CATEGORY_OPTIONS.map((category) => (
+          {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.label}
             </option>
           ))}
         </select>
+        <CategoryManagementButton label="Manage categories for manual entry"
+          returnFocusRef={categoryInputRef} disabled={entryState.status === "pending"} />
         {renderFieldError("categoryId")}
 
         <button

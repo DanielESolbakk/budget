@@ -14,6 +14,17 @@ export function ensureSchema(db: DatabaseSync): void {
       reporting_period_rule_json TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS categories (
+      id TEXT NOT NULL,
+      household_id TEXT NOT NULL REFERENCES households(id),
+      label TEXT NOT NULL,
+      normalized_label TEXT NOT NULL,
+      created_at_iso TEXT NOT NULL,
+      updated_at_iso TEXT NOT NULL,
+      PRIMARY KEY (household_id, id),
+      UNIQUE (household_id, normalized_label)
+    );
+
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
       household_id TEXT NOT NULL,

@@ -34,6 +34,23 @@ describe("renderer budget API resolution", () => {
     expect(target.budgetApi).toBeDefined();
   });
 
+  it("provides a household-owned expanded category catalog using synthetic data", async () => {
+    const { api } = resolveRendererBudgetApi(undefined, "2026-05");
+    await expect(Promise.resolve().then(() => api.categories.list())).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "groceries", label: "Groceries & food", householdId: "browser-preview-household",
+        }),
+        expect.objectContaining({
+          id: "dining", label: "Dining", householdId: "browser-preview-household",
+        }),
+        expect.objectContaining({
+          id: "public-transit", label: "Public transit", householdId: "browser-preview-household",
+        }),
+      ]),
+    );
+  });
+
   it("allows edits to synthetic dashboard data when Electron is unavailable", async () => {
     const resolved = resolveRendererBudgetApi(undefined, "2026-05");
 
@@ -225,6 +242,8 @@ describe("renderer budget API resolution", () => {
   });
 
   it.each([
+    ["category creation", (api: BudgetApi) => api.categories.create({ label: "Car repairs" })],
+    ["category rename", (api: BudgetApi) => api.categories.rename({ categoryId: "groceries", label: "Food" })],
     ["account restoration", (api: BudgetApi) => api.accounts.restore("preview-account")],
     ["file dialog", (api: BudgetApi) => api.dialogs.chooseImportStatementPath()],
     ["import history", (api: BudgetApi) => api.import.history.list()],
@@ -235,6 +254,6 @@ describe("renderer budget API resolution", () => {
     ["backup catalog", (api: BudgetApi) => api.backup.listSnapshots()],
   ] as const)("rejects desktop-only %s instead of returning synthetic success", async (_name, action) => {
     const { api } = resolveRendererBudgetApi(undefined, "2026-05");
-    await expect(action(api)).rejects.toThrow("This action requires the desktop app");
+    await expect(Promise.resolve().then<unknown>(() => action(api))).rejects.toThrow("This action requires the desktop app");
   });
 });

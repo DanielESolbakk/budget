@@ -1,6 +1,7 @@
 import React from "react";
 import { LedgerSection, type LedgerFilterRequest } from "../dashboard/LedgerSection.js";
 import { CategoryReviewSection, type UncategorizedQueueState } from "../import/CategoryReviewSection.js";
+import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 
 interface TransactionsWorkspaceProps {
   isActive: boolean;
@@ -40,6 +41,7 @@ export function TransactionsWorkspace({
       <div className="destination-heading">
         <h2>Transactions</h2>
         <p>Search the ledger and review missing or uncertain category decisions.</p>
+        <CategoryManagementButton />
       </div>
       {filterRequest !== null && filterRequest !== undefined && (
         <div className="ledger-report-context">

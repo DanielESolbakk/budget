@@ -48,7 +48,7 @@ export class ManualEntryPage {
   }
 
   get successStatus() {
-    return this.entrySection.getByRole("status");
+    return this.entrySection.getByRole("status").filter({ hasText: /^Added .+ to your ledger\.$/ });
   }
 
   get resultAlert() {

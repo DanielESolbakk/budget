@@ -13,6 +13,7 @@ import type {
 } from "../../domain/types.js";
 import { persistImportJobOperation, persistTransactionBaseline } from "./importJobPersistence.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
+import { createCategoryIdReader } from "./categoryRepository.js";
 
 type ImportLedgerRepository = Pick<LocalLedgerDatabase,
   | "appendImportJob"
@@ -53,6 +54,7 @@ export function createImportLedgerRepository(db: DatabaseSync): ImportLedgerRepo
   }
 
   function appendTransactions(transactions: Transaction[]): number {
+    const readCategoryIds = createCategoryIdReader(db);
     const insertTransaction = db.prepare(
   "INSERT OR IGNORE INTO transactions (id, household_id, account_id, booked_at_iso, booked_at_millis, amount_minor, merchant_raw, merchant_search, currency_code, source_type, source_reference, category_id, import_job_id, categorization_json, category_allocations_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
@@ -76,7 +78,7 @@ export function createImportLedgerRepository(db: DatabaseSync): ImportLedgerRepo
           transaction.categoryId ?? null,
           transaction.importJobId ?? null,
           transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
-          serializeTransactionCategoryAllocations(transaction)
+          serializeTransactionCategoryAllocations(transaction, transaction.categoryAllocations?.length ? readCategoryIds(transaction.householdId) : [])
         ) as { changes: number | bigint };
         if (Number(result.changes) > 0) {
           insertedCount += Number(result.changes);
@@ -112,6 +114,7 @@ export function createImportLedgerRepository(db: DatabaseSync): ImportLedgerRepo
     reviewItems: ImportReviewItem[] = [],
     pendingObservations: PendingTransactionObservation[] = []
   ): number {
+    const readCategoryIds = createCategoryIdReader(db);
     const insertImportJob = db.prepare(
       "INSERT OR IGNORE INTO import_jobs (id, household_id, source_type, source_name, adapter_id, candidate_count, validation_failure_count, started_at_iso, finished_at_iso, provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
@@ -211,7 +214,7 @@ export function createImportLedgerRepository(db: DatabaseSync): ImportLedgerRepo
           transaction.categoryId ?? null,
           transaction.importJobId ?? null,
           transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
-          serializeTransactionCategoryAllocations(transaction)
+          serializeTransactionCategoryAllocations(transaction, transaction.categoryAllocations?.length ? readCategoryIds(transaction.householdId) : [])
         ) as { changes: number | bigint };
         if (Number(result.changes) > 0) {
           insertedCount += Number(result.changes);
@@ -339,7 +342,7 @@ export function createImportLedgerRepository(db: DatabaseSync): ImportLedgerRepo
         transaction.categoryId ?? null,
         transaction.importJobId ?? null,
         transaction.categorization === undefined ? null : JSON.stringify(transaction.categorization),
-        serializeTransactionCategoryAllocations(transaction)
+        serializeTransactionCategoryAllocations(transaction, transaction.categoryAllocations?.length ? createCategoryIdReader(db)(transaction.householdId) : [])
       );
       persistImportJobOperation(db, importJob, [transaction]);
       persistTransactionBaseline(db, importJob.id, transaction);

@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -11,7 +11,7 @@ import {
   vi,
 } from "vitest";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
-import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { buildBackupSnapshot, createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 
 const harness = vi.hoisted(() => {
@@ -155,6 +155,85 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect([...harness.handlers.keys()].sort()).toEqual([...channels].sort());
     expect(harness.dialogs).not.toHaveBeenCalled();
     expect(invoke("setup:isRequired")).toBe(true);
+  });
+
+  it("persists category commands with main-owned identity, household, and timestamps", async () => {
+    createHousehold();
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const householdId = database.loadRuntimeMetadata()!.household.id;
+      const created = await Promise.resolve().then(() => invoke("category:create", {
+        label: "  Car \t repairs  ",
+        id: "renderer-category",
+        householdId: "renderer-household",
+        createdAtIso: "1970-01-01T00:00:00.000Z",
+        updatedAtIso: "1970-01-01T00:00:00.000Z",
+      }));
+      const persisted = database.listCategories(householdId).find((category) => category.label === "Car repairs");
+      expect(persisted).toMatchObject({ label: "Car repairs", householdId });
+      if (persisted === undefined) throw new Error("Expected persisted category.");
+      expect(persisted.id).not.toBe("renderer-category");
+      expect(persisted.createdAtIso).not.toBe("1970-01-01T00:00:00.000Z");
+      expect(created).toEqual(persisted);
+      await expect(Promise.resolve().then(() => invoke("category:rename", {
+        categoryId: persisted.id, label: " Vehicle \t maintenance ",
+      }))).resolves.toMatchObject({
+        id: persisted.id, label: "Vehicle maintenance", householdId, createdAtIso: persisted.createdAtIso,
+      });
+      expect(invoke("category:list")).toEqual(database.listCategories(householdId));
+      expect(database.listCategories(householdId)).toContainEqual(expect.objectContaining({
+        id: persisted.id, label: "Vehicle maintenance",
+      }));
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects malformed and duplicate category commands without changing the catalog", async () => {
+    createHousehold();
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const householdId = database.loadRuntimeMetadata()!.household.id;
+      const before = database.listCategories(householdId);
+      const requests = [
+        { channel: "category:create", input: [], error: /object/i },
+        { channel: "category:create", input: { label: 42 }, error: /label/i },
+        { channel: "category:create", input: { label: "" }, error: /label/i },
+        { channel: "category:create", input: { label: " groceries \t & food " }, error: /already exists/i },
+        { channel: "category:rename", input: { categoryId: 42, label: "Food" }, error: /categoryId/i },
+        { channel: "category:rename", input: { categoryId: "missing", label: "Food" }, error: /not found/i },
+      ];
+      for (const { channel, input, error } of requests) {
+        await expect(Promise.resolve().then(() => invoke(channel, input))).rejects.toThrow(error);
+        expect(database.listCategories(householdId)).toEqual(before);
+      }
+    } finally {
+      database.close();
+    }
+  });
+
+  it("normalizes request whitespace when renaming a category through IPC", async () => {
+    createHousehold();
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const householdId = database.loadRuntimeMetadata()!.household.id;
+      database.createCategoryRecord({
+        id: "category-workshop", householdId, label: "Workshop",
+        createdAtIso: "2026-05-01T00:00:00.000Z", updatedAtIso: "2026-05-01T00:00:00.000Z",
+      });
+      await expect(Promise.resolve().then(() => invoke("category:rename", {
+        categoryId: " category-workshop ", label: "Vehicle repairs",
+      }))).resolves.toMatchObject({ id: "category-workshop", label: "Vehicle repairs" });
+      expect(database.listCategories(householdId)).toContainEqual(expect.objectContaining({
+        id: "category-workshop", label: "Vehicle repairs",
+      }));
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects category access before household setup instead of returning an empty catalog", async () => {
+    await expect(Promise.resolve().then(() => invoke("category:list"))).rejects.toThrow(/household/i);
   });
 
   it("rejects foreign senders, child frames and foreign origins on every channel before side effects", async () => {
@@ -380,6 +459,43 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect(invoke("import:preflight:cancel", requestId)).toBe(false);
     previewId(await invoke(`import:${format}Preview`, { requestId, filePath }));
     expect(await invoke("import:history:list")).toEqual([]);
+  });
+
+  it("rejects a malformed category snapshot through restore IPC without replacing destination data or runtime", async () => {
+    createHousehold();
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const metadata = database.loadRuntimeMetadata();
+      if (metadata === null || metadata.accounts[0] === undefined) throw new Error("Expected a synthetic household.");
+      database.appendTransactions([{
+        id: "protected-transaction", householdId: metadata.household.id, accountId: metadata.accounts[0].id,
+        bookedAtIso: "2026-05-23", amountMinor: -12345, currencyCode: "NOK",
+        merchantRaw: "Synthetic protected workshop", categoryId: "groceries",
+      }]);
+      const original = database.loadLedgerSnapshotData();
+      const accountContext = invoke("account:getCurrent");
+      const snapshotPath = join(directory, "invalid-category-restore.json");
+      writeFileSync(snapshotPath, JSON.stringify({
+        ...buildBackupSnapshot(original), categories: [],
+      }), "utf8");
+      await expect(invoke("backup:restore", { snapshotPath })).rejects.toThrow(/Invalid snapshot categories/i);
+      expect(database.loadLedgerSnapshotData()).toEqual(original);
+      expect(database.listBackupSnapshots()).toEqual([]);
+      expect(invoke("account:getCurrent")).toEqual(accountContext);
+      expect(await invoke("transaction:list")).toMatchObject({
+        transactions: [{ id: "protected-transaction", amountMinor: -12345, categoryId: "groceries" }],
+      });
+    } finally {
+      database.close();
+    }
+    const reopened = createLocalLedgerDatabase({ dbPath });
+    try {
+      expect(reopened.getTransactionById("protected-transaction")).toMatchObject({
+        amountMinor: -12345, categoryId: "groceries",
+      });
+    } finally {
+      reopened.close();
+    }
   });
 
   it("uses restored household/accounts/targets across channel groups and invalidates both preview formats", async () => {

@@ -49,7 +49,10 @@ function createTestLedger() {
         name: "Integration Household",
         createdAtIso: "2026-01-01T00:00:00Z",
       },
-      accounts: [],
+      accounts: [{
+        id: BASE_OPTIONS.accountId, householdId: BASE_OPTIONS.householdId,
+        name: "Synthetic current account", currencyCode: "NOK",
+      }],
       transactions: [],
       importJobs: [],
       monthlyCategoryTargets: [],

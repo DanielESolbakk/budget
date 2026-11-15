@@ -1,6 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { defaultHouseholdShare } from "../../domain/householdShareValidation.js";
 import { validateReportingPeriodRule } from "../../shared/applicationPreferences.js";
+import { seedCategoryCatalog } from "../../domain/categorization/categoryCatalog.js";
+import { validateRecoveryHistory } from "./snapshotHistoryValidation.js";
 import {
   SNAPSHOT_VERSION,
   type BackupSnapshot,
@@ -33,6 +35,11 @@ function sortJsonValueRecursively(value: unknown): unknown {
  */
 export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
   const createdAtIso = input.createdAtIso ?? new Date().toISOString();
+  const categories = seedCategoryCatalog({
+    householdId: input.household.id,
+    categories: input.categories ?? [],
+    createdAtIso,
+  }).sort((left, right) => left.id.localeCompare(right.id));
 
   const accounts = [...input.accounts].sort((a, b) => a.id.localeCompare(b.id));
   const transactions = [...input.transactions].sort((a, b) => a.id.localeCompare(b.id));
@@ -40,6 +47,19 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     a.id.localeCompare(b.id)
   );
   const importJobs = [...input.importJobs].sort((a, b) => a.id.localeCompare(b.id));
+  const recoveryHistory = validateRecoveryHistory(input.recoveryHistory ?? {
+    merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
+  }, input.household.id, new Set(accounts.map((account) => account.id)),
+  new Set(importJobs.map((job) => job.id)), categories.map((category) => category.id), "backup");
+  recoveryHistory.merchantCorrections.sort((left, right) => left.id.localeCompare(right.id));
+  recoveryHistory.sameMerchantPropagations.sort((left, right) => left.id.localeCompare(right.id));
+  recoveryHistory.importOperations.sort((left, right) => left.importJobId.localeCompare(right.importJobId));
+  for (const operation of recoveryHistory.sameMerchantPropagations) {
+    operation.changes.sort((left, right) => left.transactionId.localeCompare(right.transactionId));
+  }
+  for (const operation of recoveryHistory.importOperations) {
+    operation.transactionBaselines.sort((left, right) => left.transactionId.localeCompare(right.transactionId));
+  }
   const monthlyCategoryTargets = [...input.monthlyCategoryTargets].sort((a, b) => {
     const byMonth = a.yearMonth.localeCompare(b.yearMonth);
     return byMonth !== 0 ? byMonth : a.categoryId.localeCompare(b.categoryId);
@@ -131,6 +151,8 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
       accountCount: accounts.length,
     },
     household: input.household,
+    categories,
+    recoveryHistory,
     accounts,
     transactions,
     ...(pendingObservations.length === 0 ? {} : { pendingObservations }),

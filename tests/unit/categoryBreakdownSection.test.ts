@@ -1,8 +1,13 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { DashboardViewContract } from "../../src/app/dashboardApi.js";
 import { CategoryBreakdownSection } from "../../src/renderer/dashboard/CategoryBreakdownSection.js";
+
+vi.mock("../../src/renderer/categories/CategoryCatalogContext.js", async () => {
+  const { buildRendererCategoryCatalogFixture } = await import("../helpers/buildRendererCategoryCatalogFixture.js");
+  return { useCategoryCatalog: () => buildRendererCategoryCatalogFixture() };
+});
 
 describe("CategoryBreakdownSection", () => {
   it("humanizes custom category identifiers in the visible breakdown", () => {

@@ -30,17 +30,17 @@ export function listCategorizationReviewQueue(
 export function applyCategorizationCorrection(
   database: Pick<
     LocalLedgerDatabase,
-    "getTransactionById" | "loadLedgerSnapshotData" | "updateTransactionCategoryAndRule"
+    "getTransactionById" | "loadLedgerSnapshotData" | "updateTransactionCategoryAndRule" | "listCategories"
   >,
   learnedCategoryRules: Map<string, string>,
   transactionId: string,
   categoryId: string
 ): { transaction: Transaction; futureMatchingChanged: boolean } {
-  validateCorrectionCategoryId(categoryId);
   const transaction = database.getTransactionById(transactionId);
   if (transaction === undefined) {
     throw new Error(`Transaction not found: ${transactionId}`);
   }
+  validateCorrectionCategoryId(categoryId, database.listCategories(transaction.householdId).map((category) => category.id));
 
   const merchantAlias = normalizeMerchantName(transaction.merchantRaw);
   const futureMatchingChanged = learnedCategoryRules.get(merchantAlias) !== categoryId;

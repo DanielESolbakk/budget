@@ -33,7 +33,7 @@ roadmap outcomes, not implementation-ready issue hierarchies.
 
 | Order | Workstream | Delivery boundary | Dependencies |
 | --- | --- | --- | --- |
-| 1 | Category management | Defaults, custom categories, rename, safe merge, migration, backup and Activity dialog | Existing ledger, category correction, allocation and target contracts |
+| 1 | Category management | Defaults, custom categories, rename, safe merge, backup and Activity dialog | Existing ledger, category correction, allocation and target contracts |
 | 2 | Merchant recognition | Curated offline aliases and evidence-based matching reasons; no generic processor guesses | Category catalog and active-category resolution |
 | 3 | Unknown-merchant learning | Group repeated unknown descriptions; accept/dismiss a proposed identity and rule | Merchant recognition and existing correction/rule persistence |
 | 4 | Safe batch review | Extend existing same-merchant preview/apply/undo instead of creating another batch engine | Category catalog, suggestion grouping, existing propagation history |
@@ -58,8 +58,17 @@ Do not infer those decisions from a merchant name or add placeholder Test issues
 - Renaming changes a label, not identity, amounts, or historical references.
 - Load one persisted household catalog for category review, ledger filters and
   labels, allocations, manual/import correction, and category targets.
-- Seed defaults only when missing. Preserve renamed defaults and unknown legacy
-  category IDs; never replace a customized label during startup.
+- Seed defaults only when missing; never replace a customized label during
+  startup. This is a pre-release application with no existing users or production
+  ledgers: legacy-category migration and inferred historical-category backfill
+  are out of scope. Stable IDs, current history, and backup/restore remain required.
+- Category IDs have no surrounding whitespace. Display-name normalization does
+  not change identity.
+- New version-13 backups preserve correction and same-merchant propagation
+  evidence, import-operation state, and original serialized undo baselines.
+  Restore retains safe undo for unchanged imported transactions, protects changed
+  records, and retains completed undo outcomes. Historical versions 1-12 keep
+  their existing capabilities; missing evidence is not invented.
 
 ### Preview And Merge (#588)
 
@@ -80,27 +89,29 @@ Do not infer those decisions from a merchant name or add placeholder Test issues
   assignment; never silently reactivate an inactive category.
 - Category merge undo and permanent deletion are excluded.
 
-## Technical Boundaries And Migration
+## Technical Boundaries And Persistence
 
 - Shared/domain contracts own category identity, name validation, active-category
   resolution, allocation consolidation, and safe target summation.
 - Create `src/domain/categorization/categoryCatalog.ts`,
-  `src/app/categoryService.ts`, and `src/app/backup/categoryRepository.ts` for
+  `src/app/categoryManagementService.ts`, and `src/app/backup/categoryRepository.ts` for
   catalog behavior. The merge Story adds
   `src/domain/categorization/categoryMerge.ts`.
-- Add catalog schema and explicit backfill in
+- Add catalog schema in
   `src/app/backup/ledgerSchema.ts`; retain connection ownership in
-  `localLedgerSqlite.ts`. A failed migration rolls back rather than selecting a
-  partial catalog.
-- Add validated operations in `electron/ipc/categoryChannels.ts`, registered
+  `localLedgerSqlite.ts`. Initialize missing defaults and restore explicitly
+  saved categories atomically; do not scan current or archived evidence to
+  invent categories.
+- Add validated operations in `electron/ipc/reviewLedgerChannels.ts`, registered
   by main using declared context dependencies. Renderer code does not own
   persistence or merge calculations.
-- Create `src/renderer/workspaces/CategoryManagementDialog.tsx`; existing
+- Create `src/renderer/categories/CategoryManagementDialog.tsx`; existing
   category consumers load current labels and active IDs through the shared API.
 - Extend snapshot types, validation, serialization, and restore for catalog
-  records and merge evidence. Legacy snapshots register their existing IDs;
-  new snapshots with missing references or cyclic merge links fail before
-  replacement. Do not rewrite saved historical snapshots during rename/merge.
+  records and merge evidence. New snapshots with missing references or cyclic
+  merge links fail before replacement. Preserve pre-existing older-backup
+  support without inferring custom categories from old references. Do not
+  rewrite saved historical snapshots during rename/merge.
 - Browser preview remains synthetic and limited. Decide explicitly which
   catalog reads it supports, reuse shared behavior, and reject desktop-only
   writes while preserving the complete typed API and cleanup contracts.

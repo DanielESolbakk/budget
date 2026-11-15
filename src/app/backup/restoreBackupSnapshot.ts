@@ -2,6 +2,7 @@ import { validateBackupSnapshot } from "./validateBackupSnapshot.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { BackupSnapshot } from "../../domain/backup/snapshotContract.js";
+import { SNAPSHOT_VERSION } from "../../domain/backup/snapshotContract.js";
 import {
   type BackupSnapshotSummary,
   type RestoreSnapshotInput,
@@ -61,6 +62,8 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
 
   return {
     household: snapshot.household,
+    ...(snapshot.metadata.version === SNAPSHOT_VERSION ? { categories: snapshot.categories } : {}),
+    ...(snapshot.metadata.version === SNAPSHOT_VERSION ? { recoveryHistory: snapshot.recoveryHistory } : {}),
     accounts: snapshot.accounts,
     transactions: snapshot.transactions,
     ...(snapshot.pendingObservations === undefined

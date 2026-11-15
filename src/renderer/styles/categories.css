@@ -1,0 +1,138 @@
+.category-management-dialog {
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  padding: 1.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  color: var(--paper);
+  box-shadow: 0 1rem 3rem rgb(23 54 75 / 24%);
+}
+
+.category-management-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.category-management-heading {
+  flex: none;
+}
+
+.category-management-body {
+  overflow: auto;
+  min-height: 0;
+  padding: 0.5rem;
+  margin: -0.5rem;
+}
+
+.category-management-dialog::backdrop {
+  background: rgb(23 54 75 / 56%);
+}
+
+.category-management-heading,
+.category-management-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.category-management-heading h2 {
+  margin: 0;
+}
+
+.category-management-body > p {
+  color: var(--paper-muted);
+}
+
+.category-management-body > p:first-child {
+  margin-top: 0;
+}
+
+.category-management-form,
+.category-management-search {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.category-management-form label,
+.category-management-search label {
+  display: grid;
+  gap: 0.4rem;
+  flex: 1 1 12rem;
+}
+
+.category-management-form input,
+.category-management-search input {
+  width: 100%;
+  min-width: 0;
+}
+
+.category-management-search + p {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.category-management-help {
+  margin: 0.75rem 0;
+}
+
+.category-management-help summary {
+  cursor: pointer;
+}
+
+.category-management-help p {
+  color: var(--paper-muted);
+}
+
+.category-management-dialog h3 {
+  margin: 1.5rem 0 0.5rem;
+}
+
+.category-management-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.category-management-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.category-management-list li > span {
+  overflow-wrap: anywhere;
+}
+
+.category-management-list form {
+  width: 100%;
+}
+
+.category-management-form > .category-management-error {
+  flex-basis: 100%;
+}
+
+.category-management-error,
+.category-catalog-error {
+  color: var(--error);
+  background: var(--error-soft);
+  padding: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .category-management-dialog {
+    padding: 1rem;
+  }
+
+  .category-management-form > button,
+  .category-management-actions {
+    width: 100%;
+  }
+}

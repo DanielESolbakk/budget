@@ -43,6 +43,29 @@ interface BackupSnapshotCatalogStore {
 function createSnapshotData(): LedgerSnapshotData {
   return {
     household: HOUSEHOLD,
+    recoveryHistory: { merchantCorrections: [], sameMerchantPropagations: [], importOperations: [] },
+    categories: [
+      { id: "dining", label: "Dining" },
+      { id: "fees", label: "Fees" },
+      { id: "fuel", label: "Fuel" },
+      { id: "groceries", label: "Groceries & food" },
+      { id: "health", label: "Health" },
+      { id: "housing", label: "Housing" },
+      { id: "insurance", label: "Insurance" },
+      { id: "other", label: "Other" },
+      { id: "public-transit", label: "Public transit" },
+      { id: "restored", label: "restored" },
+      { id: "salary", label: "Salary / wages" },
+      { id: "shopping", label: "Shopping" },
+      { id: "subscriptions", label: "Subscriptions" },
+      { id: "transport", label: "Transport" },
+      { id: "utilities", label: "Utilities" },
+    ].map((category) => ({
+      ...category,
+      householdId: HOUSEHOLD.id,
+      createdAtIso: "2026-01-01T00:00:00Z",
+      updatedAtIso: "2026-01-01T00:00:00Z",
+    })),
     accounts: [ACCOUNT],
     transactions: [
       {
@@ -244,17 +267,21 @@ describe("ledger recovery runtime contracts", () => {
     const dbPath = join(tempDir, "ledger.sqlite");
     const initialState = { ...createSnapshotData(), household: { ...HOUSEHOLD, name: "Initial Household" } };
     const restoredState = createSnapshotData();
+    const database = createLocalLedgerDatabase({ dbPath, seedData: initialState });
+    let reopened: ReturnType<typeof createLocalLedgerDatabase> | undefined;
+    let databaseClosed = false;
 
     try {
-      const database = createLocalLedgerDatabase({ dbPath, seedData: initialState });
       database.replaceLedgerSnapshotData(restoredState);
       expect(database.loadLedgerSnapshotData()).toEqual(restoredState);
       database.close();
+      databaseClosed = true;
 
-      const reopened = createLocalLedgerDatabase({ dbPath, seedData: restoredState });
+      reopened = createLocalLedgerDatabase({ dbPath, seedData: restoredState });
       expect(reopened.loadLedgerSnapshotData()).toEqual(restoredState);
-      reopened.close();
     } finally {
+      reopened?.close();
+      if (!databaseClosed) database.close();
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -275,8 +302,13 @@ describe("ledger recovery runtime contracts", () => {
     const database = createLocalLedgerDatabase({ dbPath, seedData: createSnapshotData() });
 
     try {
+      database.createCategoryRecord({
+        id: "income", householdId: HOUSEHOLD.id, label: "Income",
+        createdAtIso: "2026-05-01T00:00:00Z", updatedAtIso: "2026-05-01T00:00:00Z",
+      });
       database.replaceLedgerSnapshotData({
         ...createSnapshotData(),
+        categories: database.listCategories(HOUSEHOLD.id),
         transactions,
       });
       const ledgerState = database.loadLedgerSnapshotData();
@@ -447,14 +479,13 @@ describe("ledger recovery runtime contracts", () => {
       ...createSnapshotData(),
       accounts: [ACCOUNT, ACCOUNT],
     };
+    const database = createLocalLedgerDatabase({ dbPath, seedData: initialState });
 
     try {
-      const database = createLocalLedgerDatabase({ dbPath, seedData: initialState });
-
       expect(() => database.replaceLedgerSnapshotData(invalidState)).toThrow();
       expect(database.loadLedgerSnapshotData()).toEqual(initialState);
-      database.close();
     } finally {
+      database.close();
       rmSync(tempDir, { recursive: true, force: true });
     }
   });

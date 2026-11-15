@@ -24,6 +24,16 @@ const transactions: Transaction[] = [
 ];
 
 describe("filterTransactions", () => {
+  it("sorts categories using supplied display names rather than fixed defaults or opaque IDs", () => {
+    const rows = [
+      { ...transactions[0]!, id: "custom", categoryId: "category-001" },
+      { ...transactions[1]!, id: "renamed", categoryId: "groceries" },
+    ];
+    expect(filterTransactions(rows, { sortBy: "categoryId", sortDirection: "asc" }, [
+      { id: "category-001", label: "Vehicle repairs" }, { id: "groceries", label: "Food" },
+    ]).map(({ id }) => id)).toEqual(["renamed", "custom"]);
+  });
+
   it("uses recorded booking dates for report drill-down without changing default UTC bounds", () => {
     const rows = [
       { ...transactions[0]!, id: "start", bookedAtIso: "2026-05-01T00:15:00+02:00" },
