@@ -46,7 +46,7 @@ test.describe("Ledger search and filter workflow", () => {
       await ledger.table.getByRole("row").nth(1).getByRole("button").click();
       const editor = window.getByRole("region", { name: /^Transaction category allocations for/ });
       await editor.getByLabel("Allocation category 1", { exact: true }).selectOption("housing");
-      await editor.getByRole("button", { name: /^Save allocations for/ }).click();
+      await editor.getByRole("button", { name: /^Save split for/ }).click();
       await expect(editor).not.toBeVisible();
       await expect(summary).toContainText("50 matching transactions");
       await expect(ledger.paginationStatus).toHaveText("Page 1 of 1");

@@ -13,7 +13,6 @@ import {
 import type {
   Account,
   Transaction,
-  TransactionCategoryAllocation,
 } from "../../domain/types.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 import { formatCurrencyAmount, getCurrencyFormatter } from "../formatCurrencyAmount.js";
@@ -24,6 +23,7 @@ import {
   type AllocationEditorError,
   type AllocationDraft,
 } from "./TransactionAllocationEditor.js";
+import { parseAllocationDraft } from "./transactionAllocationDraft.js";
 
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
   style: "currency",
@@ -99,7 +99,7 @@ export interface LedgerFilterRequest {
 }
 
 export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isReportSelected }: LedgerSectionProps): React.JSX.Element {
-  const { categories } = useCategoryCatalog();
+  const { categories, loading: categoryCatalogLoading, error: categoryCatalogError } = useCategoryCatalog();
   function categoryLabel(categoryId: string): string {
     return categories.find((category) => category.id === categoryId)?.label ?? categoryId;
   }
@@ -398,24 +398,10 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
 
   async function saveAllocations(transaction: Transaction): Promise<void> {
     setAllocationStatusMessage("");
-    const allocations: TransactionCategoryAllocation[] = [];
-    for (const [index, allocation] of allocationDraft.entries()) {
-      if (allocation.categoryId === "") {
-        setAllocationError({
-          message: `Choose a category for allocation ${index + 1}.`,
-          field: { index, name: "category" },
-        });
-        return;
-      }
-      const amountMinor = allocationAmountToMinor(allocation.amountText);
-      if (amountMinor === null) {
-        setAllocationError({
-          message: `Allocation ${index + 1} must be a valid amount with at most two decimal places.`,
-          field: { index, name: "amount" },
-        });
-        return;
-      }
-      allocations.push({ categoryId: allocation.categoryId, amountMinor });
+    const draft = parseAllocationDraft(transaction.amountMinor, allocationDraft, categories.map((category) => category.id));
+    if (!draft.ok) {
+      setAllocationError(draft.error);
+      return;
     }
 
     setAllocationError(null);
@@ -424,7 +410,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     try {
       const result = await window.budgetApi.ledger.updateCategoryAllocations({
         transactionId: transaction.id,
-        allocations,
+        allocations: draft.allocations,
       });
       if (!result.ok) {
         setAllocationError({ message: result.message });
@@ -574,6 +560,9 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   function announceAllocationBalance(): void {
     if (allocationSourceTransaction === undefined) return;
 
+    const draft = parseAllocationDraft(
+      allocationSourceTransaction.amountMinor, allocationDraft, categories.map((category) => category.id)
+    );
     const remainingMinor = BigInt(allocationSourceTransaction.amountMinor) - allocationTotalMinor;
     const isOverAllocated = remainingMinor !== 0n &&
       allocationSourceTransaction.amountMinor !== 0 &&
@@ -591,6 +580,9 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
       : `${incompleteAllocationCount} allocations are incomplete`;
     const balanceAmount = isOverAllocated && remainingMinor < 0n ? -remainingMinor : remainingMinor;
     const message = [
+      categoryCatalogLoading ? "Loading categories" :
+        categoryCatalogError !== null ? "Retry loading categories before saving" :
+          draft.ok ? "Ready to save" : draft.error.message.replace(/\.$/, ""),
       `${totalLabel}: ${formatMinorUnits(allocationTotalMinor, allocationCurrencyFormatter)}`,
       ...(incompleteAllocationCount === 0 ? [] : [incompleteMessage]),
       `${balanceLabel}: ${formatMinorUnits(balanceAmount, allocationCurrencyFormatter)}`,

@@ -1376,14 +1376,55 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   display: grid;
   width: 100%;
   min-width: 0;
-  gap: 0.8rem;
-  padding: 0.85rem;
-  background: var(--panel-soft);
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--panel);
+}
+
+.transaction-allocation-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.transaction-allocation-heading > div {
+  min-width: 0;
 }
 
 .transaction-allocation-editor h3 {
-  min-width: 0;
+  font-size: 1.1rem;
+}
+
+.transaction-allocation-context {
+  display: grid;
+  gap: 0.2rem;
+  padding-top: 0.4rem;
+  font-size: 0.875rem;
+}
+
+.transaction-allocation-context strong,
+.transaction-allocation-description {
   overflow-wrap: anywhere;
+}
+
+.transaction-allocation-context strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.transaction-allocation-context time,
+.transaction-allocation-description {
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+}
+
+.transaction-allocation-source {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .transaction-allocation-guidance {
@@ -1400,14 +1441,37 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
 }
 
 .transaction-allocation-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
-  border: 1px solid var(--line);
-  padding: 0.65rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel-soft);
+  color: var(--paper);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.transaction-allocation-summary p {
+.transaction-allocation-totals summary,
+.transaction-allocation-row-actions summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  padding: 0.7rem 0;
+}
+
+.transaction-allocation-totals summary:focus-visible,
+.transaction-allocation-row-actions summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.transaction-allocation-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+}
+
+.transaction-allocation-metrics p {
   display: grid;
   gap: 0.3rem;
   margin: 0;
@@ -1415,9 +1479,8 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   font-size: 0.75rem;
 }
 
-.transaction-allocation-summary strong {
+.transaction-allocation-metrics strong {
   color: var(--paper);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.95rem;
   font-variant-numeric: tabular-nums;
 }
@@ -1431,25 +1494,51 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
 
 .transaction-allocation-rows {
   display: grid;
-  gap: 0.6rem;
+  gap: 0;
 }
 
 .transaction-allocation-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.8fr) auto;
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.55fr) 8rem;
+  align-items: start;
   gap: 0.6rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-allocation-row > label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
 .transaction-allocation-row-actions {
+  padding-top: 1.35rem;
+  min-width: 0;
+}
+
+.transaction-allocation-row-actions > div {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+  padding: 0.5rem 0;
 }
 
-.transaction-allocation-category-management {
-  grid-column: 1;
-  grid-row: 2;
+.transaction-allocation-row-actions p {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  color: var(--paper-muted);
+}
+
+.transaction-allocation-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.transaction-allocation-tools button {
+  font-size: 0.82rem;
+  padding: 0.45rem 0.6rem;
 }
 
 .transaction-allocation-actions {
@@ -1457,6 +1546,12 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.transaction-allocation-clear {
+  margin-left: auto;
 }
 
 .transaction-allocation-saving {
@@ -1477,10 +1572,10 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   border: 0;
 }
 
-.transaction-allocation-actions [role="alert"] {
-  flex: 1 0 100%;
-  margin: 0;
+.transaction-allocation-field-error {
   color: var(--error);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .review-primary {

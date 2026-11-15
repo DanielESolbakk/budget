@@ -49,6 +49,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .transaction-allocation-row-actions {
+    padding-top: 0;
+  }
+
   .review-support {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -323,11 +327,19 @@
     position: sticky;
     top: 0.5rem;
     z-index: 3;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     background: var(--panel-soft);
   }
 
-  .transaction-allocation-summary p {
+  .transaction-allocation-heading {
+    flex-wrap: wrap;
+  }
+
+  .transaction-allocation-clear {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+
+  .transaction-allocation-summary {
     min-width: 0;
     overflow-wrap: anywhere;
   }
