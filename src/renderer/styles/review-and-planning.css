@@ -1636,7 +1636,7 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   gap: 0.65rem 1rem;
 }
 
-.transaction-category-single > label:first-child {
+.transaction-category-single > label:not(.transaction-category-remember) {
   display: grid;
   gap: 0.35rem;
 }
@@ -1661,6 +1661,24 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   min-height: 44px;
   align-items: center;
   gap: 0.55rem;
+}
+
+.transaction-category-remember input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  min-height: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--orange);
+}
+
+.transaction-category-single > button {
+  justify-self: start;
+}
+
+.transaction-category-replacement {
+  grid-column: 1 / -1;
 }
 
 .transaction-category-mode-actions,

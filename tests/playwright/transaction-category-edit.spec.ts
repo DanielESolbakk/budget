@@ -65,6 +65,12 @@ test.describe("transaction category editing", () => {
       await expect(category).toBeFocused();
       const splitBounds = await split.boundingBox();
       expect(splitBounds?.height).toBeGreaterThanOrEqual(44);
+      const rememberBounds = await remember.boundingBox();
+      expect(rememberBounds?.width).toBeLessThanOrEqual(24);
+      await editor.getByText("Remember for this merchant", { exact: true }).click();
+      await expect(remember).not.toBeChecked();
+      await editor.getByText("Remember for this merchant", { exact: true }).click();
+      await expect(remember).toBeChecked();
       await category.focus();
       await window.keyboard.press("Tab");
       await expect(remember).toBeFocused();
