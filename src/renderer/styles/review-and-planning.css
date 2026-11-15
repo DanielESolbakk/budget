@@ -1381,50 +1381,14 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   background: var(--panel);
 }
 
-.transaction-allocation-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.transaction-allocation-heading > div {
-  min-width: 0;
-}
-
 .transaction-allocation-editor h3 {
   font-size: 1.1rem;
 }
 
-.transaction-allocation-context {
-  display: grid;
-  gap: 0.2rem;
-  padding-top: 0.4rem;
-  font-size: 0.875rem;
-}
-
-.transaction-allocation-context strong,
 .transaction-allocation-description {
   overflow-wrap: anywhere;
-}
-
-.transaction-allocation-context strong {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.transaction-allocation-context time,
-.transaction-allocation-description {
   color: var(--paper-muted);
   font-size: 0.8rem;
-}
-
-.transaction-allocation-source {
-  flex-shrink: 0;
-  font-size: 1.1rem;
-  font-variant-numeric: tabular-nums;
 }
 
 .transaction-allocation-guidance {
@@ -1441,6 +1405,10 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
 }
 
 .transaction-allocation-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
   padding: 0.6rem 0.75rem;
   background: var(--panel-soft);
   color: var(--paper);

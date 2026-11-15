@@ -49,6 +49,13 @@ test.describe("transaction category allocations", () => {
       .toHaveCount(1);
     await expect.soft(allocationEditor.getByRole("status", { name: "Split draft status" }))
       .toContainText("Finish category and amount for row 2");
+    const balance = allocationEditor.getByRole("status", { name: "Split draft status" });
+    await expect(balance).toContainText(/Remaining:.*0,00\s*kr/);
+    await expect(allocationEditor.getByText("Kiwi", { exact: true })).toHaveCount(0);
+    await expect(allocationEditor.getByText("20. apr. 2026", { exact: true })).toHaveCount(0);
+    await allocationEditor.getByLabel("Allocation amount 1").fill("-40");
+    await expect(balance).toContainText(/Remaining:.*32,00\s*kr/);
+    await allocationEditor.getByLabel("Allocation amount 1").fill("-72.00");
     const saveButton = allocationEditor.getByRole("button").filter({ hasText: /^Save split$/ });
     await expect.soft(saveButton).toHaveAccessibleName("Save split for Kiwi");
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("groceries");
@@ -161,6 +168,12 @@ test.describe("transaction category allocations", () => {
     await expect(allocationEditor).toContainText("1 allocation is incomplete.");
     const status = allocationEditor.getByRole("status", { name: "Split draft status" });
     await expect(status).not.toContainText("Ready to save");
+    await allocationEditor.getByLabel("Allocation amount 1").fill("invalid");
+    await expect(status).toContainText("Remaining: unavailable");
+    await allocationEditor.getByLabel("Allocation amount 1").blur();
+    await expect(window.getByRole("status", { name: "Allocation status" }))
+      .toContainText("Enter a valid amount for row 1 before calculating the balance.");
+    await allocationEditor.getByLabel("Allocation amount 1").fill("-72");
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("0");
     await expect(status).toContainText("non-zero");
@@ -169,9 +182,9 @@ test.describe("transaction category allocations", () => {
     await expect(status).toContainText("source transaction sign");
     await allocationEditor.getByLabel("Allocation amount 1").fill("-40");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-20");
-    await expect(status).toContainText(/12,00\s*kr remaining/);
+    await expect(status).toContainText(/Remaining:.*12,00\s*kr/);
     await allocationEditor.getByLabel("Allocation amount 2").fill("-32");
-    await expect(status).toHaveText("Ready to save");
+    await expect(status).toContainText("Ready to save");
   });
 
   test("associates category errors with their field and clears them after correction", async ({
@@ -267,6 +280,8 @@ test.describe("transaction category allocations", () => {
     await allocationEditor.getByLabel("Allocation category 2").selectOption("housing");
     await allocationEditor.getByLabel("Allocation amount 2").fill("-40.00");
 
+    await expect(allocationEditor.getByRole("status", { name: "Split draft status" }))
+      .toContainText(/Over-allocated:.*8,00\s*kr/);
     await expect(allocationEditor.getByText(/Over-allocated by:/))
       .toContainText(/8,00\s*kr/);
     await expect(allocationEditor.getByText(/Remaining to allocate:/)).toHaveCount(0);

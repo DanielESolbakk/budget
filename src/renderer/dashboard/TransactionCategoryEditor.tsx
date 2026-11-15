@@ -90,6 +90,9 @@ export function TransactionCategoryEditor({
     rememberForMerchant !== initialRemember ||
     !sameAllocationDraft(allocations, initialAllocations);
   const allocationAmounts = allocations.map((allocation) => parseSignedAmountMinor(allocation.amountText));
+  const invalidAmountIndex = allocations.findIndex((allocation, index) =>
+    allocation.amountText.trim() !== "" && allocationAmounts[index] === null
+  );
   const allocationTotalMinor = allocationAmounts.reduce<bigint>(
     (total, amount) => total + BigInt(amount ?? 0),
     0n
@@ -198,6 +201,10 @@ export function TransactionCategoryEditor({
 
   function announceAllocationBalance(): void {
     setAllocationError(null);
+    if (invalidAmountIndex >= 0) {
+      setAllocationStatusMessage(`Enter a valid amount for row ${invalidAmountIndex + 1} before calculating the balance.`);
+      return;
+    }
     const remainingMinor = BigInt(transaction.amountMinor) - allocationTotalMinor;
     const isOverAllocated = remainingMinor !== 0n &&
       transaction.amountMinor !== 0 &&
@@ -310,9 +317,9 @@ export function TransactionCategoryEditor({
                 <p>
                   {rememberForMerchant
                     ? `For future matching transactions, use ${categoryId === "" ? "the selected category" : categoryLabel(categoryId)}. Existing history will not change.`
-                    : `This is a transaction-only correction. ${merchantCategoryRule === null
-                      ? "No remembered category will be changed."
-                      : `The remembered ${categoryLabel(merchantCategoryRule.categoryId)} category will remain unchanged.`} Existing history will not change.`}
+                    : `This is a transaction-only correction.${merchantCategoryRule === null
+                      ? ""
+                      : ` The remembered ${categoryLabel(merchantCategoryRule.categoryId)} category will remain unchanged.`} Existing history will not change.`}
                 </p>
               </div>
             </div>
@@ -346,6 +353,7 @@ export function TransactionCategoryEditor({
             canReorder={canReorderAllocations}
             totalMinor={allocationTotalMinor}
             incompleteAllocationCount={incompleteAllocationCount}
+            invalidAmountIndex={invalidAmountIndex}
             currencyFormatter={currencyFormatter}
             error={allocationError}
             isSaving={isSaving}

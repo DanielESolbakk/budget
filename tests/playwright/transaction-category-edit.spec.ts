@@ -72,6 +72,7 @@ test.describe("transaction category editing", () => {
       await editor.getByText("Remember for this merchant", { exact: true }).click();
       await expect(remember).not.toBeChecked();
       await expect(remember).toHaveAccessibleDescription(/transaction-only correction/);
+      await expect(editor).not.toContainText("No remembered category will be changed.");
       await editor.getByText("Remember for this merchant", { exact: true }).click();
       await expect(remember).toBeChecked();
       await category.focus();

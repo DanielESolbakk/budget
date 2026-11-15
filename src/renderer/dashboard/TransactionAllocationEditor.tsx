@@ -6,14 +6,13 @@ import { formatMinorUnits } from "../../domain/money/minorUnits.js";
 import { parseAllocationDraft, type AllocationDraft, type AllocationEditorError } from "./transactionAllocationDraft.js";
 export type { AllocationDraft, AllocationEditorError } from "./transactionAllocationDraft.js";
 
-const bookedDateFormatter = new Intl.DateTimeFormat("nb-NO", { dateStyle: "medium", timeZone: "UTC" });
-
 interface TransactionAllocationEditorProps {
   transaction: Transaction;
   allocations: readonly AllocationDraft[];
   canReorder: boolean;
   totalMinor: bigint;
   incompleteAllocationCount: number;
+  invalidAmountIndex: number;
   currencyFormatter: Intl.NumberFormat;
   error: AllocationEditorError | null;
   isSaving: boolean;
@@ -34,6 +33,7 @@ export function TransactionAllocationEditor({
   canReorder,
   totalMinor,
   incompleteAllocationCount,
+  invalidAmountIndex,
   currencyFormatter,
   error,
   isSaving,
@@ -67,14 +67,11 @@ export function TransactionAllocationEditor({
   if (isSaving) draftStatus = "Saving split...";
   else if (loading) draftStatus = "Loading categories...";
   else if (catalogError !== null) draftStatus = "Retry loading categories before saving.";
+  else if (invalidAmountIndex >= 0) draftStatus = `Enter a valid amount for row ${invalidAmountIndex + 1}`;
   else if (draft.ok) draftStatus = "Ready to save";
   else if (incompleteRow >= 0) draftStatus = `Finish category and amount for row ${incompleteRow + 1}`;
   else if (draft.error.field !== undefined || remainingMinor === 0n) draftStatus = draft.error.message;
-  else {
-    const balance = overAllocatedMinor ?? (remainingMinor < 0n ? -remainingMinor : remainingMinor);
-    draftStatus = `${formatMinorUnits(balance, currencyFormatter)} ${
-      overAllocatedMinor === null ? "remaining" : "over-allocated"}`;
-  }
+  else draftStatus = "Adjust amounts to match the transaction.";
 
   return (
     <section
@@ -85,21 +82,18 @@ export function TransactionAllocationEditor({
       aria-busy={isSaving}
       aria-describedby={error === null ? undefined : "transaction-allocation-error"}
     >
-      <header className="transaction-allocation-heading">
-        <div>
-          <h3>Split transaction</h3>
-          <p className="transaction-allocation-context">
-            <strong>{transaction.merchantAlias ?? transaction.merchantRaw}</strong>
-            <time dateTime={transaction.bookedAtIso}>{bookedDateFormatter.format(new Date(transaction.bookedAtIso))}</time>
-          </p>
-        </div>
-        <strong className="transaction-allocation-source">
-          {formatMinorUnits(transaction.amountMinor, currencyFormatter)}
-        </strong>
-      </header>
-      <p className="transaction-allocation-guidance">Changes apply only when you save.</p>
+      <h3>Split transaction</h3>
+      <p className="transaction-allocation-guidance">
+        Divide the transaction amount across categories. The amounts must add up to the original amount.
+        Changes apply only when you save.
+      </p>
       <p className="transaction-allocation-summary" role="status" aria-label="Split draft status" aria-live="off">
-        {draftStatus}
+        <span>{draftStatus}</span>
+        <span>
+          {invalidAmountIndex >= 0
+            ? "Remaining: unavailable"
+            : `${overAllocatedMinor === null ? "Remaining:" : "Over-allocated:"} ${formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}`}
+        </span>
       </p>
       <details className="transaction-allocation-totals">
         <summary>Split details</summary>
@@ -109,7 +103,7 @@ export function TransactionAllocationEditor({
             <strong>{formatMinorUnits(transaction.amountMinor, currencyFormatter)}</strong>
           </p>
           <p>
-            {incompleteAllocationCount === 0 ? "Allocation total:" : "Allocated so far:"}
+            {invalidAmountIndex >= 0 ? "Valid amounts so far:" : incompleteAllocationCount === 0 ? "Allocation total:" : "Allocated so far:"}
             <strong>{formatMinorUnits(totalMinor, currencyFormatter)}</strong>
           </p>
           <p>
@@ -118,7 +112,7 @@ export function TransactionAllocationEditor({
                 ? "Remaining to allocate:"
                 : "Balance after entered amounts:"
               : "Over-allocated by:"}
-            <strong>{formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}</strong>
+            <strong>{invalidAmountIndex >= 0 ? "Unavailable" : formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}</strong>
           </p>
           {incompleteAllocationCount > 0 && (
             <p className="transaction-allocation-incomplete">
