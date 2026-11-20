@@ -1,4 +1,5 @@
 import { _electron as electron } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures/electron.js";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
@@ -14,6 +15,20 @@ function setRememberedCategory(databasePath: string, categoryId: string): void {
   } finally {
     database.close();
   }
+}
+
+async function waitForInitialCatalog(window: Page): Promise<void> {
+  await expect(window.getByLabel("Application status")).toContainText("Ready for review");
+  const targets = window.getByText("Manage category targets", { exact: true });
+  await targets.click();
+  const section = window.getByRole("region", { name: "Category Target Entry" });
+  await section.getByRole("button", { name: "Add target", exact: true }).click();
+  const form = section.getByRole("form", { name: "Category target entry form" });
+  await expect(form.getByRole("combobox", { name: "Category", exact: true })
+    .getByRole("option", { name: "Groceries & food", exact: true })).toHaveCount(1);
+  await expect(form.getByRole("button", { name: "Manage categories for budget targets" })).toBeEnabled();
+  await form.getByRole("button", { name: "Cancel", exact: true }).click();
+  await targets.click();
 }
 
 test.describe("transaction category editing", () => {
@@ -97,6 +112,7 @@ test.describe("transaction category editing", () => {
     databasePath,
     window,
   }) => {
+    await waitForInitialCatalog(window);
     const ledgerDatabase = createLocalLedgerDatabase({ dbPath: databasePath });
     const transactionId = ledgerDatabase.loadLedgerSnapshotData().transactions
       .find((transaction) => transaction.merchantRaw === "Kiwi")?.id;
@@ -183,6 +199,7 @@ test.describe("transaction category editing", () => {
     databasePath,
     window,
   }) => {
+    await waitForInitialCatalog(window);
     setRememberedCategory(databasePath, "fuel");
     await appShell.openWorkspace("Transactions");
     const editor = await new LedgerPage(window).openCategoryEditor("Kiwi");
@@ -225,6 +242,7 @@ test.describe("transaction category editing", () => {
     databasePath,
     window,
   }) => {
+    await waitForInitialCatalog(window);
     setRememberedCategory(databasePath, "fuel");
     const database = createLocalLedgerDatabase({ dbPath: databasePath });
     const transactionId = database.loadLedgerSnapshotData().transactions
@@ -268,6 +286,7 @@ test.describe("transaction category editing", () => {
     databasePath,
     window,
   }) => {
+    await waitForInitialCatalog(window);
     setRememberedCategory(databasePath, "fuel");
     const setupDatabase = new DatabaseSync(databasePath);
     try {
@@ -337,6 +356,7 @@ test.describe("transaction category editing", () => {
     databasePath,
     window,
   }) => {
+    await waitForInitialCatalog(window);
     const original = createLocalLedgerDatabase({ dbPath: databasePath });
     const transactionId = original.loadLedgerSnapshotData().transactions
       .find((transaction) => transaction.merchantRaw === "Kiwi")?.id;
@@ -407,6 +427,7 @@ test.describe("transaction category editing", () => {
     databasePath,
     window,
   }) => {
+    await waitForInitialCatalog(window);
     setRememberedCategory(databasePath, "fuel");
     const database = createLocalLedgerDatabase({ dbPath: databasePath });
     const transactionId = database.loadLedgerSnapshotData().transactions
@@ -442,6 +463,7 @@ test.describe("transaction category editing", () => {
     databasePath,
     window,
   }) => {
+    await waitForInitialCatalog(window);
     setRememberedCategory(databasePath, "groceries");
     const database = createLocalLedgerDatabase({ dbPath: databasePath });
     const transactionId = database.loadLedgerSnapshotData().transactions
@@ -599,6 +621,7 @@ test.describe("transaction category editing", () => {
       electronApp,
       window,
     }) => {
+      await waitForInitialCatalog(window);
       const database = new DatabaseSync(databasePath);
       database.prepare(
         "UPDATE transactions SET category_id = ? WHERE merchant_raw = ?"
