@@ -1,6 +1,7 @@
 import React from "react";
 import type {
   TransactionCategoryEditContext,
+  TransactionCategoryEditFailureCode,
   TransactionCategoryEditInput,
   TransactionCategoryEditResult,
 } from "../../shared/transactionCategoryEdit.js";
@@ -29,7 +30,25 @@ interface TransactionCategoryEditorProps {
   onDiscardAndSwitch: () => void;
 }
 
-function formatSaveFailureMessage(details: string): string {
+function formatSaveFailureMessage(
+  details: string,
+  failureCode: TransactionCategoryEditFailureCode | undefined,
+  mode: "single" | "split"
+): string {
+  if (failureCode === "STALE_EDIT") {
+    const draftDescription = mode === "split" ? "split draft" : "draft";
+    return `Your change could not be saved because the transaction, remembered category, or local ledger changed while you were editing. Reopen the editor to load the latest state before reapplying your change. Your ${draftDescription} remains available until you close this editor; canceling discards it. Details: ${details}`;
+  }
+
+  if (failureCode !== undefined) {
+    const draftDescription = mode === "split" ? "split draft" : "draft";
+    return `Your changes could not be saved. Your ${draftDescription} is still available. Review the category, merchant, or split details and correct them before trying again. Details: ${details}`;
+  }
+
+  if (mode === "split") {
+    return `Your split draft is still available. Use Save split to retry, or cancel and reopen this transaction later. Details: ${details}`;
+  }
+
   return `Your changes could not be saved. Your draft is still available. Try saving again, or cancel and reopen this transaction later. Details: ${details}`;
 }
 
@@ -171,13 +190,15 @@ export function TransactionCategoryEditor({
     try {
       const result = await onSave(request);
       if (!result.ok) {
-        setError(formatSaveFailureMessage(result.message));
+        setError(formatSaveFailureMessage(result.message, result.code, mode));
         return;
       }
       onSaved(result);
     } catch (saveError: unknown) {
       setError(formatSaveFailureMessage(
-        saveError instanceof Error ? saveError.message : "Unable to save this category change."
+        saveError instanceof Error ? saveError.message : "Unable to save this category change.",
+        undefined,
+        mode
       ));
     } finally {
       setIsSaving(false);
