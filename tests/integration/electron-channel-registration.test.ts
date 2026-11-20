@@ -541,13 +541,17 @@ describe("Electron channel registration and live ledger wiring", () => {
     const snapshot = restoreBackupSnapshot({ snapshotPath });
     writeFileSync(snapshotPath, JSON.stringify(buildBackupSnapshot({
       ...snapshot,
-      transactions: snapshot.transactions.map((transaction) => ({
-        ...transaction,
-        categoryAllocations: [
-          { categoryId: "groceries", amountMinor: -1000 },
-          { categoryId: "transport", amountMinor: -1500 },
-        ],
-      })),
+      transactions: snapshot.transactions.flatMap((transaction) => [
+        {
+          ...transaction,
+          categoryAllocations: [
+            { categoryId: "groceries", amountMinor: -1000 },
+            { categoryId: "transport", amountMinor: -1500 },
+          ],
+        },
+        { ...transaction, id: "filtered-before", merchantRaw: "Z synthetic" },
+        { ...transaction, id: "filtered-after", merchantRaw: "A synthetic" },
+      ]),
       merchantCategoryRules: [{ merchantAlias: "KIWI", categoryId: "transport" }],
     })), "utf8");
     await invoke("backup:restore", { snapshotPath });
@@ -585,9 +589,21 @@ describe("Electron channel registration and live ledger wiring", () => {
       expect(afterRestore.expectedState.databaseGeneration)
         .toBe(context.expectedState.databaseGeneration + 1);
 
+      const query = Object.freeze({
+        categoryId: "groceries", sortBy: "merchantRaw", sortDirection: "desc", page: 2, pageSize: 1,
+      });
+      expect(await invoke("transaction:list", query)).toMatchObject({
+        transactions: [{ id: "restored-transaction" }], totalCount: 3, page: 2, pageSize: 1,
+      });
       const request = { ...staleRequest, expectedState: afterRestore.expectedState };
       expect(await invoke("transaction:editCategory", request))
         .toMatchObject({ ok: true, transactionChanged: true, merchantRuleEffect: "updated" });
+      expect(await invoke("transaction:list", query)).toMatchObject({
+        transactions: [{ id: "filtered-after" }], totalCount: 2, page: 2, pageSize: 1,
+      });
+      expect(query).toEqual({
+        categoryId: "groceries", sortBy: "merchantRaw", sortDirection: "desc", page: 2, pageSize: 1,
+      });
       const committed = database.loadLedgerSnapshotData();
       expect(await invoke("transaction:editCategory", request))
         .toMatchObject({ ok: false, code: "STALE_EDIT" });
