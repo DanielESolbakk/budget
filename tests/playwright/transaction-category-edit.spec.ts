@@ -335,8 +335,11 @@ test.describe("transaction category editing", () => {
       await remember.uncheck();
       await editor.getByRole("button", { name: "Save category for Kiwi" }).click();
 
-      await expect(editor.getByRole("alert"))
-        .toContainText("synthetic transaction category edit failure");
+      const saveFailure = editor.getByRole("alert");
+      await expect(saveFailure).toContainText("synthetic transaction category edit failure");
+      await expect(saveFailure).toContainText(/your draft is still available/i);
+      await expect(saveFailure).toContainText(/try saving again/i);
+      await expect(saveFailure).toContainText(/cancel.*reopen.*later/i);
       await expect(category).toHaveValue("housing");
       await expect(remember).not.toBeChecked();
       await expect(row).toContainText("Groceries & food");

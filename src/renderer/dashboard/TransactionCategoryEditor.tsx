@@ -29,6 +29,10 @@ interface TransactionCategoryEditorProps {
   onDiscardAndSwitch: () => void;
 }
 
+function formatSaveFailureMessage(details: string): string {
+  return `Your changes could not be saved. Your draft is still available. Try saving again, or cancel and reopen this transaction later. Details: ${details}`;
+}
+
 function createAllocationDraft(context: TransactionCategoryEditContext): AllocationDraft[] {
   const { transaction } = context;
   return transaction.categoryAllocations?.length
@@ -167,12 +171,14 @@ export function TransactionCategoryEditor({
     try {
       const result = await onSave(request);
       if (!result.ok) {
-        setError(result.message);
+        setError(formatSaveFailureMessage(result.message));
         return;
       }
       onSaved(result);
     } catch (saveError: unknown) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save this category change.");
+      setError(formatSaveFailureMessage(
+        saveError instanceof Error ? saveError.message : "Unable to save this category change."
+      ));
     } finally {
       setIsSaving(false);
     }
