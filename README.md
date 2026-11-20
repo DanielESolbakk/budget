@@ -338,4 +338,10 @@ The planning work for this project is centered around:
 - `.github/instructions/style.instructions.md`
 - `.agents/skills/issue-planning-governor/SKILL.md`
 
+For the approved offline household SIFO reference, expenditure/income comparison
+and separate forecast scenario, start with the
+[SIFO implementation handoff](docs/ways-of-work/plan/budget-planner/sifo-reference-budget-plan.md).
+It links the existing Stories and Tests, source caveats and delivery order;
+its two follow-on roadmap proposals are not approved implementation scope.
+
 The docs tree under `docs/ways-of-work/plan/` will hold the feature PRD, technical breakdown, implementation plan, project plan, and issue checklist as those artifacts are created.

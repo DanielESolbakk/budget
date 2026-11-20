@@ -33,6 +33,7 @@ Build a Windows-first, local-first household budgeting desktop app using Electro
 - [ADR-001: Stack and Runtime Boundaries](docs/ways-of-work/plan/budget-planner/adr-001-stack-and-runtime-boundaries.md) — architecture decision record for locked stack and runtime boundaries.
 - [ADR-002: Multi-Format Import and Review Boundaries](docs/ways-of-work/plan/budget-planner/adr-002-multi-format-import-and-review-boundaries.md) — proposed local extraction, adapter, and review boundaries for text, CSV, and PDF imports.
 - [Budget Planner Domain Glossary](docs/ways-of-work/plan/budget-planner/domain-glossary.md) — canonical domain terms used across docs, code, tests, and issues.
+- [SIFO Reference Budget Implementation Handoff](docs/ways-of-work/plan/budget-planner/sifo-reference-budget-plan.md) — approved S4.3.11-S4.3.13 and Test owners, source caveats, dependencies, and two unapproved roadmap proposals. S4.3.11 still owns full plan/catalog synchronization before broad implementation.
 - docs/ways-of-work/plan/budget-planner/budget-planner.md — feature PRD.
 - docs/ways-of-work/plan/budget-planner/technical-breakdown.md — domain model, import pipeline, and module boundaries.
 - docs/ways-of-work/plan/budget-planner/implementation-plan.md — execution order, dependencies, and validation steps.
