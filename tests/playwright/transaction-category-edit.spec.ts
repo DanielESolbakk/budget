@@ -2,10 +2,12 @@ import { _electron as electron } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures/electron.js";
 import { DatabaseSync } from "node:sqlite";
+import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { AppShellPage } from "./pom/AppShellPage.js";
 import { CategoryManagementPage } from "./pom/CategoryManagementPage.js";
+import { CsvImportPage } from "./pom/CsvImportPage.js";
 import { LedgerPage } from "./pom/LedgerPage.js";
 
 const pagedCategoryTest = test.extend({
@@ -337,11 +339,22 @@ test.describe("transaction category editing", () => {
       await editor.getByRole("button", { name: "Save category for Kiwi" }).click();
 
       const saveFailure = editor.getByRole("alert");
-      await expect(saveFailure).toContainText("synthetic transaction category edit failure");
-      await expect(saveFailure).toContainText(/your draft is still available/i);
-      await expect(saveFailure).toContainText(/try saving again/i);
+      await expect(saveFailure).not.toContainText("synthetic transaction category edit failure");
+      await expect(saveFailure).toContainText(/your draft is still here/i);
+      await expect(saveFailure).toContainText(/try save again/i);
       await expect(saveFailure).toContainText(/cancel.*reopen.*later/i);
       await expect(saveFailure).toBeVisible();
+      const technicalDetails = editor.getByText("Technical details", { exact: true });
+      const technicalDetailsDisclosure = editor.locator("details.transaction-category-error-details");
+      await expect(technicalDetails).toBeVisible();
+      const technicalDetailsBox = await technicalDetails.boundingBox();
+      expect(technicalDetailsBox?.height).toBeGreaterThanOrEqual(44);
+      await expect(technicalDetailsDisclosure).not.toHaveAttribute("open", "");
+      await expect(technicalDetailsDisclosure)
+        .toContainText(/synthetic transaction category edit failure/);
+      await technicalDetails.click();
+      await expect(technicalDetailsDisclosure).toHaveAttribute("open", "");
+      await expect(technicalDetailsDisclosure.locator("pre")).toBeVisible();
       expect(await window.evaluate(() =>
         document.documentElement.scrollWidth <= document.documentElement.clientWidth
       )).toBe(true);
@@ -418,9 +431,18 @@ test.describe("transaction category editing", () => {
       await split.getByRole("button", { name: "Save split for Kiwi" }).click();
 
       const saveFailure = editor.getByRole("alert");
-      await expect(saveFailure).toContainText("synthetic split category edit failure");
-      await expect(saveFailure).toContainText(/split draft is still available/i);
+      await expect(saveFailure).not.toContainText("synthetic split category edit failure");
+      await expect(saveFailure).toContainText(/split draft could not be saved/i);
+      await expect(saveFailure).toContainText(/your values are still here/i);
       await expect(saveFailure).toContainText(/save split to retry/i);
+      const technicalDetails = editor.getByText("Technical details", { exact: true });
+      const technicalDetailsDisclosure = editor.locator("details.transaction-category-error-details");
+      await expect(technicalDetails).toBeVisible();
+      await expect(technicalDetailsDisclosure).not.toHaveAttribute("open", "");
+      await expect(technicalDetailsDisclosure).toContainText(/synthetic split category edit failure/);
+      await technicalDetails.click();
+      await expect(technicalDetailsDisclosure).toHaveAttribute("open", "");
+      await expect(technicalDetailsDisclosure.locator("pre")).toBeVisible();
       await expect(split.getByLabel("Allocation category 1")).toHaveValue("fuel");
       await expect(split.getByLabel("Allocation amount 1")).toHaveValue("-40");
       await expect(split.getByLabel("Allocation category 2")).toHaveValue("housing");
@@ -461,7 +483,7 @@ test.describe("transaction category editing", () => {
     }
   });
 
-  test("directs a stale category edit to reopen and preserves its draft until canceled", async ({
+  test("refreshes a stale split edit with the latest state while retaining the draft for explicit save", async ({
     appShell,
     databasePath,
     window,
@@ -475,6 +497,13 @@ test.describe("transaction category editing", () => {
 
     await category.selectOption("housing");
     await remember.uncheck();
+    await editor.getByRole("button", { name: "Split across categories" }).click();
+    const split = editor.getByRole("region", { name: "Transaction category allocations for Kiwi" });
+    await split.getByLabel("Allocation category 1").selectOption("fuel");
+    await split.getByLabel("Allocation amount 1").fill("-40");
+    await split.getByLabel("Allocation category 2").selectOption("housing");
+    await split.getByLabel("Allocation amount 2").fill("-32");
+
     const concurrentDatabase = new DatabaseSync(databasePath);
     try {
       concurrentDatabase.prepare(
@@ -484,35 +513,66 @@ test.describe("transaction category editing", () => {
       concurrentDatabase.close();
     }
 
-    await editor.getByRole("button", { name: "Save category for Kiwi" }).click();
+    const saveSplit = split.getByRole("button", { name: "Save split for Kiwi" });
+    await saveSplit.focus();
+    await window.keyboard.press("Enter");
 
     const saveFailure = editor.getByRole("alert");
     await expect(saveFailure).toContainText(/changed while you were editing/i);
-    await expect(saveFailure).toContainText(/refresh ledger and discard draft/i);
-    await expect(saveFailure).toContainText(/draft remains available until you choose/i);
+    await expect(saveFailure).toContainText(/refresh the latest state/i);
+    await expect(saveFailure).toContainText(/review it and save again/i);
     await expect(saveFailure).not.toContainText(/try saving again/i);
+    await expect(saveSplit).toBeDisabled();
+    await expect(split.getByLabel("Allocation category 1")).toHaveValue("fuel");
+    await expect(split.getByLabel("Allocation amount 1")).toHaveValue("-40");
+    await expect(split.getByLabel("Allocation category 2")).toHaveValue("housing");
+    await expect(split.getByLabel("Allocation amount 2")).toHaveValue("-32");
+    const refreshLedger = editor.getByRole("button", { name: "Refresh ledger and keep draft" });
+    await expect(refreshLedger).toBeVisible();
+    await expect(refreshLedger).toBeFocused();
+
+    await split.getByLabel("Allocation amount 1").fill("-41");
+    await split.getByLabel("Allocation amount 2").fill("-31");
+    await expect(saveSplit).toBeDisabled();
+    await expect(refreshLedger).toBeVisible();
+    await expect(split.getByLabel("Allocation amount 1")).toHaveValue("-41");
+    await expect(split.getByLabel("Allocation amount 2")).toHaveValue("-31");
+
+    await refreshLedger.focus();
+    await window.keyboard.press("Enter");
+    await window.keyboard.press("Escape");
+    await expect(editor).toBeVisible();
+    await expect(editor.getByRole("status", { name: "Category edit recovery status" }))
+      .toContainText(/latest transaction state is loaded/i);
+    await expect(split.getByLabel("Allocation category 1")).toBeFocused();
+    await expect(split.getByLabel("Allocation category 1")).toHaveValue("fuel");
+    await expect(split.getByLabel("Allocation amount 1")).toHaveValue("-41");
+    await expect(split.getByLabel("Allocation category 2")).toHaveValue("housing");
+    await expect(split.getByLabel("Allocation amount 2")).toHaveValue("-31");
+    await expect(saveSplit).toBeEnabled();
+
+    await editor.getByRole("button", { name: "Use one category" }).click();
     await expect(category).toHaveValue("housing");
     await expect(remember).not.toBeChecked();
-    const refreshLedger = editor.getByRole("button", { name: "Refresh ledger and discard draft" });
-    await expect(refreshLedger).toBeVisible();
-    await refreshLedger.click();
+    await expect(editor).toContainText("Currently remembered category: Groceries & food.");
+    await editor.getByRole("button", { name: "Split across categories" }).click();
+    await expect(split.getByLabel("Allocation amount 1")).toHaveValue("-41");
+    await expect(split.getByLabel("Allocation amount 2")).toHaveValue("-31");
+    await split.getByRole("button", { name: "Save split for Kiwi" }).click();
     await expect(editor).toBeHidden();
 
-    const ledger = window.getByRole("region", { name: "Ledger", exact: true });
-    const row = ledger.getByRole("row", { name: /Ledger transaction Kiwi/ });
-    await expect(row).toBeVisible();
-    await expect(row.getByRole("button", { name: "Edit category for Kiwi" })).toBeFocused();
-    await row.getByRole("button", { name: "Edit category for Kiwi" }).click();
-    const refreshedEditor = window.getByRole("region", { name: "Edit category for Kiwi" });
-    await expect(refreshedEditor.getByRole("combobox", { name: "Category for Kiwi" }))
-      .toHaveValue("groceries");
-    await expect(refreshedEditor).toContainText("Currently remembered category: Groceries & food.");
-    await refreshedEditor.getByRole("button", { name: "Cancel category editing for Kiwi" }).click();
     const verificationDatabase = createLocalLedgerDatabase({ dbPath: databasePath });
     try {
-      expect(verificationDatabase.loadLedgerSnapshotData().transactions
-        .find((transaction) => transaction.merchantRaw === "Kiwi"))
-        .toMatchObject({ categoryId: "groceries" });
+      const transaction = verificationDatabase.loadLedgerSnapshotData().transactions
+        .find((item) => item.merchantRaw === "Kiwi");
+      expect(transaction).toMatchObject({ amountMinor: -7200 });
+      expect(transaction?.categoryAllocations?.map((allocation) => ({
+        categoryId: allocation.categoryId,
+        amountMinor: allocation.amountMinor,
+      }))).toEqual([
+        { categoryId: "fuel", amountMinor: -4100 },
+        { categoryId: "housing", amountMinor: -3100 },
+      ]);
       expect(verificationDatabase.listMerchantCategoryRules()).toEqual([
         expect.objectContaining({ merchantAlias: "KIWI", categoryId: "groceries" }),
       ]);
@@ -520,6 +580,71 @@ test.describe("transaction category editing", () => {
       verificationDatabase.close();
     }
   });
+
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    test(`keeps a stale draft available when refreshed state removes its row from the active filter at ${viewport.width}x${viewport.height}`, async ({
+      appShell,
+      databasePath,
+      window,
+    }) => {
+      await window.setViewportSize(viewport);
+      await waitForInitialCatalog(window);
+      setRememberedCategory(databasePath, "fuel");
+      await appShell.openWorkspace("Transactions");
+      const ledgerPage = new LedgerPage(window);
+      await ledgerPage.openMoreFilters();
+      await ledgerPage.categoryInput.selectOption("groceries");
+      const row = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+      await expect(row).toBeVisible();
+      await row.getByRole("button", { name: "Edit category for Kiwi" }).click();
+      const editor = window.getByRole("region", { name: "Edit category for Kiwi" });
+      await editor.getByRole("combobox", { name: "Category for Kiwi" }).selectOption("housing");
+      await editor.getByRole("checkbox", { name: "Remember for this merchant" }).uncheck();
+
+      const concurrentDatabase = new DatabaseSync(databasePath);
+      try {
+        concurrentDatabase.prepare(
+          "UPDATE transactions SET category_id = ? WHERE merchant_raw = ?"
+        ).run("fuel", "Kiwi");
+        concurrentDatabase.prepare(
+          "UPDATE merchant_category_rules SET category_id = ? WHERE merchant_alias = ?"
+        ).run("groceries", "KIWI");
+      } finally {
+        concurrentDatabase.close();
+      }
+
+      await editor.getByRole("button", { name: "Save category for Kiwi" }).click();
+      await expect(editor.getByRole("alert")).toContainText(/changed while you were editing/i);
+      await editor.getByRole("button", { name: "Refresh ledger and keep draft" }).click();
+
+      await expect(ledgerPage.categoryInput).toHaveValue("groceries");
+      await expect(row).toBeHidden();
+      const recoveryPanel = window.getByRole("region", { name: "Filtered category edit recovery" });
+      await expect(recoveryPanel).toBeVisible();
+      await expect(recoveryPanel).toContainText(/no longer matches the current filters/i);
+      const recoveredEditor = recoveryPanel.getByRole("region", { name: "Edit category for Kiwi" });
+      await expect(recoveredEditor.getByRole("combobox", { name: "Category for Kiwi" }))
+        .toHaveValue("housing");
+      await expect(recoveredEditor).toContainText("Current saved category: Fuel.");
+      await expect(recoveredEditor.getByRole("checkbox", { name: "Remember for this merchant" }))
+        .not.toBeChecked();
+      await recoveredEditor.getByRole("button", { name: "Save category for Kiwi" }).click();
+
+      await expect(recoveryPanel).toBeHidden();
+      await expect(row).toBeHidden();
+      const verificationDatabase = createLocalLedgerDatabase({ dbPath: databasePath });
+      try {
+        expect(verificationDatabase.loadLedgerSnapshotData().transactions
+          .find((transaction) => transaction.merchantRaw === "Kiwi"))
+          .toMatchObject({ categoryId: "housing" });
+        expect(verificationDatabase.listMerchantCategoryRules()).toEqual([
+          expect.objectContaining({ merchantAlias: "KIWI", categoryId: "groceries" }),
+        ]);
+      } finally {
+        verificationDatabase.close();
+      }
+    });
+  }
 
   test("directs a missing transaction to refresh the ledger instead of retrying", async ({
     appShell,
@@ -543,11 +668,13 @@ test.describe("transaction category editing", () => {
 
     const saveFailure = editor.getByRole("alert");
     await expect(saveFailure).toContainText(/transaction is no longer available/i);
-    await expect(saveFailure).toContainText(/refresh ledger and discard draft/i);
+    await expect(saveFailure).toContainText(/refresh the ledger to remove it/i);
     await expect(saveFailure).not.toContainText(/try saving again|review the category/i);
     await expect(category).toHaveValue("housing");
     const refreshLedger = editor.getByRole("button", { name: "Refresh ledger and discard draft" });
     await expect(refreshLedger).toBeVisible();
+    await expect(editor.getByRole("button", { name: "Save category for Kiwi" })).toBeDisabled();
+    await expect(refreshLedger).toBeFocused();
     await refreshLedger.click();
     await expect(editor).toBeHidden();
     const ledger = window.getByRole("region", { name: "Ledger", exact: true });
@@ -858,45 +985,65 @@ test.describe("transaction category editing", () => {
   });
 
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
-    test(`remembers an unchanged category through native relaunch at ${viewport.width}x${viewport.height}`, async ({
+    test(`applies an inline remembered rule to a later import after native relaunch at ${viewport.width}x${viewport.height}`, async ({
       appShell,
       databasePath,
       electronApp,
       window,
     }) => {
       await waitForInitialCatalog(window);
-      const database = new DatabaseSync(databasePath);
-      database.prepare(
-        "UPDATE transactions SET category_id = ? WHERE merchant_raw = ?"
-      ).run("fuel", "Kiwi");
-      database.prepare("DELETE FROM merchant_category_rules WHERE merchant_alias = ?").run("KIWI");
-      database.close();
       const beforeSave = createLocalLedgerDatabase({ dbPath: databasePath });
-      const transactionId = beforeSave.loadLedgerSnapshotData().transactions
-        .find((transaction) => transaction.merchantRaw === "Kiwi")?.id;
-      expect(beforeSave.listMerchantCategoryRules().some((rule) => rule.merchantAlias === "KIWI")).toBe(false);
+      const initialSnapshot = beforeSave.loadLedgerSnapshotData();
+      const referenceTransaction = initialSnapshot.transactions.find((transaction) =>
+        transaction.merchantRaw === "Kiwi"
+      );
+      if (referenceTransaction === undefined) throw new Error("Expected the seeded Kiwi transaction.");
+      const transactionId = "synthetic-future-match-source";
+      beforeSave.replaceLedgerSnapshotData({
+        ...initialSnapshot,
+        transactions: [
+          ...initialSnapshot.transactions,
+          {
+            id: transactionId,
+            householdId: referenceTransaction.householdId,
+            accountId: referenceTransaction.accountId,
+            bookedAtIso: "2026-05-30T00:00:00.000Z",
+            amountMinor: -1700,
+            currencyCode: "NOK",
+            categoryId: "fuel",
+            merchantRaw: "SYNTHETIC FUTURE MATCH",
+          },
+        ],
+        merchantCategoryRules: (initialSnapshot.merchantCategoryRules ?? []).filter((rule) =>
+          rule.merchantAlias !== "SYNTHETIC FUTURE MATCH"
+        ),
+      });
+      expect(beforeSave.listMerchantCategoryRules().some((rule) =>
+        rule.merchantAlias === "SYNTHETIC FUTURE MATCH"
+      )).toBe(false);
       beforeSave.close();
-      if (transactionId === undefined) throw new Error("Expected the seeded Kiwi transaction.");
 
       await window.setViewportSize(viewport);
       await appShell.openWorkspace("Transactions");
-      const row = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+      const row = window.getByRole("row", { name: /Ledger transaction SYNTHETIC FUTURE MATCH/ });
       await expect(row).toContainText("Fuel");
       await expect(row.getByRole("button", { name: /Allocate categories|Edit category allocations/ }))
         .toHaveCount(0);
-      const trigger = row.getByRole("button", { name: "Edit category for Kiwi" });
+      const trigger = row.getByRole("button", { name: "Edit category for SYNTHETIC FUTURE MATCH" });
       await trigger.focus();
       await window.keyboard.press("Enter");
-      const editor = window.getByRole("region", { name: "Edit category for Kiwi" });
-      const category = editor.getByRole("combobox", { name: "Category for Kiwi" });
+      const editor = window.getByRole("region", { name: "Edit category for SYNTHETIC FUTURE MATCH" });
+      const category = editor.getByRole("combobox", { name: "Category for SYNTHETIC FUTURE MATCH" });
       const remember = editor.getByRole("checkbox", { name: "Remember for this merchant" });
-      const save = editor.getByRole("button", { name: "Save category for Kiwi" });
+      const save = editor.getByRole("button", { name: "Save category for SYNTHETIC FUTURE MATCH" });
       await expect(category).toHaveValue("fuel");
-      await expect(editor).toContainText("Matching merchant: KIWI");
+      await expect(editor).toContainText("Matching merchant: SYNTHETIC FUTURE MATCH");
       await expect(editor).toContainText("No category is currently remembered for this merchant.");
       await expect(editor).toContainText("For future matching transactions, use Fuel.");
       await expect(editor).toContainText("Existing history will not change.");
-      await expect(editor.getByRole("region", { name: "Transaction category allocations for Kiwi" }))
+      await expect(editor.getByRole("region", {
+        name: "Transaction category allocations for SYNTHETIC FUTURE MATCH",
+      }))
         .toHaveCount(0);
       await expect(editor.getByRole("textbox")).toHaveCount(0);
       await expect(remember).toBeChecked();
@@ -916,22 +1063,25 @@ test.describe("transaction category editing", () => {
       try {
         expect(savedFuel.getTransactionById(transactionId)).toMatchObject({
           categoryId: "fuel",
-          amountMinor: -7200,
-          merchantRaw: "Kiwi",
+          amountMinor: -1700,
+          merchantRaw: "SYNTHETIC FUTURE MATCH",
         });
-        expect(savedFuel.listMerchantCategoryRules()).toContainEqual({ merchantAlias: "KIWI", categoryId: "fuel" });
+        expect(savedFuel.listMerchantCategoryRules()).toContainEqual({
+          merchantAlias: "SYNTHETIC FUTURE MATCH",
+          categoryId: "fuel",
+        });
       } finally {
         savedFuel.close();
       }
 
-      await row.getByRole("button", { name: "Edit category for Kiwi" }).click();
-      const secondEditor = window.getByRole("region", { name: "Edit category for Kiwi" });
-      await secondEditor.getByRole("combobox", { name: "Category for Kiwi" }).selectOption("groceries");
+      await row.getByRole("button", { name: "Edit category for SYNTHETIC FUTURE MATCH" }).click();
+      const secondEditor = window.getByRole("region", { name: "Edit category for SYNTHETIC FUTURE MATCH" });
+      await secondEditor.getByRole("combobox", { name: "Category for SYNTHETIC FUTURE MATCH" }).selectOption("groceries");
       await expect(secondEditor).toContainText("Currently remembered category: Fuel.");
       await expect(secondEditor)
         .toContainText("For future matching transactions, use Groceries & food.");
       await expect(secondEditor).toContainText("Existing history will not change.");
-      await secondEditor.getByRole("button", { name: "Save category for Kiwi" }).click();
+      await secondEditor.getByRole("button", { name: "Save category for SYNTHETIC FUTURE MATCH" }).click();
       await expect(row).toContainText("Groceries & food");
       await expect(window.getByRole("status", { name: "Category edit status" }))
         .toContainText("saved and remembered for future matching transactions");
@@ -939,15 +1089,24 @@ test.describe("transaction category editing", () => {
       try {
         expect(savedGroceries.getTransactionById(transactionId)).toMatchObject({
           categoryId: "groceries",
-          amountMinor: -7200,
-          merchantRaw: "Kiwi",
+          amountMinor: -1700,
+          merchantRaw: "SYNTHETIC FUTURE MATCH",
         });
         expect(savedGroceries.listMerchantCategoryRules())
-          .toContainEqual({ merchantAlias: "KIWI", categoryId: "groceries" });
+          .toContainEqual({
+            merchantAlias: "SYNTHETIC FUTURE MATCH",
+            categoryId: "groceries",
+          });
       } finally {
         savedGroceries.close();
       }
 
+      const futureImportPath = join(dirname(databasePath), "synthetic-future-match.csv");
+      writeFileSync(
+        futureImportPath,
+        "Utført dato;Bokført dato;Beskrivelse;Beløp inn;Beløp ut;Valuta\n01.06.2026;;SYNTHETIC FUTURE MATCH;;-12.00;NOK\n",
+        "utf8"
+      );
       await electronApp.close();
       const restarted = await electron.launch({
         args: [
@@ -959,6 +1118,8 @@ test.describe("transaction category editing", () => {
           ...process.env,
           NODE_ENV: "test",
           BUDGET_TEST_LEDGER_SEED: "empty",
+          BUDGET_TEST_IMPORT_FILE_DIALOG: "csv-selected",
+          BUDGET_TEST_CSV_IMPORT_PATH: futureImportPath,
           BUDGET_DB_PATH: databasePath,
         },
       });
@@ -966,17 +1127,43 @@ test.describe("transaction category editing", () => {
         const restartedWindow = await restarted.firstWindow();
         await restartedWindow.waitForLoadState("domcontentloaded");
         await restartedWindow.setViewportSize(viewport);
-        await new AppShellPage(restartedWindow).openWorkspace("Transactions");
-        const restartedRow = restartedWindow.getByRole("row", { name: /Ledger transaction Kiwi/ });
+        const restartedShell = new AppShellPage(restartedWindow);
+        await restartedShell.openWorkspace("Transactions");
+        const restartedRow = restartedWindow.getByRole("row", {
+          name: /Ledger transaction SYNTHETIC FUTURE MATCH/,
+        });
         await expect(restartedRow).toContainText("Groceries & food");
-        await restartedRow.getByRole("button", { name: "Edit category for Kiwi" }).click();
-        const reopenedEditor = restartedWindow.getByRole("region", { name: "Edit category for Kiwi" });
-        await expect(reopenedEditor.getByRole("combobox", { name: "Category for Kiwi" }))
+        await restartedRow.getByRole("button", { name: "Edit category for SYNTHETIC FUTURE MATCH" }).click();
+        const reopenedEditor = restartedWindow.getByRole("region", {
+          name: "Edit category for SYNTHETIC FUTURE MATCH",
+        });
+        await expect(reopenedEditor.getByRole("combobox", { name: "Category for SYNTHETIC FUTURE MATCH" }))
           .toHaveValue("groceries");
         await expect(reopenedEditor).toContainText("Currently remembered category: Groceries & food.");
         await expect(reopenedEditor.getByRole("checkbox", { name: "Remember for this merchant" }))
           .toBeChecked();
-        await reopenedEditor.getByRole("button", { name: "Cancel category editing for Kiwi" }).click();
+        await reopenedEditor.getByRole("button", {
+          name: "Cancel category editing for SYNTHETIC FUTURE MATCH",
+        }).click();
+
+        await restartedShell.openWorkspace("Import");
+        await restartedShell.selectImportFormat("CSV statement");
+        const restartedCsvImport = new CsvImportPage(restartedWindow);
+        await restartedCsvImport.submitImport(futureImportPath);
+        await expect(restartedCsvImport.successStatus).toContainText("Added 1 transaction");
+        await restartedShell.openWorkspace("Transactions");
+        const futureRows = restartedWindow.getByRole("region", { name: "Ledger transactions" })
+          .getByRole("row", { name: /Ledger transaction SYNTHETIC FUTURE MATCH/ });
+        await expect(futureRows).toHaveCount(2);
+        await expect(futureRows.filter({ hasText: "Groceries & food" })).toHaveCount(2);
+        const futureDatabase = new DatabaseSync(databasePath);
+        try {
+          expect(futureDatabase.prepare(
+            "SELECT category_id FROM transactions WHERE merchant_raw = ? AND booked_at_iso = ?"
+          ).get("SYNTHETIC FUTURE MATCH", "2026-06-01T00:00:00Z")?.category_id).toBe("groceries");
+        } finally {
+          futureDatabase.close();
+        }
       } finally {
         await restarted.close();
       }

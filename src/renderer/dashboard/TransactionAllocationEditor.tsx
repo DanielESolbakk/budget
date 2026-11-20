@@ -16,6 +16,8 @@ interface TransactionAllocationEditorProps {
   currencyFormatter: Intl.NumberFormat;
   error: AllocationEditorError | null;
   isSaving: boolean;
+  isRefreshing: boolean;
+  saveBlocked: boolean;
   firstCategoryRef: React.RefObject<HTMLSelectElement>;
   onBalanceBlur: () => void;
   onUpdate: (index: number, update: Partial<AllocationDraft>) => void;
@@ -37,6 +39,8 @@ export function TransactionAllocationEditor({
   currencyFormatter,
   error,
   isSaving,
+  isRefreshing,
+  saveBlocked,
   firstCategoryRef,
   onBalanceBlur,
   onUpdate,
@@ -66,6 +70,7 @@ export function TransactionAllocationEditor({
   const roomGuidance = getAllocationRoomGuidance(transaction.amountMinor, totalMinor, allocations);
   let draftStatus: string;
   if (isSaving) draftStatus = "Saving split...";
+  else if (isRefreshing) draftStatus = "Refreshing transaction state...";
   else if (loading) draftStatus = "Loading categories...";
   else if (catalogError !== null) draftStatus = "Retry loading categories before saving.";
   else if (invalidAmountIndex >= 0) draftStatus = `Enter a valid amount for row ${invalidAmountIndex + 1}`;
@@ -81,7 +86,7 @@ export function TransactionAllocationEditor({
       className="transaction-allocation-editor"
       id="transaction-allocation-editor"
       aria-label={`Transaction category allocations for ${transaction.merchantRaw}`}
-      aria-busy={isSaving}
+      aria-busy={isSaving || isRefreshing}
       aria-describedby={error === null ? undefined : "transaction-allocation-error"}
     >
       <h3>Split transaction</h3>
@@ -151,7 +156,7 @@ export function TransactionAllocationEditor({
                   aria-label={`Allocation category ${index + 1}`}
                   aria-invalid={categoryHasError || undefined}
                   aria-describedby={categoryHasError ? "transaction-allocation-error" : undefined}
-                  disabled={isSaving || loading || catalogError !== null}
+                  disabled={isSaving || isRefreshing || loading || catalogError !== null}
                   value={allocation.categoryId}
                   onChange={(event) => onUpdate(index, { categoryId: event.target.value })}
                   onBlur={onBalanceBlur}
@@ -172,7 +177,7 @@ export function TransactionAllocationEditor({
                   aria-describedby={amountHasError
                     ? "transaction-allocation-amount-guidance transaction-allocation-error"
                     : "transaction-allocation-amount-guidance"}
-                  disabled={isSaving}
+                  disabled={isSaving || isRefreshing}
                   inputMode="decimal"
                   value={allocation.amountText}
                   onChange={(event) => onUpdate(index, { amountText: event.target.value })}
@@ -189,7 +194,7 @@ export function TransactionAllocationEditor({
                     type="button"
                     className="action-secondary"
                     aria-label={`Move allocation ${index + 1} up`}
-                    disabled={isSaving || !canReorder || index === 0}
+                    disabled={isSaving || isRefreshing || !canReorder || index === 0}
                     onClick={() => onMove(index, -1)}
                   >
                     Move up
@@ -198,7 +203,7 @@ export function TransactionAllocationEditor({
                     type="button"
                     className="action-secondary"
                     aria-label={`Move allocation ${index + 1} down`}
-                    disabled={isSaving || !canReorder || index === allocations.length - 1}
+                    disabled={isSaving || isRefreshing || !canReorder || index === allocations.length - 1}
                     onClick={() => onMove(index, 1)}
                   >
                     Move down
@@ -208,7 +213,7 @@ export function TransactionAllocationEditor({
                       type="button"
                       className="action-secondary"
                       aria-label={`Remove allocation ${index + 1}`}
-                      disabled={isSaving}
+                      disabled={isSaving || isRefreshing}
                       onClick={() => {
                         onRemove(index);
                         addButtonRef.current?.focus();
@@ -224,10 +229,11 @@ export function TransactionAllocationEditor({
         })}
       </div>
       <div className="transaction-allocation-tools">
-        <button ref={addButtonRef} className="action-secondary" type="button" disabled={isSaving} onClick={onAdd}>
+        <button ref={addButtonRef} className="action-secondary" type="button"
+          disabled={isSaving || isRefreshing} onClick={onAdd}>
           Add allocation
         </button>
-        <CategoryManagementButton label="Manage categories for this split" disabled={isSaving} />
+        <CategoryManagementButton label="Manage categories for this split" disabled={isSaving || isRefreshing} />
       </div>
       {error !== null && error.field === undefined && (
         <p className="transaction-allocation-field-error" id="transaction-allocation-error" role="alert">{error.message}</p>
@@ -236,13 +242,16 @@ export function TransactionAllocationEditor({
         <p className="transaction-allocation-consequence" id="transaction-allocation-consequence">
           Splitting does not change remembered categories for this merchant.
         </p>
+        {isRefreshing && <p className="transaction-allocation-saving">Refreshing the latest transaction state.</p>}
         {isSaving && <p className="transaction-allocation-saving">Saving allocation changes.</p>}
-        <button type="button" disabled={isSaving || loading || catalogError !== null} onClick={onSave}
+        <button type="button"
+          disabled={isSaving || isRefreshing || saveBlocked || loading || catalogError !== null}
+          onClick={onSave}
           aria-describedby="transaction-allocation-consequence"
           aria-label={isSaving ? "Saving split..." : `Save split for ${transaction.merchantRaw}`}>
           {isSaving ? "Saving split..." : "Save split"}
         </button>
-        <button className="action-secondary" type="button" disabled={isSaving} onClick={onCancel}
+        <button className="action-secondary" type="button" disabled={isSaving || isRefreshing} onClick={onCancel}
           aria-label={cancelLabel}>
           Cancel
         </button>

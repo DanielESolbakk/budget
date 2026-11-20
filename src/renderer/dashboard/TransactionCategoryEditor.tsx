@@ -17,6 +17,8 @@ const bookedDateFormatter = new Intl.DateTimeFormat("nb-NO", { dateStyle: "mediu
 
 interface TransactionCategoryEditorProps {
   context: TransactionCategoryEditContext;
+  initialDraft?: TransactionCategoryEditDraft;
+  recoveryNotice?: string;
   navigationPrompt: {
     message: string;
     saveLabel: string;
@@ -26,35 +28,43 @@ interface TransactionCategoryEditorProps {
   onSave: (input: TransactionCategoryEditInput) => Promise<TransactionCategoryEditResult>;
   onSaved: (result: Extract<TransactionCategoryEditResult, { ok: true }>) => void;
   onCancel: () => void;
-  onRefreshLedger: () => void;
+  onRefreshLedger: (
+    action: "retainDraft" | "discardDraft",
+    draft?: TransactionCategoryEditDraft
+  ) => Promise<void>;
   onKeepEditing: () => void;
   onDiscardAndSwitch: () => void;
 }
 
+export interface TransactionCategoryEditDraft {
+  mode: "single" | "split";
+  categoryId: string;
+  rememberForMerchant: boolean;
+  allocations: AllocationDraft[];
+}
+
 function formatSaveFailureMessage(
-  details: string,
   failureCode: TransactionCategoryEditFailureCode | undefined,
   mode: "single" | "split"
 ): string {
   if (failureCode === "TRANSACTION_NOT_FOUND") {
-    return `This transaction is no longer available. Use Refresh ledger and discard draft to reload the current ledger. Your current draft remains available until you choose that action. Details: ${details}`;
+    return "This transaction is no longer available. Refresh the ledger to remove it; the draft will be discarded.";
   }
 
   if (failureCode === "STALE_EDIT") {
-    const draftDescription = mode === "split" ? "split draft" : "draft";
-    return `Your change could not be saved because the transaction, remembered category, or local ledger changed while you were editing. Use Refresh ledger and discard draft to load the latest state before reapplying your change. Your ${draftDescription} remains available until you choose that action. Details: ${details}`;
+    return "Your change could not be saved because the transaction, remembered category, or ledger changed while you were editing. Refresh the latest state to keep this draft. Review it and save again to apply your change.";
   }
 
   if (failureCode !== undefined) {
     const draftDescription = mode === "split" ? "split draft" : "draft";
-    return `Your changes could not be saved. Your ${draftDescription} is still available. Review the category, merchant, or split details and correct them before trying again. Details: ${details}`;
+    return `Your changes could not be saved. Your ${draftDescription} is still available. Review its details and try again.`;
   }
 
   if (mode === "split") {
-    return `Your split draft is still available. Use Save split to retry, or cancel and reopen this transaction later. Details: ${details}`;
+    return "Your split draft could not be saved. Your values are still here. Use Save split to retry, or cancel and reopen this transaction later.";
   }
 
-  return `Your changes could not be saved. Your draft is still available. Try saving again, or cancel and reopen this transaction later. Details: ${details}`;
+  return "Your category change could not be saved. Your draft is still here. Try Save again, or cancel and reopen this transaction later.";
 }
 
 function createAllocationDraft(context: TransactionCategoryEditContext): AllocationDraft[] {
@@ -73,6 +83,19 @@ function createAllocationDraft(context: TransactionCategoryEditContext): Allocat
       ];
 }
 
+function getTransactionCategoryLabel(
+      transaction: TransactionCategoryEditContext["transaction"],
+      categories: readonly { id: string; label: string }[]
+): string {
+      const label = (categoryId: string): string =>
+        categories.find((category) => category.id === categoryId)?.label ?? categoryId;
+      return transaction.categoryAllocations?.length
+        ? transaction.categoryAllocations.map((allocation) => label(allocation.categoryId)).join(", ")
+        : transaction.categoryId === undefined
+          ? "Uncategorized"
+          : label(transaction.categoryId);
+}
+
 function sameAllocationDraft(left: readonly AllocationDraft[], right: readonly AllocationDraft[]): boolean {
   return left.length === right.length && left.every((allocation, index) =>
     allocation.categoryId === right[index]?.categoryId &&
@@ -80,8 +103,17 @@ function sameAllocationDraft(left: readonly AllocationDraft[], right: readonly A
   );
 }
 
+interface TransactionCategoryEditBaseline {
+  mode: "single" | "split";
+  categoryId: string;
+  rememberForMerchant: boolean;
+  allocations: AllocationDraft[];
+}
+
 export function TransactionCategoryEditor({
   context,
+  initialDraft,
+  recoveryNotice,
   navigationPrompt,
   onDirtyChange,
   onSave,
@@ -94,33 +126,58 @@ export function TransactionCategoryEditor({
   const { transaction, merchantAlias, merchantCategoryRule } = context;
   const { categories, loading, error: catalogError } = useCategoryCatalog();
   const hasMerchantAlias = merchantAlias.length > 0;
-  const initialMode = transaction.categoryAllocations?.length ? "split" : "single";
-  const initialCategoryId = transaction.categoryId ?? transaction.categoryAllocations?.[0]?.categoryId ?? "";
-  const initialAllocations = React.useMemo(() => createAllocationDraft(context), [context]);
-  const initialRemember = hasMerchantAlias;
+  const currencyCode = transaction.currencyCode ?? "NOK";
+  const currencyFormatter = getCurrencyFormatter(currencyCode);
+  const categoryLabel = (id: string): string => categories.find((category) => category.id === id)?.label ?? id;
+  const contextMode = transaction.categoryAllocations?.length ? "split" : "single";
+  const contextCategoryId = transaction.categoryId ?? transaction.categoryAllocations?.[0]?.categoryId ?? "";
+  const contextAllocations = React.useMemo(() => createAllocationDraft(context), [context]);
+  const contextRemember = hasMerchantAlias;
+  const initialMode = initialDraft?.mode ?? contextMode;
+  const initialCategoryId = initialDraft?.categoryId ?? contextCategoryId;
+  const initialAllocations = React.useMemo(
+    () => initialDraft === undefined
+      ? contextAllocations
+      : initialDraft.allocations.map((allocation) => ({ ...allocation })),
+    [contextAllocations, initialDraft]
+  );
+  const initialRemember = initialDraft?.rememberForMerchant ?? contextRemember;
   const [mode, setMode] = React.useState<"single" | "split">(initialMode);
   const [categoryId, setCategoryId] = React.useState(initialCategoryId);
   const [rememberForMerchant, setRememberForMerchant] = React.useState(initialRemember);
   const [allocations, setAllocations] = React.useState<AllocationDraft[]>(initialAllocations);
+  const [baseline, setBaseline] = React.useState<TransactionCategoryEditBaseline>({
+    mode: contextMode,
+    categoryId: contextCategoryId,
+    rememberForMerchant: contextRemember,
+    allocations: contextAllocations,
+  });
   const [allocationError, setAllocationError] = React.useState<AllocationEditorError | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = React.useState<string | null>(null);
   const [saveFailureCode, setSaveFailureCode] = React.useState<TransactionCategoryEditFailureCode | null>(null);
   const [allocationStatusMessage, setAllocationStatusMessage] = React.useState("");
+  const [recoveryStatusMessage, setRecoveryStatusMessage] = React.useState(
+    recoveryNotice ?? (initialDraft === undefined
+      ? ""
+      : `Your draft is restored. Current saved category: ${getTransactionCategoryLabel(transaction, categories)}. Review it and save again if you want to apply it.`)
+  );
+  const [recoveryDraftPending, setRecoveryDraftPending] = React.useState(initialDraft !== undefined);
   const [isSaving, setIsSaving] = React.useState(false);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
   const hasOpenedSplitRef = React.useRef(initialMode === "split");
-  const initialSplitDraftRef = React.useRef(initialAllocations);
+  const previousContextRef = React.useRef(context);
   const categoryRef = React.useRef<HTMLSelectElement>(null);
   const splitCategoryRef = React.useRef<HTMLSelectElement>(null);
+  const refreshLedgerRef = React.useRef<HTMLButtonElement>(null);
   const lastEditingControlRef = React.useRef<HTMLElement | null>(null);
   const hadNavigationPromptRef = React.useRef(false);
   const learningDetailsId = React.useId();
-  const currencyCode = transaction.currencyCode ?? "NOK";
-  const currencyFormatter = getCurrencyFormatter(currencyCode);
-  const categoryLabel = (id: string): string => categories.find((category) => category.id === id)?.label ?? id;
-  const isDirty = mode !== initialMode ||
-    categoryId !== initialCategoryId ||
-    rememberForMerchant !== initialRemember ||
-    !sameAllocationDraft(allocations, initialSplitDraftRef.current);
+  const isDirty = recoveryDraftPending ||
+    mode !== baseline.mode ||
+    categoryId !== baseline.categoryId ||
+    rememberForMerchant !== baseline.rememberForMerchant ||
+    !sameAllocationDraft(allocations, baseline.allocations);
   const allocationAmounts = allocations.map((allocation) => parseSignedAmountMinor(allocation.amountText));
   const invalidAmountIndex = allocations.findIndex((allocation, index) =>
     allocation.amountText.trim() !== "" && allocationAmounts[index] === null
@@ -157,9 +214,50 @@ export function TransactionCategoryEditor({
     }
     hadNavigationPromptRef.current = navigationPrompt !== null;
   }, [navigationPrompt, mode]);
+  React.useLayoutEffect(() => {
+    if (previousContextRef.current === context) return;
+    previousContextRef.current = context;
+    setBaseline({
+      mode: contextMode,
+      categoryId: contextCategoryId,
+      rememberForMerchant: contextRemember,
+      allocations: contextAllocations,
+    });
+    setSaveFailureCode(null);
+    setError(null);
+    setErrorDetails(null);
+    setRecoveryDraftPending(true);
+    setRecoveryStatusMessage(
+      `The latest transaction state is loaded. Current saved category: ${getTransactionCategoryLabel(transaction, categories)}. Your draft is still here. Review it and save again if you want to apply it.`
+    );
+    const frame = window.requestAnimationFrame(() => {
+      if (mode === "single") categoryRef.current?.focus();
+      else splitCategoryRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [context, transaction, categories, contextMode, contextCategoryId, contextRemember, contextAllocations, mode]);
+  React.useLayoutEffect(() => {
+    if (
+      error === null ||
+      (saveFailureCode !== "STALE_EDIT" && saveFailureCode !== "TRANSACTION_NOT_FOUND") ||
+      isSaving ||
+      isRefreshing
+    ) return;
+    const frame = window.requestAnimationFrame(() => refreshLedgerRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [error, saveFailureCode, isSaving, isRefreshing]);
+
+  function clearSaveError(): void {
+    if (saveFailureCode === "STALE_EDIT" || saveFailureCode === "TRANSACTION_NOT_FOUND") return;
+    setSaveFailureCode(null);
+    setError(null);
+    setErrorDetails(null);
+  }
 
   async function save(): Promise<void> {
     setError(null);
+    setErrorDetails(null);
+    setRecoveryStatusMessage("");
     setSaveFailureCode(null);
     let request: TransactionCategoryEditInput;
     if (mode === "single") {
@@ -199,26 +297,60 @@ export function TransactionCategoryEditor({
       const result = await onSave(request);
       if (!result.ok) {
         setSaveFailureCode(result.code);
-        setError(formatSaveFailureMessage(result.message, result.code, mode));
+        setError(formatSaveFailureMessage(result.code, mode));
+        setErrorDetails(result.message);
         return;
       }
       onSaved(result);
     } catch (saveError: unknown) {
+      const details = saveError instanceof Error
+        ? saveError.message
+        : "Unable to save this category change.";
       setSaveFailureCode(null);
-      setError(formatSaveFailureMessage(
-        saveError instanceof Error ? saveError.message : "Unable to save this category change.",
-        undefined,
-        mode
-      ));
+      setError(formatSaveFailureMessage(undefined, mode));
+      setErrorDetails(details);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function refreshLedger(action: "retainDraft" | "discardDraft"): Promise<void> {
+    setIsRefreshing(true);
+    setError(null);
+    setErrorDetails(null);
+    setRecoveryStatusMessage("");
+    try {
+      const draft = action === "retainDraft"
+        ? {
+            mode,
+            categoryId,
+            rememberForMerchant,
+            allocations: allocations.map((allocation) => ({ ...allocation })),
+          }
+        : undefined;
+      await onRefreshLedger(action, draft);
+    } catch (refreshError: unknown) {
+      const details = refreshError instanceof Error
+        ? refreshError.message
+        : "Unable to refresh this transaction.";
+      const transactionNotFound = details.startsWith("Transaction not found:");
+      if (transactionNotFound) {
+        setSaveFailureCode("TRANSACTION_NOT_FOUND");
+        setError(formatSaveFailureMessage("TRANSACTION_NOT_FOUND", mode));
+      } else {
+        setSaveFailureCode("STALE_EDIT");
+        setError("The latest transaction state could not be loaded. Your draft is still here. Try refreshing again.");
+      }
+      setErrorDetails(details);
+    } finally {
+      setIsRefreshing(false);
     }
   }
 
   function updateAllocation(index: number, update: Partial<AllocationDraft>): void {
     setAllocationError(null);
     setAllocationStatusMessage("");
-    setError(null);
+    clearSaveError();
     setAllocations((current) => current.map((allocation, currentIndex) =>
       currentIndex === index ? { ...allocation, ...update } : allocation
     ));
@@ -274,7 +406,7 @@ export function TransactionCategoryEditor({
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
-    if (event.key === "Escape" && !isSaving) {
+    if (event.key === "Escape" && !isSaving && !isRefreshing) {
       event.preventDefault();
       onCancel();
     }
@@ -297,7 +429,7 @@ export function TransactionCategoryEditor({
       id="transaction-category-editor"
       className="transaction-category-editor"
       aria-label={`Edit category for ${transaction.merchantRaw}`}
-      aria-busy={isSaving}
+      aria-busy={isSaving || isRefreshing}
       onKeyDown={handleKeyDown}
       onFocusCapture={rememberEditingControl}
     >
@@ -315,8 +447,8 @@ export function TransactionCategoryEditor({
 
       {mode === "split" && (
         <div className="transaction-category-mode-actions" role="group" aria-label="Category edit mode">
-          <button type="button" className="action-secondary" disabled={isSaving}
-            onClick={() => { setError(null); setMode("single"); }}>
+          <button type="button" className="action-secondary" disabled={isSaving || isRefreshing}
+            onClick={() => { clearSaveError(); setMode("single"); }}>
             Use one category
           </button>
         </div>
@@ -332,8 +464,8 @@ export function TransactionCategoryEditor({
           <label>
             Category
             <select ref={categoryRef} value={categoryId} aria-label={`Category for ${transaction.merchantRaw}`}
-              disabled={isSaving || loading || catalogError !== null}
-              onChange={(event) => { setCategoryId(event.target.value); setError(null); }}>
+              disabled={isSaving || isRefreshing || loading || catalogError !== null}
+              onChange={(event) => { setCategoryId(event.target.value); clearSaveError(); }}>
               <option value="">Choose a category</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>{category.label}</option>
@@ -348,8 +480,8 @@ export function TransactionCategoryEditor({
           ) : (
             <div className="transaction-category-learning">
               <label className="transaction-category-remember">
-                <input type="checkbox" checked={rememberForMerchant} disabled={isSaving} aria-describedby={learningDetailsId}
-                  onChange={(event) => setRememberForMerchant(event.target.checked)} />
+                <input type="checkbox" checked={rememberForMerchant} disabled={isSaving || isRefreshing} aria-describedby={learningDetailsId}
+                  onChange={(event) => { setRememberForMerchant(event.target.checked); clearSaveError(); }} />
                 Remember for this merchant
               </label>
               <div id={learningDetailsId} className="transaction-category-learning-details">
@@ -369,19 +501,19 @@ export function TransactionCategoryEditor({
             <CategoryManagementButton
               label="Manage categories for this transaction"
               returnFocusRef={categoryRef}
-              disabled={isSaving}
+              disabled={isSaving || isRefreshing}
             />
-            <button type="button" className="action-secondary" disabled={isSaving}
+            <button type="button" className="action-secondary" disabled={isSaving || isRefreshing}
               onClick={() => {
                 if (!hasOpenedSplitRef.current) {
                   const seededAllocations = allocations.map((allocation, index) =>
                     index === 0 ? { ...allocation, categoryId } : allocation
                   );
-                  initialSplitDraftRef.current = seededAllocations;
+                  setBaseline((current) => ({ ...current, allocations: seededAllocations }));
                   setAllocations(seededAllocations);
                   hasOpenedSplitRef.current = true;
                 }
-                setError(null);
+                clearSaveError();
                 setMode("split");
               }}>
               Split across categories
@@ -409,6 +541,8 @@ export function TransactionCategoryEditor({
             currencyFormatter={currencyFormatter}
             error={allocationError}
             isSaving={isSaving}
+            isRefreshing={isRefreshing}
+            saveBlocked={saveFailureCode === "STALE_EDIT" || saveFailureCode === "TRANSACTION_NOT_FOUND"}
             firstCategoryRef={splitCategoryRef}
             onBalanceBlur={announceAllocationBalance}
             onUpdate={updateAllocation}
@@ -421,34 +555,64 @@ export function TransactionCategoryEditor({
           />
         </div>
       )}
+      {recoveryStatusMessage !== "" && (
+        <p className="transaction-category-recovery-status" role="status" aria-label="Category edit recovery status">
+          {recoveryStatusMessage}
+        </p>
+      )}
+      {isRefreshing && (
+        <p className="transaction-category-recovery-status" role="status">
+          Refreshing the latest transaction state...
+        </p>
+      )}
       {error !== null && <p className="transaction-category-error" role="alert">{error}</p>}
+      {error !== null && errorDetails !== null && (
+        <details className="transaction-category-error-details">
+          <summary>Technical details</summary>
+          <pre>{errorDetails}</pre>
+        </details>
+      )}
       {error !== null &&
         (saveFailureCode === "STALE_EDIT" || saveFailureCode === "TRANSACTION_NOT_FOUND") && (
-          <button type="button" className="action-secondary" disabled={isSaving} onClick={onRefreshLedger}>
-            Refresh ledger and discard draft
+          <button
+            ref={refreshLedgerRef}
+            type="button"
+            className="action-secondary"
+            disabled={isSaving || isRefreshing}
+            onClick={() => void refreshLedger(
+              saveFailureCode === "STALE_EDIT" ? "retainDraft" : "discardDraft"
+            )}
+          >
+            {isRefreshing
+              ? "Refreshing ledger..."
+              : saveFailureCode === "STALE_EDIT"
+                ? "Refresh ledger and keep draft"
+                : "Refresh ledger and discard draft"}
           </button>
         )}
       {catalogError !== null && <p className="transaction-category-error" role="alert">{catalogError}</p>}
       {navigationPrompt !== null && (
         <div className="transaction-category-navigation" role="alert">
           <p>{navigationPrompt.message}</p>
-          <button type="button" disabled={isSaving} onClick={() => void save()}>{navigationPrompt.saveLabel}</button>
-          <button type="button" className="action-secondary" disabled={isSaving} onClick={onDiscardAndSwitch}>
+          <button type="button" disabled={isSaving || isRefreshing} onClick={() => void save()}>{navigationPrompt.saveLabel}</button>
+          <button type="button" className="action-secondary" disabled={isSaving || isRefreshing} onClick={onDiscardAndSwitch}>
             {navigationPrompt.discardLabel}
           </button>
-          <button type="button" className="action-secondary" disabled={isSaving} onClick={onKeepEditing}>
+          <button type="button" className="action-secondary" disabled={isSaving || isRefreshing} onClick={onKeepEditing}>
             Keep editing
           </button>
         </div>
       )}
       {mode === "single" && (
         <div className="transaction-category-actions">
-          <button type="button" disabled={isSaving || loading || catalogError !== null || categoryId === ""}
+          <button type="button" disabled={isSaving || isRefreshing ||
+            saveFailureCode === "STALE_EDIT" || saveFailureCode === "TRANSACTION_NOT_FOUND" ||
+            loading || catalogError !== null || categoryId === ""}
             aria-label={`Save category for ${transaction.merchantRaw}`}
             onClick={() => void save()}>
             {isSaving ? "Saving category..." : "Save category"}
           </button>
-          <button type="button" className="action-secondary" disabled={isSaving}
+          <button type="button" className="action-secondary" disabled={isSaving || isRefreshing}
             aria-label={`Cancel category editing for ${transaction.merchantRaw}`} onClick={onCancel}>
             Cancel
           </button>
