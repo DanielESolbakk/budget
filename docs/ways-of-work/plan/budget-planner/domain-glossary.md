@@ -40,6 +40,10 @@ Use these terms consistently in planning docs, code, tests, and issue templates.
 | correction | A user action that changes an incorrect categorization result. | Should improve future rule behavior. |
 | confidence score | A deterministic score that indicates categorization certainty. | Drives review queue behavior. |
 | no-network verification | A test that confirms default workflows do not send transaction content externally. | Required in development and packaged builds. |
+| SIFO household profile | Explicit household calculation bands and source-table selections used to compose a SIFO reference budget. | Does not require names, exact birth dates or inferred demographics. |
+| SIFO reference budget | An itemized national acceptable-consumption reference composed from an explicitly selected SIFO edition and household profile. | A long-term supplementary reference, not average spending, an income benchmark, poverty threshold or complete budget; original and locally adjusted amounts remain distinguishable. |
+| reference edition | A verified, attributed source version supplying reference-budget rates and assumptions. | Identify source date/version as well as year; basket revisions are not necessarily pure inflation. |
+| indicative reference remainder | Classified booked income minus selected reference consumption minus classified other expenditure. | Withheld as a complete overall result when coverage, FX or relevant amounts are unresolved; not guaranteed spendable cash. |
 
 ## Naming Guidance
 
