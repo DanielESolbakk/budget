@@ -475,6 +475,18 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     });
   }
 
+  function refreshLedgerAfterCategoryEditFailure(): void {
+    pendingLedgerNavigationFocusRef.current = categoryEditTriggerRef.current?.isConnected
+      ? categoryEditTriggerRef.current
+      : ledgerHeadingRef.current;
+    pendingSavedFocusId.current = null;
+    setCategoryEditContext(null);
+    setPendingCategoryEdit(null);
+    setIsCategoryEditDirty(false);
+    categoryEditDirtyRef.current = false;
+    setRetryKey((current) => current + 1);
+  }
+
   function keepEditingCategoryEdit(): void {
     pendingCategoryEdit?.onKeepEditing?.();
     pendingLedgerNavigationFocusRef.current = null;
@@ -931,6 +943,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
                             onSave={saveCategoryEdit}
                             onSaved={categoryEditSaved}
                             onCancel={closeCategoryEditor}
+                            onRefreshLedger={refreshLedgerAfterCategoryEditFailure}
                             onKeepEditing={keepEditingCategoryEdit}
                             onDiscardAndSwitch={discardAndSwitchCategoryEditor}
                           />

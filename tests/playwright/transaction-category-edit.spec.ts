@@ -488,13 +488,26 @@ test.describe("transaction category editing", () => {
 
     const saveFailure = editor.getByRole("alert");
     await expect(saveFailure).toContainText(/changed while you were editing/i);
-    await expect(saveFailure).toContainText(/reopen the editor to load the latest state/i);
-    await expect(saveFailure).toContainText(/draft remains available until you close/i);
-    await expect(saveFailure).toContainText(/canceling discards/i);
+    await expect(saveFailure).toContainText(/refresh ledger and discard draft/i);
+    await expect(saveFailure).toContainText(/draft remains available until you choose/i);
     await expect(saveFailure).not.toContainText(/try saving again/i);
     await expect(category).toHaveValue("housing");
     await expect(remember).not.toBeChecked();
+    const refreshLedger = editor.getByRole("button", { name: "Refresh ledger and discard draft" });
+    await expect(refreshLedger).toBeVisible();
+    await refreshLedger.click();
+    await expect(editor).toBeHidden();
 
+    const ledger = window.getByRole("region", { name: "Ledger", exact: true });
+    const row = ledger.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    await expect(row).toBeVisible();
+    await expect(row.getByRole("button", { name: "Edit category for Kiwi" })).toBeFocused();
+    await row.getByRole("button", { name: "Edit category for Kiwi" }).click();
+    const refreshedEditor = window.getByRole("region", { name: "Edit category for Kiwi" });
+    await expect(refreshedEditor.getByRole("combobox", { name: "Category for Kiwi" }))
+      .toHaveValue("groceries");
+    await expect(refreshedEditor).toContainText("Currently remembered category: Groceries & food.");
+    await refreshedEditor.getByRole("button", { name: "Cancel category editing for Kiwi" }).click();
     const verificationDatabase = createLocalLedgerDatabase({ dbPath: databasePath });
     try {
       expect(verificationDatabase.loadLedgerSnapshotData().transactions
@@ -506,6 +519,40 @@ test.describe("transaction category editing", () => {
     } finally {
       verificationDatabase.close();
     }
+  });
+
+  test("directs a missing transaction to refresh the ledger instead of retrying", async ({
+    appShell,
+    databasePath,
+    window,
+  }) => {
+    await waitForInitialCatalog(window);
+    await appShell.openWorkspace("Transactions");
+    const editor = await new LedgerPage(window).openCategoryEditor("Kiwi");
+    const category = editor.getByRole("combobox", { name: "Category for Kiwi" });
+    await category.selectOption("housing");
+
+    const concurrentDatabase = new DatabaseSync(databasePath);
+    try {
+      concurrentDatabase.prepare("DELETE FROM transactions WHERE merchant_raw = ?").run("Kiwi");
+    } finally {
+      concurrentDatabase.close();
+    }
+
+    await editor.getByRole("button", { name: "Save category for Kiwi" }).click();
+
+    const saveFailure = editor.getByRole("alert");
+    await expect(saveFailure).toContainText(/transaction is no longer available/i);
+    await expect(saveFailure).toContainText(/refresh ledger and discard draft/i);
+    await expect(saveFailure).not.toContainText(/try saving again|review the category/i);
+    await expect(category).toHaveValue("housing");
+    const refreshLedger = editor.getByRole("button", { name: "Refresh ledger and discard draft" });
+    await expect(refreshLedger).toBeVisible();
+    await refreshLedger.click();
+    await expect(editor).toBeHidden();
+    const ledger = window.getByRole("region", { name: "Ledger", exact: true });
+    await expect(ledger.getByRole("row", { name: /Ledger transaction Kiwi/ })).toHaveCount(0);
+    await expect(ledger.getByRole("heading", { name: "Ledger" })).toBeFocused();
   });
 
   test("keeps the selected category and split draft through a real category rename", async ({

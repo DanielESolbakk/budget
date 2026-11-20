@@ -26,6 +26,7 @@ interface TransactionCategoryEditorProps {
   onSave: (input: TransactionCategoryEditInput) => Promise<TransactionCategoryEditResult>;
   onSaved: (result: Extract<TransactionCategoryEditResult, { ok: true }>) => void;
   onCancel: () => void;
+  onRefreshLedger: () => void;
   onKeepEditing: () => void;
   onDiscardAndSwitch: () => void;
 }
@@ -35,9 +36,13 @@ function formatSaveFailureMessage(
   failureCode: TransactionCategoryEditFailureCode | undefined,
   mode: "single" | "split"
 ): string {
+  if (failureCode === "TRANSACTION_NOT_FOUND") {
+    return `This transaction is no longer available. Use Refresh ledger and discard draft to reload the current ledger. Your current draft remains available until you choose that action. Details: ${details}`;
+  }
+
   if (failureCode === "STALE_EDIT") {
     const draftDescription = mode === "split" ? "split draft" : "draft";
-    return `Your change could not be saved because the transaction, remembered category, or local ledger changed while you were editing. Reopen the editor to load the latest state before reapplying your change. Your ${draftDescription} remains available until you close this editor; canceling discards it. Details: ${details}`;
+    return `Your change could not be saved because the transaction, remembered category, or local ledger changed while you were editing. Use Refresh ledger and discard draft to load the latest state before reapplying your change. Your ${draftDescription} remains available until you choose that action. Details: ${details}`;
   }
 
   if (failureCode !== undefined) {
@@ -82,6 +87,7 @@ export function TransactionCategoryEditor({
   onSave,
   onSaved,
   onCancel,
+  onRefreshLedger,
   onKeepEditing,
   onDiscardAndSwitch,
 }: TransactionCategoryEditorProps): React.JSX.Element {
@@ -98,6 +104,7 @@ export function TransactionCategoryEditor({
   const [allocations, setAllocations] = React.useState<AllocationDraft[]>(initialAllocations);
   const [allocationError, setAllocationError] = React.useState<AllocationEditorError | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [saveFailureCode, setSaveFailureCode] = React.useState<TransactionCategoryEditFailureCode | null>(null);
   const [allocationStatusMessage, setAllocationStatusMessage] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
   const hasOpenedSplitRef = React.useRef(initialMode === "split");
@@ -153,6 +160,7 @@ export function TransactionCategoryEditor({
 
   async function save(): Promise<void> {
     setError(null);
+    setSaveFailureCode(null);
     let request: TransactionCategoryEditInput;
     if (mode === "single") {
       if (categoryId === "") {
@@ -190,11 +198,13 @@ export function TransactionCategoryEditor({
     try {
       const result = await onSave(request);
       if (!result.ok) {
+        setSaveFailureCode(result.code);
         setError(formatSaveFailureMessage(result.message, result.code, mode));
         return;
       }
       onSaved(result);
     } catch (saveError: unknown) {
+      setSaveFailureCode(null);
       setError(formatSaveFailureMessage(
         saveError instanceof Error ? saveError.message : "Unable to save this category change.",
         undefined,
@@ -411,8 +421,13 @@ export function TransactionCategoryEditor({
           />
         </div>
       )}
-
       {error !== null && <p className="transaction-category-error" role="alert">{error}</p>}
+      {error !== null &&
+        (saveFailureCode === "STALE_EDIT" || saveFailureCode === "TRANSACTION_NOT_FOUND") && (
+          <button type="button" className="action-secondary" disabled={isSaving} onClick={onRefreshLedger}>
+            Refresh ledger and discard draft
+          </button>
+        )}
       {catalogError !== null && <p className="transaction-category-error" role="alert">{catalogError}</p>}
       {navigationPrompt !== null && (
         <div className="transaction-category-navigation" role="alert">
