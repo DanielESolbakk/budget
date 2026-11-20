@@ -897,6 +897,20 @@ test.describe("transaction category editing", () => {
     await expect(row).toContainText("Groceries & food");
   });
 
+  test("restores trigger focus on Cancel without saving the draft", async ({ appShell, window }) => {
+    await appShell.openWorkspace("Transactions");
+    const row = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
+    const trigger = row.getByRole("button", { name: "Edit category for Kiwi" });
+    await trigger.click();
+    const editor = window.getByRole("region", { name: "Edit category for Kiwi" });
+    await editor.getByRole("combobox", { name: "Category for Kiwi" }).selectOption("housing");
+    await editor.getByRole("button", { name: "Cancel category editing for Kiwi" }).click();
+
+    await expect(editor).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(row).toContainText("Groceries & food");
+  });
+
   test("announces a category edit when the saved row leaves the active filter", async ({
     appShell,
     window,
