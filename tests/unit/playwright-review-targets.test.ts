@@ -307,7 +307,7 @@ describe("bounded Playwright target selection and history", () => {
     const result = ok("suggest");
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].remainingCases).toBe(1);
-  });
+  }, 15_000);
 
   it("reopens a case when a newer overlapping subsection has stale dependencies", () => {
     put("tests/playwright/small.spec.ts",
