@@ -49,12 +49,13 @@ export function CategoryCatalogProvider({
     return () => { generation.current += 1; };
   }, [enabled, refreshKey, refresh]);
 
+  // A batched retry can re-enable the opener without committing a loading transition.
   React.useEffect(() => {
     const target = pendingReturnFocus.current;
     if (managementReturnFocus !== null || loading || target === null || target.matches(":disabled")) return;
     pendingReturnFocus.current = null;
     if (target.isConnected && document.activeElement === document.body) target.focus();
-  }, [managementReturnFocus, loading]);
+  }, [managementReturnFocus, loading, error]);
 
   return (
     <CategoryCatalogContext.Provider value={{
