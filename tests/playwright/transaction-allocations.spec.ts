@@ -188,8 +188,33 @@ test.describe("transaction category allocations", () => {
     await window.setViewportSize({ width: 1280, height: 800 });
     await new LedgerPage(window).openSplitEditor("Kiwi");
     const categoryEditor = window.getByRole("region", { name: "Edit category for Kiwi" });
+    const categoryTrigger = transactionRow.getByRole("button", { name: "Edit category for Kiwi" });
     await categoryEditor.getByRole("button", { name: "Use one category" }).click();
     await expect(categoryEditor).toContainText("replaces the entire saved split");
+    await categoryEditor.getByRole("combobox", { name: "Category for Kiwi" }).selectOption("housing");
+    await categoryEditor.getByRole("button", { name: "Cancel category editing for Kiwi" }).click();
+    await expect(categoryEditor).toBeHidden();
+    await expect(categoryTrigger).toBeFocused();
+    await expect(transactionRow).toContainText("Groceries & food");
+    await expect(transactionRow).toContainText("Housing");
+
+    await new LedgerPage(window).openSplitEditor("Kiwi");
+    await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("groceries");
+    await expect(allocationEditor.getByLabel("Allocation amount 1")).toHaveValue("-40.00");
+    await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("housing");
+    await expect(allocationEditor.getByLabel("Allocation amount 2")).toHaveValue("-32.00");
+    await categoryEditor.getByRole("button", { name: "Use one category" }).click();
+    await categoryEditor.getByRole("combobox", { name: "Category for Kiwi" }).selectOption("housing");
+    await window.keyboard.press("Escape");
+    await expect(categoryEditor).toBeHidden();
+    await expect(categoryTrigger).toBeFocused();
+
+    await new LedgerPage(window).openSplitEditor("Kiwi");
+    await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("groceries");
+    await expect(allocationEditor.getByLabel("Allocation amount 1")).toHaveValue("-40.00");
+    await expect(allocationEditor.getByLabel("Allocation category 2")).toHaveValue("housing");
+    await expect(allocationEditor.getByLabel("Allocation amount 2")).toHaveValue("-32.00");
+    await categoryEditor.getByRole("button", { name: "Use one category" }).click();
     await categoryEditor.getByRole("combobox", { name: "Category for Kiwi" }).selectOption("housing");
     await categoryEditor.getByRole("button", { name: "Split across categories" }).click();
     await expect(allocationEditor.getByLabel("Allocation category 1")).toHaveValue("groceries");

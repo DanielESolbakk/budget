@@ -8,6 +8,29 @@ import { AppShellPage } from "./pom/AppShellPage.js";
 import { CategoryManagementPage } from "./pom/CategoryManagementPage.js";
 import { LedgerPage } from "./pom/LedgerPage.js";
 
+const pagedCategoryTest = test.extend({
+  databasePath: async ({ databasePath }, use) => {
+    const householdId = "sample-hh";
+    const accountId = "sample-acc";
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: { id: householdId, name: "Synthetic household", createdAtIso: "2026-01-01T00:00:00Z" },
+        accounts: [{ id: accountId, householdId, name: "Brukskonto", currencyCode: "NOK" }],
+        transactions: Array.from({ length: 54 }, (_, index) => ({
+          id: `paged-category-${index}`, householdId, accountId, bookedAtIso: "2026-05-10",
+          amountMinor: -100, currencyCode: "NOK", categoryId: "groceries",
+          merchantRaw: `Kiwi ${String(index).padStart(2, "0")}`,
+        })),
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+    database.close();
+    await use(databasePath);
+  },
+});
+
 function setRememberedCategory(databasePath: string, categoryId: string): void {
   const database = createLocalLedgerDatabase({ dbPath: databasePath });
   try {
@@ -582,6 +605,40 @@ test.describe("transaction category editing", () => {
     await expect(ledger.getByRole("status", { name: "Category edit status" }))
       .toContainText("Category saved for this transaction only");
     await expect(ledger.getByRole("heading", { name: "Ledger" })).toBeFocused();
+  });
+
+  pagedCategoryTest("preserves filter, sort, and page when a category edit removes a row", async ({
+    appShell,
+    window,
+  }) => {
+    await appShell.openWorkspace("Transactions");
+    const ledger = new LedgerPage(window);
+    await ledger.openMoreFilters();
+    await ledger.categoryInput.selectOption("groceries");
+    await expect(ledger.resultStatus).toHaveText("54 ledger transactions");
+    await ledger.sortByMerchant();
+    const merchantHeader = ledger.table.getByRole("columnheader", { name: "Merchant" });
+    await expect(merchantHeader).toHaveAttribute("aria-sort", "ascending");
+    await ledger.goToNextPage();
+    await expect(ledger.paginationStatus).toHaveText("Page 2 of 2");
+    const row = ledger.transaction("Kiwi 50");
+    await expect(row).toBeVisible();
+    const editor = await ledger.openCategoryEditor("Kiwi 50");
+    await editor.getByRole("combobox", { name: "Category for Kiwi 50" }).selectOption("housing");
+    await editor.getByRole("checkbox", { name: "Remember for this merchant" }).uncheck();
+    await editor.getByRole("button", { name: "Save category for Kiwi 50" }).click();
+
+    await expect(row).toBeHidden();
+    await expect(ledger.resultStatus).toHaveText("53 ledger transactions");
+    await expect(ledger.categoryInput).toHaveValue("groceries");
+    await expect(merchantHeader).toHaveAttribute("aria-sort", "ascending");
+    await expect(ledger.paginationStatus).toHaveText("Page 2 of 2");
+    await expect(ledger.table.getByRole("row").nth(1)).toContainText("Kiwi 51");
+    await expect(ledger.table.getByRole("row").nth(2)).toContainText("Kiwi 52");
+    await expect(ledger.table.getByRole("row").nth(3)).toContainText("Kiwi 53");
+    await expect(ledger.section.getByRole("status", { name: "Category edit status" }))
+      .toContainText("Category saved for this transaction only");
+    await expect(ledger.section.getByRole("heading", { name: "Ledger" })).toBeFocused();
   });
 
   test("keeps the focused category control reachable at native 200% zoom", async ({
