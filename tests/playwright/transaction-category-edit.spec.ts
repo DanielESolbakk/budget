@@ -269,13 +269,17 @@ test.describe("transaction category editing", () => {
     window,
   }) => {
     setRememberedCategory(databasePath, "fuel");
-    const database = new DatabaseSync(databasePath);
-    database.exec(`
-      CREATE TRIGGER transaction_category_edit_fault
-      BEFORE UPDATE OF category_id ON transactions
-      WHEN OLD.merchant_raw = 'Kiwi'
-      BEGIN SELECT RAISE(ABORT, 'synthetic transaction category edit failure'); END;
-    `);
+    const setupDatabase = new DatabaseSync(databasePath);
+    try {
+      setupDatabase.exec(`
+        CREATE TRIGGER transaction_category_edit_fault
+        BEFORE UPDATE OF category_id ON transactions
+        WHEN OLD.merchant_raw = 'Kiwi'
+        BEGIN SELECT RAISE(ABORT, 'synthetic transaction category edit failure'); END;
+      `);
+    } finally {
+      setupDatabase.close();
+    }
 
     try {
       await appShell.openWorkspace("Transactions");
@@ -295,22 +299,36 @@ test.describe("transaction category editing", () => {
       await expect(remember).not.toBeChecked();
       await expect(row).toContainText("Groceries & food");
 
-      database.exec("DROP TRIGGER transaction_category_edit_fault");
+      const dropTriggerDatabase = new DatabaseSync(databasePath);
+      try {
+        dropTriggerDatabase.exec("DROP TRIGGER transaction_category_edit_fault");
+      } finally {
+        dropTriggerDatabase.close();
+      }
       await editor.getByRole("button", { name: "Save category for Kiwi" }).click();
 
       await expect(row).toContainText("Housing");
       await expect(editor).toBeHidden();
       await expect(window.getByRole("status", { name: "Category edit status" }))
         .toContainText("saved for this transaction only");
-      expect(database.prepare(
-        "SELECT category_id FROM transactions WHERE merchant_raw = 'Kiwi'"
-      ).get()?.category_id).toBe("housing");
-      expect(database.prepare(
-        "SELECT category_id FROM merchant_category_rules WHERE merchant_alias = 'KIWI'"
-      ).get()?.category_id).toBe("fuel");
+      const verificationDatabase = new DatabaseSync(databasePath);
+      try {
+        expect(verificationDatabase.prepare(
+          "SELECT category_id FROM transactions WHERE merchant_raw = 'Kiwi'"
+        ).get()?.category_id).toBe("housing");
+        expect(verificationDatabase.prepare(
+          "SELECT category_id FROM merchant_category_rules WHERE merchant_alias = 'KIWI'"
+        ).get()?.category_id).toBe("fuel");
+      } finally {
+        verificationDatabase.close();
+      }
     } finally {
-      database.exec("DROP TRIGGER IF EXISTS transaction_category_edit_fault");
-      database.close();
+      const cleanupDatabase = new DatabaseSync(databasePath);
+      try {
+        cleanupDatabase.exec("DROP TRIGGER IF EXISTS transaction_category_edit_fault");
+      } finally {
+        cleanupDatabase.close();
+      }
     }
   });
 
