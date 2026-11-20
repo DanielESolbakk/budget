@@ -451,13 +451,18 @@ test.describe("PDF import renderer workflow", () => {
       await pdfImport.submitImport(FIXTURE_PATH);
       // Hold a writer lock to ensure this post-import inspection does not request one.
       const competingWrite = new DatabaseSync(databasePath);
-      competingWrite.exec("BEGIN IMMEDIATE");
+      let transactionStarted = false;
       let importedTransaction: { id: string; merchantRaw: string } | undefined;
       try {
+        competingWrite.exec("BEGIN IMMEDIATE");
+        transactionStarted = true;
         importedTransaction = findImportedTransaction(databasePath);
       } finally {
-        competingWrite.exec("ROLLBACK");
-        competingWrite.close();
+        try {
+          if (transactionStarted) competingWrite.exec("ROLLBACK");
+        } finally {
+          competingWrite.close();
+        }
       }
       expect(importedTransaction).toBeDefined();
       if (importedTransaction === undefined) return;
