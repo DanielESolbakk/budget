@@ -4,7 +4,7 @@ import type { LedgerRecoveryHistory } from "../../src/domain/backup/snapshotCont
 
 function history(categoryId: string): LedgerRecoveryHistory {
   return {
-    merchantCorrections: [], sameMerchantPropagations: [],
+    merchantCorrections: [], transactionCategoryEdits: [], sameMerchantPropagations: [],
     importOperations: [{
       importJobId: "archive", accountId: "account", candidateCount: 1, importedCount: 1, duplicateCount: 0,
       undoAvailable: true, undoRemovedCount: 0, undoRetainedCount: 0,

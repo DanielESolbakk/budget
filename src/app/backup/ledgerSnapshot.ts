@@ -572,6 +572,7 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
     recoveryHistory: readLedgerRecoveryHistory(
       db, householdRow.id, new Set(accounts.map((account) => account.id)),
       new Set(mappedImportJobs.map((job) => job.id)), categoryIds,
+      new Set(mappedTransactions.map((transaction) => transaction.id)),
     ),
     monthlyCategoryTargets: monthlyCategoryTargets.map((target) => ({
       yearMonth: target.year_month,

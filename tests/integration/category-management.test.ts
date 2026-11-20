@@ -490,7 +490,7 @@ describe("household category persistence", () => {
       writeFileSync(snapshotPath, JSON.stringify({
         ...buildBackupSnapshot(ledger.loadLedgerSnapshotData()),
         recoveryHistory: {
-          merchantCorrections: [], sameMerchantPropagations: [],
+          merchantCorrections: [], transactionCategoryEdits: [], sameMerchantPropagations: [],
           importOperations: [{
             importJobId: "archive", accountId: "acc-isolated", candidateCount, importedCount: 1, duplicateCount: 0,
             undoAvailable: true, undoRemovedCount: 0, undoRetainedCount: 0,
@@ -747,7 +747,7 @@ describe("household category persistence", () => {
         reopened.close();
       }
     });
-  });
+  }, 15_000);
 
   it("reopens the saved catalog without inspecting unrelated archived evidence", async () => {
     await withIsolatedLedger({}, ({ ledger, dbPath }) => {

@@ -330,8 +330,17 @@
     background: var(--panel-soft);
   }
 
-  .transaction-allocation-heading {
+  .transaction-category-heading {
     flex-wrap: wrap;
+  }
+
+  .transaction-category-actions button,
+  .transaction-category-navigation button {
+    flex: 1 1 100%;
+  }
+
+  .ledger-category-editor-row > td {
+    padding: 0.35rem;
   }
 
   .transaction-allocation-clear {
@@ -348,6 +357,18 @@
   section.transaction-allocation-editor {
     overflow: clip;
     min-width: 0;
+  }
+
+  section.ledger-section.has-category-editor {
+    overflow: visible;
+  }
+
+  .ledger-section.has-category-editor section.transaction-allocation-editor {
+    overflow: visible;
+  }
+
+  .ledger-section.has-category-editor .transaction-category-editor {
+    overflow: visible;
   }
 
   .ledger-allocation-panel {

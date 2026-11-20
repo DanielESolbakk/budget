@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 export class LedgerPage {
   private readonly page: Page;
@@ -151,6 +151,40 @@ export class LedgerPage {
 
   transaction(merchantRaw: string) {
     return this.table.getByRole("row", { name: `Ledger transaction ${merchantRaw}` }).first();
+  }
+
+  async openCategoryEditor(merchantRaw: string, keyboard = false): Promise<Locator> {
+    const merchantLabel = merchantRaw.trim();
+    const trigger = this.transaction(merchantRaw).getByRole("button", {
+      name: new RegExp(`^(Choose|Edit) category for ${merchantLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`),
+    });
+    if (keyboard) {
+      await trigger.focus();
+      await this.page.keyboard.press("Enter");
+    } else {
+      await trigger.click();
+    }
+    const categoryEditor = this.section.getByRole("region", { name: `Edit category for ${merchantLabel}` });
+    await categoryEditor.waitFor({ state: "visible" });
+    return categoryEditor;
+  }
+
+  async openSplitEditor(merchantRaw: string, keyboard = false): Promise<Locator> {
+    const categoryEditor = await this.openCategoryEditor(merchantRaw, keyboard);
+    const splitEditor = categoryEditor.getByRole("region", {
+      name: `Transaction category allocations for ${merchantRaw}`,
+    });
+    const splitButton = categoryEditor.getByRole("button", { name: "Split across categories" });
+    if (await splitButton.count() > 0) {
+      if (keyboard) {
+        await splitButton.focus();
+        await this.page.keyboard.press("Enter");
+      } else {
+        await splitButton.click();
+      }
+    }
+    await splitEditor.waitFor({ state: "visible" });
+    return splitEditor;
   }
 
   transactionsFor(merchantRaw: string) {

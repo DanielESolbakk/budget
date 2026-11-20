@@ -34,8 +34,13 @@ import type {
   SameMerchantPropagationInput,
   SameMerchantPropagationOperation,
   Transaction,
+  TransactionCategoryEditProvenance,
   TransactionCategoryAllocation,
 } from "../../domain/types.js";
+import type {
+  MerchantCategoryRuleEffect,
+  TransactionCategoryEditExpectedState,
+} from "../../shared/transactionCategoryEdit.js";
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 import type {
   AccountHistorySummary,
@@ -166,7 +171,20 @@ export interface LocalLedgerDatabase {
     rule: MerchantCategoryRule,
     categorization?: CategorizationDecision
   ) => void;
+  applyTransactionCategoryEdit: (input: {
+    transactionId: string;
+    expectedState: Pick<TransactionCategoryEditExpectedState, "transaction" | "merchantCategoryRule">;
+    merchantAlias: string;
+    mode: "single" | "split";
+    categoryId?: string;
+    allocations?: TransactionCategoryAllocation[];
+    rememberForMerchant: boolean;
+    merchantRuleEffect: MerchantCategoryRuleEffect;
+    merchantRuleToSave?: MerchantCategoryRule;
+    categorization: CategorizationDecision;
+  }) => TransactionCategoryEditProvenance;
   listMerchantCorrectionProvenance: () => MerchantCorrectionProvenance[];
+  listTransactionCategoryEdits: () => TransactionCategoryEditProvenance[];
   applySameMerchantPropagation: (input: SameMerchantPropagationInput) => SameMerchantPropagationOperation;
   listSameMerchantPropagationOperations: () => SameMerchantPropagationOperation[];
   undoSameMerchantPropagation: (operationId: string) => boolean;

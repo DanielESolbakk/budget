@@ -9,6 +9,8 @@ Budget Planner is a local-first desktop budget application for one household use
 - Reliable statement import from text files, binary PDFs, CSVs, and manual entry
 - Deterministic merchant normalization and categorization rules
 - Review queue for low-confidence outcomes
+- Inline transaction category editing with optional local merchant learning
+  and category splitting; see S3.3.2 (#598) and Tests #599-#601
 - Monthly dashboards, budget targets, and simple forecasting
 - Local backup and export
 - Activity automation, beginning with a local category catalog and create,

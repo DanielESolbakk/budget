@@ -78,6 +78,15 @@ The subsequent merchant-recognition, unknown-merchant learning, batch-review,
 and recurring-suggestion workstreams remain roadmap scope until concrete
 Story/Test planning and behavioral decisions are complete.
 
+### Approved Inline Transaction Category Editing
+
+Deliver S3.3.2 (#598) on its own feature branch and PR, separate from the open
+split-editor delivery. The category-first ledger editor keeps one transaction
+as the edit target, offers optional future-only rule learning, and reveals
+validated allocation splitting only on request. Unit, integration, and native
+Playwright Tests #599-#601 own their respective verification layers. Preserve
+the existing review-correction and category-management workflows.
+
 | Workstream | Depends on | Blocks |
 | --- | --- | --- |
 | ADR and glossary | None | Schema, technical breakdown, consistent issue writing |

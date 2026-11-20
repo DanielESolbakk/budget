@@ -135,21 +135,34 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
         } finally { saved.close(); }
       });
 
-      for (const context of ["review", "allocations"] as const) {
+      for (const context of ["review", "allocations", "category"] as const) {
         test(`keeps an unsaved ${context} choice through ${
           context === "review" ? "cancellation and category saves" : "category management cancellation"
         }`, async ({
           window, categoryManagement, databasePath,
         }) => {
           const review = new ReviewQueuePage(window);
-          const workshop = new LedgerPage(window).transaction("Verksted Solglimt");
+          const ledger = new LedgerPage(window);
           if (context === "allocations") {
-            await workshop.getByRole("button", { name: "Edit category allocations for Verksted Solglimt" }).click();
+            await ledger.openSplitEditor("Verksted Solglimt");
+          } else if (context === "category") {
+            const transaction = ledger.transaction("Verksted Solglimt");
+            await expect(transaction.getByRole("button", {
+              name: "Choose category for Verksted Solglimt",
+            })).toBeVisible();
+            await expect(transaction.getByRole("button", {
+              name: /Allocate categories|Edit category allocations/,
+            })).toHaveCount(0);
+            await ledger.openCategoryEditor("Verksted Solglimt");
           }
           const region = context === "review" ? review.reviewItem("Verksted Solglimt")
-            : window.getByRole("region", { name: "Transaction category allocations for Verksted Solglimt" });
+            : context === "allocations"
+              ? window.getByRole("region", { name: "Transaction category allocations for Verksted Solglimt" })
+              : window.getByRole("region", { name: "Edit category for Verksted Solglimt" });
           const picker = context === "review" ? review.categorySelect("Verksted Solglimt")
-            : region.getByLabel("Allocation category 1");
+            : context === "allocations"
+              ? region.getByLabel("Allocation category 1")
+              : region.getByRole("combobox", { name: "Category for Verksted Solglimt" });
           if (context === "review") {
             await expect.poll(async () => {
               const guidance = await region.getByRole("paragraph").first().boundingBox();
@@ -162,7 +175,8 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
           await picker.selectOption("fees");
           if (context === "allocations") await region.getByLabel("Allocation amount 1").fill("-100.50");
           const openerName = context === "review" ? "Manage categories for Verksted Solglimt"
-            : "Manage categories for this split";
+            : context === "allocations" ? "Manage categories for this split"
+              : "Manage categories for this transaction";
           const originalLedger = createLocalLedgerDatabase({ dbPath: databasePath });
           const original = originalLedger.loadLedgerSnapshotData();
           originalLedger.close();
@@ -170,10 +184,13 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
           await categoryManagement.openFrom(openerName);
           await categoryManagement.newName.fill("Unsaved household category");
           await categoryManagement.close();
-          await expect(context === "review" ? picker : region.getByRole("button", { name: openerName })).toBeFocused();
+          const expectedFocus = context === "allocations"
+            ? region.getByRole("button", { name: openerName })
+            : picker;
+          await expect(expectedFocus).toBeFocused();
           await expect(picker).toHaveValue("fees");
           if (context === "allocations") await expect(region.getByLabel("Allocation amount 1")).toHaveValue("-100.50");
-          if (context === "review") {
+          if (context !== "allocations") {
             await categoryManagement.openFrom(openerName);
             await categoryManagement.create("Review repairs");
             await expect(categoryManagement.result).toContainText("Created Review repairs");
@@ -209,8 +226,8 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       } after dismissing a committed category with a failed refresh`, async ({
         window, categoryManagement, databasePath,
       }) => {
-        const workshop = new LedgerPage(window).transaction("Verksted Solglimt");
-        await workshop.getByRole("button", { name: "Edit category allocations for Verksted Solglimt" }).click();
+        const ledger = new LedgerPage(window);
+        await ledger.openSplitEditor("Verksted Solglimt");
         const allocations = window.getByRole("region", { name: "Transaction category allocations for Verksted Solglimt" });
         const picker = allocations.getByLabel("Allocation category 1");
         const amountInput = allocations.getByLabel("Allocation amount 1");
@@ -318,7 +335,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       const ledger = new LedgerPage(window);
       const workshop = ledger.transaction("Verksted Solglimt");
       await expect(workshop).toContainText("Car repairs");
-      await workshop.getByRole("button", { name: "Edit category allocations for Verksted Solglimt" }).click();
+      await ledger.openSplitEditor("Verksted Solglimt");
       const allocations = window.getByRole("region", { name: "Transaction category allocations for Verksted Solglimt" });
       await allocations.getByLabel("Allocation category 1").selectOption({ label: "Car repairs" });
       await allocations.getByLabel("Allocation amount 1").fill("-100.00");

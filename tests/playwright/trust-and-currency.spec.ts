@@ -139,7 +139,7 @@ test("digital statement previews preserve booked, pending and duplicate currenci
 });
 
 test("recorded currency survives review, ledger, allocations and pending tracking", async ({
-  appShell, csvImport, ledger, reviewQueue, window,
+  appShell, csvImport, ledger, reviewQueue,
 }) => {
   await appShell.openWorkspace("Import");
   await csvImport.submitImport(writeCsvStatement());
@@ -148,10 +148,11 @@ test("recorded currency survives review, ledger, allocations and pending trackin
   await expect.soft(reviewQueue.reviewItem("FOREIGN BOOKED")).toContainText(/78,00\s+GBP/);
   await expect.soft(ledger.transaction("FOREIGN BOOKED").getByRole("cell").nth(2)).toHaveText(/78,00\s+GBP/);
   await expect(ledger.transaction("LOCAL BOOKED").getByRole("cell").nth(2)).toHaveText(/42,00\s+kr/);
-  await ledger.transaction("FOREIGN BOOKED").getByRole("button", { name: /Edit category allocations/ }).click();
-  const allocation = window.getByRole("region", { name: "Transaction category allocations for FOREIGN BOOKED" });
-  await expect.soft(allocation.locator(".transaction-allocation-source")).toContainText(/78,00\s+GBP/);
-  await allocation.getByRole("button", { name: "Cancel allocation editing" }).click();
+  const allocation = await ledger.openSplitEditor("FOREIGN BOOKED");
+  await allocation.getByText("Split details", { exact: true }).click();
+  const sourceAmount = allocation.locator("details").filter({ hasText: "Source transaction:" });
+  await expect.soft(sourceAmount).toContainText(/Source transaction:\s*\u221278,00\s+GBP/);
+  await allocation.getByRole("button", { name: "Cancel category editing for FOREIGN BOOKED" }).click();
   await reviewQueue.categorySelect("FOREIGN BOOKED").selectOption("groceries");
   await reviewQueue.saveButton("FOREIGN BOOKED").click();
   await expect(reviewQueue.savedStatus).toContainText("Category saved.");

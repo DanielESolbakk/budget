@@ -6,11 +6,22 @@ import { validateCorrectionCategoryId } from "../domain/review/correction.js";
 import { normalizeMerchantName } from "../domain/merchant/normalizeMerchantName.js";
 import { selectActiveAccounts } from "../shared/accountLifecycle.js";
 import {
+  decideTransactionCategoryEdit,
+  isTransactionCategoryEditStateCurrent,
+  TransactionCategoryEditValidationError,
+  type TransactionCategoryEditContext,
+  type TransactionCategoryEditExpectedState,
+  type TransactionCategoryEditInput,
+  type TransactionCategoryEditResult,
+} from "../shared/transactionCategoryEdit.js";
+import {
   validateImportReviewCorrectionInput,
+  type CategorizationDecision,
   type ImportReviewCorrectionInput,
   type ImportReviewCorrectionValidationError,
   type ImportReviewItem,
   type Transaction,
+  type TransactionCategoryAllocation,
 } from "../domain/types.js";
 
 export function listCategorizationReviewQueue(
@@ -71,6 +82,173 @@ export function applyCategorizationCorrection(
   }
 
   return { transaction: correctedTransaction, futureMatchingChanged };
+}
+
+export function getTransactionCategoryEditContext(
+  database: Pick<LocalLedgerDatabase, "getTransactionById" | "listMerchantCategoryRules">,
+  transactionId: string,
+  databaseGeneration: number
+): TransactionCategoryEditContext {
+  const transaction = database.getTransactionById(transactionId);
+  if (transaction === undefined) {
+    throw new Error(`Transaction not found: ${transactionId}`);
+  }
+  const merchantAlias = normalizeMerchantName(transaction.merchantRaw);
+  const merchantCategoryRule = database.listMerchantCategoryRules().find((rule) =>
+    rule.merchantAlias === merchantAlias
+  ) ?? null;
+
+  return {
+    transaction,
+    merchantAlias,
+    merchantCategoryRule,
+    expectedState: {
+      databaseGeneration,
+      transaction,
+      merchantCategoryRule,
+    },
+  };
+}
+
+export function applyTransactionCategoryEdit(
+  database: Pick<LocalLedgerDatabase,
+    | "getTransactionById"
+    | "listCategories"
+    | "listMerchantCategoryRules"
+    | "applyTransactionCategoryEdit"
+  >,
+  learnedCategoryRules: Map<string, string>,
+  input: TransactionCategoryEditInput,
+  currentDatabaseGeneration: number
+): TransactionCategoryEditResult {
+  const transaction = database.getTransactionById(input.transactionId);
+  if (transaction === undefined) {
+    return {
+      ok: false,
+      code: "TRANSACTION_NOT_FOUND",
+      message: `Transaction not found: ${input.transactionId}`,
+    };
+  }
+
+  const merchantAlias = normalizeMerchantName(transaction.merchantRaw);
+  const merchantCategoryRule = database.listMerchantCategoryRules().find((rule) =>
+    rule.merchantAlias === merchantAlias
+  ) ?? null;
+  const currentState: TransactionCategoryEditExpectedState = {
+    databaseGeneration: currentDatabaseGeneration,
+    transaction,
+    merchantCategoryRule,
+  };
+  if (!isTransactionCategoryEditStateCurrent(input.expectedState, currentState)) {
+    return {
+      ok: false,
+      code: "STALE_EDIT",
+      message: "This transaction, remembered category, or local ledger changed while you were editing. Reopen the editor and try again.",
+    };
+  }
+
+  const decisionInput = input.mode === "single"
+    ? {
+        mode: "single" as const,
+        transaction,
+        merchantAlias,
+        merchantCategoryRule,
+        categoryId: input.categoryId,
+        rememberForMerchant: input.rememberForMerchant,
+      }
+    : {
+        mode: "split" as const,
+        transaction,
+        merchantAlias,
+        merchantCategoryRule,
+        allocations: input.allocations,
+        rememberForMerchant: input.rememberForMerchant,
+      };
+  let decision: ReturnType<typeof decideTransactionCategoryEdit>;
+  try {
+    decision = decideTransactionCategoryEdit(
+      decisionInput,
+      database.listCategories(transaction.householdId).map((category) => category.id)
+    );
+  } catch (error: unknown) {
+    if (error instanceof TransactionCategoryEditValidationError) {
+      return { ok: false, code: error.code, message: error.message };
+    }
+    throw error;
+  }
+
+  if (!decision.shouldWrite) {
+    return {
+      ok: true,
+      transaction,
+      transactionChanged: false,
+      merchantRuleEffect: decision.merchantRuleEffect,
+    };
+  }
+
+  const categorization: CategorizationDecision = {
+    status: "categorized",
+    ...(input.mode === "single" ? { categoryId: input.categoryId } : {}),
+    confidence: 1,
+    confidenceLevel: "high",
+    requiresReview: false,
+    decisionSource: "manual",
+    matchingRules: [],
+  };
+  let merchantRuleToSave: { merchantAlias: string; categoryId: string } | undefined;
+  if (decision.merchantRuleEffect === "updated") {
+    if (input.mode !== "single") {
+      throw new Error("Split category edits cannot update a merchant rule.");
+    }
+    merchantRuleToSave = { merchantAlias, categoryId: input.categoryId };
+  }
+  let repositoryEdit:
+    | { mode: "single"; categoryId: string }
+    | { mode: "split"; allocations: TransactionCategoryAllocation[] };
+  if (input.mode === "single") {
+    repositoryEdit = { mode: "single", categoryId: input.categoryId };
+  } else {
+    if (decision.allocations === undefined) {
+      throw new Error("A validated split edit is missing its allocations.");
+    }
+    repositoryEdit = { mode: "split", allocations: decision.allocations };
+  }
+
+  try {
+    database.applyTransactionCategoryEdit({
+      transactionId: input.transactionId,
+      expectedState: {
+        transaction: input.expectedState.transaction,
+        merchantCategoryRule: input.expectedState.merchantCategoryRule,
+      },
+      merchantAlias,
+      ...repositoryEdit,
+      rememberForMerchant: input.rememberForMerchant,
+      merchantRuleEffect: decision.merchantRuleEffect,
+      ...(merchantRuleToSave === undefined ? {} : { merchantRuleToSave }),
+      categorization,
+    });
+  } catch (error: unknown) {
+    if (error instanceof TransactionCategoryEditValidationError) {
+      return { ok: false, code: error.code, message: error.message };
+    }
+    throw error;
+  }
+
+  if (merchantRuleToSave !== undefined) {
+    learnedCategoryRules.set(merchantRuleToSave.merchantAlias, merchantRuleToSave.categoryId);
+  }
+  const updatedTransaction = database.getTransactionById(input.transactionId);
+  if (updatedTransaction === undefined) {
+    throw new Error(`Transaction not found after category edit: ${input.transactionId}`);
+  }
+
+  return {
+    ok: true,
+    transaction: updatedTransaction,
+    transactionChanged: decision.transactionChanged,
+    merchantRuleEffect: decision.merchantRuleEffect,
+  };
 }
 
 export type ImportReviewActionFailureCode =

@@ -85,6 +85,11 @@ import type {
   TransactionQuery,
 } from "../domain/ledger/filterTransactions.js";
 import type { TransactionCategoryAllocationUpdateResult } from "../domain/ledger/transactionAllocations.js";
+import type {
+  TransactionCategoryEditContext,
+  TransactionCategoryEditInput,
+  TransactionCategoryEditResult,
+} from "../shared/transactionCategoryEdit.js";
 import type { CsvColumnMapping } from "../domain/import/csvRowMapper.js";
 import type { CsvImportProfile } from "../domain/import/csvImportProfile.js";
 import type { DuplicateImportDecision } from "../domain/import/filterPreviouslyImportedTransactions.js";
@@ -200,6 +205,8 @@ export interface CategoryUpdateResult {
 
 export interface LedgerApi {
   list: (query: TransactionQuery) => Promise<LedgerQueryResult>;
+  getCategoryEditContext: (transactionId: string) => Promise<TransactionCategoryEditContext>;
+  editCategory: (input: TransactionCategoryEditInput) => Promise<TransactionCategoryEditResult>;
   updateCategoryAllocations: (
     input: { transactionId: string; allocations: TransactionCategoryAllocation[] }
   ) => Promise<TransactionCategoryAllocationUpdateResult>;
@@ -435,6 +442,10 @@ const budgetApi: BudgetApi = {
   ledger: {
     list: (query: TransactionQuery): Promise<LedgerQueryResult> =>
       ipcRenderer.invoke("transaction:list", query),
+    getCategoryEditContext: (transactionId: string): Promise<TransactionCategoryEditContext> =>
+      ipcRenderer.invoke("transaction:categoryEditContext", transactionId),
+    editCategory: (input: TransactionCategoryEditInput): Promise<TransactionCategoryEditResult> =>
+      ipcRenderer.invoke("transaction:editCategory", input),
     updateCategoryAllocations: (
       input: { transactionId: string; allocations: TransactionCategoryAllocation[] }
     ): Promise<TransactionCategoryAllocationUpdateResult> =>

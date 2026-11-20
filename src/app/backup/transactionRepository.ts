@@ -145,7 +145,7 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
     const rows = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
         currency_code, source_type, source_reference, category_id, import_job_id,
-        category_allocations_json
+        categorization_json, category_allocations_json
       FROM transactions
       WHERE account_id = ?
       ORDER BY booked_at_iso ASC, id ASC
@@ -171,10 +171,10 @@ export function createTransactionRepository(db: DatabaseSync, readers: SnapshotR
     const row = db.prepare(`
       SELECT id, household_id, account_id, booked_at_iso, amount_minor, merchant_raw,
         currency_code, source_type, source_reference, category_id, import_job_id,
-        category_allocations_json
+        categorization_json, category_allocations_json
       FROM transactions
       WHERE id = ?
-    `).get(transactionId) as TransactionRow | undefined;
+    `).get(transactionId) as (TransactionRow & { categorization_json: string | null }) | undefined;
     return row === undefined ? undefined : mapTransactionRow(
       row, row.category_allocations_json == null ? [] : createCategoryIdReader(db)(row.household_id),
     );

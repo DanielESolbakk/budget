@@ -3,10 +3,8 @@ import type { Transaction } from "../../domain/types.js";
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 import { CategoryManagementButton } from "../categories/CategoryManagementButton.js";
 import { formatMinorUnits } from "../../domain/money/minorUnits.js";
-import { parseAllocationDraft, type AllocationDraft, type AllocationEditorError } from "./transactionAllocationDraft.js";
+import { getAllocationRoomGuidance, parseAllocationDraft, type AllocationDraft, type AllocationEditorError } from "./transactionAllocationDraft.js";
 export type { AllocationDraft, AllocationEditorError } from "./transactionAllocationDraft.js";
-
-const bookedDateFormatter = new Intl.DateTimeFormat("nb-NO", { dateStyle: "medium", timeZone: "UTC" });
 
 interface TransactionAllocationEditorProps {
   transaction: Transaction;
@@ -14,6 +12,7 @@ interface TransactionAllocationEditorProps {
   canReorder: boolean;
   totalMinor: bigint;
   incompleteAllocationCount: number;
+  invalidAmountIndex: number;
   currencyFormatter: Intl.NumberFormat;
   error: AllocationEditorError | null;
   isSaving: boolean;
@@ -24,8 +23,8 @@ interface TransactionAllocationEditorProps {
   onRemove: (index: number) => void;
   onAdd: () => void;
   onSave: () => void;
-  onClear: () => void;
   onCancel: () => void;
+  cancelLabel?: string;
 }
 
 export function TransactionAllocationEditor({
@@ -34,6 +33,7 @@ export function TransactionAllocationEditor({
   canReorder,
   totalMinor,
   incompleteAllocationCount,
+  invalidAmountIndex,
   currencyFormatter,
   error,
   isSaving,
@@ -44,8 +44,8 @@ export function TransactionAllocationEditor({
   onRemove,
   onAdd,
   onSave,
-  onClear,
   onCancel,
+  cancelLabel = "Cancel allocation editing",
 }: TransactionAllocationEditorProps): React.JSX.Element {
   const { categories, loading, error: catalogError } = useCategoryCatalog();
   const editorRef = React.useRef<HTMLElement>(null);
@@ -63,18 +63,17 @@ export function TransactionAllocationEditor({
     : null;
   const draft = parseAllocationDraft(transaction.amountMinor, allocations, categories.map((category) => category.id));
   const incompleteRow = allocations.findIndex((row) => row.categoryId === "" && row.amountText.trim() === "");
+  const roomGuidance = getAllocationRoomGuidance(transaction.amountMinor, totalMinor, allocations);
   let draftStatus: string;
   if (isSaving) draftStatus = "Saving split...";
   else if (loading) draftStatus = "Loading categories...";
   else if (catalogError !== null) draftStatus = "Retry loading categories before saving.";
+  else if (invalidAmountIndex >= 0) draftStatus = `Enter a valid amount for row ${invalidAmountIndex + 1}`;
   else if (draft.ok) draftStatus = "Ready to save";
+  else if (roomGuidance !== null) draftStatus = roomGuidance;
   else if (incompleteRow >= 0) draftStatus = `Finish category and amount for row ${incompleteRow + 1}`;
   else if (draft.error.field !== undefined || remainingMinor === 0n) draftStatus = draft.error.message;
-  else {
-    const balance = overAllocatedMinor ?? (remainingMinor < 0n ? -remainingMinor : remainingMinor);
-    draftStatus = `${formatMinorUnits(balance, currencyFormatter)} ${
-      overAllocatedMinor === null ? "remaining" : "over-allocated"}`;
-  }
+  else draftStatus = "Adjust amounts to match the transaction.";
 
   return (
     <section
@@ -85,21 +84,25 @@ export function TransactionAllocationEditor({
       aria-busy={isSaving}
       aria-describedby={error === null ? undefined : "transaction-allocation-error"}
     >
-      <header className="transaction-allocation-heading">
-        <div>
-          <h3>Split transaction</h3>
-          <p className="transaction-allocation-context">
-            <strong>{transaction.merchantAlias ?? transaction.merchantRaw}</strong>
-            <time dateTime={transaction.bookedAtIso}>{bookedDateFormatter.format(new Date(transaction.bookedAtIso))}</time>
-          </p>
-        </div>
-        <strong className="transaction-allocation-source">
-          {formatMinorUnits(transaction.amountMinor, currencyFormatter)}
-        </strong>
-      </header>
-      <p className="transaction-allocation-guidance">Changes apply only when you save.</p>
+      <h3>Split transaction</h3>
+      <p className="transaction-allocation-guidance">
+        Split amounts must add up to the transaction total. Changes apply only when you save.{" "}
+        <span id="transaction-allocation-amount-guidance">
+          {transaction.amountMinor < 0
+            ? "Use negative amounts. "
+            : transaction.amountMinor > 0
+              ? "Use positive amounts. "
+              : ""}
+          Use a comma or period for decimals.
+        </span>
+      </p>
       <p className="transaction-allocation-summary" role="status" aria-label="Split draft status" aria-live="off">
-        {draftStatus}
+        <span>{draftStatus}</span>
+        <span>
+          {invalidAmountIndex >= 0
+            ? "Remaining: unavailable"
+            : `${overAllocatedMinor === null ? "Remaining:" : "Over-allocated:"} ${formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}`}
+        </span>
       </p>
       <details className="transaction-allocation-totals">
         <summary>Split details</summary>
@@ -109,7 +112,7 @@ export function TransactionAllocationEditor({
             <strong>{formatMinorUnits(transaction.amountMinor, currencyFormatter)}</strong>
           </p>
           <p>
-            {incompleteAllocationCount === 0 ? "Allocation total:" : "Allocated so far:"}
+            {invalidAmountIndex >= 0 ? "Valid amounts so far:" : incompleteAllocationCount === 0 ? "Allocation total:" : "Allocated so far:"}
             <strong>{formatMinorUnits(totalMinor, currencyFormatter)}</strong>
           </p>
           <p>
@@ -118,7 +121,7 @@ export function TransactionAllocationEditor({
                 ? "Remaining to allocate:"
                 : "Balance after entered amounts:"
               : "Over-allocated by:"}
-            <strong>{formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}</strong>
+            <strong>{invalidAmountIndex >= 0 ? "Unavailable" : formatMinorUnits(overAllocatedMinor ?? remainingMinor, currencyFormatter)}</strong>
           </p>
           {incompleteAllocationCount > 0 && (
             <p className="transaction-allocation-incomplete">
@@ -166,7 +169,9 @@ export function TransactionAllocationEditor({
                 <input
                   aria-label={`Allocation amount ${index + 1}`}
                   aria-invalid={amountHasError || undefined}
-                  aria-describedby={amountHasError ? "transaction-allocation-error" : undefined}
+                  aria-describedby={amountHasError
+                    ? "transaction-allocation-amount-guidance transaction-allocation-error"
+                    : "transaction-allocation-amount-guidance"}
                   disabled={isSaving}
                   inputMode="decimal"
                   value={allocation.amountText}
@@ -176,7 +181,7 @@ export function TransactionAllocationEditor({
                 {amountHasError && <span className="transaction-allocation-field-error"
                   id="transaction-allocation-error" role="alert">{errorForIndex.message}</span>}
               </label>
-              <details className="transaction-allocation-row-actions">
+              {(canReorder || allocations.length > 2) && <details className="transaction-allocation-row-actions">
                 <summary aria-label={`Row actions for allocation ${index + 1}`}>Row actions</summary>
                 <div>
                   {!canReorder && <p>Finish all rows before reordering.</p>}
@@ -213,7 +218,7 @@ export function TransactionAllocationEditor({
                     </button>
                   )}
                 </div>
-              </details>
+              </details>}
             </div>
           );
         })}
@@ -228,21 +233,19 @@ export function TransactionAllocationEditor({
         <p className="transaction-allocation-field-error" id="transaction-allocation-error" role="alert">{error.message}</p>
       )}
       <div className="transaction-allocation-actions">
+        <p className="transaction-allocation-consequence" id="transaction-allocation-consequence">
+          Splitting does not change remembered categories for this merchant.
+        </p>
         {isSaving && <p className="transaction-allocation-saving">Saving allocation changes.</p>}
         <button type="button" disabled={isSaving || loading || catalogError !== null} onClick={onSave}
+          aria-describedby="transaction-allocation-consequence"
           aria-label={isSaving ? "Saving split..." : `Save split for ${transaction.merchantRaw}`}>
           {isSaving ? "Saving split..." : "Save split"}
         </button>
         <button className="action-secondary" type="button" disabled={isSaving} onClick={onCancel}
-          aria-label="Cancel allocation editing">
+          aria-label={cancelLabel}>
           Cancel
         </button>
-        {transaction.categoryAllocations?.length ? (
-          <button className="action-secondary transaction-allocation-clear" type="button" disabled={isSaving} onClick={onClear}
-            aria-label={`Remove saved split for ${transaction.merchantRaw}`}>
-            Remove saved split
-          </button>
-        ) : null}
       </div>
     </section>
   );

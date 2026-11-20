@@ -9,6 +9,7 @@ export function readLedgerRecoveryHistory(
   accountIds: Set<string>,
   importJobIds: Set<string>,
   categoryIds: readonly string[],
+  transactionIds: Set<string>,
 ): LedgerRecoveryHistory {
   const corrections = createCorrectionRepository(database);
   const baselines = database.prepare(`SELECT import_job_id, transaction_id, baseline_json
@@ -41,9 +42,10 @@ export function readLedgerRecoveryHistory(
   });
   return validateRecoveryHistory({
     merchantCorrections: corrections.listMerchantCorrectionProvenance(),
+    transactionCategoryEdits: corrections.listTransactionCategoryEdits(),
     sameMerchantPropagations: corrections.listSameMerchantPropagationOperations(),
     importOperations,
-  }, householdId, accountIds, importJobIds, categoryIds, "local ledger");
+  }, householdId, accountIds, importJobIds, categoryIds, "local ledger", transactionIds);
 }
 
 export function insertLedgerRecoveryHistory(database: DatabaseSync, history: LedgerRecoveryHistory): void {
@@ -54,6 +56,27 @@ export function insertLedgerRecoveryHistory(database: DatabaseSync, history: Led
     insertCorrection.run(correction.id, correction.sourceTransactionId, correction.merchantAlias,
       correction.categoryId, correction.actor, correction.correctedAtIso,
       correction.originalCategorization === undefined ? null : JSON.stringify(correction.originalCategorization));
+  }
+  const insertCategoryEdit = database.prepare(`INSERT INTO transaction_category_edit_provenance (
+    id, source_transaction_id, merchant_alias, mode, category_id, allocations_json,
+    previous_category_id, previous_allocations_json, remember_for_merchant,
+    merchant_rule_effect, actor, corrected_at_iso
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  for (const edit of history.transactionCategoryEdits) {
+    insertCategoryEdit.run(
+      edit.id,
+      edit.sourceTransactionId,
+      edit.merchantAlias,
+      edit.mode,
+      edit.categoryId ?? null,
+      edit.allocations === undefined ? null : JSON.stringify(edit.allocations),
+      edit.previousCategoryId ?? null,
+      edit.previousAllocations === undefined ? null : JSON.stringify(edit.previousAllocations),
+      edit.rememberForMerchant ? 1 : 0,
+      edit.merchantRuleEffect,
+      edit.actor,
+      edit.correctedAtIso
+    );
   }
   const insertPropagation = database.prepare(`INSERT INTO same_merchant_propagation_operations (
     id, source_transaction_id, merchant_alias, category_id, applied_at_iso, undone_at_iso

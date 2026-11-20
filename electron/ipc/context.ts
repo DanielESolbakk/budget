@@ -30,7 +30,7 @@ export interface LedgerChannelContext {
   categoryManagementService: ReturnType<typeof createCategoryManagementService>;
   sampleHousehold: Household;
   sampleTargetStore: MonthlyCategoryTargetStore;
-  runtimeState: { ledgerGeneration: number };
+  runtimeState: { ledgerGeneration: number; databaseGeneration: number };
   propertyRegistry: ReturnType<typeof createPropertyRegistry>;
   holdingRegistry: ReturnType<typeof createHoldingRegistry>;
   loanRegistry: ReturnType<typeof createLoanRegistry>;

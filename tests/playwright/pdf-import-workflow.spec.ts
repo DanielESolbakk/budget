@@ -22,6 +22,7 @@ import { basename, join, resolve } from "node:path";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { ImportReviewPage } from "./pom/ImportReviewPage.js";
 import { createSyntheticPdfWithText } from "../helpers/createSyntheticPdf.js";
@@ -292,6 +293,22 @@ function loadPersistedSnapshot(databasePath: string) {
   }
 }
 
+function findImportedTransaction(databasePath: string): { id: string; merchantRaw: string } | undefined {
+  const database = new DatabaseSync(databasePath);
+  try {
+    const row = database.prepare(`
+      SELECT id, merchant_raw
+      FROM transactions
+      WHERE import_job_id IS NOT NULL
+      ORDER BY id
+      LIMIT 1
+    `).get() as { id: string; merchant_raw: string } | undefined;
+    return row === undefined ? undefined : { id: row.id, merchantRaw: row.merchant_raw };
+  } finally {
+    database.close();
+  }
+}
+
 test.describe("PDF import renderer workflow", () => {
   test.use({ importFileDialogBehavior: "pdf-selected" });
 
@@ -432,9 +449,21 @@ test.describe("PDF import renderer workflow", () => {
         height: globalThis.innerHeight,
       }))).toEqual(viewport);
       await pdfImport.submitImport(FIXTURE_PATH);
-      const importedTransaction = loadPersistedSnapshot(databasePath).transactions.find(
-        (transaction) => transaction.importJobId !== undefined
-      );
+      // Hold a writer lock to ensure this post-import inspection does not request one.
+      const competingWrite = new DatabaseSync(databasePath);
+      let transactionStarted = false;
+      let importedTransaction: { id: string; merchantRaw: string } | undefined;
+      try {
+        competingWrite.exec("BEGIN IMMEDIATE");
+        transactionStarted = true;
+        importedTransaction = findImportedTransaction(databasePath);
+      } finally {
+        try {
+          if (transactionStarted) competingWrite.exec("ROLLBACK");
+        } finally {
+          competingWrite.close();
+        }
+      }
       expect(importedTransaction).toBeDefined();
       if (importedTransaction === undefined) return;
 

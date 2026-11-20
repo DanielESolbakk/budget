@@ -18,6 +18,17 @@ export interface AllocationEditorError {
   };
 }
 
+export function getAllocationRoomGuidance(
+  sourceAmountMinor: number,
+  totalMinor: bigint,
+  draft: readonly AllocationDraft[],
+): string | null {
+  const emptyRow = draft.findIndex((row) => row.categoryId === "" && row.amountText.trim() === "");
+  return sourceAmountMinor !== 0 && BigInt(sourceAmountMinor) === totalMinor && emptyRow >= 0
+    ? `Adjust an existing amount to make room for row ${emptyRow + 1}`
+    : null;
+}
+
 export function parseAllocationDraft(
   sourceAmountMinor: number,
   draft: readonly AllocationDraft[],

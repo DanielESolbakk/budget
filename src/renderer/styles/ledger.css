@@ -307,6 +307,10 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
   margin-top: 0.75rem;
 }
 
+.ledger-table-scroll.has-category-editor {
+  overflow: visible;
+}
+
 .ledger-table-scroll:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
@@ -338,6 +342,11 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
   min-width: 700px;
   border-collapse: collapse;
   text-align: left;
+}
+
+.ledger-table-editing {
+  min-width: 100%;
+  table-layout: fixed;
 }
 
 .ledger-table th,
@@ -398,6 +407,32 @@ section[aria-label="Ledger"] .ledger-clear-filters:hover:not(:disabled) {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.ledger-category-trigger {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  align-items: center;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid transparent;
+  color: var(--paper);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.ledger-category-trigger:hover:not(:disabled),
+.ledger-category-trigger[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+}
+
+.ledger-category-trigger:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .ledger-pagination {

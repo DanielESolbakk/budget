@@ -26,14 +26,14 @@ for (const width of [1440, 390]) {
       await expect(ledger.resultStatus).toContainText("4 ledger transactions");
     });
 
-    test("statement import has stronger emphasis than manual entry and row actions", async ({
+    test("statement import has stronger emphasis than manual entry and category controls", async ({
       appShell, ledger, window,
     }) => {
-      const allocation = ledger.section.getByRole("button", {
-        name: "Edit category allocations for Rema 1000", exact: true,
+      const categoryControl = ledger.section.getByRole("button", {
+        name: "Edit category for Rema 1000", exact: true,
       });
-      await expect(allocation).toBeVisible();
-      const rowBackground = await allocation.evaluate((node) => getComputedStyle(node).backgroundColor);
+      await expect(categoryControl).toBeVisible();
+      const rowBackground = await categoryControl.evaluate((node) => getComputedStyle(node).backgroundColor);
       await appShell.openWorkspace("Import");
       const primary = window.getByRole("button", { name: "Choose statement file", exact: true });
       const manual = window.getByRole("button", { name: "Enter transaction manually", exact: true });

@@ -8,14 +8,22 @@ import type {
   MerchantCategoryRule,
   SameMerchantPropagationInput,
   SameMerchantPropagationOperation,
+  TransactionCategoryEditProvenance,
 } from "../../domain/types.js";
+import {
+  isTransactionCategoryEditStateCurrent,
+  TransactionCategoryEditValidationError,
+  type MerchantCategoryRuleEffect,
+} from "../../shared/transactionCategoryEdit.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 import { createCategoryIdReader } from "./categoryRepository.js";
 
 type CorrectionRepository = Pick<LocalLedgerDatabase,
   | "updateTransactionCategory"
   | "updateTransactionCategoryAndRule"
+  | "applyTransactionCategoryEdit"
   | "listMerchantCorrectionProvenance"
+  | "listTransactionCategoryEdits"
   | "applySameMerchantPropagation"
   | "listSameMerchantPropagationOperations"
   | "undoSameMerchantPropagation"
@@ -23,7 +31,10 @@ type CorrectionRepository = Pick<LocalLedgerDatabase,
   | "upsertMerchantCategoryRule"
 >;
 
-export function createCorrectionRepository(db: DatabaseSync): CorrectionRepository {
+export function createCorrectionRepository(
+  db: DatabaseSync,
+  dependencies?: Pick<LocalLedgerDatabase, "getTransactionById">
+): CorrectionRepository {
   function updateTransactionCategory(transactionId: string, categoryId: string): void {
     const result = db
       .prepare("UPDATE transactions SET category_id = ? WHERE id = ?")
@@ -93,6 +104,131 @@ export function createCorrectionRepository(db: DatabaseSync): CorrectionReposito
     }
   }
 
+  function applyTransactionCategoryEdit(input: Parameters<
+    LocalLedgerDatabase["applyTransactionCategoryEdit"]
+  >[0]): TransactionCategoryEditProvenance {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      if (dependencies === undefined) {
+        throw new Error("Transaction category editing requires the local transaction reader.");
+      }
+      const currentTransaction = dependencies.getTransactionById(input.transactionId);
+      if (currentTransaction === undefined) {
+        throw new Error(`Transaction not found: ${input.transactionId}`);
+      }
+      const currentMerchantCategoryRule = listMerchantCategoryRules().find((rule) =>
+        rule.merchantAlias === input.merchantAlias
+      ) ?? null;
+      if (!isTransactionCategoryEditStateCurrent(
+        {
+          databaseGeneration: 0,
+          transaction: input.expectedState.transaction,
+          merchantCategoryRule: input.expectedState.merchantCategoryRule,
+        },
+        {
+          databaseGeneration: 0,
+          transaction: currentTransaction,
+          merchantCategoryRule: currentMerchantCategoryRule,
+        }
+      )) {
+        throw new TransactionCategoryEditValidationError(
+          "STALE_EDIT",
+          "This transaction or its remembered category changed while you were editing. Reopen the editor and try again."
+        );
+      }
+      if (normalizeMerchantName(currentTransaction.merchantRaw) !== input.merchantAlias) {
+        throw new TransactionCategoryEditValidationError(
+          "STALE_EDIT",
+          "The merchant matching target changed while you were editing. Reopen the editor and try again."
+        );
+      }
+      if (
+        (input.merchantRuleEffect === "updated") !==
+        (input.merchantRuleToSave !== undefined)
+      ) {
+        throw new Error("Merchant rule update does not match the requested edit outcome.");
+      }
+
+      if (input.mode === "single" && input.categoryId === undefined) {
+        throw new Error("A single-category edit requires a category.");
+      }
+      const categoryId = input.mode === "single" ? input.categoryId ?? null : null;
+      const allocations = input.mode === "split" ? input.allocations ?? [] : [];
+      const updateTransaction = db.prepare(`
+        UPDATE transactions
+        SET category_id = ?, category_allocations_json = ?, categorization_json = ?
+        WHERE id = ?
+      `).run(
+        categoryId,
+        allocations.length === 0 ? null : JSON.stringify(allocations),
+        JSON.stringify(input.categorization),
+        input.transactionId
+      ) as { changes: number | bigint };
+      if (Number(updateTransaction.changes) !== 1) {
+        throw new Error(`Transaction not found: ${input.transactionId}`);
+      }
+      if (input.merchantRuleToSave !== undefined) {
+        upsertMerchantCategoryRule(input.merchantRuleToSave);
+      }
+
+      const correctedAtIso = new Date().toISOString();
+      const provenanceBase = {
+        id: randomUUID(),
+        sourceTransactionId: input.transactionId,
+        merchantAlias: input.merchantAlias,
+        ...(currentTransaction.categoryId === undefined
+          ? {}
+          : { previousCategoryId: currentTransaction.categoryId }),
+        ...(currentTransaction.categoryAllocations === undefined
+          ? {}
+          : { previousAllocations: currentTransaction.categoryAllocations.map((allocation) => ({ ...allocation })) }),
+        rememberForMerchant: input.rememberForMerchant,
+        merchantRuleEffect: input.merchantRuleEffect,
+        actor: "local-user" as const,
+        correctedAtIso,
+      };
+      let provenance: TransactionCategoryEditProvenance;
+      if (input.mode === "single") {
+        if (input.categoryId === undefined) {
+          throw new Error("A single-category edit requires a category.");
+        }
+        provenance = { ...provenanceBase, mode: "single", categoryId: input.categoryId };
+      } else {
+        provenance = {
+          ...provenanceBase,
+          mode: "split",
+          allocations: allocations.map((allocation) => ({ ...allocation })),
+        };
+      }
+      db.prepare(`
+        INSERT INTO transaction_category_edit_provenance (
+          id, source_transaction_id, merchant_alias, mode, category_id, allocations_json,
+          previous_category_id, previous_allocations_json, remember_for_merchant,
+          merchant_rule_effect, actor, corrected_at_iso
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        provenance.id,
+        provenance.sourceTransactionId,
+        provenance.merchantAlias,
+        provenance.mode,
+        provenance.categoryId ?? null,
+        provenance.allocations === undefined ? null : JSON.stringify(provenance.allocations),
+        provenance.previousCategoryId ?? null,
+        provenance.previousAllocations === undefined ? null : JSON.stringify(provenance.previousAllocations),
+        provenance.rememberForMerchant ? 1 : 0,
+        provenance.merchantRuleEffect,
+        provenance.actor,
+        provenance.correctedAtIso
+      );
+
+      db.exec("COMMIT");
+      return provenance;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   function listMerchantCorrectionProvenance(): MerchantCorrectionProvenance[] {
     return db
       .prepare(`
@@ -127,6 +263,54 @@ export function createCorrectionRepository(db: DatabaseSync): CorrectionReposito
         }
         return provenance;
       });
+  }
+
+  function listTransactionCategoryEdits(): TransactionCategoryEditProvenance[] {
+    return db.prepare(`
+      SELECT id, source_transaction_id, merchant_alias, mode, category_id, allocations_json,
+        previous_category_id, previous_allocations_json, remember_for_merchant,
+        merchant_rule_effect, actor, corrected_at_iso
+      FROM transaction_category_edit_provenance
+      ORDER BY corrected_at_iso, id
+    `).all().map((row) => {
+      const typedRow = row as {
+        id: string;
+        source_transaction_id: string;
+        merchant_alias: string;
+        mode: "single" | "split";
+        category_id: string | null;
+        allocations_json: string | null;
+        previous_category_id: string | null;
+        previous_allocations_json: string | null;
+        remember_for_merchant: number;
+        merchant_rule_effect: MerchantCategoryRuleEffect;
+        actor: "local-user";
+        corrected_at_iso: string;
+      };
+      if (typedRow.remember_for_merchant !== 0 && typedRow.remember_for_merchant !== 1) {
+        throw new Error("Invalid saved transaction category edit learning choice.");
+      }
+      return {
+        id: typedRow.id,
+        sourceTransactionId: typedRow.source_transaction_id,
+        merchantAlias: typedRow.merchant_alias,
+        mode: typedRow.mode,
+        ...(typedRow.category_id === null ? {} : { categoryId: typedRow.category_id }),
+        ...(typedRow.allocations_json === null
+          ? {}
+          : { allocations: JSON.parse(typedRow.allocations_json) as NonNullable<TransactionCategoryEditProvenance["allocations"]> }),
+        ...(typedRow.previous_category_id === null
+          ? {}
+          : { previousCategoryId: typedRow.previous_category_id }),
+        ...(typedRow.previous_allocations_json === null
+          ? {}
+          : { previousAllocations: JSON.parse(typedRow.previous_allocations_json) as NonNullable<TransactionCategoryEditProvenance["previousAllocations"]> }),
+        rememberForMerchant: typedRow.remember_for_merchant === 1,
+        merchantRuleEffect: typedRow.merchant_rule_effect,
+        actor: typedRow.actor,
+        correctedAtIso: typedRow.corrected_at_iso,
+      };
+    });
   }
 
   function applySameMerchantPropagation(
@@ -403,7 +587,9 @@ export function createCorrectionRepository(db: DatabaseSync): CorrectionReposito
   return {
     updateTransactionCategory,
     updateTransactionCategoryAndRule,
+    applyTransactionCategoryEdit,
     listMerchantCorrectionProvenance,
+    listTransactionCategoryEdits,
     applySameMerchantPropagation,
     listSameMerchantPropagationOperations,
     undoSameMerchantPropagation,

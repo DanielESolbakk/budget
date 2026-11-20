@@ -26,8 +26,13 @@ import {
   type RecurringCommitmentPaymentLinkInput,
   type SameMerchantPropagationInput,
   type SameMerchantPropagationPreviewRequest,
+  type Transaction,
   type TransactionCategoryAllocation,
 } from "../../src/domain/types.js";
+import type {
+  TransactionCategoryEditExpectedState,
+  TransactionCategoryEditInput,
+} from "../../src/shared/transactionCategoryEdit.js";
 
 export function invalidAccountMessage(accountId: string): string {
   return `accountId must identify an account belonging to the household: ${accountId}`;
@@ -497,6 +502,108 @@ export function parseTransactionCategoryAllocations(input: unknown): Transaction
       amountMinor,
     };
   });
+}
+
+export function parseTransactionCategoryEditInput(input: unknown): TransactionCategoryEditInput {
+  const record = parseObject(input, "Transaction category edit");
+  const transactionId = parseNonEmptyString(record.transactionId, "transactionId");
+  const rememberForMerchant = record.rememberForMerchant;
+  if (typeof rememberForMerchant !== "boolean") {
+    throw new Error("rememberForMerchant must be a boolean.");
+  }
+  const expectedState = parseTransactionCategoryEditExpectedState(record.expectedState, transactionId);
+
+  if (record.mode === "single") {
+    return {
+      transactionId,
+      expectedState,
+      mode: "single",
+      categoryId: parseNonEmptyString(record.categoryId, "categoryId"),
+      rememberForMerchant,
+    };
+  }
+  if (record.mode === "split") {
+    return {
+      transactionId,
+      expectedState,
+      mode: "split",
+      allocations: parseTransactionCategoryAllocations(record.allocations),
+      rememberForMerchant,
+    };
+  }
+  throw new Error("Transaction category edit mode must be single or split.");
+}
+
+function parseTransactionCategoryEditExpectedState(
+  input: unknown,
+  transactionId: string
+): TransactionCategoryEditExpectedState {
+  const record = parseObject(input, "expectedState");
+  const databaseGeneration = record.databaseGeneration;
+  if (typeof databaseGeneration !== "number" || !Number.isSafeInteger(databaseGeneration) ||
+    databaseGeneration < 0) {
+    throw new Error("expectedState.databaseGeneration must be a non-negative safe integer.");
+  }
+  if (!isTransactionEditSnapshot(record.transaction) || record.transaction.id !== transactionId) {
+    throw new Error("expectedState.transaction must match transactionId.");
+  }
+  let merchantCategoryRule: TransactionCategoryEditExpectedState["merchantCategoryRule"];
+  if (record.merchantCategoryRule === null) {
+    merchantCategoryRule = null;
+  } else {
+    const rule = parseObject(record.merchantCategoryRule, "expectedState.merchantCategoryRule");
+    merchantCategoryRule = {
+      merchantAlias: parseNonEmptyString(rule.merchantAlias, "expectedState.merchantCategoryRule.merchantAlias"),
+      categoryId: parseNonEmptyString(rule.categoryId, "expectedState.merchantCategoryRule.categoryId"),
+    };
+  }
+  return {
+    databaseGeneration,
+    transaction: record.transaction,
+    merchantCategoryRule,
+  };
+}
+
+function isTransactionEditSnapshot(value: unknown): value is Transaction {
+  if (!isObjectRecord(value)) return false;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.householdId !== "string" ||
+    typeof value.accountId !== "string" ||
+    typeof value.bookedAtIso !== "string" ||
+    typeof value.amountMinor !== "number" ||
+    !Number.isSafeInteger(value.amountMinor) ||
+    typeof value.merchantRaw !== "string"
+  ) return false;
+  if (value.currencyCode !== undefined && typeof value.currencyCode !== "string") return false;
+  if (value.sourceType !== undefined &&
+    value.sourceType !== "csv" && value.sourceType !== "pdf" && value.sourceType !== "manual") return false;
+  if (value.merchantAlias !== undefined && typeof value.merchantAlias !== "string") return false;
+  if (value.sourceReference !== undefined && typeof value.sourceReference !== "string") return false;
+  if (value.categoryId !== undefined && typeof value.categoryId !== "string") return false;
+  if (value.importJobId !== undefined && typeof value.importJobId !== "string") return false;
+  if (value.categoryAllocations !== undefined &&
+    (!Array.isArray(value.categoryAllocations) || !value.categoryAllocations.every((allocation) =>
+      isObjectRecord(allocation) &&
+      typeof allocation.categoryId === "string" &&
+      typeof allocation.amountMinor === "number" &&
+      Number.isSafeInteger(allocation.amountMinor)
+    ))) return false;
+  if (value.categorization !== undefined &&
+    (!isObjectRecord(value.categorization) ||
+      typeof value.categorization.confidence !== "number" ||
+      typeof value.categorization.requiresReview !== "boolean" ||
+      !Array.isArray(value.categorization.matchingRules))) return false;
+  return true;
+}
+
+function parseObject(value: unknown, label: string): Record<string, unknown> {
+  if (!isObjectRecord(value)) throw new Error(`${label} must be an object.`);
+  return value;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function parseMonthlyReferenceRateIds(input: unknown): Record<string, string> | undefined {

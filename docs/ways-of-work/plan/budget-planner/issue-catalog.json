@@ -198,6 +198,12 @@
       "parentKeys": ["F3.3"]
     },
     {
+      "key": "S3.3.2",
+      "type": "story",
+      "title": "Edit transaction categories inline with optional merchant learning and splitting",
+      "parentKeys": ["F3.3"]
+    },
+    {
       "key": "EN3.1",
       "type": "enabler",
       "title": "Categorization rule persistence and provenance",
@@ -226,6 +232,24 @@
       "type": "test",
       "title": "Same-merchant correction propagation runtime coverage",
       "parentKeys": ["S3.3.1"]
+    },
+    {
+      "key": "T3.3.2.1",
+      "type": "test",
+      "title": "Unit coverage for inline transaction category edit decisions",
+      "parentKeys": ["S3.3.2"]
+    },
+    {
+      "key": "T3.3.2.2",
+      "type": "test",
+      "title": "Integration coverage for atomic transaction category edit persistence",
+      "parentKeys": ["S3.3.2"]
+    },
+    {
+      "key": "T3.3.2.3",
+      "type": "test",
+      "title": "Playwright coverage for inline transaction category editing",
+      "parentKeys": ["S3.3.2"]
     },
     {
       "key": "E4",

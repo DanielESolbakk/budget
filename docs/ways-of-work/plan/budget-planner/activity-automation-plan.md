@@ -11,7 +11,9 @@ transaction processing are included.
 Category management is the first delivery scope, under E3 > F3.4 (#585).
 Story S3.4.1 (#587) owns catalog creation and renaming; Story S3.4.2 (#588)
 owns merging and depends on #587. The other four workstreams are approved
-roadmap outcomes, not implementation-ready issue hierarchies.
+roadmap outcomes, not implementation-ready issue hierarchies. Inline
+transaction-category editing is a separate, owner-approved F3.3 Story,
+S3.3.2 (#598), and does not expand the split-editor PR #597.
 
 ## Product Requirements And Acceptance Criteria
 
@@ -39,10 +41,12 @@ roadmap outcomes, not implementation-ready issue hierarchies.
 | 4 | Safe batch review | Extend existing same-merchant preview/apply/undo instead of creating another batch engine | Category catalog, suggestion grouping, existing propagation history |
 | 5 | Recurring suggestions | Propose existing supported commitment cadences using merchant, dates, account, currency and amounts | Merchant identity and existing commitment/payment-link services |
 
-Only category management is materialized in this planning batch. Before each
-later workstream starts, define concrete acceptance criteria, thresholds,
-conflict/dismissal behavior, and immediate implementation-owned test plans.
-Do not infer those decisions from a merchant name or add placeholder Test issues.
+Category management was the first materialized workstream. S3.3.2 (#598) is a
+separately approved transaction-edit scope with layer-specific Tests #599-#601.
+Before any remaining roadmap workstream starts, define concrete acceptance
+criteria, thresholds, conflict/dismissal behavior, and immediate
+implementation-owned test plans. Do not infer those decisions from a merchant
+name or add placeholder Test issues.
 
 ## First Workstream: Category Catalog And Management
 
@@ -88,6 +92,30 @@ Do not infer those decisions from a merchant name or add placeholder Test issues
   Resolve historical category IDs when an operation applies a current
   assignment; never silently reactivate an inactive category.
 - Category merge undo and permanent deletion are excluded.
+
+### Inline Transaction Category Editing (#598)
+
+- The category in each ledger row opens one editor directly below that row.
+  Single-category correction is the default; splitting remains an explicit
+  action within the editor and uses the existing allocation validator.
+- Remembering a non-empty normalized merchant alias is checked by default but
+  affects only future matching transactions. Opting out changes only the
+  selected transaction and preserves any existing rule. Empty aliases cannot
+  produce a rule; matching category and rule state is a no-op.
+- Returning to one category from a saved split stages a whole-transaction
+  replacement. Switching edit modes preserves category, Remember, and ordered
+  allocation drafts until explicit Save; Cancel and Escape leave persistence
+  unchanged.
+- The repository commits category/allocation replacement, manual categorization
+  metadata, optional rule change, and transaction-category-edit provenance in
+  one SQLite transaction. Expected transaction/rule state and database
+  generation guard stale edits; failures leave recoverable state and do not
+  update the in-memory learned-rule map.
+- Version-14 snapshots include the new edit history and retain version-13
+  restore support. Category edits remain local, and the synthetic browser
+  preview explicitly rejects the desktop edit-write API.
+- This Story does not change category catalog ownership, existing review-queue
+  correction behavior, bulk history propagation, or merchant recognition.
 
 ## Technical Boundaries And Persistence
 
@@ -138,6 +166,7 @@ Do not infer those decisions from a merchant name or add placeholder Test issues
 | --- | --- | --- | --- |
 | #587 create/rename | #589: `tests/unit/domain/categorization/categoryCatalog.test.ts` | #590: `tests/integration/category-management.test.ts` | #591: `tests/playwright/category-management.spec.ts` |
 | #588 merge | #592: `tests/unit/category-merge.test.ts` | #593: `tests/integration/category-merge.test.ts` | #594: `tests/playwright/category-merge.spec.ts` |
+| #598 inline category editing | #599: `tests/unit/transaction-category-edit.test.ts` | #600: `tests/integration/transaction-category-edit.test.ts` | #601: `tests/playwright/transaction-category-edit.spec.ts` |
 
 The named test files are creation tasks, not existing implementation entry
 points. Each Test plan owns one layer and names its immediate Story ACs.
@@ -150,6 +179,9 @@ Map #585 AC-4/AC-5 to #588 AC-1 through AC-5 and #592/#593/#594.
 Map #585 AC-6 to #587 AC-5 and #588 AC-6 through #590/#591/#593/#594.
 Map #585 AC-7 to #587 AC-6 and #588 AC-7 through #590/#593 plus no-network
 verification. These are planned mappings, not passing implementation evidence.
+Map #598 AC-1 through AC-7 to #599-#601 as described in the approved Story;
+the integration layer verifies persistence, atomicity, recovery, IPC, and
+conservation, while Playwright verifies the category-first journey and focus.
 
 For every new behavior: write a focused test, observe its intended failure,
 implement minimally, verify green, and refactor only while green. Keep real
@@ -166,6 +198,9 @@ npm run test:e2e:playwright -- tests/playwright/category-management.spec.ts
 npm run test:unit -- tests/unit/category-merge.test.ts
 npm run test:integration -- tests/integration/category-merge.test.ts
 npm run test:e2e:playwright -- tests/playwright/category-merge.spec.ts
+npm run test:unit -- tests/unit/transaction-category-edit.test.ts tests/unit/transaction-allocation-draft.test.ts
+npm run test:integration -- tests/integration/transaction-category-edit.test.ts tests/integration/category-management.test.ts tests/integration/transaction-allocations.test.ts
+npm run test:e2e:playwright -- transaction-category-edit.spec.ts transaction-allocations.spec.ts category-management.spec.ts
 npm run typecheck
 npm run verify:no-network
 ```

@@ -1,5 +1,11 @@
 import type { LedgerRecoveryHistory } from "../../domain/backup/snapshotContract.js";
-import type { CategorizationDecision, CategorizationRuleProvenance, MerchantCorrectionProvenance } from "../../domain/types.js";
+import type {
+  CategorizationDecision,
+  CategorizationRuleProvenance,
+  MerchantCorrectionProvenance,
+  TransactionCategoryEditProvenance,
+  TransactionCategoryAllocation,
+} from "../../domain/types.js";
 import { isRecord, validateTransactions } from "./snapshotRecordValidation.js";
 
 export function validateRecoveryHistory(
@@ -9,6 +15,7 @@ export function validateRecoveryHistory(
   importJobIds: Set<string>,
   categoryIds: readonly string[],
   snapshotPath: string,
+  transactionIds?: Set<string>,
 ): LedgerRecoveryHistory {
   function invalid(detail: string): never {
     throw new Error(`Invalid snapshot recovery history: ${detail}: ${snapshotPath}`);
@@ -37,6 +44,13 @@ export function validateRecoveryHistory(
     const id = text(input);
     if (!categoryIds.includes(id)) invalid("unknown category reference");
     return id;
+  }
+  function allocation(input: unknown): TransactionCategoryAllocation {
+    if (!isRecord(input) || typeof input.amountMinor !== "number" ||
+      !Number.isSafeInteger(input.amountMinor) || input.amountMinor === 0) {
+      invalid("invalid category edit allocation");
+    }
+    return { categoryId: category(input.categoryId), amountMinor: input.amountMinor };
   }
   // Propagation undo compares stored categorization JSON, including nested rule key order.
   function rule(input: unknown): CategorizationRuleProvenance {
@@ -81,6 +95,59 @@ export function validateRecoveryHistory(
       }),
     };
   });
+  const transactionCategoryEdits = records(value.transactionCategoryEdits ?? [])
+    .map((entry): TransactionCategoryEditProvenance => {
+      if (entry.actor !== "local-user" ||
+        (entry.mode !== "single" && entry.mode !== "split") ||
+        typeof entry.rememberForMerchant !== "boolean" ||
+        (entry.merchantRuleEffect !== "updated" &&
+          entry.merchantRuleEffect !== "already-matching" &&
+          entry.merchantRuleEffect !== "not-requested" &&
+          entry.merchantRuleEffect !== "unavailable")) {
+        invalid("invalid transaction category edit outcome");
+      }
+      const sourceTransactionId = text(entry.sourceTransactionId);
+      if (transactionIds !== undefined && !transactionIds.has(sourceTransactionId)) {
+        invalid("unknown category edit transaction");
+      }
+      const merchantAlias = entry.merchantAlias;
+      if (typeof merchantAlias !== "string" || merchantAlias.trim() !== merchantAlias) {
+        invalid("invalid category edit merchant alias");
+      }
+      const categoryId = entry.categoryId === undefined ? undefined : category(entry.categoryId);
+      const allocations = entry.allocations === undefined
+        ? undefined
+        : records(entry.allocations).map(allocation);
+      const previousCategoryId = entry.previousCategoryId === undefined
+        ? undefined
+        : category(entry.previousCategoryId);
+      const previousAllocations = entry.previousAllocations === undefined
+        ? undefined
+        : records(entry.previousAllocations).map(allocation);
+      if (
+        (entry.mode === "single" && (categoryId === undefined || allocations !== undefined)) ||
+        (entry.mode === "split" &&
+          (categoryId !== undefined || allocations === undefined || allocations.length < 2 ||
+            entry.rememberForMerchant || entry.merchantRuleEffect !== "not-requested")) ||
+        (entry.mode === "single" && entry.merchantRuleEffect === "updated" && merchantAlias === "")
+      ) {
+        invalid("inconsistent transaction category edit");
+      }
+      return {
+        id: text(entry.id),
+        sourceTransactionId,
+        merchantAlias,
+        mode: entry.mode,
+        ...(categoryId === undefined ? {} : { categoryId }),
+        ...(allocations === undefined ? {} : { allocations }),
+        ...(previousCategoryId === undefined ? {} : { previousCategoryId }),
+        ...(previousAllocations === undefined ? {} : { previousAllocations }),
+        rememberForMerchant: entry.rememberForMerchant,
+        merchantRuleEffect: entry.merchantRuleEffect,
+        actor: entry.actor,
+        correctedAtIso: timestamp(entry.correctedAtIso),
+      };
+    });
   const sameMerchantPropagations = records(value.sameMerchantPropagations).map((entry) => {
     const changes = records(entry.changes).map((change) => ({
       transactionId: text(change.transactionId),
@@ -146,7 +213,8 @@ export function validateRecoveryHistory(
     };
   });
   unique(merchantCorrections.map((entry) => entry.id));
+  unique(transactionCategoryEdits.map((entry) => entry.id));
   unique(sameMerchantPropagations.map((entry) => entry.id));
   unique(importOperations.map((entry) => entry.importJobId));
-  return { merchantCorrections, sameMerchantPropagations, importOperations };
+  return { merchantCorrections, transactionCategoryEdits, sameMerchantPropagations, importOperations };
 }

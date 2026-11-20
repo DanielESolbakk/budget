@@ -13,6 +13,7 @@ import {
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { buildBackupSnapshot, createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
+import type { TransactionCategoryEditContext } from "../../src/shared/transactionCategoryEdit.js";
 
 const harness = vi.hoisted(() => {
   const handlers = new Map<string, (event: object, ...args: unknown[]) => unknown>();
@@ -531,6 +532,91 @@ describe("Electron channel registration and live ledger wiring", () => {
         .toEqual(["restored-transaction"]);
     } finally {
       reopened.close();
+    }
+  });
+
+  it("rejects an open category edit after restore and a repeated committed edit without partial writes", async () => {
+    createHousehold();
+    const snapshotPath = writeReplacementSnapshot();
+    const snapshot = restoreBackupSnapshot({ snapshotPath });
+    writeFileSync(snapshotPath, JSON.stringify(buildBackupSnapshot({
+      ...snapshot,
+      transactions: snapshot.transactions.flatMap((transaction) => [
+        {
+          ...transaction,
+          categoryAllocations: [
+            { categoryId: "groceries", amountMinor: -1000 },
+            { categoryId: "transport", amountMinor: -1500 },
+          ],
+        },
+        { ...transaction, id: "filtered-before", merchantRaw: "Z synthetic" },
+        { ...transaction, id: "filtered-after", merchantRaw: "A synthetic" },
+      ]),
+      merchantCategoryRules: [{ merchantAlias: "KIWI", categoryId: "transport" }],
+    })), "utf8");
+    await invoke("backup:restore", { snapshotPath });
+    const context = await invoke(
+      "transaction:categoryEditContext", "restored-transaction"
+    ) as TransactionCategoryEditContext;
+    const staleRequest = {
+      transactionId: "restored-transaction",
+      expectedState: context.expectedState,
+      mode: "single",
+      categoryId: "housing",
+      rememberForMerchant: true,
+    };
+
+    await invoke("backup:restore", { snapshotPath });
+    const database = createLocalLedgerDatabase({ dbPath });
+    try {
+      const restored = database.loadLedgerSnapshotData();
+      expect(await invoke("transaction:editCategory", staleRequest))
+        .toMatchObject({ ok: false, code: "STALE_EDIT" });
+      const afterStaleEdit = database.loadLedgerSnapshotData();
+      expect(afterStaleEdit.transactions).toEqual(restored.transactions);
+      expect(afterStaleEdit.merchantCategoryRules).toEqual(restored.merchantCategoryRules);
+      expect(afterStaleEdit.recoveryHistory).toEqual(restored.recoveryHistory);
+      const afterRestore = await invoke(
+        "transaction:categoryEditContext", "restored-transaction"
+      ) as TransactionCategoryEditContext;
+      expect(afterRestore.transaction).toEqual(context.transaction);
+      expect(afterRestore.transaction.categoryAllocations).toEqual([
+        { categoryId: "groceries", amountMinor: -1000 },
+        { categoryId: "transport", amountMinor: -1500 },
+      ]);
+      expect(afterRestore.merchantCategoryRule)
+        .toEqual({ merchantAlias: "KIWI", categoryId: "transport" });
+      expect(afterRestore.expectedState.databaseGeneration)
+        .toBe(context.expectedState.databaseGeneration + 1);
+
+      const query = Object.freeze({
+        categoryId: "groceries", sortBy: "merchantRaw", sortDirection: "desc", page: 2, pageSize: 1,
+      });
+      expect(await invoke("transaction:list", query)).toMatchObject({
+        transactions: [{ id: "restored-transaction" }], totalCount: 3, page: 2, pageSize: 1,
+      });
+      const request = { ...staleRequest, expectedState: afterRestore.expectedState };
+      expect(await invoke("transaction:editCategory", request))
+        .toMatchObject({ ok: true, transactionChanged: true, merchantRuleEffect: "updated" });
+      expect(await invoke("transaction:list", query)).toMatchObject({
+        transactions: [{ id: "filtered-after" }], totalCount: 2, page: 2, pageSize: 1,
+      });
+      expect(query).toEqual({
+        categoryId: "groceries", sortBy: "merchantRaw", sortDirection: "desc", page: 2, pageSize: 1,
+      });
+      const committed = database.loadLedgerSnapshotData();
+      expect(await invoke("transaction:editCategory", request))
+        .toMatchObject({ ok: false, code: "STALE_EDIT" });
+      expect(database.loadLedgerSnapshotData()).toEqual(committed);
+      expect(database.getTransactionById("restored-transaction"))
+        .toMatchObject({ amountMinor: -2500, categoryId: "housing" });
+      expect(database.getTransactionById("restored-transaction")?.categoryAllocations).toBeUndefined();
+      expect(database.listMerchantCategoryRules())
+        .toEqual([{ merchantAlias: "KIWI", categoryId: "housing" }]);
+      expect(database.loadLedgerSnapshotData().recoveryHistory?.transactionCategoryEdits)
+        .toHaveLength(1);
+    } finally {
+      database.close();
     }
   });
 

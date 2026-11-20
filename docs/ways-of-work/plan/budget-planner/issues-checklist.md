@@ -48,6 +48,7 @@
 
 ### Categorization and correction workflow
 
+- [ ] S3.3.2 #598: inline transaction category editing, with Unit #599, Integration #600, Playwright #601
 - [ ] F3.4 #585: category catalog and user-managed categories
 - [ ] S3.4.1 #587: create/rename, with Unit #589, Integration #590, Playwright #591
 - [ ] S3.4.2 #588: safe merge, with Unit #592, Integration #593, Playwright #594

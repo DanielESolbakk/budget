@@ -19,6 +19,7 @@ export interface TransactionRow {
   source_reference: string | null;
   category_id: string | null;
   import_job_id: string | null;
+  categorization_json?: string | null;
   category_allocations_json?: string | null;
 }
 
@@ -61,6 +62,11 @@ export function mapTransactionRow(
   if (transaction.source_reference !== null) mapped.sourceReference = transaction.source_reference;
   if (transaction.category_id !== null) mapped.categoryId = transaction.category_id;
   if (transaction.import_job_id !== null) mapped.importJobId = transaction.import_job_id;
+  if (transaction.categorization_json != null) {
+    mapped.categorization = JSON.parse(
+      transaction.categorization_json
+    ) as NonNullable<Transaction["categorization"]>;
+  }
   if (transaction.category_allocations_json != null) {
     const parsed: unknown = JSON.parse(transaction.category_allocations_json);
     if (!Array.isArray(parsed)) {

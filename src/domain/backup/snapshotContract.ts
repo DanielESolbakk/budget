@@ -21,14 +21,15 @@ import type {
   RecurringCommitmentPaymentLink,
   SameMerchantPropagationOperation,
   Transaction,
+  TransactionCategoryEditProvenance,
 } from "../types.js";
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
 
 /** Snapshot format version – increment when the serialized recovery contract changes. */
-export const SNAPSHOT_VERSION = "13" as const;
+export const SNAPSHOT_VERSION = "14" as const;
 
 export type SnapshotVersion =
-  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | typeof SNAPSHOT_VERSION;
+  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | typeof SNAPSHOT_VERSION;
 
 export interface ImportOperationSnapshot {
   importJobId: string;
@@ -45,6 +46,7 @@ export interface ImportOperationSnapshot {
 
 export interface LedgerRecoveryHistory {
   merchantCorrections: MerchantCorrectionProvenance[];
+  transactionCategoryEdits: TransactionCategoryEditProvenance[];
   sameMerchantPropagations: SameMerchantPropagationOperation[];
   importOperations: ImportOperationSnapshot[];
 }

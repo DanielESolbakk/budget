@@ -95,6 +95,7 @@ export function registerRecoveryChannels({
         localLedgerDatabase.replaceLedgerSnapshotData(restored);
         applyRuntimeLedgerSnapshot(restored);
         runtimeState.ledgerGeneration += 1;
+        runtimeState.databaseGeneration += 1;
         importPreviewRegistry.invalidateAll();
         return { ...restored, recoverySnapshot };
       });
