@@ -29,6 +29,17 @@ Use these terms consistently in planning docs, code, tests, and issue templates.
 | valuation snapshot | An append-only manually entered amount and original currency for an asset at an effective date. | Also records when the snapshot was entered as an ISO timestamp. |
 | valuation correction | An append-only record that supersedes or voids a prior valuation snapshot without deleting it. | References one active target valuation; a void record preserves its original date, amount, and currency. |
 
+## Mortgage Evidence Terms
+
+| Term | Definition | Notes |
+| --- | --- | --- |
+| mortgage import receipt | Local provenance for an imported mortgage document and its interpretation. | Records document role, digest, parser version, source dates or unknown status, import time, validation, and pairing evidence; it does not retain the full page by default. |
+| bank-plan version | An immutable interpretation of a lender-supplied repayment plan. | It is projected bank evidence, not an actual balance history or a booked transaction. |
+| mortgage schedule period | A source-defined monthly or annual interval with lender-supplied payment and balance evidence. | Monthly installments and annual summaries have distinct coverage and are never added as duplicate payments. |
+| mortgage obligation | A stable identity for a projected payment occurrence across bank-plan versions. | It is not a ledger transaction; a newer plan version does not create another payable copy. |
+| source-only loan | An explicitly incomplete loan record that can retain valid bank evidence while actual balance or other terms remain unknown. | Missing actuals are not replaced with zero, projected debt, or import time. |
+| source-as-of date | The date a source document describes, when known. | Kept separate from import time, rate-effective date, planned-payment date, and transaction booking date. |
+
 ## Supporting Terms
 
 | Term | Definition | Notes |

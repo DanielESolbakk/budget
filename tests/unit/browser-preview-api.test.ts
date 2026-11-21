@@ -247,8 +247,17 @@ describe("renderer budget API resolution", () => {
     ["account restoration", (api: BudgetApi) => api.accounts.restore("preview-account")],
     ["file dialog", (api: BudgetApi) => api.dialogs.chooseImportStatementPath()],
     ["import history", (api: BudgetApi) => api.import.history.list()],
+    ["mortgage evidence preview", (api: BudgetApi) => api.mortgageImport.previewFiles({
+      target: { kind: "existing", loanId: "preview-loan" },
+    })],
+    ["mortgage attachment confirmation", (api: BudgetApi) =>
+      api.mortgageImport.confirmAttachment("preview-id")],
+    ["mortgage evidence acceptance", (api: BudgetApi) => api.mortgageImport.acceptPreview("preview-id")],
+    ["mortgage evidence cancellation", (api: BudgetApi) => api.mortgageImport.cancelPreview("preview-id")],
+    ["mortgage evidence list", (api: BudgetApi) => api.mortgageImport.listEvidenceSummaries()],
     ["CSV profiles", (api: BudgetApi) => api.import.profiles.list()],
     ["import cancellation", (api: BudgetApi) => api.import.cancelPreview("synthetic-request")],
+    ["source-only loan records", (api: BudgetApi) => api.loanRegistry.listSourceOnly()],
     ["saved ledger views", (api: BudgetApi) => api.ledger.savedViews.list()],
     ["review history", (api: BudgetApi) => api.review.history.corrections()],
     ["backup catalog", (api: BudgetApi) => api.backup.listSnapshots()],

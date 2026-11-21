@@ -55,6 +55,14 @@ The import coordinator uses the adapter registry and does not contain a bank-spe
 
 Rogaland Sparebank remains the initial regression adapter. DNB, Bank2, and future bank layouts are added independently as source fixtures and adapters.
 
+### Mortgage Evidence Adapter Boundary
+
+Saved Rogaland mortgage details and repayment-plan HTML use a separate evidence adapter, not the transaction statement adapter contract described above. The main process reads selected local files as inert data and returns structured source evidence, schedule periods, explicit unknowns, and validation results; schedule rows never become transactions.
+
+Details and schedules are paired only when loan identity evidence is sufficient. Uncertain identity requires explicit attachment confirmation, while contradictory identity is rejected. Existing manual corrections and actual checkpoints remain authoritative; disputed fields are presented with source provenance rather than silently replaced. The source-as-of date remains distinct from import time.
+
+This boundary reuses the loan registry, grouped IPC, backup, and export services without adding remote access or changing CSV/PDF transaction semantics. After the tested import/preview path exists, exact file, structure, and resource caps are proposed from synthetic Windows 11 Home/Pro 25H2-or-newer benchmarking on the minimum 64-bit two-core/4 GB hardware floor and require owner approval.
+
 ### Review and Persistence Boundary
 
 Each import can produce valid candidates and unresolved review items. Valid candidates persist immediately with import provenance. Unresolved rows do not create transactions until corrected. A correction validates canonical date, amount, merchant, account, and currency fields before creating one transaction with correction provenance.
@@ -111,7 +119,9 @@ Rejected. Format-specific extraction and mapping may differ, but the shared sour
 - Unit tests cover binary extraction, source capability selection, row classification, exact fixture output, review transitions, correction validation, and dismissal audit construction.
 - Integration tests cover extraction-to-ledger persistence, provenance, migrations, partial outcomes, and duplicate-safe repeated actions.
 - Playwright tests cover native file selection, successful and unresolved import states, correction, dismissal, dashboard refresh, and no-network behavior.
+- Mortgage-specific Unit, Integration, and Playwright tests cover semantic HTML extraction, projected-versus-actual separation, atomic acceptance/cancellation, recovery, and no-network behavior.
 - Fixtures use synthetic or sanitized text, CSV, and binary PDF inputs for Rogaland, DNB, Bank2, unknown layouts, wrapped descriptions, repeated page headers, and malformed rows.
+- Mortgage HTML fixtures are synthetic and exercise details-only, schedule-only, paired, conflicting, unsupported, and near-limit inputs without real bank pages.
 
 ## Acceptance Criteria for This ADR
 

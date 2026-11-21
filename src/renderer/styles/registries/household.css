@@ -213,6 +213,164 @@
   background: var(--household-paper);
 }
 
+.loan-source-only-records {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--household-border);
+  padding-top: 1rem;
+}
+
+.household-workspace .loan-source-only-records > h3 {
+  margin: 0 0 0.6rem;
+  color: var(--household-ink);
+  font-size: 1.05rem;
+}
+
+.loan-source-only-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loan-source-only-record {
+  min-width: 0;
+  border-top: 1px solid var(--household-border);
+  padding: 0.85rem 0;
+}
+
+.loan-source-only-heading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+}
+
+.household-workspace .loan-source-only-heading h4 {
+  min-width: 0;
+  margin: 0;
+  color: var(--household-ink);
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.loan-source-only-heading > span,
+.loan-source-only-record > p {
+  color: var(--household-muted);
+  font-size: 0.82rem;
+}
+
+.loan-source-only-record > p {
+  margin: 0.6rem 0 0;
+}
+
+.loan-mortgage-import {
+  min-width: 0;
+  margin-top: 0.85rem;
+}
+
+.loan-mortgage-import-panel {
+  min-width: 0;
+  margin-top: 0.85rem;
+  border-top: 1px solid var(--household-border);
+  padding-top: 0.85rem;
+}
+
+.household-workspace .loan-mortgage-import-panel h5,
+.household-workspace .loan-mortgage-import-document h5 {
+  margin: 0 0 0.65rem;
+  color: var(--household-ink);
+  font-size: 1rem;
+}
+
+.loan-mortgage-import-preview {
+  min-width: 0;
+  margin-top: 0.85rem;
+  border-top: 1px solid var(--household-border);
+  padding-top: 0.85rem;
+}
+
+.household-workspace .loan-mortgage-import-preview h6 {
+  margin: 0 0 0.6rem;
+  color: var(--household-ink);
+  font-size: 0.9rem;
+}
+
+.loan-mortgage-import-comparisons {
+  min-width: 0;
+  margin-top: 0.8rem;
+  border-top: 1px solid var(--household-border);
+  padding-top: 0.7rem;
+}
+
+.household-workspace .loan-mortgage-import-comparisons h6 {
+  margin: 0 0 0.6rem;
+  color: var(--household-ink);
+  font-size: 0.9rem;
+}
+
+.loan-mortgage-import-comparison-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loan-mortgage-import-comparison-list > li {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--household-border);
+  overflow-wrap: anywhere;
+}
+
+.loan-mortgage-import-document {
+  min-width: 0;
+  margin-top: 0.8rem;
+  border-top: 1px solid var(--household-border);
+  padding-top: 0.7rem;
+}
+
+.loan-mortgage-import-note,
+.loan-mortgage-import-status {
+  color: var(--household-muted);
+  font-size: 0.875rem;
+}
+
+.household-workspace .loan-mortgage-import-status[role="alert"] {
+  color: var(--household-error);
+}
+
+.loan-mortgage-import-partial,
+.loan-mortgage-import-acknowledgement {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+  color: var(--household-ink);
+  overflow-wrap: anywhere;
+}
+
+.loan-mortgage-import-partial input,
+.loan-mortgage-import-acknowledgement input {
+  width: auto;
+  margin-top: 0.25rem;
+}
+
+.loan-mortgage-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.loan-mortgage-evidence-history {
+  margin-top: 0.75rem;
+}
+
+.loan-mortgage-evidence-history > li {
+  margin-top: 0.45rem;
+  overflow-wrap: anywhere;
+}
+
 .household-workspace .holding-record {
   border-color: var(--household-border);
   color: var(--household-ink);

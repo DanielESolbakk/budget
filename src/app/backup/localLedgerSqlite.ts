@@ -390,10 +390,15 @@ export function createLocalLedgerDatabase(
     appendHoldingValuationSnapshot,
     listHoldingValuationSnapshots,
     createLoanRecord,
+    createSourceOnlyLoanRecord,
+    listSourceOnlyLoanRecords,
     updateLoanResponsibilityShare,
     listLoanRecords,
     appendLoanBalanceSnapshot,
     listLoanBalanceSnapshots,
+    getMortgageEvidenceRevision,
+    appendMortgageEvidenceVersion,
+    listMortgageEvidenceVersions,
   } = createRegistryRepository(db);
   const {
     saveAccountStatementCoveragePeriod,
@@ -454,6 +459,8 @@ export function createLocalLedgerDatabase(
       listExchangeRates,
       listHoldingRecords,
       listLoanRecords,
+      listSourceOnlyLoanRecords,
+      listMortgageEvidenceVersions,
       getReportingPeriodRule,
       listCategories,
     });
@@ -483,6 +490,8 @@ export function createLocalLedgerDatabase(
         DELETE FROM import_jobs;
         DELETE FROM merchant_category_rules;
         DELETE FROM loan_balance_snapshots;
+        DELETE FROM mortgage_evidence_versions;
+        DELETE FROM source_only_loan_records;
         DELETE FROM loan_records;
         DELETE FROM holding_valuation_snapshots;
         DELETE FROM investment_holdings;
@@ -703,10 +712,15 @@ export function createLocalLedgerDatabase(
     appendHoldingValuationSnapshot,
     listHoldingValuationSnapshots,
     createLoanRecord,
+    createSourceOnlyLoanRecord,
+    listSourceOnlyLoanRecords,
     updateLoanResponsibilityShare,
     listLoanRecords,
     appendLoanBalanceSnapshot,
     listLoanBalanceSnapshots,
+    getMortgageEvidenceRevision,
+    appendMortgageEvidenceVersion,
+    listMortgageEvidenceVersions,
     createRecurringCommitment,
     updateRecurringCommitment,
     updateRecurringCommitmentAndDecision,

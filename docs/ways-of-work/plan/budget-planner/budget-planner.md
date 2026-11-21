@@ -14,6 +14,7 @@ The user needs a modern local desktop tool to understand income and expenses wit
 
 - One local household user managing multiple accounts
 - Comfortable importing statements manually
+- Runs on Windows 11 Home or Pro, version 25H2 or newer; the mortgage-import benchmark floor is a compatible 64-bit two-core CPU with 4 GB RAM
 - Needs clear monthly overviews, category tracking, and forecast visibility
 - Values privacy, local control, and understandable categorization logic
 
@@ -59,6 +60,7 @@ The user needs a modern local desktop tool to understand income and expenses wit
   learning and validated allocation splitting
 - Monthly category targets
 - Simple forward cashflow projection
+- Local, user-initiated import of saved Rogaland mortgage details and repayment-plan HTML as bank evidence
 - Backup and export workflows
 
 ### Out Of Scope
@@ -77,7 +79,8 @@ The user needs a modern local desktop tool to understand income and expenses wit
 4. Browse the ledger with search and filters.
 5. View monthly totals, category trends, and budget target performance.
 6. Review a simple forecast based on recurring income and expense patterns.
-7. Export data or create a backup snapshot.
+7. Select saved mortgage details or repayment-plan HTML in the existing loan workflow, inspect the source-linked preview, and explicitly accept valid evidence.
+8. Export data or create a backup snapshot.
 
 ## Functional Requirements
 
@@ -89,6 +92,15 @@ The user needs a modern local desktop tool to understand income and expenses wit
 - The application must preserve import provenance, including source type and import job history.
 - The application must detect likely duplicates before finalizing import.
 - The application must show import errors and partial failures clearly.
+
+### Mortgage Evidence Import
+
+- The user can import saved Rogaland mortgage details-only, schedule-only, or verified paired HTML into an existing or explicitly incomplete loan.
+- Saved HTML is read as inert local data. Scripts, links, stylesheets, frames, and remote resources are never executed or loaded.
+- Document roles and loan identity are validated before pairing. Uncertain identity requires explicit attachment confirmation; contradictory identity cannot be repaired by confirmation.
+- Imported schedules remain projected bank evidence, never transactions or actual debt checkpoints. Unknown actual balances, source dates, and loan terms remain unknown.
+- Existing manual corrections and user-owned loan associations are preserved. Conflicts show both values and provenance and do not overwrite disputed fields.
+- Import preview distinguishes source-as-of dates from import time and shows coverage, limitations, and source-linked checkpoints before revision-checked acceptance.
 
 ### Categorization
 
@@ -135,6 +147,7 @@ The user needs a modern local desktop tool to understand income and expenses wit
 - [ ] AC11: A household user can edit one transaction's category inline, choose
   whether to remember it for future matches, and split or replace its
   allocations without changing its source amount or unrelated history.
+- [ ] AC12: A user can preview and explicitly accept saved Rogaland mortgage HTML as structured local bank evidence without creating transactions, inventing actual balances, or overwriting manual loan corrections.
 
 ## Success Metrics
 
@@ -164,3 +177,4 @@ The user needs a modern local desktop tool to understand income and expenses wit
 | AC8 forecasting | Recurring pattern and projection logic | Forecast pipeline with stored transactions | View forecast in dashboard |
 | AC9 backup and export | Export serializer and backup manifest logic | Backup restore integrity | Export and restore user workflow |
 | AC10 no-network behavior | Verification helpers and allowlist checks | App-process verification in packaged and dev modes | Confirm critical flows operate without outbound transaction traffic |
+| AC12 mortgage evidence import (#539 AC-1–AC-4) | Semantic HTML roles, exact schedule validation, and source evidence | Atomic loan import, immutable versions, backup/restore, and export | Existing/source-only loan import, review, and non-destructive recovery |

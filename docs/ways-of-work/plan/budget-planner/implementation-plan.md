@@ -66,6 +66,14 @@ Exit criteria:
 
 ## Workstream Dependencies
 
+### Approved Mortgage Evidence Import (#264)
+
+The existing F9.2 Feature (#264) owns mortgage evidence and repayment scenarios. Its first bank-import slice is Story #539 with Unit #541, Integration #543, and Playwright #544. Later refresh, reconciliation, calculator, and reporting work remains with its separately planned Stories; household forecast consumers stay with their existing owners.
+
+Implement the first real parser/import path test-first. Then benchmark its synthetic three- and thirty-year Rogaland import and preview on Windows 11 Home/Pro 25H2 or newer using a compatible 64-bit two-core CPU and 4 GB RAM. Record elapsed time and peak memory, then propose measurable file/structure/resource caps and parser/import performance targets for owner approval. Do not guess final hard limits or claim performance before approval and verification.
+
+Use the approved conservative conflict policy: do not pair uncertain identities or overwrite disputed manual fields; show both values and provenance, and allow only independently valid scope after explicit confirmation. Support an explicit incomplete/source-only loan with unknown actual balance, preserve manual and actual history, and never turn projected rows into transactions. Implement each behavior test-first after its planning gates are satisfied.
+
 ### Approved Activity Automation Follow-On
 
 Follow [Activity automation plan](activity-automation-plan.md). Deliver F3.4
@@ -110,6 +118,8 @@ the existing review-correction and category-management workflows.
 - Add unit coverage for extraction, parser adapters, row classification, and rule logic
 - Add integration coverage for import-to-ledger and review-state behavior
 - Add regression tests for duplicate and correction behavior when bugs are fixed
+- For mortgage bank evidence, test semantic HTML roles, exact validation, unknown-versus-actual fields, inert parsing, and non-destructive persistence at the Unit and Integration layers.
+- Use the actual-path benchmark to propose caps and targets; after owner approval, verify supported and near-limit synthetic mortgage imports and previews against those limits on the defined Windows 11 25H2/4 GB/two-core baseline.
 
 ### During UI Delivery
 
@@ -119,6 +129,7 @@ the existing review-correction and category-management workflows.
 
 - Run no-network verification in development and packaged builds
 - Run performance checks with at least 10,000 transactions and multiple accounts
+- Verify mortgage import caps, cancellation, preview, and recovery against their approved measurable limits and synthetic fixtures
 
 ## Test Framework Ownership
 

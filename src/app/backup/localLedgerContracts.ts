@@ -20,6 +20,7 @@ import type {
   ImportReviewItem,
   LoanBalanceSnapshot,
   LoanRecord,
+  SourceOnlyLoanRecord,
   MerchantCorrectionProvenance,
   MerchantCategoryRule,
   MonthlyCategoryTarget,
@@ -42,6 +43,10 @@ import type {
   TransactionCategoryEditExpectedState,
 } from "../../shared/transactionCategoryEdit.js";
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
+import type {
+  MortgageEvidenceVersion,
+  MortgageEvidenceVersionInput,
+} from "../../shared/mortgageBankEvidence.js";
 import type {
   AccountHistorySummary,
   AccountUpdateInput,
@@ -109,10 +114,20 @@ export interface LocalLedgerDatabase {
   appendHoldingValuationSnapshot: (valuation: HoldingValuationSnapshot) => void;
   listHoldingValuationSnapshots: (holdingId: string) => HoldingValuationSnapshot[];
   createLoanRecord: (loan: LoanRecord) => void;
+  createSourceOnlyLoanRecord: (loan: SourceOnlyLoanRecord) => void;
+  listSourceOnlyLoanRecords: (householdId: string) => SourceOnlyLoanRecord[];
   updateLoanResponsibilityShare: (loanId: string, basisPoints: number) => void;
   listLoanRecords: (householdId: string) => LoanRecord[];
   appendLoanBalanceSnapshot: (balance: LoanBalanceSnapshot) => void;
   listLoanBalanceSnapshots: (loanId: string) => LoanBalanceSnapshot[];
+  getMortgageEvidenceRevision: (loanId: string, householdId: string) => string | null;
+  appendMortgageEvidenceVersion: (
+    input: MortgageEvidenceVersionInput,
+    expectedLoanRevision: string | null,
+    expectedVersionNumber: number,
+    sourceOnlyLoan?: SourceOnlyLoanRecord
+  ) => MortgageEvidenceVersion;
+  listMortgageEvidenceVersions: (householdId: string, loanId?: string) => MortgageEvidenceVersion[];
   createRecurringCommitment: (commitment: RecurringCommitment) => void;
   updateRecurringCommitment: (commitment: RecurringCommitment) => void;
   updateRecurringCommitmentAndDecision: (

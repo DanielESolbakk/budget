@@ -3,6 +3,7 @@ import {
   LoanRecordValidationError,
   validateLoanBalanceInput,
   validateLoanRecordInput,
+  validateSourceOnlyLoanRecordInput,
 } from "../../src/domain/loanRecordValidation.js";
 
 const MORTGAGE = {
@@ -56,6 +57,36 @@ describe("loan record validation", () => {
     ["propertyId", { ...MORTGAGE, propertyId: "property-missing" }, ["property-home"]],
   ])("rejects invalid %s with a field-specific error", (field, input, propertyIds) => {
     expect(fieldErrorFor(() => validateLoanRecordInput(input, propertyIds)).field).toBe(field);
+  });
+});
+
+describe("source-only loan record validation", () => {
+  it("retains supplied identity and currency without inventing missing loan terms", () => {
+    const input = {
+      label: "Imported mortgage",
+      currencyCode: "NOK",
+      propertyId: "property-home",
+    };
+
+    expect(validateSourceOnlyLoanRecordInput(input, ["property-home"])).toEqual(input);
+  });
+
+  it("rejects loan terms instead of substituting them into a source-only record", () => {
+    const input = {
+      label: "Imported mortgage",
+      currencyCode: "NOK",
+      principalMinor: 0,
+    };
+
+    expect(fieldErrorFor(() => validateSourceOnlyLoanRecordInput(input)).field)
+      .toBe("principalMinor");
+  });
+
+  it("rejects an invalid currency code for a source-only record", () => {
+    const input = { label: "Imported mortgage", currencyCode: "NOKK" };
+
+    expect(fieldErrorFor(() => validateSourceOnlyLoanRecordInput(input)).field)
+      .toBe("currencyCode");
   });
 });
 

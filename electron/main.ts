@@ -21,6 +21,7 @@ import { createHoldingRegistry } from "../src/app/holdingRegistry.js";
 import { ImportPreviewRegistry } from "../src/app/import/importPreviewRegistry.js";
 import { LedgerOperationCoordinator } from "../src/app/ledgerOperationCoordinator.js";
 import { createLoanRegistry } from "../src/app/loanRegistry.js";
+import { createMortgageBankImportService } from "../src/app/mortgageBankImportService.js";
 import { createPropertyRegistry } from "../src/app/propertyRegistry.js";
 import { createRecurringCommitmentService } from "../src/app/recurringCommitmentService.js";
 import { createSpendableCashService } from "../src/app/spendableCashService.js";
@@ -38,10 +39,12 @@ import {
   createCsvExportDialog,
   createExchangeRateImportDialog,
   createImportStatementDialog,
+  createMortgageHtmlImportDialog,
   createRestoreSnapshotDialog,
 } from "./fileDialogProvider.js";
 import { registerDialogsChannels } from "./ipc/dialogsChannels.js";
 import { registerImportsChannels } from "./ipc/importsChannels.js";
+import { registerMortgageImportChannels } from "./ipc/mortgageImportChannels.js";
 import { registerRecoveryChannels } from "./ipc/recoveryChannels.js";
 import { registerRecurringChannels } from "./ipc/recurringChannels.js";
 import { registerRegistriesChannels } from "./ipc/registriesChannels.js";
@@ -146,6 +149,9 @@ const importPreviewRegistry = new ImportPreviewRegistry();
 const ledgerOperationCoordinator = new LedgerOperationCoordinator();
 let mainWindow: BrowserWindow | undefined;
 const runtimeState = { ledgerGeneration: 0, databaseGeneration: 0 };
+const mortgageBankImportService = createMortgageBankImportService(localLedgerDatabase, {
+  getDatabaseGeneration: () => runtimeState.databaseGeneration,
+});
 const activeImportPreflights = new Map<string, { cancelled: boolean }>();
 
 // Refresh shared objects in place so registered channels observe setup and restore.
@@ -302,6 +308,7 @@ app.whenReady().then(async () => {
   const csvExportDialog = createCsvExportDialog();
   const exchangeRateImportDialog = createExchangeRateImportDialog();
   const importStatementDialog = createImportStatementDialog();
+  const mortgageHtmlImportDialog = createMortgageHtmlImportDialog();
   const restoreSnapshotDialog = createRestoreSnapshotDialog();
 
   registerReportsChannels({
@@ -323,6 +330,10 @@ app.whenReady().then(async () => {
   registerRegistriesChannels({
     ipcMain, assertTrustedRenderer, propertyRegistry, holdingRegistry,
     loanRegistry, ledgerOperationCoordinator,
+  });
+  registerMortgageImportChannels({
+    ipcMain, assertTrustedRenderer, mortgageBankImportService, mortgageHtmlImportDialog,
+    ledgerOperationCoordinator, runtimeState,
   });
   registerImportsChannels({
     ipcMain, assertTrustedRenderer, localLedgerDatabase, sampleHousehold, runtimeState,

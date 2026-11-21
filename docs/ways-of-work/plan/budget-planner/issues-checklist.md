@@ -68,6 +68,14 @@
 - [ ] Enabler: Aggregation and forecast query layer
 - [ ] Test: Dashboard and forecast end-to-end coverage
 
+### Household net worth and mortgage evidence
+
+- [ ] Preserve E9 #251 and F9.2 #264 ownership; keep reporting and forecast consumers with their existing owners
+- [ ] Deliver S9.2.4 #539 as the first verified Rogaland mortgage evidence import slice
+- [ ] Deliver the linked Unit #541, Integration #543, and Playwright #544 verification in their planned layers
+- [ ] After the first tested import/preview path exists, benchmark synthetic three- and thirty-year HTML on Windows 11 Home/Pro 25H2 or newer with a compatible 64-bit two-core CPU and 4 GB RAM; propose measured caps and performance targets for owner approval
+- [ ] Preserve explicit source-only/incomplete loan state, unknown actual balances, manual corrections, and the separation between bank projections and transactions
+
 ### Privacy, backup, export, and release quality
 
 - [ ] Feature: Backup and restore

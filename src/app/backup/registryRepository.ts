@@ -4,10 +4,16 @@ import {
   mapHoldingValuationSnapshotRow,
   mapLoanBalanceSnapshotRow,
 } from "./ledgerRowMappers.js";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { defaultHouseholdShare, validateHouseholdShare } from "../../domain/householdShareValidation.js";
+import { isIsoCalendarDate } from "../../domain/date/calendarDate.js";
 import { validatePropertyValuationCorrectionMetadata } from "../../domain/propertyRecordValidation.js";
-import { validateLoanBalanceInput, validateLoanRecordInput } from "../../domain/loanRecordValidation.js";
+import {
+  validateLoanBalanceInput,
+  validateLoanRecordInput,
+  validateSourceOnlyLoanRecordInput,
+} from "../../domain/loanRecordValidation.js";
 import {
   validateHoldingRecordInput,
   validateHoldingRevision,
@@ -20,10 +26,15 @@ import type {
   HoldingValuationSnapshot,
   LoanBalanceSnapshot,
   LoanRecord,
+  SourceOnlyLoanRecord,
   PropertyRecord,
   PropertyValuationSnapshot,
 } from "../../domain/types.js";
 import { isCurrencyCode } from "../../domain/types.js";
+import type {
+  MortgageEvidenceVersion,
+  MortgageEvidenceVersionInput,
+} from "../../shared/mortgageBankEvidence.js";
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 
 type RegistryRepository = Pick<LocalLedgerDatabase,
@@ -39,13 +50,202 @@ type RegistryRepository = Pick<LocalLedgerDatabase,
   | "appendHoldingValuationSnapshot"
   | "listHoldingValuationSnapshots"
   | "createLoanRecord"
+  | "createSourceOnlyLoanRecord"
+  | "listSourceOnlyLoanRecords"
   | "updateLoanResponsibilityShare"
   | "listLoanRecords"
   | "appendLoanBalanceSnapshot"
   | "listLoanBalanceSnapshots"
+  | "getMortgageEvidenceRevision"
+  | "appendMortgageEvidenceVersion"
+  | "listMortgageEvidenceVersions"
 >;
 
 export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
+  function getMortgageEvidenceRevision(loanId: string, householdId: string): string | null {
+    const loan = listLoanRecords(householdId).find((candidate) => candidate.id === loanId);
+    if (loan !== undefined) {
+      return createHash("sha256").update(JSON.stringify({
+        kind: "complete",
+        loan,
+        balances: listLoanBalanceSnapshots(loanId),
+      })).digest("hex");
+    }
+
+    const sourceOnlyLoan = listSourceOnlyLoanRecords(householdId)
+      .find((candidate) => candidate.id === loanId);
+    if (sourceOnlyLoan === undefined) return null;
+    return createHash("sha256").update(JSON.stringify({
+      kind: "source-only",
+      loan: sourceOnlyLoan,
+    })).digest("hex");
+  }
+
+  function listMortgageEvidenceVersions(
+    householdId: string,
+    loanId?: string
+  ): MortgageEvidenceVersion[] {
+    const query = loanId === undefined ? `
+      SELECT id, loan_id, household_id, version_number, source_as_of_date_iso,
+        imported_at_iso, documents_json, pairing_json, attachment_json,
+        term_comparisons_json, term_differences_acknowledged, schedule_validation_json
+      FROM mortgage_evidence_versions
+      WHERE household_id = ?
+      ORDER BY version_number, id
+    ` : `
+      SELECT id, loan_id, household_id, version_number, source_as_of_date_iso,
+        imported_at_iso, documents_json, pairing_json, attachment_json,
+        term_comparisons_json, term_differences_acknowledged, schedule_validation_json
+      FROM mortgage_evidence_versions
+      WHERE household_id = ? AND loan_id = ?
+      ORDER BY version_number, id
+    `;
+    const rows = (loanId === undefined
+      ? db.prepare(query).all(householdId)
+      : db.prepare(query).all(householdId, loanId)) as Array<{
+      id: string;
+      loan_id: string;
+      household_id: string;
+      version_number: number;
+      source_as_of_date_iso: string | null;
+      imported_at_iso: string;
+      documents_json: string;
+      pairing_json: string | null;
+      attachment_json: string;
+      term_comparisons_json: string;
+      term_differences_acknowledged: number;
+      schedule_validation_json: string | null;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      loanId: row.loan_id,
+      householdId: row.household_id,
+      versionNumber: row.version_number,
+      sourceAsOfDateIso: row.source_as_of_date_iso,
+      importedAtIso: row.imported_at_iso,
+      documents: JSON.parse(row.documents_json) as MortgageEvidenceVersion["documents"],
+      pairing: row.pairing_json === null
+        ? null
+        : JSON.parse(row.pairing_json) as MortgageEvidenceVersion["pairing"],
+      attachment: JSON.parse(row.attachment_json) as MortgageEvidenceVersion["attachment"],
+      termComparisons: JSON.parse(row.term_comparisons_json) as MortgageEvidenceVersion["termComparisons"],
+      termDifferencesAcknowledged: row.term_differences_acknowledged === 1,
+      scheduleValidation: row.schedule_validation_json === null
+        ? null
+        : JSON.parse(row.schedule_validation_json) as MortgageEvidenceVersion["scheduleValidation"],
+    }));
+  }
+
+  function appendMortgageEvidenceVersion(
+    input: MortgageEvidenceVersionInput,
+    expectedLoanRevision: string | null,
+    expectedVersionNumber: number,
+    sourceOnlyLoan?: SourceOnlyLoanRecord
+  ): MortgageEvidenceVersion {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      if (db.prepare("SELECT 1 FROM households WHERE id = ?").get(input.householdId) === undefined) {
+        throw new Error(`Household not found for mortgage evidence: ${input.householdId}`);
+      }
+      if (sourceOnlyLoan !== undefined) {
+        if (
+          expectedLoanRevision !== null ||
+          expectedVersionNumber !== 0 ||
+          sourceOnlyLoan.id !== input.loanId ||
+          sourceOnlyLoan.householdId !== input.householdId
+        ) {
+          throw new Error("New source-only loan and mortgage evidence do not match.");
+        }
+        createSourceOnlyLoanRecord(sourceOnlyLoan);
+      } else {
+        const currentLoanRevision = getMortgageEvidenceRevision(input.loanId, input.householdId);
+        if (currentLoanRevision === null) {
+          throw new Error(`Loan not found for mortgage evidence: ${input.loanId}`);
+        }
+        if (expectedLoanRevision === null || currentLoanRevision !== expectedLoanRevision) {
+          throw new Error("Loan changed after mortgage evidence preview.");
+        }
+      }
+      if (
+        !Number.isSafeInteger(expectedVersionNumber) ||
+        expectedVersionNumber < 0 ||
+        !isIsoCalendarDate(input.sourceAsOfDateIso ?? "2000-01-01") ||
+        !input.importedAtIso.includes("T") ||
+        Number.isNaN(Date.parse(input.importedAtIso)) ||
+        input.documents.length === 0 ||
+        input.documents.length > 2 ||
+        typeof input.termDifferencesAcknowledged !== "boolean" ||
+        !Array.isArray(input.termComparisons) ||
+        (input.termComparisons.some((comparison) => comparison.status === "differs") &&
+          !input.termDifferencesAcknowledged) ||
+        input.documents.some((document) => (
+          !/^[0-9a-f]{64}$/i.test(document.sourceHashSha256) ||
+            document.parserVersion.trim() === "" ||
+            !Number.isSafeInteger(document.parserLimits.maxSourceCharacters) ||
+            document.parserLimits.maxSourceCharacters <= 0 ||
+            !Number.isSafeInteger(document.parserLimits.maxElements) ||
+            document.parserLimits.maxElements <= 0 ||
+            !Number.isSafeInteger(document.parserLimits.maxDepth) ||
+            document.parserLimits.maxDepth <= 0 ||
+            document.parsedDocument.role !== document.role ||
+            !["parsed", "partial"].includes(document.parsedDocument.parseStatus)
+          )) ||
+          !["verified", "confirmed"].includes(input.attachment.status) ||
+          (input.pairing !== null && !["verified", "confirmed"].includes(input.pairing.status))
+      ) {
+        throw new Error("Mortgage evidence version is invalid.");
+      }
+
+      const currentVersionNumber = (db.prepare(`
+        SELECT COALESCE(MAX(version_number), 0) AS version_number
+        FROM mortgage_evidence_versions
+        WHERE loan_id = ?
+      `).get(input.loanId) as { version_number: number }).version_number;
+      if (currentVersionNumber !== expectedVersionNumber) {
+        throw new Error("Mortgage evidence changed after preview.");
+      }
+
+      const version: MortgageEvidenceVersion = {
+        ...input,
+        versionNumber: currentVersionNumber + 1,
+      };
+      db.prepare(`
+        INSERT INTO mortgage_evidence_versions (
+          id, loan_id, household_id, version_number, source_as_of_date_iso,
+          imported_at_iso, documents_json, pairing_json, attachment_json,
+          term_comparisons_json, term_differences_acknowledged, schedule_validation_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        version.id,
+        version.loanId,
+        version.householdId,
+        version.versionNumber,
+        version.sourceAsOfDateIso,
+        version.importedAtIso,
+        JSON.stringify(version.documents),
+        version.pairing === null ? null : JSON.stringify(version.pairing),
+        JSON.stringify(version.attachment),
+        JSON.stringify(version.termComparisons),
+        version.termDifferencesAcknowledged ? 1 : 0,
+        version.scheduleValidation === null ? null : JSON.stringify(version.scheduleValidation)
+      );
+      db.exec("COMMIT");
+      return version;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function assertLoanIdAvailable(loanId: string): void {
+    if (
+      db.prepare("SELECT 1 FROM loan_records WHERE id = ?").get(loanId) !== undefined ||
+      db.prepare("SELECT 1 FROM source_only_loan_records WHERE id = ?").get(loanId) !== undefined
+    ) {
+      throw new Error("Loan ID is already in use.");
+    }
+  }
+
   function createPropertyRecord(property: PropertyRecord): void {
     if (
       property.id.trim().length === 0 ||
@@ -356,6 +556,7 @@ export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
     ) {
       throw new Error(`Household not found for loan: ${loan.householdId}`);
     }
+    assertLoanIdAvailable(loan.id);
 
     const propertyIds = listPropertyRecords(loan.householdId).map((property) => property.id);
     const validated = validateLoanRecordInput(loan, propertyIds);
@@ -379,6 +580,69 @@ export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
       loan.createdAtIso,
       defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share")
     );
+  }
+
+  function createSourceOnlyLoanRecord(loan: SourceOnlyLoanRecord): void {
+    if (
+      loan.id.trim().length === 0 ||
+      loan.householdId.trim().length === 0 ||
+      !loan.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(loan.createdAtIso)) ||
+      loan.recordStatus !== "source-only"
+    ) {
+      throw new Error("Source-only loan record identity or creation timestamp is invalid.");
+    }
+    if (db.prepare("SELECT 1 FROM households WHERE id = ?").get(loan.householdId) === undefined) {
+      throw new Error(`Household not found for source-only loan: ${loan.householdId}`);
+    }
+    assertLoanIdAvailable(loan.id);
+
+    const propertyIds = listPropertyRecords(loan.householdId).map((property) => property.id);
+    const validated = validateSourceOnlyLoanRecordInput(loan, propertyIds);
+    db.prepare(`
+      INSERT INTO source_only_loan_records (
+        id, household_id, label, currency_code, property_id,
+        created_at_iso, responsibility_share_basis_points
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      loan.id,
+      loan.householdId,
+      validated.label,
+      validated.currencyCode,
+      validated.propertyId ?? null,
+      loan.createdAtIso,
+      defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share")
+    );
+  }
+
+  function listSourceOnlyLoanRecords(householdId: string): SourceOnlyLoanRecord[] {
+    return db.prepare(`
+      SELECT id, household_id, label, currency_code, property_id, created_at_iso,
+        responsibility_share_basis_points
+      FROM source_only_loan_records
+      WHERE household_id = ?
+      ORDER BY label COLLATE NOCASE, id
+    `).all(householdId).map((row) => {
+      const sourceOnlyLoan = row as {
+        id: string;
+        household_id: string;
+        label: string;
+        currency_code: string;
+        property_id: string | null;
+        created_at_iso: string;
+        responsibility_share_basis_points: number;
+      };
+      return {
+        id: sourceOnlyLoan.id,
+        householdId: sourceOnlyLoan.household_id,
+        label: sourceOnlyLoan.label,
+        currencyCode: sourceOnlyLoan.currency_code,
+        ...(sourceOnlyLoan.property_id === null ? {} : { propertyId: sourceOnlyLoan.property_id }),
+        createdAtIso: sourceOnlyLoan.created_at_iso,
+        responsibilityShareBasisPoints: sourceOnlyLoan.responsibility_share_basis_points,
+        recordStatus: "source-only",
+      };
+    });
   }
 
   function updateLoanResponsibilityShare(loanId: string, basisPoints: number): void {
@@ -484,9 +748,14 @@ export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
     appendHoldingValuationSnapshot,
     listHoldingValuationSnapshots,
     createLoanRecord,
+    createSourceOnlyLoanRecord,
+    listSourceOnlyLoanRecords,
     updateLoanResponsibilityShare,
     listLoanRecords,
     appendLoanBalanceSnapshot,
     listLoanBalanceSnapshots,
+    getMortgageEvidenceRevision,
+    appendMortgageEvidenceVersion,
+    listMortgageEvidenceVersions,
   };
 }

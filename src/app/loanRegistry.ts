@@ -15,6 +15,7 @@ import type {
   LoanRecordInput,
   LoanResponsibilityShareUpdateInput,
   LoanWithBalances,
+  SourceOnlyLoanRecord,
 } from "../domain/types.js";
 
 export interface LoanRegistryOptions {
@@ -25,6 +26,7 @@ export interface LoanRegistryOptions {
 export interface LoanRegistry {
   list: () => LoanWithBalances[];
   create: (input: LoanRecordInput) => LoanRecord;
+  listSourceOnly: () => SourceOnlyLoanRecord[];
   updateResponsibilityShare: (input: LoanResponsibilityShareUpdateInput) => LoanRecord;
   appendBalance: (input: LoanBalanceInput) => LoanBalanceSnapshot;
 }
@@ -66,6 +68,10 @@ export function createLoanRegistry(
     return loan;
   }
 
+  function listSourceOnly(): SourceOnlyLoanRecord[] {
+    return database.listSourceOnlyLoanRecords(currentHouseholdId());
+  }
+
   function updateResponsibilityShare(input: LoanResponsibilityShareUpdateInput): LoanRecord {
     const validated = validateLoanResponsibilityShareUpdate(input);
     const loan = database.listLoanRecords(currentHouseholdId())
@@ -94,5 +100,5 @@ export function createLoanRegistry(
     return snapshot;
   }
 
-  return { list, create, updateResponsibilityShare, appendBalance };
+  return { list, create, listSourceOnly, updateResponsibilityShare, appendBalance };
 }

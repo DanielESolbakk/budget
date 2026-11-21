@@ -175,6 +175,20 @@ export interface LoanRecordInput {
   propertyId?: string;
 }
 
+export interface SourceOnlyLoanRecordInput {
+  label: string;
+  currencyCode: CurrencyCode;
+  propertyId?: string;
+}
+
+export interface SourceOnlyLoanRecord extends SourceOnlyLoanRecordInput {
+  id: string;
+  householdId: string;
+  createdAtIso: string;
+  responsibilityShareBasisPoints: number;
+  recordStatus: "source-only";
+}
+
 export interface LoanBalanceInput {
   loanId: string;
   effectiveDateIso: string;

@@ -10,6 +10,39 @@ export type BackupOutputDialog = (options: SaveDialogOptions) => Promise<SaveDia
 export type RestoreSnapshotDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
 export type ImportStatementDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
 export type ExchangeRateImportDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
+export type MortgageHtmlImportDialog = (options: OpenDialogOptions) => Promise<OpenDialogResult>;
+
+export function createMortgageHtmlImportDialog(): MortgageHtmlImportDialog {
+  return async (options) => {
+    if (process.env["NODE_ENV"] === "test") {
+      const behavior = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
+      if (behavior === "cancel") return { canceled: true, filePaths: [] };
+      if (behavior === "selected") {
+        const pathsJson = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"];
+        if (typeof pathsJson !== "string") {
+          throw new Error("Test mortgage HTML import paths are required for selected dialog behavior.");
+        }
+        let paths: unknown;
+        try {
+          paths = JSON.parse(pathsJson) as unknown;
+        } catch (error) {
+          throw new Error("Test mortgage HTML import paths must be valid JSON.", { cause: error });
+        }
+        if (
+          !Array.isArray(paths) ||
+          paths.length < 1 ||
+          paths.length > 2 ||
+          paths.some((path) => typeof path !== "string" || path.trim().length === 0)
+        ) {
+          throw new Error("Test mortgage HTML import paths must contain one or two non-empty paths.");
+        }
+        return { canceled: false, filePaths: paths };
+      }
+    }
+
+    return dialog.showOpenDialog(options);
+  };
+}
 
 export function createExchangeRateImportDialog(): ExchangeRateImportDialog {
   return async (options) => {

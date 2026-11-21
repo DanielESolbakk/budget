@@ -1,0 +1,839 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
+import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
+import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
+import { createLoanRegistry } from "../../src/app/loanRegistry.js";
+import {
+  createMortgageBankImportService,
+  previewMortgageDocumentPair,
+  previewMortgageScheduleFile,
+  readBoundedMortgageHtmlFile,
+} from "../../src/app/mortgageBankImportService.js";
+
+const VALID_DETAILS_HTML = `
+  <h1>Lånedetaljer</h1>
+  <dl>
+    <dt>Lånenummer</dt><dd>loan-123</dd>
+    <dt>Lånevaluta</dt><dd>NOK</dd>
+    <dt>Opprinnelig lånebeløp</dt><dd>100 000,00</dd>
+    <dt>Restgjeld</dt><dd>99 000,00</dd>
+  </dl>
+`;
+const VALID_SCHEDULE_HTML = `
+  <h1>Nedbetalingsplan</h1>
+  <dl>
+    <dt>Inngående saldo</dt><dd>100 000,00</dd>
+    <dt>Lånenummer</dt><dd>loan-123</dd>
+    <dt>Lånevaluta</dt><dd>NOK</dd>
+  </dl>
+  <table>
+    <tr><th>Termin</th><th>Avdrag</th><th>Renter</th><th>Gebyr</th><th>Terminbeløp</th><th>Restgjeld</th><th>Source account</th></tr>
+    <tr><td>Januar 2026</td><td>1 000,00</td><td>90,00</td><td>10,00</td><td>1 100,00</td><td>99 000,00</td><td>loan-123</td></tr>
+    <tr><td>Februar 2026</td><td>1 000,00</td><td>89,00</td><td>10,00</td><td>1 099,00</td><td>98 000,00</td><td>loan-123</td></tr>
+  </table>
+`;
+const SELECTED_LOAN_IDENTITY = {
+  loanReference: "loan-123",
+  currencyCode: "NOK",
+  loanReferenceValues: [],
+  currencyValues: [],
+  conflicts: [],
+} as const;
+
+describe("bounded mortgage HTML file reads", () => {
+  it("accepts paired evidence as an immutable version without changing the existing loan", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-acceptance-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const snapshotPath = join(directory, "backup.json");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    writeFileSync(detailsFilePath, VALID_DETAILS_HTML, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-import",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-import",
+          householdId: "household-mortgage-import",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const loans = createLoanRegistry(database, {
+        createId: () => "loan-existing",
+        now: () => new Date("2026-11-21T12:00:00.000Z"),
+      });
+      const loan = loans.create({
+        label: "Existing mortgage",
+        principalMinor: 10_000_000,
+        annualInterestRateBasisPoints: 500,
+        termMonths: 120,
+        paymentAmountMinor: 100_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+      const balance = loans.appendBalance({
+        loanId: loan.id,
+        effectiveDateIso: "2026-10-01",
+        amountMinor: 9_900_000,
+      });
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => "mortgage-evidence-v1",
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+
+      const preview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: true,
+      });
+      expect(preview.reviewState).toBe("paired-schedule-checks-passed");
+
+      const evidence = service.acceptPreview(preview.previewId);
+      expect(evidence).toMatchObject({
+        id: "mortgage-evidence-v1",
+        loanId: loan.id,
+        householdId: "household-mortgage-import",
+        versionNumber: 1,
+        sourceAsOfDateIso: null,
+        importedAtIso: "2026-11-21T12:30:00.000Z",
+        pairing: { status: "verified" },
+        attachment: { status: "confirmed", verification: "explicit-user-attachment" },
+        scheduleValidation: { status: "valid" },
+      });
+      expect(evidence.documents.map((document) => document.role)).toEqual(["details", "schedule"]);
+      expect(evidence.documents[0]).not.toHaveProperty("sourceHtml");
+      expect(evidence.documents[1]).not.toHaveProperty("sourceHtml");
+      expect(evidence.documents[0]?.sourceHashSha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(evidence.documents[0]?.parsedDocument.detailsFields[0]?.sourceValue)
+        .toBe("100 000,00");
+      expect(evidence.documents[1]?.parsedDocument.scheduleRows[0]?.paymentMinor).toBe(110_000);
+      expect(JSON.stringify(evidence)).not.toContain("<h1>");
+      expect(database.listMortgageEvidenceVersions(
+        "household-mortgage-import",
+        loan.id
+      )).toEqual([evidence]);
+      expect(loans.list()).toEqual([{ ...loan, balances: [balance] }]);
+
+      createBackupSnapshot({
+        ...database.loadLedgerSnapshotData(),
+        outputPath: snapshotPath,
+        createdAtIso: "2026-11-21T12:31:00.000Z",
+      });
+      expect(restoreBackupSnapshot({ snapshotPath }).mortgageEvidenceVersions).toEqual([evidence]);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("persists an explicit source date separately from import time", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-source-date-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    const datedDetails = VALID_DETAILS_HTML.replace(
+      "<dt>Lånenummer</dt>",
+      "<dt>Utskriftsdato</dt><dd>21.11.2026</dd><dt>Lånenummer</dt>"
+    );
+    writeFileSync(detailsFilePath, datedDetails, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-source-date",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-source-date",
+          householdId: "household-mortgage-source-date",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const loans = createLoanRegistry(database, {
+        createId: () => "loan-source-date",
+        now: () => new Date("2026-11-21T12:00:00.000Z"),
+      });
+      const loan = loans.create({
+        label: "Existing mortgage",
+        principalMinor: 10_000_000,
+        annualInterestRateBasisPoints: 500,
+        termMonths: 120,
+        paymentAmountMinor: 100_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => "dated-evidence",
+        now: () => new Date("2026-11-22T09:00:00.000Z"),
+      });
+      const preview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: true,
+      });
+      const evidence = service.acceptPreview(preview.previewId);
+
+      expect(evidence.sourceAsOfDateIso).toBe("2026-11-21");
+      expect(evidence.importedAtIso).toBe("2026-11-22T09:00:00.000Z");
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces and records acknowledgement of imported values that differ from saved loan terms", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-term-conflict-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    const datedDetails = VALID_DETAILS_HTML
+      .replace(
+        "<dt>Lånenummer</dt>",
+        "<dt>Utskriftsdato</dt><dd>21.11.2026</dd><dt>Lånenummer</dt>"
+      )
+      .replace(
+        "<dt>Restgjeld</dt><dd>99 000,00</dd>",
+        "<dt>Restgjeld</dt><dd>99 000,00</dd><dt>Nominell rente</dt><dd>5,25 %</dd>"
+      );
+    writeFileSync(detailsFilePath, datedDetails, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-term-conflict",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-term-conflict",
+          householdId: "household-mortgage-term-conflict",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const loans = createLoanRegistry(database, {
+        createId: () => "loan-term-conflict",
+        now: () => new Date("2026-11-21T12:00:00.000Z"),
+      });
+      const loan = loans.create({
+        label: "Existing mortgage",
+        principalMinor: 300_000_000,
+        annualInterestRateBasisPoints: 450,
+        termMonths: 300,
+        paymentAmountMinor: 1_750_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+      loans.appendBalance({
+        loanId: loan.id,
+        effectiveDateIso: "2026-11-21",
+        amountMinor: 9_800_000,
+      });
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => "term-conflict-evidence",
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+      const preview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: true,
+      });
+
+      expect(preview.termComparisons).toEqual([
+        {
+          field: "originalPrincipalMinor",
+          sourceLabel: "Opprinnelig lånebeløp",
+          sourceValueMinor: 10_000_000,
+          savedValueMinor: 300_000_000,
+          currencyCode: "NOK",
+          status: "differs",
+        },
+        {
+          field: "remainingPrincipalMinor",
+          sourceLabel: "Restgjeld",
+          sourceValueMinor: 9_900_000,
+          savedValueMinor: 9_800_000,
+          currencyCode: "NOK",
+          savedEffectiveDateIso: "2026-11-21",
+          status: "differs",
+        },
+        {
+          field: "nominalAnnualRateBasisPoints",
+          sourceLabel: "Nominell rente",
+          sourceValueBasisPoints: 525,
+          savedValueBasisPoints: 450,
+          status: "differs",
+        },
+      ]);
+      expect(() => service.acceptPreview(preview.previewId))
+        .toThrow("Review and acknowledge imported differences before acceptance.");
+      const accepted = service.acceptPreview(preview.previewId, false, true);
+      expect(accepted.termComparisons).toEqual(preview.termComparisons);
+      expect(accepted.termDifferencesAcknowledged).toBe(true);
+      expect(database.listMortgageEvidenceVersions(
+        "household-mortgage-term-conflict",
+        loan.id
+      )[0]).toMatchObject({
+        termComparisons: preview.termComparisons,
+        termDifferencesAcknowledged: true,
+      });
+      expect(loans.list()[0]?.principalMinor).toBe(300_000_000);
+      expect(loans.list()[0]?.balances[0]?.amountMinor).toBe(9_800_000);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks later evidence with a different accepted loan reference despite attachment confirmation", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-reference-change-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    writeFileSync(detailsFilePath, VALID_DETAILS_HTML, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-reference",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-reference",
+          householdId: "household-mortgage-reference",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const loans = createLoanRegistry(database, {
+        createId: () => "loan-reference-stable",
+        now: () => new Date("2026-11-21T12:00:00.000Z"),
+      });
+      const loan = loans.create({
+        label: "Existing mortgage",
+        principalMinor: 10_000_000,
+        annualInterestRateBasisPoints: 500,
+        termMonths: 120,
+        paymentAmountMinor: 100_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+      let generatedId = 0;
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => `mortgage-reference-version-${++generatedId}`,
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+      const initialPreview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: true,
+      });
+      service.acceptPreview(initialPreview.previewId);
+
+      writeFileSync(detailsFilePath, VALID_DETAILS_HTML.replace("loan-123", "loan-456"), "utf8");
+      writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML.replaceAll("loan-123", "loan-456"), "utf8");
+      const conflictingPreview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: true,
+      });
+
+      expect(conflictingPreview.reviewState).toBe("identity-conflict");
+      expect(() => service.acceptPreview(conflictingPreview.previewId))
+        .toThrow("Mortgage import preview is not ready for acceptance.");
+      expect(database.listMortgageEvidenceVersions(
+        "household-mortgage-reference",
+        loan.id
+      )).toHaveLength(1);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    {
+      fileName: "details.html",
+      source: VALID_DETAILS_HTML,
+      expectedReviewState: "details-checks-passed",
+      expectedRole: "details",
+    },
+    {
+      fileName: "schedule.html",
+      source: VALID_SCHEDULE_HTML,
+      expectedReviewState: "schedule-checks-passed",
+      expectedRole: "schedule",
+    },
+  ] as const)(
+    "accepts a single $expectedRole document as a separate evidence version",
+    async ({ fileName, source, expectedReviewState, expectedRole }) => {
+      const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-single-acceptance-"));
+      const databasePath = join(directory, "ledger.sqlite");
+      const filePath = join(directory, fileName);
+      writeFileSync(filePath, source, "utf8");
+      const database = createLocalLedgerDatabase({
+        dbPath: databasePath,
+        seedData: {
+          household: {
+            id: "household-mortgage-single",
+            name: "Synthetic household",
+            createdAtIso: "2026-01-01T00:00:00.000Z",
+          },
+          accounts: [{
+            id: "account-mortgage-single",
+            householdId: "household-mortgage-single",
+            name: "Current",
+            currencyCode: "NOK",
+          }],
+          transactions: [],
+          importJobs: [],
+          monthlyCategoryTargets: [],
+        },
+      });
+
+      try {
+        const loans = createLoanRegistry(database, {
+          createId: () => "loan-single",
+          now: () => new Date("2026-11-21T12:00:00.000Z"),
+        });
+        const loan = loans.create({
+          label: "Existing mortgage",
+          principalMinor: 10_000_000,
+          annualInterestRateBasisPoints: 500,
+          termMonths: 120,
+          paymentAmountMinor: 100_000,
+          paymentFrequency: "monthly",
+          currencyCode: "NOK",
+        });
+        const service = createMortgageBankImportService(database, {
+          maxBytesPerFile: 10_000,
+          parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+          createId: () => `mortgage-${expectedRole}-evidence`,
+          now: () => new Date("2026-11-21T12:30:00.000Z"),
+        });
+        const preview = await service.previewFiles({
+          filePaths: [filePath],
+          target: { kind: "existing", loanId: loan.id },
+          attachmentConfirmed: true,
+        });
+
+        expect(preview.reviewState).toBe(expectedReviewState);
+        const evidence = service.acceptPreview(preview.previewId);
+        expect(evidence.documents.map((document) => document.role)).toEqual([expectedRole]);
+        expect(evidence.scheduleValidation?.status ?? null)
+          .toBe(expectedRole === "schedule" ? "valid" : null);
+        expect(database.listMortgageEvidenceVersions(
+          "household-mortgage-single",
+          loan.id
+        )).toEqual([evidence]);
+      } finally {
+        database.close();
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it("creates an incomplete loan only in the same acceptance that stores its evidence", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-new-source-only-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    writeFileSync(detailsFilePath, VALID_DETAILS_HTML, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-new",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-new",
+          householdId: "household-mortgage-new",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      let generatedId = 0;
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => `mortgage-record-${++generatedId}`,
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+      const preview = await Reflect.apply(service.previewFiles, service, [{
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "new-source-only", label: "Rogaland mortgage" },
+        attachmentConfirmed: true,
+      }]) as { previewId: string; reviewState: string };
+      expect(preview.reviewState).toBe("paired-schedule-checks-passed");
+      const evidence = service.acceptPreview(preview.previewId);
+      const sourceOnlyLoan = database.listSourceOnlyLoanRecords("household-mortgage-new");
+
+      expect(sourceOnlyLoan).toEqual([{
+        id: evidence.loanId,
+        householdId: "household-mortgage-new",
+        label: "Rogaland mortgage",
+        currencyCode: "NOK",
+        createdAtIso: "2026-11-21T12:30:00.000Z",
+        responsibilityShareBasisPoints: 10_000,
+        recordStatus: "source-only",
+      }]);
+      expect("principalMinor" in sourceOnlyLoan[0]!).toBe(false);
+      expect(database.listMortgageEvidenceVersions(
+        "household-mortgage-new",
+        evidence.loanId
+      )).toEqual([evidence]);
+
+      const nextPreview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: evidence.loanId },
+        attachmentConfirmed: true,
+      });
+      const nextEvidence = service.acceptPreview(nextPreview.previewId);
+      expect(nextEvidence.loanId).toBe(evidence.loanId);
+      expect(nextEvidence.versionNumber).toBe(2);
+      expect(database.listSourceOnlyLoanRecords("household-mortgage-new")).toEqual(sourceOnlyLoan);
+      expect(database.listMortgageEvidenceVersions(
+        "household-mortgage-new",
+        evidence.loanId
+      )).toEqual([evidence, nextEvidence]);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects acceptance after the selected loan changes since preview", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-stale-preview-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    writeFileSync(detailsFilePath, VALID_DETAILS_HTML, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-stale",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-stale",
+          householdId: "household-mortgage-stale",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const loans = createLoanRegistry(database, {
+        createId: () => "loan-stale",
+        now: () => new Date("2026-11-21T12:00:00.000Z"),
+      });
+      const loan = loans.create({
+        label: "Existing mortgage",
+        principalMinor: 10_000_000,
+        annualInterestRateBasisPoints: 500,
+        termMonths: 120,
+        paymentAmountMinor: 100_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => "stale-evidence",
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+      const preview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: true,
+      });
+      loans.updateResponsibilityShare({
+        loanId: loan.id,
+        responsibilityShareBasisPoints: 5_000,
+      });
+
+      expect(() => service.acceptPreview(preview.previewId))
+        .toThrow("Loan changed after mortgage evidence preview.");
+      expect(database.listMortgageEvidenceVersions("household-mortgage-stale", loan.id))
+        .toEqual([]);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a local UTF-8 HTML file within the configured byte limit", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-html-"));
+    const filePath = join(directory, "schedule.html");
+    const source = "<h1>Nedbetalingsplan</h1>";
+    writeFileSync(filePath, source, "utf8");
+
+    try {
+      expect(await readBoundedMortgageHtmlFile(filePath, Buffer.byteLength(source))).toBe(source);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a file that exceeds the byte limit without returning truncated content", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-html-limit-"));
+    const filePath = join(directory, "schedule.html");
+    writeFileSync(filePath, "<h1>too large</h1>", "utf8");
+
+    try {
+      await expect(readBoundedMortgageHtmlFile(filePath, 8)).rejects.toThrow(RangeError);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed UTF-8 rather than guessing an encoding", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-html-encoding-"));
+    const filePath = join(directory, "schedule.html");
+    writeFileSync(filePath, Buffer.from([0x3c, 0x68, 0x3e, 0xc3, 0x28]));
+
+    try {
+      await expect(readBoundedMortgageHtmlFile(filePath, 8)).rejects.toThrow(TypeError);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("honors cancellation before opening the file", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-html-cancel-"));
+    const filePath = join(directory, "schedule.html");
+    writeFileSync(filePath, "<h1>Nedbetalingsplan</h1>", "utf8");
+    const controller = new AbortController();
+    controller.abort();
+
+    try {
+      await expect(readBoundedMortgageHtmlFile(filePath, 1_000, controller.signal))
+        .rejects.toThrow();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports schedule checks separately from import acceptance", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-preview-"));
+    const filePath = join(directory, "schedule.html");
+    writeFileSync(filePath, VALID_SCHEDULE_HTML, "utf8");
+
+    try {
+      const preview = await previewMortgageScheduleFile({
+        filePath,
+        maxBytes: Buffer.byteLength(VALID_SCHEDULE_HTML),
+        parserLimits: {
+          maxSourceCharacters: VALID_SCHEDULE_HTML.length,
+          maxElements: 100,
+          maxDepth: 20,
+        },
+        loanIdentity: SELECTED_LOAN_IDENTITY,
+        attachmentConfirmed: false,
+      });
+
+      expect(preview.reviewState).toBe("schedule-checks-passed");
+      expect(preview.parsedDocument.parseStatus).toBe("parsed");
+      expect(preview.validation).toEqual({ status: "valid", issues: [] });
+      expect(preview.parsedDocument.identityDisplay.maskedLoanReference).toBe("****-123");
+      expect(preview.parsedDocument).not.toHaveProperty("identityEvidence");
+      expect(preview.parsedDocument.scheduleRows[0]).not.toHaveProperty("sourceValues");
+      expect(JSON.stringify(preview)).not.toContain("loan-123");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not mark a financially inconsistent schedule as schedule-checks-passed", async () => {
+    const changedPayment = VALID_SCHEDULE_HTML.replace("1 100,00", "1 100,01");
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-preview-invalid-"));
+    const filePath = join(directory, "schedule.html");
+    writeFileSync(filePath, changedPayment, "utf8");
+
+    try {
+      const preview = await previewMortgageScheduleFile({
+        filePath,
+        maxBytes: Buffer.byteLength(changedPayment),
+        parserLimits: {
+          maxSourceCharacters: changedPayment.length,
+          maxElements: 100,
+          maxDepth: 20,
+        },
+        loanIdentity: SELECTED_LOAN_IDENTITY,
+        attachmentConfirmed: false,
+      });
+
+      expect(preview.reviewState).toBe("invalid");
+      expect(preview.validation).toEqual({
+        status: "invalid",
+        issues: [{ code: "payment-total-mismatch", rowIndex: 0 }],
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks contradictory source identity even after explicit confirmation", async () => {
+    const conflictingSchedule = VALID_SCHEDULE_HTML.replace("loan-123", "loan-456");
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-preview-conflict-"));
+    const filePath = join(directory, "schedule.html");
+    writeFileSync(filePath, conflictingSchedule, "utf8");
+
+    try {
+      const preview = await previewMortgageScheduleFile({
+        filePath,
+        maxBytes: Buffer.byteLength(conflictingSchedule),
+        parserLimits: {
+          maxSourceCharacters: conflictingSchedule.length,
+          maxElements: 100,
+          maxDepth: 20,
+        },
+        loanIdentity: SELECTED_LOAN_IDENTITY,
+        attachmentConfirmed: true,
+      });
+
+      expect(preview.reviewState).toBe("identity-conflict");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("requires attachment confirmation when the source has no identity evidence", async () => {
+    const unidentifiedSchedule = VALID_SCHEDULE_HTML.replace(
+      /<dl>[\s\S]*?<\/dl>/,
+      ""
+    );
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-preview-identity-unknown-"));
+    const filePath = join(directory, "schedule.html");
+    writeFileSync(filePath, unidentifiedSchedule, "utf8");
+
+    try {
+      const preview = await previewMortgageScheduleFile({
+        filePath,
+        maxBytes: Buffer.byteLength(unidentifiedSchedule),
+        parserLimits: {
+          maxSourceCharacters: unidentifiedSchedule.length,
+          maxElements: 100,
+          maxDepth: 20,
+        },
+        loanIdentity: SELECTED_LOAN_IDENTITY,
+        attachmentConfirmed: false,
+      });
+
+      expect(preview.reviewState).toBe("attachment-confirmation-required");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("pairs verified details and schedule files before reporting schedule checks", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-paired-preview-"));
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    writeFileSync(detailsFilePath, VALID_DETAILS_HTML, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+
+    try {
+      const preview = await previewMortgageDocumentPair({
+        detailsFilePath,
+        scheduleFilePath,
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        attachmentConfirmed: false,
+      });
+
+      expect(preview.reviewState).toBe("paired-schedule-checks-passed");
+      expect(preview.pairing).toEqual({ status: "verified", verification: "matching-identifiers" });
+      expect(preview.validation).toEqual({ status: "valid", issues: [] });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not pair contradictory details and schedule files after confirmation", async () => {
+    const conflictingDetails = VALID_DETAILS_HTML.replace("loan-123", "loan-456");
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-paired-conflict-"));
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    writeFileSync(detailsFilePath, conflictingDetails, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+
+    try {
+      const preview = await previewMortgageDocumentPair({
+        detailsFilePath,
+        scheduleFilePath,
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        attachmentConfirmed: true,
+      });
+
+      expect(preview.reviewState).toBe("identity-conflict");
+      expect(preview.validation).toBeNull();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

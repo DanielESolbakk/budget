@@ -39,6 +39,8 @@ type LedgerSnapshotReaders = Pick<LocalLedgerDatabase,
   | "listExchangeRates"
   | "listHoldingRecords"
   | "listLoanRecords"
+  | "listSourceOnlyLoanRecords"
+  | "listMortgageEvidenceVersions"
   | "getReportingPeriodRule"
   | "listCategories"
 >;
@@ -113,6 +115,48 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
       loan.propertyId ?? null,
       loan.createdAtIso,
       defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share")
+    );
+  }
+
+  const insertSourceOnlyLoanRecord = db.prepare(`
+    INSERT INTO source_only_loan_records (
+      id, household_id, label, currency_code, property_id,
+      created_at_iso, responsibility_share_basis_points
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const loan of snapshot.sourceOnlyLoanRecords ?? []) {
+    insertSourceOnlyLoanRecord.run(
+      loan.id,
+      loan.householdId,
+      loan.label,
+      loan.currencyCode,
+      loan.propertyId ?? null,
+      loan.createdAtIso,
+      defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share")
+    );
+  }
+
+  const insertMortgageEvidenceVersion = db.prepare(`
+    INSERT INTO mortgage_evidence_versions (
+      id, loan_id, household_id, version_number, source_as_of_date_iso,
+      imported_at_iso, documents_json, pairing_json, attachment_json,
+      term_comparisons_json, term_differences_acknowledged, schedule_validation_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const version of snapshot.mortgageEvidenceVersions ?? []) {
+    insertMortgageEvidenceVersion.run(
+      version.id,
+      version.loanId,
+      version.householdId,
+      version.versionNumber,
+      version.sourceAsOfDateIso,
+      version.importedAtIso,
+      JSON.stringify(version.documents),
+      version.pairing === null ? null : JSON.stringify(version.pairing),
+      JSON.stringify(version.attachment),
+      JSON.stringify(version.termComparisons),
+      version.termDifferencesAcknowledged ? 1 : 0,
+      version.scheduleValidation === null ? null : JSON.stringify(version.scheduleValidation)
     );
   }
 
@@ -365,7 +409,15 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
 }
 
 export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshotReaders): LedgerSnapshotData {
-  const { listExchangeRates, listHoldingRecords, listLoanRecords, getReportingPeriodRule, listCategories } = readers;
+  const {
+    listExchangeRates,
+    listHoldingRecords,
+    listLoanRecords,
+    listSourceOnlyLoanRecords,
+    listMortgageEvidenceVersions,
+    getReportingPeriodRule,
+    listCategories,
+  } = readers;
   const householdRow = db
     .prepare("SELECT id, name, created_at_iso FROM households ORDER BY id LIMIT 1")
     .get() as { id: string; name: string; created_at_iso: string } | undefined;
@@ -478,6 +530,8 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
     ORDER BY holding_id, effective_date_iso, recorded_at_iso, id
   `).all().map(mapHoldingValuationSnapshotRow);
   const loanRecords = listLoanRecords(householdRow.id);
+  const sourceOnlyLoanRecords = listSourceOnlyLoanRecords(householdRow.id);
+  const mortgageEvidenceVersions = listMortgageEvidenceVersions(householdRow.id);
   const loanBalanceSnapshots = db.prepare(`
     SELECT id, loan_id, effective_date_iso, amount_minor, currency_code, recorded_at_iso
     FROM loan_balance_snapshots
@@ -591,7 +645,9 @@ export function loadLedgerSnapshotData(db: DatabaseSync, readers: LedgerSnapshot
     holdings,
     holdingValuations,
     loanRecords,
+    sourceOnlyLoanRecords,
     loanBalanceSnapshots,
+    mortgageEvidenceVersions,
     recurringCommitments,
     recurringCommitmentPaymentLinks,
     recurringCommitmentDecisions,

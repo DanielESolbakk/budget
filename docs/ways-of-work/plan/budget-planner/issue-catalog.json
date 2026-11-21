@@ -505,6 +505,41 @@
       "type": "feature",
       "title": "Localization (i18n) scaffolding (future potential, deferred)",
       "parentKeys": ["E6"]
+    },
+    {
+      "key": "E9",
+      "type": "epic",
+      "title": "Household net worth: assets, liabilities, and forecasting"
+    },
+    {
+      "key": "F9.2",
+      "type": "feature",
+      "title": "Mortgage bank evidence, reconciliation, and repayment scenarios",
+      "parentKeys": ["E9"]
+    },
+    {
+      "key": "S9.2.4",
+      "type": "story",
+      "title": "Import verified Rogaland mortgage evidence into an existing or source-only loan",
+      "parentKeys": ["F9.2"]
+    },
+    {
+      "key": "T9.2.4.1",
+      "type": "test",
+      "title": "Unit coverage for importing verified Rogaland mortgage evidence",
+      "parentKeys": ["S9.2.4"]
+    },
+    {
+      "key": "T9.2.4.2",
+      "type": "test",
+      "title": "Integration coverage for importing verified Rogaland mortgage evidence",
+      "parentKeys": ["S9.2.4"]
+    },
+    {
+      "key": "T9.2.4.3",
+      "type": "test",
+      "title": "Playwright coverage for importing verified Rogaland mortgage evidence",
+      "parentKeys": ["S9.2.4"]
     }
   ]
 }

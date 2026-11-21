@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,6 +11,7 @@ import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapsho
 import { createLoanRegistry } from "../../src/app/loanRegistry.js";
 import { createPropertyRegistry } from "../../src/app/propertyRegistry.js";
 import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
+import type { SourceOnlyLoanRecord } from "../../src/domain/types.js";
 
 const HOUSEHOLD = {
   id: "household-loan-test",
@@ -32,6 +33,148 @@ function openLedger(dbPath: string) {
 }
 
 describe("loan registry persistence and backup", () => {
+  it("keeps source-only loan creation out of the generic registry API", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-source-only-api-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const database = openLedger(databasePath);
+
+    try {
+      expect(createLoanRegistry(database)).not.toHaveProperty("createSourceOnly");
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("persists and restores a source-only loan without invented terms or balances", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-source-only-loan-"));
+    const sourcePath = join(directory, "source.sqlite");
+    const restoredPath = join(directory, "restored.sqlite");
+    const snapshotPath = join(directory, "backup.json");
+    const source = openLedger(sourcePath);
+    const restored = openLedger(restoredPath);
+
+    try {
+      const loans = createLoanRegistry(source);
+      const loan: SourceOnlyLoanRecord = {
+        id: "source-only-loan-1",
+        householdId: HOUSEHOLD.id,
+        label: "Rogaland mortgage",
+        currencyCode: "NOK",
+        createdAtIso: "2026-11-21T12:00:00.000Z",
+        responsibilityShareBasisPoints: 10_000,
+        recordStatus: "source-only",
+      };
+      source.createSourceOnlyLoanRecord(loan);
+
+      expect(loan).toEqual({
+        id: "source-only-loan-1",
+        householdId: HOUSEHOLD.id,
+        label: "Rogaland mortgage",
+        currencyCode: "NOK",
+        createdAtIso: "2026-11-21T12:00:00.000Z",
+        responsibilityShareBasisPoints: 10_000,
+        recordStatus: "source-only",
+      });
+      expect("principalMinor" in loan).toBe(false);
+      expect(loans.list()).toEqual([]);
+      expect(loans.listSourceOnly()).toEqual([loan]);
+
+      createBackupSnapshot({
+        ...source.loadLedgerSnapshotData(),
+        outputPath: snapshotPath,
+        createdAtIso: "2026-11-21T12:01:00.000Z",
+      });
+      const snapshot = restoreBackupSnapshot({ snapshotPath });
+      expect(snapshot.sourceOnlyLoanRecords).toEqual([loan]);
+      expect(snapshot.loanBalanceSnapshots).toEqual([]);
+      restored.replaceLedgerSnapshotData(snapshot);
+      expect(createLoanRegistry(restored).listSourceOnly()).toEqual([loan]);
+    } finally {
+      source.close();
+      restored.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps complete and source-only loan IDs globally unique", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-loan-id-collision-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const database = openLedger(databasePath);
+    const registry = createLoanRegistry(database, {
+      createId: () => "shared-loan-id",
+      now: () => new Date("2026-11-21T12:00:00.000Z"),
+    });
+
+    try {
+      registry.create({
+        label: "Existing mortgage",
+        principalMinor: 10_000_000,
+        annualInterestRateBasisPoints: 500,
+        termMonths: 120,
+        paymentAmountMinor: 100_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+
+      const sourceOnlyLoan: SourceOnlyLoanRecord = {
+        id: "shared-loan-id",
+        householdId: HOUSEHOLD.id,
+        label: "Imported source-only mortgage",
+        currencyCode: "NOK",
+        createdAtIso: "2026-11-21T12:00:00.000Z",
+        responsibilityShareBasisPoints: 10_000,
+        recordStatus: "source-only",
+      };
+      expect(() => database.createSourceOnlyLoanRecord(sourceOnlyLoan))
+        .toThrow("Loan ID is already in use.");
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects source-only backup entries containing fabricated loan terms", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-source-only-invalid-backup-"));
+    const sourcePath = join(directory, "source.sqlite");
+    const snapshotPath = join(directory, "backup.json");
+    const invalidSnapshotPath = join(directory, "invalid-backup.json");
+    const source = openLedger(sourcePath);
+
+    try {
+      const sourceOnlyLoan: SourceOnlyLoanRecord = {
+        id: "source-only-loan-1",
+        householdId: HOUSEHOLD.id,
+        label: "Rogaland mortgage",
+        currencyCode: "NOK",
+        createdAtIso: "2026-11-21T12:00:00.000Z",
+        responsibilityShareBasisPoints: 10_000,
+        recordStatus: "source-only",
+      };
+      source.createSourceOnlyLoanRecord(sourceOnlyLoan);
+      createBackupSnapshot({
+        ...source.loadLedgerSnapshotData(),
+        outputPath: snapshotPath,
+        createdAtIso: "2026-11-21T12:01:00.000Z",
+      });
+
+      const invalidSnapshot = JSON.parse(readFileSync(snapshotPath, "utf8")) as Record<string, unknown>;
+      const sourceOnlyRecords = invalidSnapshot["sourceOnlyLoanRecords"];
+      if (!Array.isArray(sourceOnlyRecords) || typeof sourceOnlyRecords[0] !== "object" ||
+          sourceOnlyRecords[0] === null) {
+        throw new Error("Expected a source-only loan in the synthetic snapshot.");
+      }
+      (sourceOnlyRecords[0] as Record<string, unknown>)["principalMinor"] = 0;
+      writeFileSync(invalidSnapshotPath, JSON.stringify(invalidSnapshot), "utf8");
+
+      expect(() => restoreBackupSnapshot({ snapshotPath: invalidSnapshotPath }))
+        .toThrow("source-only loan records");
+    } finally {
+      source.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("includes loan terms and dated balances in new backup snapshots", () => {
     const loan = {
       id: "loan-home",

@@ -4,6 +4,7 @@ import type {
   LoanBalanceInput,
   LoanPaymentFrequency,
   LoanRecordInput,
+  SourceOnlyLoanRecordInput,
 } from "./types.js";
 
 const PAYMENT_FREQUENCIES: readonly LoanPaymentFrequency[] = [
@@ -100,6 +101,54 @@ export function validateLoanRecordInput(
     termMonths,
     paymentAmountMinor,
     paymentFrequency,
+    currencyCode,
+    ...(propertyId === undefined ? {} : { propertyId }),
+  };
+}
+
+export function validateSourceOnlyLoanRecordInput(
+  input: unknown,
+  existingPropertyIds: readonly string[] = []
+): SourceOnlyLoanRecordInput {
+  if (!isRecord(input)) {
+    throw new LoanRecordValidationError("label", "Enter a loan label.");
+  }
+
+  const financialTermFields: readonly LoanRecordValidationField[] = [
+    "principalMinor",
+    "annualInterestRateBasisPoints",
+    "termMonths",
+    "paymentAmountMinor",
+    "paymentFrequency",
+  ];
+  for (const field of financialTermFields) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) {
+      throw new LoanRecordValidationError(field, "Source-only loans cannot invent or store unverified loan terms.");
+    }
+  }
+
+  const label = input["label"];
+  if (typeof label !== "string" || label.trim().length === 0 || label.trim().length > 100) {
+    throw new LoanRecordValidationError("label", "Enter a loan label up to 100 characters.");
+  }
+
+  const currencyCode = input["currencyCode"];
+  if (!isCurrencyCode(currencyCode)) {
+    throw new LoanRecordValidationError("currencyCode", "Enter a three-letter uppercase currency code.");
+  }
+
+  const propertyId = input["propertyId"];
+  if (
+    propertyId !== undefined &&
+    (typeof propertyId !== "string" ||
+      propertyId.trim().length === 0 ||
+      !existingPropertyIds.includes(propertyId))
+  ) {
+    throw new LoanRecordValidationError("propertyId", "Choose an existing property or leave the property unlinked.");
+  }
+
+  return {
+    label: label.trim(),
     currencyCode,
     ...(propertyId === undefined ? {} : { propertyId }),
   };

@@ -19,17 +19,19 @@ import type {
   RecurringCommitment,
   RecurringCommitmentDecision,
   RecurringCommitmentPaymentLink,
+  SourceOnlyLoanRecord,
   SameMerchantPropagationOperation,
   Transaction,
   TransactionCategoryEditProvenance,
 } from "../types.js";
 import type { ReportingPeriodRule } from "../../shared/applicationPreferences.js";
+import type { MortgageEvidenceVersion } from "../../shared/mortgageBankEvidence.js";
 
 /** Snapshot format version – increment when the serialized recovery contract changes. */
-export const SNAPSHOT_VERSION = "14" as const;
+export const SNAPSHOT_VERSION = "16" as const;
 
 export type SnapshotVersion =
-  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | typeof SNAPSHOT_VERSION;
+  | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | typeof SNAPSHOT_VERSION;
 
 export interface ImportOperationSnapshot {
   importJobId: string;
@@ -89,7 +91,9 @@ export interface BackupSnapshot {
   holdings: HoldingRecord[];
   holdingValuations: HoldingValuationSnapshot[];
   loanRecords: LoanRecord[];
+  sourceOnlyLoanRecords: SourceOnlyLoanRecord[];
   loanBalanceSnapshots: LoanBalanceSnapshot[];
+  mortgageEvidenceVersions: MortgageEvidenceVersion[];
   recurringCommitments: RecurringCommitment[];
   recurringCommitmentPaymentLinks: RecurringCommitmentPaymentLink[];
   recurringCommitmentDecisions: RecurringCommitmentDecision[];
@@ -120,7 +124,9 @@ export interface LedgerSnapshotData {
   holdings?: HoldingRecord[];
   holdingValuations?: HoldingValuationSnapshot[];
   loanRecords?: LoanRecord[];
+  sourceOnlyLoanRecords?: SourceOnlyLoanRecord[];
   loanBalanceSnapshots?: LoanBalanceSnapshot[];
+  mortgageEvidenceVersions?: MortgageEvidenceVersion[];
   recurringCommitments?: RecurringCommitment[];
   recurringCommitmentPaymentLinks?: RecurringCommitmentPaymentLink[];
   recurringCommitmentDecisions?: RecurringCommitmentDecision[];
@@ -204,7 +210,9 @@ export interface RestoreSnapshotOutput {
   holdings: HoldingRecord[];
   holdingValuations: HoldingValuationSnapshot[];
   loanRecords: LoanRecord[];
+  sourceOnlyLoanRecords: SourceOnlyLoanRecord[];
   loanBalanceSnapshots: LoanBalanceSnapshot[];
+  mortgageEvidenceVersions: MortgageEvidenceVersion[];
   recurringCommitments: RecurringCommitment[];
   recurringCommitmentPaymentLinks: RecurringCommitmentPaymentLink[];
   recurringCommitmentDecisions: RecurringCommitmentDecision[];

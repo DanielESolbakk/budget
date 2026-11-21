@@ -47,6 +47,16 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Import review records parsed rows, unresolved rows, warnings, duplicates, corrections, and dismissals.
 - Valid rows may persist immediately; unresolved rows never become transactions until corrected, and dismissed rows retain an audit record.
 
+### Mortgage Evidence Import
+
+- A source-aware Rogaland HTML adapter reads saved details and repayment-plan pages as inert data. It does not extend the transaction statement parser contract.
+- `src/shared/mortgageBankEvidence.ts` owns shared typed evidence and validation contracts; `src/domain/import/rogalandMortgageHtml.ts` owns semantic extraction, normalization, exact validation, and source-context retention.
+- `src/app/mortgageBankImportService.ts` composes bounded local file reads, loan identity, preview, revision checks, and transactional acceptance through the existing loan and backup services.
+- Imported monthly and annual schedule periods remain projected bank evidence. They never become ledger transactions or actual-balance checkpoints.
+- An explicitly incomplete/source-only loan may retain valid bank evidence while actual balance and unavailable terms remain unknown. Existing manual fields, shares, actual checkpoints, and associations remain authoritative.
+- Persistence adds immutable bank-plan versions, provenance, source references, and stable obligation identity through additive migrations. Backup, restore, and related export preserve those relationships.
+- The renderer reuses the loan workspace and shared import-preflight lifecycle. File access and persistence remain in the main process behind grouped, validated IPC.
+
 ### Categorization Pipeline
 
 - Merchant normalization standardizes raw merchant text into a consistent alias candidate.
@@ -105,6 +115,10 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - budget target
 - forecast assumption
 - backup snapshot
+- mortgage import receipt
+- bank-plan version
+- mortgage schedule period
+- mortgage obligation
 
 ### Suggested Tables
 
@@ -128,6 +142,8 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Preserve source file identity, page number, raw row text, and parser diagnostics for review and audit.
 - Keep valid transaction persistence separate from unresolved-row and dismissal state.
 - Maintain clear correction history or auditable rule provenance.
+- Keep imported projected debt, booked payments, manual corrections, and actual balance checkpoints as distinct records with source and date provenance.
+- Preserve accepted mortgage evidence and stable obligations through additive migrations, backup/restore, and related export without changing ledger CSV semantics.
 
 ## Multi-Format Import Strategy
 
@@ -137,6 +153,9 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Select adapters by source capabilities rather than hard-coding one bank in the import coordinator.
 - Add bank-specific adapters when layouts diverge, while keeping the shared transaction and review contracts stable.
 - Unknown layouts produce explicit diagnostics and reviewable unresolved rows instead of silently producing incomplete transactions.
+- Saved mortgage HTML follows its own evidence adapter and is never routed through transaction import or treated as a booked statement.
+- Pair details and schedules only with sufficient identity evidence; preserve source-as-of, rate-effective, planned-payment, booking, and import times separately.
+- After the first tested import/preview path exists, benchmark synthetic three- and thirty-year sources on Windows 11 Home/Pro 25H2 or newer using the minimum hardware floor: a compatible 64-bit two-core CPU and 4 GB RAM. Use actual measurements to propose measurable resource caps and performance targets for owner approval before finalizing hard caps or making performance claims.
 
 ## SQLite Binding Note
 
@@ -151,6 +170,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - PDF extraction and text normalization helpers
 - Text, CSV, and PDF adapter selection and row classification
 - Import review state transitions and correction validation
+- Mortgage HTML semantic parsing, source roles, exact minor-unit reconciliation, capability limits, and source-context evidence
 - Duplicate detection
 - Merchant normalization
 - Categorization rules and confidence logic
@@ -165,6 +185,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Budget target persistence and aggregation
 - Backup restore integrity
 - No-network verification harness for protected workflows
+- Mortgage import, source-only loan persistence, atomic cancellation/revision behavior, compatible recovery/export, and bounded inert parsing
 
 ### End-to-End
 
@@ -176,6 +197,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - View forecast
 - Export data
 - Restore backup
+- Import and review mortgage bank evidence in the existing loan workflow
 
 ## Open Technical Risks
 
@@ -183,6 +205,8 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Binary PDF extraction quality for wrapped and multi-page rows
 - Native SQLite packaging on Windows with Electron
 - Review-state complexity across three input formats
+- Semantic and identity variation in saved mortgage HTML, including the risk of treating projected schedules as actuals
+- Final parser resource caps and measurable performance claims remain gated on benchmarking the actual import/preview path on Windows and owner approval
 - Drift between seeded categories and user-corrected rules
 - Ensuring no-network verification remains meaningful in development and packaged builds
 

@@ -12,6 +12,7 @@ Budget Planner is a local-first desktop budget application for one household use
 - Inline transaction category editing with optional local merchant learning
   and category splitting; see S3.3.2 (#598) and Tests #599-#601
 - Monthly dashboards, budget targets, and simple forecasting
+- Mortgage repayment scenarios and local Rogaland bank-evidence import, beginning with F9.2 (#264), Story #539, and Tests #541, #543, and #544
 - Local backup and export
 - Activity automation, beginning with a local category catalog and create,
   rename, and safe merge workflows; see [Activity automation plan](activity-automation-plan.md).
@@ -42,6 +43,7 @@ Budget Planner is a local-first desktop budget application for one household use
 | LLM contributor skimps on tests | High | Use CI guardrails, PR template, and issue-level AC-to-test mapping |
 | Public repo accidental data leakage | High | Use sanitized fixtures, public-repo rules, and gitignored local-only paths |
 | Forecast scope creep | Medium | Keep first release to simple forward projections only |
+| Untrusted mortgage HTML or projected/actual confusion | High | Parse saved pages inertly, preserve unknowns and provenance, and keep bank projections separate from ledger and actual balances |
 
 ## Work Item Hierarchy
 
@@ -62,6 +64,14 @@ graph TD
 
     E[Epic: Privacy, Backup, Export, and Release Quality] --> E1[Feature: Backup and Export]
     E --> E2[Feature: Verification and Quality Gates]
+    F[Epic: Household net worth (#251)] --> F1[Feature: Manual asset/liability registry (#267)]
+    F --> F2[Feature: Mortgage evidence and repayment scenarios (#264)]
+    F2 --> F21[Story: Rogaland evidence import (#539)]
+    F21 --> F211[Unit Test #541]
+    F21 --> F212[Integration Test #543]
+    F21 --> F213[Playwright Test #544]
+    F --> F3[Feature: Net-worth forecast (#265)]
+    F --> F4[Feature: Offline value refresh (#266)]
 ```
 
 ## Feature Breakdown
@@ -109,6 +119,14 @@ graph TD
 - Feature: No-network verification
 - Enabler: Performance harness and packaging checks
 - Test: Backup/export and no-network verification suites
+
+### Epic: Household net worth (#251)
+
+- F9.1 (#267) owns the manual asset and liability registry.
+- F9.2 (#264) remains the owner of mortgage evidence and repayment scenarios. Its first bank-import slice is #539; later refresh, reconciliation, calculator, and reporting Stories retain their existing owners.
+- #539 imports verified saved Rogaland HTML into an existing or explicitly incomplete loan. Tests #541, #543, and #544 own Unit, Integration, and Playwright verification respectively.
+- Household forecast and monthly reporting consumers remain with their existing Feature/Story owners; mortgage import does not absorb those responsibilities.
+- After the first tested import/preview path exists, benchmark synthetic three- and thirty-year inputs on Windows 11 Home/Pro 25H2 or newer with a compatible 64-bit two-core CPU and 4 GB RAM. Use measured elapsed time and peak memory to propose resource caps and performance targets; obtain owner approval before finalizing hard limits or making performance claims.
 
 ## Priority Guidance
 

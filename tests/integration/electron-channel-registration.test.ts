@@ -158,6 +158,58 @@ describe("Electron channel registration and live ledger wiring", () => {
     expect(invoke("setup:isRequired")).toBe(true);
   });
 
+  it("keeps mortgage HTML paths inside main-process file selection", async () => {
+    createHousehold();
+    const dialogSetting = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
+    const pathsSetting = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"];
+    const selectedPath = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-details.html"
+    );
+    const target = { kind: "new-source-only", label: "Synthetic mortgage" };
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = "selected";
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = JSON.stringify([selectedPath]);
+    try {
+      await expect(Promise.resolve().then(() => invoke("mortgageImport:previewFiles", {
+        target,
+        filePaths: [selectedPath],
+        attachmentConfirmed: true,
+      }))).rejects.toThrow("Mortgage file paths must be chosen by the desktop dialog.");
+
+      const preview = await invoke("mortgageImport:previewFiles", { target });
+      expect(preview).toMatchObject({
+        target,
+        documents: [{ role: "details" }],
+        reviewState: "attachment-confirmation-required",
+      });
+      expect(preview).not.toHaveProperty("filePaths");
+      if (
+        typeof preview !== "object" ||
+        preview === null ||
+        !("previewId" in preview) ||
+        typeof preview.previewId !== "string"
+      ) {
+        throw new Error("Expected mortgage preview to have an id.");
+      }
+      const confirmedPreview = await invoke("mortgageImport:confirmAttachment", preview.previewId);
+      expect(confirmedPreview).toMatchObject({
+        previewId: preview.previewId,
+        attachment: { status: "confirmed", verification: "explicit-user-attachment" },
+        reviewState: "details-checks-passed",
+      });
+      await invoke("mortgageImport:cancelPreview", preview.previewId);
+      expect(() => invoke("dialog:chooseMortgageHtmlPaths")).toThrow("Missing channel/window");
+    } finally {
+      if (dialogSetting === undefined) delete process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
+      else process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = dialogSetting;
+      if (pathsSetting === undefined) delete process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"];
+      else process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = pathsSetting;
+    }
+  });
+
   it("persists category commands with main-owned identity, household, and timestamps", async () => {
     createHousehold();
     const database = createLocalLedgerDatabase({ dbPath });

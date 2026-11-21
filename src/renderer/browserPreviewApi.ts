@@ -269,9 +269,17 @@ export function resolveRendererBudgetApi(
     },
     loanRegistry: {
       list: desktopOnlyAction,
+      listSourceOnly: desktopOnlyAction,
       create: desktopOnlyAction,
       updateResponsibilityShare: desktopOnlyAction,
       appendBalance: desktopOnlyAction,
+    },
+    mortgageImport: {
+      previewFiles: desktopOnlyAction,
+      confirmAttachment: desktopOnlyAction,
+      acceptPreview: desktopOnlyAction,
+      cancelPreview: desktopOnlyAction,
+      listEvidenceSummaries: desktopOnlyAction,
     },
     backup: {
       create: desktopOnlyAction,

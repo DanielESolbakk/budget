@@ -8,6 +8,7 @@ import type { createHoldingRegistry } from "../../src/app/holdingRegistry.js";
 import type { ImportPreviewRegistry } from "../../src/app/import/importPreviewRegistry.js";
 import type { LedgerOperationCoordinator } from "../../src/app/ledgerOperationCoordinator.js";
 import type { createLoanRegistry } from "../../src/app/loanRegistry.js";
+import type { createMortgageBankImportService } from "../../src/app/mortgageBankImportService.js";
 import type { createPropertyRegistry } from "../../src/app/propertyRegistry.js";
 import type { createRecurringCommitmentService } from "../../src/app/recurringCommitmentService.js";
 import type { createSpendableCashService } from "../../src/app/spendableCashService.js";
@@ -19,6 +20,7 @@ import type {
   CsvExportDialog,
   ExchangeRateImportDialog,
   ImportStatementDialog,
+  MortgageHtmlImportDialog,
   RestoreSnapshotDialog,
 } from "../fileDialogProvider.js";
 
@@ -34,6 +36,7 @@ export interface LedgerChannelContext {
   propertyRegistry: ReturnType<typeof createPropertyRegistry>;
   holdingRegistry: ReturnType<typeof createHoldingRegistry>;
   loanRegistry: ReturnType<typeof createLoanRegistry>;
+  mortgageBankImportService: ReturnType<typeof createMortgageBankImportService>;
   recurringCommitmentService: ReturnType<typeof createRecurringCommitmentService>;
   spendableCashService: ReturnType<typeof createSpendableCashService>;
   cashflowScenarioService: ReturnType<typeof createCashflowScenarioService>;
@@ -57,5 +60,6 @@ export interface LedgerChannelContext {
   csvExportDialog: CsvExportDialog;
   exchangeRateImportDialog: ExchangeRateImportDialog;
   importStatementDialog: ImportStatementDialog;
+  mortgageHtmlImportDialog: MortgageHtmlImportDialog;
   restoreSnapshotDialog: RestoreSnapshotDialog;
 }
