@@ -35,6 +35,7 @@ export interface MortgageImportBenchmarkResult {
   readonly fixture: {
     readonly schedulePeriodCount: number;
     readonly scheduleElementTagCount: number;
+    readonly nestingWrapperCount: number;
     readonly detailsBytes: number;
     readonly scheduleBytes: number;
   };
@@ -179,7 +180,15 @@ function padToNearLimit(source: string): string {
 }
 
 function scenarioPeriodCount(scenario: MortgageImportBenchmarkScenario): number {
-  return scenario === "three-year" ? 36 : 360;
+  switch (scenario) {
+    case "three-year":
+      return 36;
+    case "thirty-year":
+    case "near-limit":
+      return 360;
+    default:
+      throw new RangeError("Mortgage benchmark scenario is unsupported.");
+  }
 }
 
 function median(values: readonly number[]): number {
@@ -419,6 +428,9 @@ export async function runMortgageImportBenchmark(
       fixture: {
         schedulePeriodCount: schedulePeriodCountValue,
         scheduleElementTagCount: countSourceElements(scheduleHtml),
+        nestingWrapperCount: options.scenario === "near-limit"
+          ? NEAR_DEPTH_LIMIT_WRAPPER_COUNT
+          : 0,
         detailsBytes: Buffer.byteLength(detailsHtml, "utf8"),
         scheduleBytes: Buffer.byteLength(scheduleHtml, "utf8"),
       },

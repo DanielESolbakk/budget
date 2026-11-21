@@ -1009,6 +1009,7 @@ describe("mortgage import performance benchmark", () => {
     expect(result.fixture.scheduleBytes).toBeGreaterThanOrEqual(255 * 1024);
     expect(result.fixture.scheduleElementTagCount).toBeGreaterThan(5_500);
     expect(result.fixture.scheduleElementTagCount).toBeLessThan(6_000);
+    expect(result.fixture.nestingWrapperCount).toBe(24);
     expect(result.measurements.scheduleValidationStatus).toBe("valid");
     expect(result.measurements.persistedEvidenceVersionCount).toBe(1);
     expect(result.cancellation).toEqual({
