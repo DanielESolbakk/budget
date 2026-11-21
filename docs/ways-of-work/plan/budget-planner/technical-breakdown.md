@@ -155,7 +155,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Unknown layouts produce explicit diagnostics and reviewable unresolved rows instead of silently producing incomplete transactions.
 - Saved mortgage HTML follows its own evidence adapter and is never routed through transaction import or treated as a booked statement.
 - Pair details and schedules only with sufficient identity evidence; preserve source-as-of, rate-effective, planned-payment, booking, and import times separately.
-- After the first tested import/preview path exists, benchmark synthetic three- and thirty-year sources on Windows 11 Home/Pro 25H2 or newer using the minimum hardware floor: a compatible 64-bit two-core CPU and 4 GB RAM. Use actual measurements to propose measurable resource caps and performance targets for owner approval before finalizing hard caps or making performance claims.
+- After the first tested import/preview path exists, run the three-year, thirty-year, and near-limit mortgage import benchmark cases on the owner-approved Windows 11 Home/Pro 25H2-or-newer VM proxy configured for 2 vCPUs and 4 GiB RAM. Supply the hypervisor and physical-host CLI options, and record the VM and physical host profiles, elapsed time, and peak process RSS. Treat results as VM-proxy evidence, not physical minimum-hardware validation. Use actual measurements to propose measurable resource caps and performance targets for owner approval before finalizing hard caps or making performance claims.
 
 ## SQLite Binding Note
 

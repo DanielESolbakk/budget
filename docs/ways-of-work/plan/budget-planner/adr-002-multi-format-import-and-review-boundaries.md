@@ -61,7 +61,7 @@ Saved Rogaland mortgage details and repayment-plan HTML use a separate evidence 
 
 Details and schedules are paired only when loan identity evidence is sufficient. Uncertain identity requires explicit attachment confirmation, while contradictory identity is rejected. Existing manual corrections and actual checkpoints remain authoritative; disputed fields are presented with source provenance rather than silently replaced. The source-as-of date remains distinct from import time.
 
-This boundary reuses the loan registry, grouped IPC, backup, and export services without adding remote access or changing CSV/PDF transaction semantics. After the tested import/preview path exists, exact file, structure, and resource caps are proposed from synthetic Windows 11 Home/Pro 25H2-or-newer benchmarking on the minimum 64-bit two-core/4 GB hardware floor and require owner approval.
+This boundary reuses the loan registry, grouped IPC, backup, and export services without adding remote access or changing CSV/PDF transaction semantics. After the tested import/preview path exists, propose exact file, structure, and resource caps from synthetic Windows 11 Home/Pro 25H2-or-newer benchmarking on the owner-approved VM proxy configured for 2 vCPUs and 4 GiB RAM. Record the VM and physical host profiles; report the result as VM-proxy evidence, not physical minimum-hardware validation. Final caps and performance claims still require owner approval.
 
 ### Review and Persistence Boundary
 

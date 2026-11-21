@@ -84,7 +84,7 @@ Use the following locked stack unless superseded by a later ADR:
 - A source-only loan is an explicitly incomplete local loan state. Unknown balances and terms remain unknown, and accepted bank-plan versions retain immutable provenance.
 - Existing manual corrections and household choices are preserved. Disputed fields are shown with both values and provenance and are not overwritten without explicit resolution.
 - Additive persistence, backup, restore, and related export preserve evidence and stable obligations without changing ledger CSV semantics.
-- Production file/structure/resource caps and performance targets are set after a tested import/preview path is benchmarked with synthetic three- and thirty-year inputs on Windows 11 Home/Pro 25H2 or newer, using a compatible 64-bit two-core CPU and 4 GB RAM. The measured proposal requires owner approval before hard limits or performance claims are finalized.
+- Mortgage import caps and performance targets are proposed from the tested import/preview path using synthetic three- and thirty-year inputs on an owner-approved Windows 11 Home/Pro 25H2-or-newer VM proxy configured for 2 vCPUs and 4 GiB RAM. Record the VM OS/build, assigned resources, hypervisor, and physical host CPU/memory. Treat results as VM-proxy evidence, not physical minimum-hardware validation. Owner approval is still required before finalizing hard caps or performance claims.
 
 ## Testing Implications
 

@@ -14,7 +14,7 @@ The user needs a modern local desktop tool to understand income and expenses wit
 
 - One local household user managing multiple accounts
 - Comfortable importing statements manually
-- Runs on Windows 11 Home or Pro, version 25H2 or newer; the mortgage-import benchmark floor is a compatible 64-bit two-core CPU with 4 GB RAM
+- Runs on Windows 11 Home or Pro, version 25H2 or newer. Mortgage-import performance uses an owner-approved 2-vCPU/4-GiB Windows VM proxy; this is not physical minimum-hardware evidence.
 - Needs clear monthly overviews, category tracking, and forecast visibility
 - Values privacy, local control, and understandable categorization logic
 

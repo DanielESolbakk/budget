@@ -13,6 +13,7 @@ import {
   previewMortgageScheduleFile,
   readBoundedMortgageHtmlFile,
 } from "../../src/app/mortgageBankImportService.js";
+import { runMortgageImportBenchmark } from "../../src/tooling/performance/runMortgageImportBenchmark.js";
 
 const VALID_DETAILS_HTML = `
   <h1>Lånedetaljer</h1>
@@ -967,5 +968,53 @@ describe("bounded mortgage HTML file reads", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("mortgage import performance benchmark", () => {
+  it("measures a validated three-year import through acceptance and persistence", async () => {
+    const result = await runMortgageImportBenchmark({
+      scenario: "three-year",
+      iterationCount: 1,
+      physicalHost: {
+        hypervisorName: "Synthetic hypervisor",
+        cpuModel: "Synthetic physical host CPU",
+        totalMemoryBytes: 4 * 1024 ** 3,
+      },
+    });
+
+    expect(result.scenario).toBe("three-year");
+    expect(result.fixture.schedulePeriodCount).toBe(36);
+    expect(result.measurements.scheduleValidationStatus).toBe("valid");
+    expect(result.measurements.persistedEvidenceVersionCount).toBe(1);
+    expect(result.measurements.previewMedianMs).toBeGreaterThanOrEqual(0);
+    expect(result.measurements.persistenceMedianMs).toBeGreaterThanOrEqual(0);
+    expect(result.measurements.peakProcessRssKiB).toBeGreaterThan(0);
+    expect(result.physicalHost).toEqual({
+      hypervisorName: "Synthetic hypervisor",
+      cpuModel: "Synthetic physical host CPU",
+      totalMemoryBytes: 4 * 1024 ** 3,
+      metadataComplete: true,
+    });
+  });
+
+  it("measures the near-limit schedule and verifies cancellation persists no evidence", async () => {
+    const result = await runMortgageImportBenchmark({
+      scenario: "near-limit",
+      iterationCount: 1,
+    });
+
+    expect(result.fixture.schedulePeriodCount).toBe(360);
+    expect(result.fixture.scheduleBytes).toBeLessThanOrEqual(256 * 1024);
+    expect(result.fixture.scheduleBytes).toBeGreaterThanOrEqual(255 * 1024);
+    expect(result.fixture.scheduleElementTagCount).toBeGreaterThan(5_500);
+    expect(result.fixture.scheduleElementTagCount).toBeLessThan(6_000);
+    expect(result.measurements.scheduleValidationStatus).toBe("valid");
+    expect(result.measurements.persistedEvidenceVersionCount).toBe(1);
+    expect(result.cancellation).toEqual({
+      cancellationObserved: true,
+      persistedEvidenceVersionCount: 0,
+      sourceOnlyLoanCount: 0,
+    });
   });
 });
