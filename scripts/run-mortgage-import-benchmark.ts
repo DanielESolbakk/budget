@@ -14,6 +14,7 @@ const scenarioValues = new Set<string>([
 const args = process.argv.slice(2);
 const scenarioValue = getOptionValue(args, "--case");
 const iterationsRaw = getOptionValue(args, "--iterations");
+const requireProfileMatch = args.includes("--require-profile-match");
 const hypervisorName = getOptionValue(args, "--hypervisor");
 const physicalHostCpuModel = getOptionValue(args, "--physical-host-cpu");
 const physicalHostMemoryGiBRaw = getOptionValue(args, "--physical-host-memory-gib");
@@ -44,7 +45,7 @@ if (!isScenario(scenarioValue) ||
     !Number.isSafeInteger(iterationCount) ||
     iterationCount <= 0 ||
     (hasPhysicalHostMetadata && physicalHost === undefined)) {
-  console.error("Usage: npm run benchmark:mortgage-import -- --case <three-year|thirty-year|near-limit> [--iterations <positive-integer>] [--hypervisor <name> --physical-host-cpu <model> --physical-host-memory-gib <positive-number>]");
+  console.error("Usage: npm run benchmark:mortgage-import -- --case <three-year|thirty-year|near-limit> [--iterations <positive-integer>] [--require-profile-match] [--hypervisor <name> --physical-host-cpu <model> --physical-host-memory-gib <positive-number>]");
   process.exit(1);
 }
 
@@ -56,6 +57,10 @@ const result = await runMortgageImportBenchmark({
 console.log(JSON.stringify(result, null, 2));
 if (result.evidenceStatus === "preliminary") {
   console.error("Preliminary only: observed VM does not match the approved Windows VM proxy profile.");
+  if (requireProfileMatch) {
+    console.error("A profile-matched benchmark is required for this invocation.");
+    process.exitCode = 1;
+  }
 } else if (!result.physicalHost.metadataComplete) {
   console.error("VM profile matches; physical host metadata is missing or unavailable from the provider.");
 }

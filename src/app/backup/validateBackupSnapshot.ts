@@ -66,6 +66,9 @@ const snapshotCapabilities = {
   "15": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections, ...sourceOnlyLoanCollection, "categories"],
     requiresHouseholdShares: true },
+  "16": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+    ...holdingCollections, ...recurringCollections, ...sourceOnlyLoanCollection,
+    ...mortgageEvidenceCollection, "categories"], requiresHouseholdShares: true },
   [SNAPSHOT_VERSION]: { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections, ...sourceOnlyLoanCollection,
     ...mortgageEvidenceCollection, "categories"], requiresHouseholdShares: true },
@@ -92,12 +95,13 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     throw new Error(`Invalid snapshot categories: ${snapshotPath}`);
   }
   if (
-    metadata.version === SNAPSHOT_VERSION &&
+    (metadata.version === "16" || metadata.version === SNAPSHOT_VERSION) &&
     (!isRecord(value.recoveryHistory) || !Array.isArray(value.recoveryHistory.transactionCategoryEdits))
   ) {
     throw new Error(`Invalid snapshot transaction category edit history: ${snapshotPath}`);
   }
   if ((metadata.version === "11" || metadata.version === "12" || metadata.version === "14" ||
+      metadata.version === "16" ||
       metadata.version === SNAPSHOT_VERSION) &&
     value.reportingPeriodRule === undefined) {
     throw new Error(`Invalid snapshot reportingPeriodRule: ${snapshotPath}`);

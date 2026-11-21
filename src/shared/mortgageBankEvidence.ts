@@ -46,6 +46,9 @@ export type MortgageDetailFieldEvidence =
   | (MortgageDetailFieldEvidenceBase & {
       readonly field: "nominalAnnualRateBasisPoints" | "effectiveAnnualRateBasisPoints";
       readonly valueBasisPoints: number | null;
+    })
+  | (MortgageDetailFieldEvidenceBase & {
+      readonly field: "unsupportedProductType";
     });
 
 export interface MortgageHtmlParseResult {

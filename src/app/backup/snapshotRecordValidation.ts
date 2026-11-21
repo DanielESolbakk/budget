@@ -210,6 +210,7 @@ function isMortgageHtmlParseResult(
     ) {
       return isNullableSafeInteger(field.valueBasisPoints);
     }
+    if (field.field === "unsupportedProductType") return true;
     return false;
   });
   const validScheduleRows = value.scheduleRows.every((row) =>

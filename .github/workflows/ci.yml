@@ -274,7 +274,7 @@ jobs:
           $cases = @("three-year", "thirty-year", "near-limit")
           foreach ($case in $cases) {
             $logPath = "benchmark-results\windows\mortgage-$case.log"
-            $output = & npm.cmd run benchmark:mortgage-import -- --case $case --iterations 5 2>&1
+            $output = & npm.cmd run benchmark:mortgage-import -- --case $case --iterations 5 --require-profile-match 2>&1
             $benchmarkExitCode = $LASTEXITCODE
             $output | Tee-Object -FilePath $logPath
             if ($benchmarkExitCode -ne 0) {

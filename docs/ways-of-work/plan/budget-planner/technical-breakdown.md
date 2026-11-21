@@ -51,10 +51,11 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 
 - A source-aware Rogaland HTML adapter reads saved details and repayment-plan pages as inert data. It does not extend the transaction statement parser contract.
 - `src/shared/mortgageBankEvidence.ts` owns shared typed evidence and validation contracts; `src/domain/import/rogalandMortgageHtml.ts` owns semantic extraction, normalization, exact validation, and source-context retention.
+- Preserve explicitly recognized unsupported product-type labels and values as partial source evidence; do not infer a repayment model from them.
 - `src/app/mortgageBankImportService.ts` composes bounded local file reads, loan identity, preview, revision checks, and transactional acceptance through the existing loan and backup services.
 - Imported monthly and annual schedule periods remain projected bank evidence. They never become ledger transactions or actual-balance checkpoints.
 - An explicitly incomplete/source-only loan may retain valid bank evidence while actual balance and unavailable terms remain unknown. Existing manual fields, shares, actual checkpoints, and associations remain authoritative.
-- Persistence adds immutable bank-plan versions, provenance, source references, and stable obligation identity through additive migrations. The versioned household backup snapshot is the related local export and preserves those relationships through backup/restore; ledger CSV remains transaction-only, with no separate per-loan export in this slice.
+- Persistence adds immutable bank-plan versions, provenance, source references, and stable obligation identity through additive migrations. Snapshot v17 includes the source-labeled unsupported product-type evidence shape and continues to restore v16 snapshots. The versioned household backup snapshot is the related local export and preserves those relationships through backup/restore; ledger CSV remains transaction-only, with no separate per-loan export in this slice.
 - The renderer reuses the loan workspace and shared import-preflight lifecycle. File access and persistence remain in the main process behind grouped, validated IPC.
 
 ### Categorization Pipeline

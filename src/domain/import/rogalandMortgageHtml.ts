@@ -20,7 +20,7 @@ import type {
 import { parseDecimalMinorUnits } from "../money/minorUnits.js";
 import { isIsoCalendarDate } from "../date/calendarDate.js";
 
-export const ROGALAND_MORTGAGE_PARSER_VERSION = "1" as const;
+export const ROGALAND_MORTGAGE_PARSER_VERSION = "2" as const;
 
 const NORWEGIAN_AMOUNT_PATTERN = /^(-?)(\d{1,3}([ .])\d{3}(?:\3\d{3})*|\d+)(?:,(\d{1,2}))?$/;
 const IGNORED_TAGS = new Set(["aside", "footer", "header", "iframe", "nav", "noscript", "script", "style", "template"]);
@@ -44,6 +44,13 @@ const REMAINING_PRINCIPAL_LABELS = new Set([
 ]);
 const NOMINAL_RATE_LABELS = new Set(["nominell rente", "nominell arlig rente"]);
 const EFFECTIVE_RATE_LABELS = new Set(["effektiv rente", "effektiv arlig rente"]);
+const UNSUPPORTED_PRODUCT_TYPE_LABELS = new Set([
+  "lanetype",
+  "kredittype",
+  "loan type",
+  "product type",
+  "loan product type",
+]);
 const SOURCE_AS_OF_DATE_LABELS = new Set([
   "utskriftsdato",
   "beregningsdato",
@@ -330,6 +337,7 @@ function detailFieldForLabel(label: string): MortgageDetailFieldEvidence["field"
   }
   if (NOMINAL_RATE_LABELS.has(normalized)) return "nominalAnnualRateBasisPoints";
   if (EFFECTIVE_RATE_LABELS.has(normalized)) return "effectiveAnnualRateBasisPoints";
+  if (UNSUPPORTED_PRODUCT_TYPE_LABELS.has(normalized)) return "unsupportedProductType";
   return null;
 }
 
@@ -442,6 +450,10 @@ function parseDetails(
   for (const { sourceLabel, sourceValue } of collectDetailsPairs(document)) {
     const field = detailFieldForLabel(sourceLabel);
     if (field === null) continue;
+    if (field === "unsupportedProductType") {
+      detailsFields.push({ field, sourceLabel, sourceValue });
+      continue;
+    }
     if (field === "nominalAnnualRateBasisPoints" || field === "effectiveAnnualRateBasisPoints") {
       detailsFields.push({
         field,
@@ -477,9 +489,10 @@ function parseDetails(
     seenFields.add(field);
     return false;
   });
-  const hasUnknownValue = detailsFields.some((field) =>
-    "amountMinor" in field ? field.amountMinor === null : field.valueBasisPoints === null
-  );
+  const hasUnknownValue = detailsFields.some((field) => {
+    if (field.field === "unsupportedProductType") return true;
+    return "amountMinor" in field ? field.amountMinor === null : field.valueBasisPoints === null;
+  });
   const parseStatus = hasDuplicateField || hasUnknownValue || identityEvidence.conflicts.length > 0 ||
       sourceDateEvidence.conflict
     ? "partial"

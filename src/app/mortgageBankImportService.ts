@@ -497,6 +497,24 @@ function evidenceReviewState(
   return previewState;
 }
 
+function assessMortgageTargetAttachment(
+  targetIdentity: MortgageDocumentIdentityEvidence,
+  documentIdentities: readonly MortgageDocumentIdentityEvidence[],
+  explicitlyConfirmed: boolean
+): MortgageDocumentPairingResult {
+  const documentPairings = documentIdentities.map((identity) =>
+    assessMortgageDocumentPairing(targetIdentity, identity, explicitlyConfirmed)
+  );
+  const conflict = documentPairings.find((pairing) => pairing.status === "conflict");
+  if (conflict !== undefined) return conflict;
+  if (documentPairings.every((pairing) => pairing.status === "verified")) {
+    return { status: "verified", verification: "matching-identifiers" };
+  }
+  return explicitlyConfirmed
+    ? { status: "confirmed", verification: "explicit-user-attachment" }
+    : { status: "confirmation-required" };
+}
+
 function compareMortgageTerms(
   database: LocalLedgerDatabase,
   householdId: string,
@@ -701,10 +719,10 @@ export function createMortgageBankImportService(
       );
       const targetPairing = targetIdentity === null
         ? null
-        : assessMortgageDocumentPairing(
+        : assessMortgageTargetAttachment(
             targetIdentity,
-            detailsDocument.identityEvidence,
-            input.attachmentConfirmed
+            [detailsDocument.identityEvidence, scheduleDocument.identityEvidence],
+            input.attachmentConfirmed,
           );
       reviewState = targetPairing === null
         ? pairPreview.reviewState
@@ -889,9 +907,12 @@ export function createMortgageBankImportService(
       );
       const targetPairing = targetIdentity === null
         ? null
-        : assessMortgageDocumentPairing(
+        : assessMortgageTargetAttachment(
             targetIdentity,
-            details.parsedDocument.identityEvidence,
+            [
+              details.parsedDocument.identityEvidence,
+              schedule.parsedDocument.identityEvidence,
+            ],
             true
           );
       reviewState = targetPairing === null

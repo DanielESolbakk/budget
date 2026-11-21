@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
@@ -234,6 +235,98 @@ describe("bounded mortgage HTML file reads", () => {
     }
   });
 
+  it("retains unsupported product-type evidence through acceptance and backup restore", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-product-type-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const snapshotPath = join(directory, "backup.json");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    const unsupportedProductType = {
+      field: "unsupportedProductType",
+      sourceLabel: "Lånetype",
+      sourceValue: "Rammelån",
+    };
+    const detailsWithProductType = VALID_DETAILS_HTML.replace(
+      "<dt>Opprinnelig lånebeløp</dt>",
+      "<dt>Lånetype</dt><dd>Rammelån</dd><dt>Opprinnelig lånebeløp</dt>"
+    );
+    writeFileSync(detailsFilePath, detailsWithProductType, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-product-type",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-product-type",
+          householdId: "household-mortgage-product-type",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const loans = createLoanRegistry(database, {
+        createId: () => "loan-product-type",
+        now: () => new Date("2026-11-21T12:00:00.000Z"),
+      });
+      const loan = loans.create({
+        label: "Existing mortgage",
+        principalMinor: 10_000_000,
+        annualInterestRateBasisPoints: 500,
+        termMonths: 120,
+        paymentAmountMinor: 100_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => "mortgage-evidence-product-type",
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+      const preview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: true,
+      });
+
+      expect(preview.reviewState).toBe("review-required");
+      expect(preview.documents[0]?.parsedDocument.detailsFields)
+        .toContainEqual(unsupportedProductType);
+      const accepted = service.acceptPreview(preview.previewId, true);
+      const acceptedDetails = accepted.documents.find((document) => document.role === "details");
+      expect(acceptedDetails?.parsedDocument.detailsFields).toContainEqual(unsupportedProductType);
+
+      createBackupSnapshot({
+        ...database.loadLedgerSnapshotData(),
+        outputPath: snapshotPath,
+        createdAtIso: "2026-11-21T12:31:00.000Z",
+      });
+      const snapshot = getRecord(
+        JSON.parse(readFileSync(snapshotPath, "utf8")) as unknown,
+        "snapshot"
+      );
+      const metadata = getRecord(snapshot["metadata"], "snapshot metadata");
+      expect(metadata["version"]).toBe("17");
+      const restored = restoreBackupSnapshot({ snapshotPath });
+      const restoredDetails = restored.mortgageEvidenceVersions[0]?.documents.find(
+        (document) => document.role === "details"
+      );
+      expect(restoredDetails?.parsedDocument.detailsFields).toContainEqual(unsupportedProductType);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("persists an explicit source date separately from import time", async () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-source-date-"));
     const databasePath = join(directory, "ledger.sqlite");
@@ -413,7 +506,7 @@ describe("bounded mortgage HTML file reads", () => {
     }
   });
 
-  it("blocks later evidence with a different accepted loan reference despite attachment confirmation", async () => {
+  it("blocks later evidence when a paired source conflicts, even if details omit identity", async () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-reference-change-"));
     const databasePath = join(directory, "ledger.sqlite");
     const detailsFilePath = join(directory, "details.html");
@@ -468,21 +561,39 @@ describe("bounded mortgage HTML file reads", () => {
       });
       service.acceptPreview(initialPreview.previewId);
 
-      writeFileSync(detailsFilePath, VALID_DETAILS_HTML.replace("loan-123", "loan-456"), "utf8");
-      writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML.replaceAll("loan-123", "loan-456"), "utf8");
-      const conflictingPreview = await service.previewFiles({
-        filePaths: [detailsFilePath, scheduleFilePath],
-        target: { kind: "existing", loanId: loan.id },
-        attachmentConfirmed: true,
-      });
+      const conflictingSchedule = VALID_SCHEDULE_HTML.replaceAll("loan-123", "loan-456");
+      const conflictVariants = [
+        {
+          name: "both pages identify another loan",
+          detailsHtml: VALID_DETAILS_HTML.replace("loan-123", "loan-456"),
+          scheduleHtml: conflictingSchedule,
+        },
+        {
+          name: "the schedule conflicts while details omit identity",
+          detailsHtml: VALID_DETAILS_HTML.replace(
+            /<dt>Lånenummer<\/dt><dd>loan-123<\/dd>/u,
+            ""
+          ),
+          scheduleHtml: conflictingSchedule,
+        },
+      ];
+      for (const variant of conflictVariants) {
+        writeFileSync(detailsFilePath, variant.detailsHtml, "utf8");
+        writeFileSync(scheduleFilePath, variant.scheduleHtml, "utf8");
+        const conflictingPreview = await service.previewFiles({
+          filePaths: [detailsFilePath, scheduleFilePath],
+          target: { kind: "existing", loanId: loan.id },
+          attachmentConfirmed: true,
+        });
 
-      expect(conflictingPreview.reviewState).toBe("identity-conflict");
-      expect(() => service.acceptPreview(conflictingPreview.previewId))
-        .toThrow("Mortgage import preview is not ready for acceptance.");
-      expect(database.listMortgageEvidenceVersions(
-        "household-mortgage-reference",
-        loan.id
-      )).toHaveLength(1);
+        expect(conflictingPreview.reviewState).toBe("identity-conflict");
+        expect(() => service.acceptPreview(conflictingPreview.previewId))
+          .toThrow("Mortgage import preview is not ready for acceptance.");
+        expect(database.listMortgageEvidenceVersions(
+          "household-mortgage-reference",
+          loan.id
+        )).toHaveLength(1);
+      }
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
@@ -1037,5 +1148,29 @@ describe("mortgage import performance benchmark", () => {
       persistedEvidenceVersionCount: 0,
       sourceOnlyLoanCount: 0,
     });
+  });
+
+  it("fails a required benchmark probe when the observed VM profile is preliminary", () => {
+    const result = spawnSync(process.execPath, [
+      "--import",
+      "tsx/esm",
+      join(process.cwd(), "scripts", "run-mortgage-import-benchmark.ts"),
+      "--case",
+      "three-year",
+      "--iterations",
+      "1",
+      "--require-profile-match",
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      windowsHide: true,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).not.toBeNull();
+    const output = getRecord(JSON.parse(result.stdout) as unknown, "mortgage benchmark output");
+    const evidenceStatus = output["evidenceStatus"];
+    expect(["profile-matched-proxy", "preliminary"]).toContain(evidenceStatus);
+    expect(result.status).toBe(evidenceStatus === "preliminary" ? 1 : 0);
   });
 });

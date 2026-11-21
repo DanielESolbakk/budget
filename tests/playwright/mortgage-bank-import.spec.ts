@@ -233,6 +233,69 @@ test("loan workflow previews and accepts paired mortgage evidence without changi
   ))).toBe(false);
 });
 
+test("shows and requires review of an unsupported source loan type", async ({
+  appShell,
+  electronApp,
+  window,
+}) => {
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  await loans.addLoan({
+    label: "Rogaland mortgage",
+    principal: "100000",
+    annualInterestRate: "5",
+    termYears: "25",
+    paymentAmount: "1000",
+    paymentFrequency: "monthly",
+    currencyCode: "NOK",
+  });
+  const filePaths = [
+    join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-11-mortgage-details-product-type.html"),
+    join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-11-mortgage-schedule.html"),
+  ];
+  await electronApp.evaluate((_, paths: string[]) => {
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = "selected";
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = JSON.stringify(paths);
+  }, filePaths);
+
+  const loan = loans.loan("Rogaland mortgage");
+  await loan.getByRole("button", { name: "Import mortgage evidence", exact: true }).click();
+  const importPanel = window.getByRole("region", {
+    name: "Mortgage evidence import for Rogaland mortgage",
+    exact: true,
+  });
+  await importPanel.getByRole("button", {
+    name: "Choose mortgage HTML files",
+    exact: true,
+  }).click();
+  const preview = window.getByRole("region", {
+    name: "Mortgage evidence preview for Rogaland mortgage",
+    exact: true,
+  });
+  await expect(preview).toContainText("Lånetype");
+  await expect(preview).toContainText("Rammelån");
+  await preview.getByRole("button", {
+    name: "Confirm attachment to Rogaland mortgage",
+    exact: true,
+  }).click();
+  await expect(preview).toContainText(
+    "Some evidence is partial. Review the available source details before accepting."
+  );
+  const acceptPartial = preview.getByRole("checkbox", {
+    name: "Accept this partial evidence version; unsupported values remain unknown.",
+    exact: true,
+  });
+  const acceptButton = preview.getByRole("button", {
+    name: "Accept mortgage evidence",
+    exact: true,
+  });
+  await expect(acceptButton).toBeDisabled();
+  await acceptPartial.check();
+  await expect(acceptButton).toBeEnabled();
+  await acceptButton.click();
+  await expect(importPanel.getByRole("status")).toContainText("Evidence version 1 saved.");
+});
+
 test("an incomplete loan is created only when mortgage evidence is accepted", async ({
   appShell,
   electronApp,

@@ -409,6 +409,31 @@ describe("Rogaland mortgage HTML parsing", () => {
     });
   });
 
+  it("rejects duplicated semantic schedule headers instead of selecting one", () => {
+    const duplicatedPrincipalHeader = `
+      <h1>Nedbetalingsplan</h1>
+      <table>
+        <tr>
+          <th>Termin</th><th>Avdrag</th><th>Avdrag</th><th>Renter</th>
+          <th>Gebyr</th><th>Terminbeløp</th><th>Restgjeld</th>
+        </tr>
+        <tr>
+          <td>Januar 2026</td><td>1 000,00</td><td>100,00</td><td>90,00</td>
+          <td>10,00</td><td>1 100,00</td><td>99 000,00</td>
+        </tr>
+      </table>
+    `;
+    const result = parseRogalandMortgageHtml(duplicatedPrincipalHeader, {
+      maxSourceCharacters: 10_000,
+      maxElements: 1_000,
+      maxDepth: 100,
+    });
+
+    expect(result.role).toBe("schedule");
+    expect(result.parseStatus).toBe("unsupported");
+    expect(result.scheduleRows).toEqual([]);
+  });
+
   describe("Rogaland mortgage schedule reconciliation", () => {
     it("reconciles exact payment totals and consecutive monthly balances", () => {
       expect(validateRogalandMortgageSchedule(parseSchedule(TWO_MONTH_SCHEDULE_HTML)))
@@ -675,6 +700,27 @@ describe("Rogaland mortgage HTML parsing", () => {
       ],
       scheduleRows: [],
     });
+  });
+
+  it("retains a labeled unsupported loan type as partial evidence without capturing unrelated fields", () => {
+    const result = parseRogalandMortgageHtml(`
+      <h1>Lånedetaljer</h1>
+      <dl>
+        <dt>Opprinnelig lånebeløp</dt><dd>100 000,00</dd>
+        <dt>Lånetype</dt><dd>Rammelån</dd>
+        <dt>Kundenummer</dt><dd>synthetic-customer-42</dd>
+      </dl>
+    `, { maxSourceCharacters: 1_000, maxElements: 100, maxDepth: 20 });
+
+    expect(result.parseStatus).toBe("partial");
+    expect(result.detailsFields).toContainEqual({
+      field: "unsupportedProductType",
+      sourceLabel: "Lånetype",
+      sourceValue: "Rammelån",
+    });
+    expect(result.detailsFields).not.toContainEqual(expect.objectContaining({
+      sourceLabel: "Kundenummer",
+    }));
   });
 
   it("extracts semantic mortgage details from a definition list", () => {
