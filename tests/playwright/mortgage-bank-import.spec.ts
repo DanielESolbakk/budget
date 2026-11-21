@@ -341,8 +341,9 @@ test("canceling a mortgage preview does not persist evidence or change the loan"
   });
   await expect(preview).toBeVisible();
   await preview.getByRole("button", { name: "Cancel import", exact: true }).click();
-  await expect(importPanel.getByRole("status"))
-    .toContainText("Import canceled. No loan data was changed.");
+  await expect(importPanel.getByRole("status").filter({
+    hasText: "Import canceled. No loan data was changed.",
+  })).toBeVisible();
 
   const evidence = await window.evaluate(() => (
     globalThis as typeof globalThis & { budgetApi: BudgetApi }
@@ -415,6 +416,63 @@ test("canceling while mortgage evidence is being read stops the pending preview"
     annualInterestRateBasisPoints: 500,
     balances: [],
   }]);
+});
+
+test("changing incomplete-loan context during a read allows a fresh preview", async ({
+  appShell,
+  electronApp,
+  window,
+}) => {
+  await appShell.openWorkspace("Loans");
+  const filePaths = [
+    join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-11-mortgage-details.html"),
+  ];
+  await electronApp.evaluate((_, paths: string[]) => {
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = "selected";
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = JSON.stringify(paths);
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DELAY_MS"] = "1500";
+  }, filePaths);
+
+  await window.getByRole("button", {
+    name: "Import as incomplete loan",
+    exact: true,
+  }).click();
+  const importPanel = window.getByRole("region", {
+    name: "Mortgage evidence import for an incomplete loan",
+    exact: true,
+  });
+  await importPanel.getByLabel("Loan label", { exact: true }).fill("Initial sample");
+  await importPanel.getByRole("button", {
+    name: "Choose mortgage HTML files",
+    exact: true,
+  }).click();
+  await expect(importPanel.getByRole("button", {
+    name: "Cancel reading mortgage evidence",
+    exact: true,
+  })).toBeVisible();
+
+  await importPanel.getByLabel("Loan label", { exact: true }).fill("Updated sample");
+  const chooseFilesButton = importPanel.getByRole("button", {
+    name: "Choose mortgage HTML files",
+    exact: true,
+  });
+  await expect(chooseFilesButton).toBeEnabled();
+  await chooseFilesButton.click();
+
+  const preview = window.getByRole("region", {
+    name: "Mortgage evidence preview for Updated sample",
+    exact: true,
+  });
+  await expect(preview).toBeVisible();
+  await preview.getByRole("button", { name: "Cancel import", exact: true }).click();
+  await expect(importPanel.getByRole("status").filter({
+    hasText: "Import canceled. No loan data was changed.",
+  })).toBeVisible();
+
+  const sourceOnlyLoans = await window.evaluate(() => (
+    globalThis as typeof globalThis & { budgetApi: BudgetApi }
+  ).budgetApi.loanRegistry.listSourceOnly());
+  expect(sourceOnlyLoans).toEqual([]);
 });
 
 test("unsupported HTML cannot create an incomplete loan", async ({

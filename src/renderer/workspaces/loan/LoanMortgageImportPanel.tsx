@@ -307,6 +307,12 @@ export function LoanMortgageImportPanel({
   const preflight = useImportPreflight("mortgage", contextKey, cancelMortgagePreview);
   const cancelledRequestIdRef = React.useRef<string | null>(null);
 
+  React.useEffect(() => {
+    if (preflight.requestId === undefined && preview === null && isWorking) {
+      setIsWorking(false);
+    }
+  }, [isWorking, preflight.requestId, preview]);
+
   function currentTarget(): MortgageImportTarget | null {
     if (loanId !== undefined) return { kind: "existing", loanId };
     const label = sourceOnlyLabel.trim();
