@@ -22,7 +22,7 @@ import type {
 import { useCategoryCatalog } from "../categories/CategoryCatalogContext.js";
 import { formatCurrencyAmount } from "../formatCurrencyAmount.js";
 import { formatMinorUnits, minorUnitsToDecimal } from "../../domain/money/minorUnits.js";
-import { TransactionCategoryEditor } from "./TransactionCategoryEditor.js";
+import { TransactionCategoryEditor, type TransactionCategoryEditDraft } from "./TransactionCategoryEditor.js";
 
 const nokCurrencyFormatter = new Intl.NumberFormat("nb-NO", {
   style: "currency",
@@ -143,6 +143,8 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   const [isFilterPending, setIsFilterPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [categoryEditContext, setCategoryEditContext] = React.useState<TransactionCategoryEditContext | null>(null);
+  const [retainedCategoryEditDraft, setRetainedCategoryEditDraft] =
+    React.useState<{ transactionId: string; draft: TransactionCategoryEditDraft } | null>(null);
   const [pendingCategoryEdit, setPendingCategoryEdit] =
     React.useState<PendingCategoryEditNavigation | null>(null);
   const [isCategoryEditDirty, setIsCategoryEditDirty] = React.useState(false);
@@ -152,6 +154,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   const hasMountedFilterEffect = React.useRef(false);
   const categoryEditDirtyRef = React.useRef(false);
   const categoryEditTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const categoryEditRefreshGenerationRef = React.useRef(0);
   const categoryTriggerRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const pendingSavedFocusId = React.useRef<string | null>(null);
   const pendingLedgerNavigationFocusRef = React.useRef<HTMLElement | null>(null);
@@ -166,7 +169,9 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
 
     setPendingCategoryEdit(null);
     if (categoryEditContext !== null) {
+      categoryEditRefreshGenerationRef.current += 1;
       setCategoryEditContext(null);
+      setRetainedCategoryEditDraft(null);
       setIsCategoryEditDirty(false);
       categoryEditDirtyRef.current = false;
     }
@@ -432,8 +437,10 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   }
 
   async function openCategoryEditor(transaction: Transaction, trigger: HTMLButtonElement, clearStatus = true): Promise<void> {
+    categoryEditRefreshGenerationRef.current += 1;
     categoryEditTriggerRef.current = trigger;
     setCategoryEditContext(null);
+    setRetainedCategoryEditDraft(null);
     setIsCategoryEditDirty(false);
     categoryEditDirtyRef.current = false;
     setPendingCategoryEdit(null);
@@ -463,9 +470,11 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   }
 
   function closeCategoryEditor(): void {
+    categoryEditRefreshGenerationRef.current += 1;
     pendingCategoryEdit?.onKeepEditing?.();
     pendingLedgerNavigationFocusRef.current = null;
     setCategoryEditContext(null);
+    setRetainedCategoryEditDraft(null);
     setPendingCategoryEdit(null);
     setIsCategoryEditDirty(false);
     categoryEditDirtyRef.current = false;
@@ -473,6 +482,36 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
       if (categoryEditTriggerRef.current?.isConnected) categoryEditTriggerRef.current.focus();
       else ledgerHeadingRef.current?.focus();
     });
+  }
+
+  async function refreshLedgerAfterCategoryEditFailure(
+    action: "retainDraft" | "discardDraft",
+    draft?: TransactionCategoryEditDraft
+  ): Promise<void> {
+    const transactionId = categoryEditContext?.transaction.id;
+    if (transactionId === undefined) return;
+    const refreshGeneration = ++categoryEditRefreshGenerationRef.current;
+    pendingSavedFocusId.current = null;
+    if (action === "retainDraft") {
+      if (draft === undefined) throw new Error("The category editor draft is required for recovery.");
+      setRetainedCategoryEditDraft({ transactionId, draft });
+      pendingLedgerNavigationFocusRef.current = null;
+      const refreshedContext = await window.budgetApi.ledger.getCategoryEditContext(transactionId);
+      setRetryKey((current) => current + 1);
+      if (refreshGeneration !== categoryEditRefreshGenerationRef.current) return;
+      setCategoryEditContext(refreshedContext);
+      return;
+    }
+
+    pendingLedgerNavigationFocusRef.current = categoryEditTriggerRef.current?.isConnected
+      ? categoryEditTriggerRef.current
+      : ledgerHeadingRef.current;
+    setCategoryEditContext(null);
+    setRetainedCategoryEditDraft(null);
+    setPendingCategoryEdit(null);
+    setIsCategoryEditDirty(false);
+    categoryEditDirtyRef.current = false;
+    setRetryKey((current) => current + 1);
   }
 
   function keepEditingCategoryEdit(): void {
@@ -491,7 +530,9 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
   }
 
   function categoryEditSaved(result: Extract<TransactionCategoryEditResult, { ok: true }>): void {
+    categoryEditRefreshGenerationRef.current += 1;
     const pending = pendingCategoryEdit;
+    setRetainedCategoryEditDraft(null);
     setTransactions((current) =>
       current.map((item) => item.id === result.transaction.id ? result.transaction : item)
     );
@@ -526,8 +567,10 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
 
   function discardAndSwitchCategoryEditor(): void {
     if (pendingCategoryEdit === null) return;
+    categoryEditRefreshGenerationRef.current += 1;
     const pending = pendingCategoryEdit;
     setCategoryEditContext(null);
+    setRetainedCategoryEditDraft(null);
     setPendingCategoryEdit(null);
     setIsCategoryEditDirty(false);
     categoryEditDirtyRef.current = false;
@@ -579,6 +622,21 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
     ...(filters.amountFromMinor === undefined && filters.amountToMinor === undefined ? [] : ["Amount range"]),
   ];
   const hasFiltersToClear = activeFilters.length > 0 || amountFrom !== "" || amountTo !== "";
+  const retainedCategoryEditRowIsVisible = retainedCategoryEditDraft !== null &&
+    transactions.some((transaction) => transaction.id === retainedCategoryEditDraft.transactionId);
+  const showRetainedCategoryEditPanel = resultsAreCurrent &&
+    retainedCategoryEditDraft !== null &&
+    categoryEditContext?.transaction.id === retainedCategoryEditDraft.transactionId &&
+    !retainedCategoryEditRowIsVisible;
+  const retainedCategoryLabel = categoryEditContext === null
+    ? ""
+    : categoryEditContext.transaction.categoryAllocations?.length
+      ? categoryEditContext.transaction.categoryAllocations
+          .map((allocation) => categoryLabel(allocation.categoryId))
+          .join(", ")
+      : categoryEditContext.transaction.categoryId === undefined
+        ? "Uncategorized"
+        : categoryLabel(categoryEditContext.transaction.categoryId);
   return (
     <section
       className={categoryEditContext === null ? "ledger-section" : "ledger-section has-category-editor"}
@@ -755,6 +813,28 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
           </ul>
         </div>
       )}
+      {showRetainedCategoryEditPanel && retainedCategoryEditDraft !== null && categoryEditContext !== null && (
+        <section className="ledger-category-recovery-panel" aria-label="Filtered category edit recovery">
+          <TransactionCategoryEditor
+            key={`${categoryEditContext.transaction.id}-recovery`}
+            context={categoryEditContext}
+            initialDraft={retainedCategoryEditDraft.draft}
+            recoveryNotice={`This transaction no longer matches the current filters. Current saved category: ${retainedCategoryLabel}. Your draft is retained below; review it and save again to apply it, or cancel to discard it.`}
+            navigationPrompt={pendingCategoryEdit === null ? null : {
+              message: pendingCategoryEdit.message,
+              saveLabel: pendingCategoryEdit.saveLabel,
+              discardLabel: pendingCategoryEdit.discardLabel,
+            }}
+            onDirtyChange={reportCategoryEditDirty}
+            onSave={saveCategoryEdit}
+            onSaved={categoryEditSaved}
+            onCancel={closeCategoryEditor}
+            onRefreshLedger={refreshLedgerAfterCategoryEditFailure}
+            onKeepEditing={keepEditingCategoryEdit}
+            onDiscardAndSwitch={discardAndSwitchCategoryEditor}
+          />
+        </section>
+      )}
       {(isLoading || isFilterPending) && (
         <p role="status">{hasLoaded ? "Updating ledger for selected filters..." : "Loading ledger transactions..."}</p>
       )}
@@ -922,6 +1002,9 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
                           <TransactionCategoryEditor
                             key={transaction.id}
                             context={categoryEditContext}
+                            {...(retainedCategoryEditDraft?.transactionId === transaction.id
+                              ? { initialDraft: retainedCategoryEditDraft.draft }
+                              : {})}
                             navigationPrompt={pendingCategoryEdit === null ? null : {
                               message: pendingCategoryEdit.message,
                               saveLabel: pendingCategoryEdit.saveLabel,
@@ -931,6 +1014,7 @@ export function LedgerSection({ refreshKey, filterRequest, isReportCurrent, isRe
                             onSave={saveCategoryEdit}
                             onSaved={categoryEditSaved}
                             onCancel={closeCategoryEditor}
+                            onRefreshLedger={refreshLedgerAfterCategoryEditFailure}
                             onKeepEditing={keepEditingCategoryEdit}
                             onDiscardAndSwitch={discardAndSwitchCategoryEditor}
                           />

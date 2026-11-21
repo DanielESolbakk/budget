@@ -14,6 +14,7 @@ import type { SavedLedgerView } from "../../src/domain/ledger/filterTransactions
 import { TransactionAllocationValidationError, type TransactionCategoryAllocationUpdateResult } from "../../src/domain/ledger/transactionAllocations.js";
 import { normalizeMerchantName } from "../../src/domain/merchant/normalizeMerchantName.js";
 import type { ManualEntryInput } from "../../src/domain/types.js";
+import type { TransactionCategoryEditResult } from "../../src/shared/transactionCategoryEdit.js";
 import type { LedgerChannelContext } from "./context.js";
 import {
   parseCategoryCreateInput,
@@ -307,7 +308,12 @@ export function registerReviewLedgerChannels({
       return ledgerOperationCoordinator.runExclusive(() => {
         const transaction = localLedgerDatabase.getTransactionById(request.transactionId);
         if (transaction === undefined || transaction.householdId !== sampleHousehold.id) {
-          throw new Error(`Transaction not found: ${request.transactionId}`);
+          const result: TransactionCategoryEditResult = {
+            ok: false,
+            code: "TRANSACTION_NOT_FOUND",
+            message: "This transaction is no longer available in the active household.",
+          };
+          return result;
         }
         const result = applyTransactionCategoryEdit(
           localLedgerDatabase,

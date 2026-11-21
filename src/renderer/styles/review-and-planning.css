@@ -1561,6 +1561,10 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   background: var(--panel-soft);
 }
 
+.ledger-category-recovery-panel {
+  margin: 0.75rem 0;
+}
+
 .transaction-category-editor {
   display: grid;
   min-width: 0;
@@ -1687,6 +1691,33 @@ section[aria-label="Ledger"] .ledger-summary-amounts dd {
   color: var(--error);
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+.transaction-category-error-details {
+  min-width: 0;
+  color: var(--paper-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.transaction-category-error-details summary {
+  min-height: 44px;
+  padding: 0.35rem 0;
+  cursor: pointer;
+}
+
+.transaction-category-error-details pre {
+  max-width: 100%;
+  margin: 0.35rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.transaction-category-recovery-status {
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .transaction-category-navigation {

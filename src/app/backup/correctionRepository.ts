@@ -114,7 +114,10 @@ export function createCorrectionRepository(
       }
       const currentTransaction = dependencies.getTransactionById(input.transactionId);
       if (currentTransaction === undefined) {
-        throw new Error(`Transaction not found: ${input.transactionId}`);
+        throw new TransactionCategoryEditValidationError(
+          "TRANSACTION_NOT_FOUND",
+          "This transaction is no longer available."
+        );
       }
       const currentMerchantCategoryRule = listMerchantCategoryRules().find((rule) =>
         rule.merchantAlias === input.merchantAlias
