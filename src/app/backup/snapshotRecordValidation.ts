@@ -47,6 +47,23 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function containsMortgageSourceHtml(value: unknown): boolean {
+  const pending: unknown[] = [value];
+  const visited = new WeakSet<object>();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (typeof current !== "object" || current === null || visited.has(current)) continue;
+    visited.add(current);
+    if (Array.isArray(current)) {
+      pending.push(...current);
+      continue;
+    }
+    if (Object.hasOwn(current, "sourceHtml")) return true;
+    pending.push(...Object.values(current));
+  }
+  return false;
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -844,6 +861,9 @@ export function validateMortgageEvidenceVersions(
   const versionIds = new Set<string>();
   const lastVersionByLoan = new Map<string, number>();
   for (const version of value) {
+    if (containsMortgageSourceHtml(version)) {
+      invalidSnapshot(snapshotPath, "mortgage evidence documents");
+    }
     if (
       !isRecord(version) ||
       !isNonEmptyString(version.id) ||

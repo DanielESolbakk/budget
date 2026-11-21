@@ -834,7 +834,8 @@ export function LoanRegistrySection({
                           return (
                             <li key={version.id}>
                               Evidence version {version.versionNumber} ·{" "}
-                              {version.sourceAsOfDateIso ?? "Source date not identified"} ·{" "}
+                              {version.sourceAsOfDateIso ?? "Source date not identified"} · imported{" "}
+                              {version.importedAtIso} ·{" "}
                               {version.attachment.status === "confirmed"
                                 ? "Attachment confirmed by user"
                                 : "Attachment verified by identifiers"}

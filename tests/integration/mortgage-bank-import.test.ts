@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -35,6 +36,18 @@ const VALID_SCHEDULE_HTML = `
     <tr><td>Februar 2026</td><td>1 000,00</td><td>89,00</td><td>10,00</td><td>1 099,00</td><td>98 000,00</td><td>loan-123</td></tr>
   </table>
 `;
+const ZERO_PRINCIPAL_SCHEDULE_HTML = `
+  <h1>Nedbetalingsplan</h1>
+  <dl>
+    <dt>Inngående saldo</dt><dd>100 000,00</dd>
+    <dt>Lånenummer</dt><dd>loan-123</dd>
+    <dt>Lånevaluta</dt><dd>NOK</dd>
+  </dl>
+  <table>
+    <tr><th>Termin</th><th>Avdrag</th><th>Renter</th><th>Gebyr</th><th>Terminbeløp</th><th>Restgjeld</th></tr>
+    <tr><td>Januar 2026</td><td>0,00</td><td>90,00</td><td>10,00</td><td>100,00</td><td>100 000,00</td></tr>
+  </table>
+`;
 const SELECTED_LOAN_IDENTITY = {
   loanReference: "loan-123",
   currencyCode: "NOK",
@@ -42,6 +55,13 @@ const SELECTED_LOAN_IDENTITY = {
   currencyValues: [],
   conflicts: [],
 } as const;
+
+function getRecord(value: unknown, name: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Expected ${name} to be an object.`);
+  }
+  return value as Record<string, unknown>;
+}
 
 describe("bounded mortgage HTML file reads", () => {
   it("accepts paired evidence as an immutable version without changing the existing loan", async () => {
@@ -137,6 +157,56 @@ describe("bounded mortgage HTML file reads", () => {
         createdAtIso: "2026-11-21T12:31:00.000Z",
       });
       expect(restoreBackupSnapshot({ snapshotPath }).mortgageEvidenceVersions).toEqual([evidence]);
+
+      const liveStateBeforeRejectedRestore = database.loadLedgerSnapshotData();
+      const rawHtmlSnapshot = getRecord(
+        JSON.parse(readFileSync(snapshotPath, "utf8")) as unknown,
+        "snapshot"
+      );
+      const mortgageVersions = rawHtmlSnapshot["mortgageEvidenceVersions"];
+      if (!Array.isArray(mortgageVersions)) throw new Error("Expected mortgage evidence versions.");
+      const firstVersion = getRecord(mortgageVersions[0], "mortgage evidence version");
+      const documents = firstVersion["documents"];
+      if (!Array.isArray(documents)) throw new Error("Expected mortgage evidence documents.");
+      const firstDocument = getRecord(documents[0], "mortgage evidence document");
+      getRecord(firstDocument["parsedDocument"], "parsed mortgage document")["sourceHtml"] =
+        VALID_DETAILS_HTML;
+      const rawHtmlSnapshotPath = join(directory, "raw-html-backup.json");
+      writeFileSync(rawHtmlSnapshotPath, JSON.stringify(rawHtmlSnapshot), "utf8");
+      expect(() => database.replaceLedgerSnapshotData(
+        restoreBackupSnapshot({ snapshotPath: rawHtmlSnapshotPath })
+      )).toThrow(/Invalid snapshot mortgage evidence documents/);
+      expect(database.loadLedgerSnapshotData()).toEqual(liveStateBeforeRejectedRestore);
+
+      const incompatibleSnapshotPath = join(directory, "incompatible-backup.json");
+      const incompatibleSnapshot = getRecord(
+        JSON.parse(readFileSync(snapshotPath, "utf8")) as unknown,
+        "snapshot"
+      );
+      getRecord(incompatibleSnapshot["metadata"], "snapshot metadata")["version"] = "999";
+      writeFileSync(incompatibleSnapshotPath, JSON.stringify(incompatibleSnapshot), "utf8");
+      expect(() => database.replaceLedgerSnapshotData(
+        restoreBackupSnapshot({ snapshotPath: incompatibleSnapshotPath })
+      )).toThrow(/Unsupported snapshot version/);
+      expect(database.loadLedgerSnapshotData()).toEqual(liveStateBeforeRejectedRestore);
+
+      const liveStateBeforeInterruptedRestore = database.loadLedgerSnapshotData();
+      const faultDatabase = new DatabaseSync(databasePath);
+      try {
+        faultDatabase.exec(`
+          CREATE TRIGGER reject_mortgage_evidence_restore
+          BEFORE INSERT ON mortgage_evidence_versions
+          WHEN NEW.id = 'mortgage-evidence-v1'
+          BEGIN
+            SELECT RAISE(ABORT, 'synthetic mortgage restore failure');
+          END;
+        `);
+      } finally {
+        faultDatabase.close();
+      }
+      expect(() => database.replaceLedgerSnapshotData(restoreBackupSnapshot({ snapshotPath })))
+        .toThrow("synthetic mortgage restore failure");
+      expect(database.loadLedgerSnapshotData()).toEqual(liveStateBeforeInterruptedRestore);
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
@@ -552,6 +622,68 @@ describe("bounded mortgage HTML file reads", () => {
         "household-mortgage-new",
         evidence.loanId
       )).toEqual([evidence, nextEvidence]);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("persists a supported zero-principal source period without creating an actual balance", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-zero-principal-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    writeFileSync(detailsFilePath, VALID_DETAILS_HTML, "utf8");
+    writeFileSync(scheduleFilePath, ZERO_PRINCIPAL_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-zero-principal",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-zero-principal",
+          householdId: "household-mortgage-zero-principal",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => "mortgage-zero-principal-evidence",
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+      const preview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "new-source-only", label: "Rogaland mortgage" },
+        attachmentConfirmed: true,
+      });
+      const evidence = service.acceptPreview(preview.previewId);
+      const schedule = evidence.documents.find((document) => document.role === "schedule");
+
+      expect(evidence.scheduleValidation).toEqual({ status: "valid", issues: [] });
+      expect(schedule?.parsedDocument.scheduleRows[0]).toMatchObject({
+        principalMinor: 0,
+        interestMinor: 9_000,
+        feeMinor: 1_000,
+        paymentMinor: 10_000,
+        projectedClosingBalanceMinor: 10_000_000,
+      });
+      expect(database.listSourceOnlyLoanRecords("household-mortgage-zero-principal"))
+        .toHaveLength(1);
+      expect(database.listLoanRecords("household-mortgage-zero-principal")).toEqual([]);
+      const snapshot = database.loadLedgerSnapshotData();
+      expect(snapshot.loanBalanceSnapshots).toEqual([]);
+      expect(snapshot.transactions).toEqual([]);
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });

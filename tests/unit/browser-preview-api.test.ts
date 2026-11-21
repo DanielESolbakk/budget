@@ -249,6 +249,7 @@ describe("renderer budget API resolution", () => {
     ["import history", (api: BudgetApi) => api.import.history.list()],
     ["mortgage evidence preview", (api: BudgetApi) => api.mortgageImport.previewFiles({
       target: { kind: "existing", loanId: "preview-loan" },
+      requestId: "preview-request",
     })],
     ["mortgage attachment confirmation", (api: BudgetApi) =>
       api.mortgageImport.confirmAttachment("preview-id")],

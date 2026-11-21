@@ -203,18 +203,36 @@ function normalizeLabel(value: string): string {
     .trim();
 }
 
-function parsePeriod(value: string): MortgageSchedulePeriod {
+function parsePeriod(value: string, groupedYear?: number): MortgageSchedulePeriod {
   const normalized = normalizeLabel(value);
   const annualMatch = /^(\d{4})$/.exec(normalized);
   if (annualMatch !== null) {
     return { granularity: "annual", year: Number(annualMatch[1]) };
   }
 
-  const monthlyMatch = /^([a-z]+)\s+(\d{4})$/.exec(normalized);
+  const monthlyMatch = /^([a-z]+)(?:\s+(\d{4}))?$/.exec(normalized);
   if (monthlyMatch === null) return { granularity: "unknown" };
   const month = NORWEGIAN_MONTHS.get(monthlyMatch[1] ?? "");
-  if (month === undefined) return { granularity: "unknown" };
-  return { granularity: "monthly", year: Number(monthlyMatch[2]), month };
+  const year = monthlyMatch[2] === undefined ? groupedYear : Number(monthlyMatch[2]);
+  if (month === undefined || year === undefined) return { granularity: "unknown" };
+  return { granularity: "monthly", year, month };
+}
+
+function verifiedYearGroup(
+  cells: readonly HtmlElement[],
+  expectedColumnCount: number
+): number | undefined {
+  if (cells.length !== 1 || cells[0]?.tagName !== "th") return undefined;
+  const cell = cells[0];
+  const yearMatch = /^(\d{4})$/.exec(normalizeLabel(textContent(cell)));
+  if (yearMatch === null) return undefined;
+
+  const scope = cell.attrs.find((attribute) => attribute.name === "scope")?.value.toLowerCase();
+  const colspanValue = cell.attrs.find((attribute) => attribute.name === "colspan")?.value;
+  const colspan = colspanValue === undefined ? 1 : Number(colspanValue);
+  const isVerifiedGroup = scope === "rowgroup" ||
+    (Number.isSafeInteger(colspan) && colspan >= expectedColumnCount);
+  return isVerifiedGroup ? Number(yearMatch[1]) : undefined;
 }
 
 function classifyRole(document: HtmlNode): MortgageSourceRole {
@@ -274,15 +292,22 @@ function parseScheduleTable(table: HtmlElement): MortgageScheduleRowEvidence[] |
   if (columns === null) return null;
 
   const scheduleRows: MortgageScheduleRowEvidence[] = [];
+  let groupedYear: number | undefined;
   for (const row of rows.slice(headerRowIndex + 1)) {
     const cells = childNodes(row).filter(isCell);
     const sourceValues = cells.map((cell) => textContent(cell).trim());
     if (sourceValues.every((value) => value === "")) continue;
+    const yearGroup = verifiedYearGroup(cells, headers.length);
+    if (yearGroup !== undefined) {
+      groupedYear = yearGroup;
+      continue;
+    }
     const getValue = (column: number | null): string =>
       column === null ? "" : sourceValues[column] ?? "";
+    const periodLabel = getValue(columns.period);
     scheduleRows.push({
-      periodLabel: getValue(columns.period),
-      period: parsePeriod(getValue(columns.period)),
+      periodLabel,
+      period: parsePeriod(periodLabel, groupedYear),
       principalMinor: parseAmountCell(getValue(columns.principal)),
       interestMinor: parseAmountCell(getValue(columns.interest)),
       feeMinor: parseAmountCell(getValue(columns.fee)),

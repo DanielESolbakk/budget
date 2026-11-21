@@ -61,6 +61,54 @@ function parseSchedule(source: string) {
   return parsed;
 }
 
+const GROUPED_MONTH_LABELS = [
+  "Januar",
+  "Februar",
+  "Mars",
+  "April",
+  "Mai",
+  "Juni",
+  "Juli",
+  "August",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+] as const;
+
+function buildGroupedMonthlySchedule(
+  years: readonly number[],
+  options: { readonly omittedPeriod?: string; readonly collapsedPeriod?: string } = {}
+): string {
+  let installmentCount = 0;
+  const rows: string[] = [];
+  for (const year of years) {
+    rows.push(`<tr><th colspan="6" scope="rowgroup">${year}</th></tr>`);
+    for (const [monthIndex, monthLabel] of GROUPED_MONTH_LABELS.entries()) {
+      const periodKey = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+      if (periodKey === options.omittedPeriod) continue;
+      installmentCount += 1;
+      const closingBalance = (1_000_000 - installmentCount * 100).toFixed(2).replace(".", ",");
+      const collapsed = periodKey === options.collapsedPeriod ? ' style="display:none"' : "";
+      rows.push(
+        `<tr${collapsed}><td>${monthLabel}</td><td>100,00</td><td>90,00</td>` +
+          `<td>10,00</td><td>200,00</td><td>${closingBalance}</td></tr>`
+      );
+    }
+  }
+
+  return `
+    <h1>Nedbetalingsplan</h1>
+    <dl><dt>Inngående saldo</dt><dd>1 000 000,00</dd></dl>
+    <table>
+      <thead>
+        <tr><th>Termin</th><th>Avdrag</th><th>Renter</th><th>Gebyr</th><th>Terminbeløp</th><th>Restgjeld</th></tr>
+      </thead>
+      <tbody>${rows.join("")}</tbody>
+    </table>
+  `;
+}
+
 describe("Rogaland mortgage amount parsing", () => {
   it.each([
     { source: "1\u00a0234,56", expected: 123456 },
@@ -278,6 +326,50 @@ describe("Rogaland mortgage document pairing", () => {
 });
 
 describe("Rogaland mortgage HTML parsing", () => {
+  it("uses verified year groups for long monthly schedules and leaves missing periods absent", () => {
+    const threeYear = parseRogalandMortgageHtml(
+      buildGroupedMonthlySchedule([2026, 2027, 2028]),
+      { maxSourceCharacters: 100_000, maxElements: 5_000, maxDepth: 20 }
+    );
+    const thirtyYear = parseRogalandMortgageHtml(
+      buildGroupedMonthlySchedule(
+        Array.from({ length: 30 }, (_, index) => 2026 + index),
+        { omittedPeriod: "2026-02", collapsedPeriod: "2026-03" }
+      ),
+      { maxSourceCharacters: 100_000, maxElements: 5_000, maxDepth: 20 }
+    );
+
+    expect(threeYear.parseStatus).toBe("parsed");
+    expect(threeYear.scheduleRows).toHaveLength(36);
+    expect(threeYear.scheduleRows[0]?.period)
+      .toEqual({ granularity: "monthly", year: 2026, month: 1 });
+    expect(threeYear.scheduleRows.at(-1)?.period)
+      .toEqual({ granularity: "monthly", year: 2028, month: 12 });
+
+    expect(thirtyYear.parseStatus).toBe("parsed");
+    expect(thirtyYear.scheduleRows).toHaveLength(359);
+    expect(thirtyYear.scheduleRows[1]?.period)
+      .toEqual({ granularity: "monthly", year: 2026, month: 3 });
+    expect(thirtyYear.scheduleRows.some((row) =>
+      row.period.granularity === "monthly" && row.period.year === 2026 && row.period.month === 2
+    )).toBe(false);
+    const validation = validateRogalandMortgageSchedule(thirtyYear);
+    expect(validation.status).toBe("partial");
+    expect(validation.issues).toContainEqual({ code: "period-gap", rowIndex: 1 });
+    expect(thirtyYear.scheduleRows.at(-1)?.period)
+      .toEqual({ granularity: "monthly", year: 2055, month: 12 });
+
+    const outOfOrderGroups = parseRogalandMortgageHtml(
+      buildGroupedMonthlySchedule([2027, 2026]),
+      { maxSourceCharacters: 10_000, maxElements: 1_000, maxDepth: 20 }
+    );
+    expect(outOfOrderGroups.scheduleRows).toHaveLength(24);
+    expect(outOfOrderGroups.scheduleRows[12]?.period)
+      .toEqual({ granularity: "monthly", year: 2026, month: 1 });
+    expect(validateRogalandMortgageSchedule(outOfOrderGroups).issues)
+      .toContainEqual({ code: "out-of-order-period", rowIndex: 12 });
+  });
+
   it("maps reordered schedule columns by semantic headers and retains source context", () => {
     const result = parseRogalandMortgageHtml(REORDERED_SCHEDULE_HTML, {
       maxSourceCharacters: 10_000,
@@ -323,6 +415,31 @@ describe("Rogaland mortgage HTML parsing", () => {
         .toEqual({ status: "valid", issues: [] });
     });
 
+    it("retains source headers and exposes a swapped principal and interest interpretation", () => {
+      const swappedValues = TWO_MONTH_SCHEDULE_HTML.replace(
+        "<td>1 000,00</td><td>90,00</td>",
+        "<td>90,00</td><td>1 000,00</td>"
+      );
+      const parsed = parseSchedule(swappedValues);
+      const firstRow = parsed.scheduleRows[0];
+
+      expect(firstRow).toMatchObject({
+        principalMinor: 9_000,
+        interestMinor: 100_000,
+        sourceHeaders: ["Termin", "Avdrag", "Renter", "Gebyr", "Terminbeløp", "Restgjeld"],
+        sourceValues: [
+          "Januar 2026",
+          "90,00",
+          "1 000,00",
+          "10,00",
+          "1 100,00",
+          "99 000,00",
+        ],
+      });
+      expect(validateRogalandMortgageSchedule(parsed).issues)
+        .toContainEqual({ code: "closing-balance-mismatch", rowIndex: 0 });
+    });
+
     it("rejects a payment total that differs by one minor unit", () => {
       const changedPayment = TWO_MONTH_SCHEDULE_HTML.replace("1 100,00", "1 100,01");
 
@@ -353,6 +470,37 @@ describe("Rogaland mortgage HTML parsing", () => {
 
       expect(validateRogalandMortgageSchedule(parseSchedule(interestOnly)))
         .toEqual({ status: "valid", issues: [] });
+    });
+
+    it("keeps explicitly financed fees out of the supplied cash-payment amount", () => {
+      const financedFee = parseSchedule(`
+        <h1>Nedbetalingsplan</h1>
+        <dl><dt>Inngående saldo</dt><dd>100 000,00</dd></dl>
+        <table>
+          <tr>
+            <th>Termin</th><th>Avdrag</th><th>Renter</th><th>Gebyr</th>
+            <th>Terminbeløp</th><th>Restgjeld</th><th>Finansiert gebyr</th>
+          </tr>
+          <tr>
+            <td>Januar 2026</td><td>0,00</td><td>90,00</td><td>0,00</td>
+            <td>90,00</td><td>100 010,00</td><td>10,00</td>
+          </tr>
+        </table>
+      `);
+
+      expect(financedFee.scheduleRows[0]).toMatchObject({
+        principalMinor: 0,
+        interestMinor: 9_000,
+        feeMinor: 0,
+        paymentMinor: 9_000,
+        projectedClosingBalanceMinor: 10_001_000,
+        sourceHeaders: expect.arrayContaining(["Finansiert gebyr"]),
+        sourceValues: expect.arrayContaining(["10,00"]),
+      });
+      expect(validateRogalandMortgageSchedule(financedFee)).toMatchObject({
+        status: "partial",
+        issues: [{ code: "unreconciled-balance-increase", rowIndex: 0 }],
+      });
     });
 
     it("reports an unexplained debt increase as partial instead of inventing an adjustment", () => {

@@ -169,6 +169,7 @@ export interface FileDialogApi {
 export interface MortgageImportApi {
   previewFiles: (input: {
     target: MortgageImportTarget;
+    requestId: string;
   }) => Promise<MortgageBankImportPreview | null>;
   confirmAttachment: (previewId: string) => Promise<MortgageBankImportPreview>;
   acceptPreview: (

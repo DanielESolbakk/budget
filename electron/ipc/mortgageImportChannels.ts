@@ -29,6 +29,7 @@ function parseTarget(value: unknown): MortgageImportTarget {
 }
 
 function parsePreviewInput(value: unknown): {
+  requestId: string;
   target: MortgageImportTarget;
 } {
   if (!isRecord(value)) throw new Error("Mortgage preview request must be an object.");
@@ -39,6 +40,7 @@ function parsePreviewInput(value: unknown): {
     throw new Error("Attachment confirmation must use its dedicated action.");
   }
   return {
+    requestId: parseNonEmptyString(value["requestId"], "requestId"),
     target: parseTarget(value["target"]),
   };
 }
@@ -99,16 +101,22 @@ export function registerMortgageImportChannels({
   ipcMain.handle("mortgageImport:previewFiles", async (event, input: unknown) => {
     assertTrustedRenderer(event);
     const request = parsePreviewInput(input);
-    const result = await mortgageHtmlImportDialog({
-      properties: ["openFile", "multiSelections"],
-      filters: [{ name: "Mortgage HTML documents", extensions: ["html", "htm"] }],
-    });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return mortgageBankImportService.previewFiles({
-      filePaths: result.filePaths,
-      target: request.target,
-      attachmentConfirmed: false,
-    });
+    mortgageBankImportService.beginPreviewRequest(request.requestId);
+    try {
+      const result = await mortgageHtmlImportDialog({
+        properties: ["openFile", "multiSelections"],
+        filters: [{ name: "Mortgage HTML documents", extensions: ["html", "htm"] }],
+      });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      return await mortgageBankImportService.previewFiles({
+        requestId: request.requestId,
+        filePaths: result.filePaths,
+        target: request.target,
+        attachmentConfirmed: false,
+      });
+    } finally {
+      mortgageBankImportService.finishPreviewRequest(request.requestId);
+    }
   });
 
   ipcMain.handle("mortgageImport:confirmAttachment", (event, previewId: unknown) => {

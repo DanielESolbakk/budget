@@ -36,6 +36,13 @@ export function createMortgageHtmlImportDialog(): MortgageHtmlImportDialog {
         ) {
           throw new Error("Test mortgage HTML import paths must contain one or two non-empty paths.");
         }
+        const delayMs = Number(process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DELAY_MS"] ?? "0");
+        if (!Number.isSafeInteger(delayMs) || delayMs < 0) {
+          throw new Error("Test mortgage HTML import delay must be a non-negative integer.");
+        }
+        if (delayMs > 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+        }
         return { canceled: false, filePaths: paths };
       }
     }

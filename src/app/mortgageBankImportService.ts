@@ -12,7 +12,6 @@ import {
 } from "../domain/import/rogalandMortgageHtml.js";
 import type { LocalLedgerDatabase } from "./backup/localLedgerSqlite.js";
 import type {
-  MortgageDetailFieldEvidence,
   MortgageBankImportPreview,
   MortgageBankImportPreviewDocument,
   MortgageBankImportReviewState,
@@ -26,8 +25,6 @@ import type {
   MortgageImportTarget,
   MortgageSourceRole,
   MortgageSchedulePreviewDocument,
-  MortgageScheduleOpeningBalanceEvidence,
-  MortgageScheduleRowEvidence,
   MortgageScheduleValidationResult,
   MortgageTermComparison,
 } from "../shared/mortgageBankEvidence.js";
@@ -85,7 +82,10 @@ export interface MortgageDocumentPairPreview {
 }
 
 export interface MortgageBankImportService {
+  beginPreviewRequest: (requestId: string) => void;
+  finishPreviewRequest: (requestId: string) => void;
   previewFiles: (input: {
+    readonly requestId?: string;
     readonly filePaths: readonly string[];
     readonly target: MortgageImportTarget;
     readonly attachmentConfirmed: boolean;
@@ -156,9 +156,14 @@ function toMortgageSchedulePreviewDocument(
           sourceLabel: redact(documentWithoutIdentity.openingBalanceEvidence.sourceLabel),
           sourceValue: redact(documentWithoutIdentity.openingBalanceEvidence.sourceValue),
         },
-    scheduleRows: documentWithoutIdentity.scheduleRows.map(({ sourceValues: _sourceValues, ...row }) => ({
-      ...row,
+    scheduleRows: documentWithoutIdentity.scheduleRows.map((row) => ({
       periodLabel: redact(row.periodLabel),
+      period: row.period,
+      principalMinor: row.principalMinor,
+      interestMinor: row.interestMinor,
+      feeMinor: row.feeMinor,
+      paymentMinor: row.paymentMinor,
+      projectedClosingBalanceMinor: row.projectedClosingBalanceMinor,
       sourceHeaders: row.sourceHeaders.map(redact),
     })),
   };
@@ -569,6 +574,7 @@ export function createMortgageBankImportService(
   const createId = options.createId ?? randomUUID;
   const now = options.now ?? (() => new Date());
   const previews = new Map<string, StoredMortgageImportPreview>();
+  const activePreviewRequests = new Map<string, AbortController>();
 
   function removeExpiredPreviews(nowMs: number): void {
     for (const [previewId, stored] of previews) {
@@ -576,7 +582,21 @@ export function createMortgageBankImportService(
     }
   }
 
+  function beginPreviewRequest(requestId: string): void {
+    if (requestId.trim() === "" ||
+        activePreviewRequests.has(requestId) ||
+        previews.has(requestId)) {
+      throw new Error("Mortgage preview request ID is invalid or already active.");
+    }
+    activePreviewRequests.set(requestId, new AbortController());
+  }
+
+  function finishPreviewRequest(requestId: string): void {
+    activePreviewRequests.delete(requestId);
+  }
+
   async function previewFiles(input: {
+    readonly requestId?: string;
     readonly filePaths: readonly string[];
     readonly target: MortgageImportTarget;
     readonly attachmentConfirmed: boolean;
@@ -589,9 +609,28 @@ export function createMortgageBankImportService(
     const metadata = database.loadRuntimeMetadata();
     if (metadata === null) throw new Error("Local household is not available for mortgage import.");
 
-    const sources = await Promise.all(input.filePaths.map((filePath) =>
-      readBoundedMortgageHtmlFile(filePath, maxBytesPerFile)
-    ));
+    const previewId = input.requestId ?? randomUUID();
+    let cancellation = activePreviewRequests.get(previewId);
+    if (cancellation === undefined) {
+      if (input.requestId !== undefined) {
+        throw new Error("Mortgage preview request was not initialized.");
+      }
+      cancellation = new AbortController();
+      activePreviewRequests.set(previewId, cancellation);
+    }
+
+    let sources: string[];
+    try {
+      cancellation.signal.throwIfAborted();
+      sources = await Promise.all(input.filePaths.map((filePath) =>
+        readBoundedMortgageHtmlFile(filePath, maxBytesPerFile, cancellation.signal)
+      ));
+      cancellation.signal.throwIfAborted();
+    } catch (error) {
+      activePreviewRequests.delete(previewId);
+      throw error;
+    }
+    activePreviewRequests.delete(previewId);
     const parsedDocuments = sources.map((source) => parseRogalandMortgageHtml(source, parserLimits));
     const targetIdentity = input.target.kind === "existing"
       ? currentLoanIdentity(database, metadata.household.id, input.target.loanId)
@@ -687,7 +726,6 @@ export function createMortgageBankImportService(
       ];
     }
 
-    const previewId = randomUUID();
     const sourceDates = new Set(sourceDocuments.flatMap((document) => (
       document.parsedDocument.sourceDateEvidence.dateIso === null
         ? []
@@ -698,6 +736,9 @@ export function createMortgageBankImportService(
     ) || sourceDates.size > 1;
     const sourceAsOfDateIso = sourceDateConflict ? null : [...sourceDates][0] ?? null;
     if (sourceDateConflict) reviewState = "source-date-conflict";
+    const importTime = now();
+    const importedAtIso = importTime.toISOString();
+    const currentTime = importTime.getTime();
     const termComparisons = compareMortgageTerms(
       database,
       metadata.household.id,
@@ -711,6 +752,7 @@ export function createMortgageBankImportService(
       target: input.target,
       reviewState,
       sourceAsOfDateIso,
+      importedAtIso,
       documents,
       validation,
       pairing,
@@ -760,7 +802,6 @@ export function createMortgageBankImportService(
     }
 
     const acceptedPreview: MortgageBankImportPreview = { ...preview, reviewState, attachment };
-    const currentTime = now().getTime();
     removeExpiredPreviews(currentTime);
     while (previews.size >= MAX_MORTGAGE_PREVIEWS) {
       const oldest = previews.keys().next().value as string | undefined;
@@ -907,7 +948,7 @@ export function createMortgageBankImportService(
     if (hasTermDifferences && !acknowledgeTermDifferences) {
       throw new Error("Review and acknowledge imported differences before acceptance.");
     }
-    const importedAtIso = now().toISOString();
+    const importedAtIso = stored.preview.importedAtIso;
     const sourceOnlyLoan: SourceOnlyLoanRecord | undefined = stored.sourceOnlyLoanInput === null
       ? undefined
       : {
@@ -962,6 +1003,11 @@ export function createMortgageBankImportService(
   }
 
   function cancelPreview(previewId: string): boolean {
+    const activeRequest = activePreviewRequests.get(previewId);
+    if (activeRequest !== undefined) {
+      activeRequest.abort();
+      return true;
+    }
     return previews.delete(previewId);
   }
 
@@ -985,6 +1031,8 @@ export function createMortgageBankImportService(
   }
 
   return {
+    beginPreviewRequest,
+    finishPreviewRequest,
     previewFiles,
     confirmAttachmentPreview,
     acceptPreview,

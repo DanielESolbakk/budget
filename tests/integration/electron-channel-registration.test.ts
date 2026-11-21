@@ -28,6 +28,13 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
     ...actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      if (args[0] === harness.readGate.filePath) {
+        harness.readGate.onEnter?.();
+        await harness.readGate.wait;
+      }
+      return actual.open(...args);
+    },
     readFile: async (...args: Parameters<typeof actual.readFile>) => {
       if (args[0] === harness.readGate.filePath) {
         harness.readGate.onEnter?.();
@@ -179,7 +186,10 @@ describe("Electron channel registration and live ledger wiring", () => {
         attachmentConfirmed: true,
       }))).rejects.toThrow("Mortgage file paths must be chosen by the desktop dialog.");
 
-      const preview = await invoke("mortgageImport:previewFiles", { target });
+      const preview = await invoke("mortgageImport:previewFiles", {
+        target,
+        requestId: "mortgage-registration-request",
+      });
       expect(preview).toMatchObject({
         target,
         documents: [{ role: "details" }],
@@ -203,6 +213,58 @@ describe("Electron channel registration and live ledger wiring", () => {
       await invoke("mortgageImport:cancelPreview", preview.previewId);
       expect(() => invoke("dialog:chooseMortgageHtmlPaths")).toThrow("Missing channel/window");
     } finally {
+      if (dialogSetting === undefined) delete process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
+      else process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = dialogSetting;
+      if (pathsSetting === undefined) delete process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"];
+      else process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = pathsSetting;
+    }
+  });
+
+  it("cancels a mortgage file read through its preview request ID", async () => {
+    createHousehold();
+    const dialogSetting = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
+    const pathsSetting = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"];
+    const selectedPath = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-details.html"
+    );
+    const requestId = "mortgage-cancel-in-flight";
+    let releaseRead: (() => void) | undefined;
+    let resolveReadEntered: (() => void) | undefined;
+    const readEntered = new Promise<void>((resolve) => {
+      resolveReadEntered = resolve;
+    });
+    harness.readGate.filePath = selectedPath;
+    harness.readGate.wait = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    harness.readGate.onEnter = () => resolveReadEntered?.();
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = "selected";
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = JSON.stringify([selectedPath]);
+
+    try {
+      const previewPromise = Promise.resolve(invoke("mortgageImport:previewFiles", {
+        target: { kind: "new-source-only", label: "Synthetic mortgage" },
+        requestId,
+      }));
+      await readEntered;
+      const cancellationResponse = await Promise.resolve(
+        invoke("mortgageImport:cancelPreview", requestId)
+      );
+      releaseRead?.();
+      const outcome = await Promise.allSettled([previewPromise]);
+
+      expect(cancellationResponse).toBe(true);
+      expect(outcome[0]?.status).toBe("rejected");
+      expect(invoke("mortgageImport:listEvidenceSummaries")).toEqual([]);
+    } finally {
+      releaseRead?.();
+      harness.readGate.filePath = "";
+      delete harness.readGate.wait;
+      delete harness.readGate.onEnter;
       if (dialogSetting === undefined) delete process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
       else process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = dialogSetting;
       if (pathsSetting === undefined) delete process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"];

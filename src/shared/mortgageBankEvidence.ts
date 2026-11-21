@@ -192,6 +192,7 @@ export interface MortgageBankImportPreview {
   readonly target: MortgageImportTarget;
   readonly reviewState: MortgageBankImportReviewState;
   readonly sourceAsOfDateIso: string | null;
+  readonly importedAtIso: string;
   readonly documents: readonly MortgageBankImportPreviewDocument[];
   readonly validation: MortgageScheduleValidationResult | null;
   readonly pairing: MortgageDocumentPairingResult | null;

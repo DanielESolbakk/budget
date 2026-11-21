@@ -9,6 +9,8 @@ const properties = ["properties", "propertyValuations"];
 const loans = ["loanRecords", "loanBalanceSnapshots"];
 const holdings = ["holdings", "holdingValuations"];
 const recurring = ["recurringCommitments", "recurringCommitmentPaymentLinks", "recurringCommitmentDecisions"];
+const sourceOnlyLoans = ["sourceOnlyLoanRecords"];
+const mortgageEvidence = ["mortgageEvidenceVersions"];
 const versions = [
   { version: "1", required: [] },
   { version: "2", required: ["merchantCategoryRules"] },
@@ -26,6 +28,10 @@ const versions = [
     "categories", "recoveryHistory"] },
   { version: "14", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings, ...recurring,
     "categories", "recoveryHistory"] },
+  { version: "15", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings,
+    ...recurring, ...sourceOnlyLoans, "categories", "recoveryHistory"] },
+  { version: "16", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings,
+    ...recurring, ...sourceOnlyLoans, ...mortgageEvidence, "categories", "recoveryHistory"] },
 ];
 
 function snapshot(version: string, required: string[]): Record<string, unknown> {
@@ -34,13 +40,13 @@ function snapshot(version: string, required: string[]): Record<string, unknown> 
     household: { id: "hh", name: "Synthetic", createdAtIso: "2026-01-01T00:00:00Z" },
     accounts: [{ id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" }],
     transactions: [], importJobs: [], monthlyCategoryTargets: [],
-    ...(version === "11" || version === "12" || version === "13" || version === "14"
+    ...(version === "11" || version === "12" || version === "13" || version === "14" || version === "16"
       ? { reportingPeriodRule: { type: "calendar-month" } }
       : {}),
     ...Object.fromEntries(required.map(name => [name, []])),
-    ...(version === "13" || version === "14" ? { recoveryHistory: {
+    ...(version === "13" || version === "14" || version === "15" || version === "16" ? { recoveryHistory: {
       merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
-      ...(version === "14" ? { transactionCategoryEdits: [] } : {}),
+      ...(version === "14" || version === "15" || version === "16" ? { transactionCategoryEdits: [] } : {}),
     } } : {}),
   };
 }
@@ -61,14 +67,17 @@ describe("backup historical version capabilities", () => {
     withSnapshot(snapshot(version, required), snapshotPath => {
       expect(restoreBackupSnapshot({ snapshotPath })).toEqual({
         household: { id: "hh", name: "Synthetic", createdAtIso: "2026-01-01T00:00:00Z" },
-        ...(version === "13" || version === "14" ? { categories: [], recoveryHistory: {
+        ...(version === "13" || version === "14" || version === "15" || version === "16"
+          ? { categories: [], recoveryHistory: {
           merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
           transactionCategoryEdits: [],
-        } } : {}),
+        } }
+          : {}),
         accounts: [{ id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" }],
         transactions: [], importJobs: [], monthlyCategoryTargets: [], merchantCategoryRules: [],
         accountStatementCoveragePeriods: [], accountBalanceCheckpoints: [], exchangeRates: [],
-        properties: [], propertyValuations: [], loanRecords: [], loanBalanceSnapshots: [],
+        properties: [], propertyValuations: [], loanRecords: [], sourceOnlyLoanRecords: [],
+        loanBalanceSnapshots: [], mortgageEvidenceVersions: [],
         holdings: [], holdingValuations: [], recurringCommitments: [],
         recurringCommitmentPaymentLinks: [], recurringCommitmentDecisions: [],
         reportingPeriodRule: { type: "calendar-month" }, transactionCount: 0,
@@ -143,7 +152,7 @@ describe("backup historical version capabilities", () => {
     });
   });
 
-  it.each(["0", "15", "01", 10, null])("rejects unsupported version %j", version => {
+  it.each(["0", "17", "01", 10, null])("rejects unsupported version %j", version => {
     const value = snapshot("10", versions[9]!.required);
     value.metadata = { version, createdAtIso: "2026-05-01T00:00:00Z", accountCount: 1, transactionCount: 0 };
     withSnapshot(value, snapshotPath => {

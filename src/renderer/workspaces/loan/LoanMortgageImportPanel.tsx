@@ -9,6 +9,7 @@ import type {
   MortgageSchedulePreviewDocument,
   MortgageTermComparison,
 } from "../../../shared/mortgageBankEvidence.js";
+import { useImportPreflight } from "../../import/useImportPreflight.js";
 import { errorMessage } from "../registryErrorMessage.js";
 import { formatAmount } from "./loanFormState.js";
 
@@ -137,6 +138,53 @@ function firstYearEndCheckpoint(
   ));
 }
 
+function MortgageScheduleCheckpoint({
+  name,
+  row,
+  currencyCode,
+  missingMessage,
+}: {
+  readonly name: string;
+  readonly row: MortgageSchedulePreviewDocument["scheduleRows"][number] | undefined;
+  readonly currencyCode: string | null;
+  readonly missingMessage: string;
+}): React.JSX.Element {
+  return (
+    <div role="group" aria-label={`${name} source checkpoint`}>
+      <h6>{name} source checkpoint</h6>
+      {row === undefined ? (
+        <p>{missingMessage}</p>
+      ) : (
+        <>
+          <p>Source period: {row.periodLabel}. Covered by this source.</p>
+          <dl className="loan-terms">
+            <div>
+              <dt>Payment</dt>
+              <dd>{formatEvidenceAmount(row.paymentMinor, currencyCode)}</dd>
+            </div>
+            <div>
+              <dt>Principal</dt>
+              <dd>{formatEvidenceAmount(row.principalMinor, currencyCode)}</dd>
+            </div>
+            <div>
+              <dt>Interest</dt>
+              <dd>{formatEvidenceAmount(row.interestMinor, currencyCode)}</dd>
+            </div>
+            <div>
+              <dt>Fee</dt>
+              <dd>{formatEvidenceAmount(row.feeMinor, currencyCode)}</dd>
+            </div>
+            <div>
+              <dt>Projected closing balance</dt>
+              <dd>{formatEvidenceAmount(row.projectedClosingBalanceMinor, currencyCode)}</dd>
+            </div>
+          </dl>
+        </>
+      )}
+    </div>
+  );
+}
+
 function MortgageDocumentPreview({
   document,
 }: {
@@ -189,41 +237,37 @@ function MortgageDocumentPreview({
               <dt>Schedule rows</dt>
               <dd>{sourceRows.length}</dd>
             </div>
-            <div>
-              <dt>Current-month projected closing balance</dt>
-              <dd>
-                {currentMonthRow === undefined
-                  ? "Not covered by this source"
-                  : formatEvidenceAmount(currentMonthRow.projectedClosingBalanceMinor, currencyCode)}
-              </dd>
-            </div>
-            <div>
-              <dt>Next-month projected closing balance</dt>
-              <dd>
-                {nextMonthRow === undefined
-                  ? "Not covered by this source"
-                  : formatEvidenceAmount(nextMonthRow.projectedClosingBalanceMinor, currencyCode)}
-              </dd>
-            </div>
-            <div>
-              <dt>First year-end projected closing balance</dt>
-              <dd>
-                {yearEndRow === undefined
-                  ? "Not supplied by this source"
-                  : formatEvidenceAmount(yearEndRow.projectedClosingBalanceMinor, currencyCode)}
-              </dd>
-            </div>
-            <div>
-              <dt>Final available projected closing balance</dt>
-              <dd>
-                {finalRow === undefined
-                  ? "Not supplied by this source"
-                  : formatEvidenceAmount(finalRow.projectedClosingBalanceMinor, currencyCode)}
-              </dd>
-            </div>
           </>
         )}
       </dl>
+      {!isDetails && (
+        <div className="loan-mortgage-import-checkpoints">
+          <MortgageScheduleCheckpoint
+            name="Current month"
+            row={currentMonthRow}
+            currencyCode={currencyCode}
+            missingMessage="Not covered by this source."
+          />
+          <MortgageScheduleCheckpoint
+            name="Next month"
+            row={nextMonthRow}
+            currencyCode={currencyCode}
+            missingMessage="Not covered by this source."
+          />
+          <MortgageScheduleCheckpoint
+            name="First year-end"
+            row={yearEndRow}
+            currencyCode={currencyCode}
+            missingMessage="Not supplied by this source."
+          />
+          <MortgageScheduleCheckpoint
+            name="Final available"
+            row={finalRow}
+            currencyCode={currencyCode}
+            missingMessage="Not supplied by this source."
+          />
+        </div>
+      )}
       {!isDetails && (
         <p className="loan-mortgage-import-note">
           Repayment-plan balances are projections, not actual loan balances.
@@ -249,6 +293,19 @@ export function LoanMortgageImportPanel({
   const [isWorking, setIsWorking] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
+  const contextKey = JSON.stringify([
+    loanId ?? null,
+    loanLabel ?? null,
+    sourceOnlyLabel,
+    propertyId,
+    properties.map((property) => property.id),
+  ]);
+  const cancelMortgagePreview = React.useCallback(
+    (requestId: string) => window.budgetApi.mortgageImport.cancelPreview(requestId),
+    []
+  );
+  const preflight = useImportPreflight("mortgage", contextKey, cancelMortgagePreview);
+  const cancelledRequestIdRef = React.useRef<string | null>(null);
 
   function currentTarget(): MortgageImportTarget | null {
     if (loanId !== undefined) return { kind: "existing", loanId };
@@ -262,23 +319,47 @@ export function LoanMortgageImportPanel({
   }
 
   async function loadPreview(target: MortgageImportTarget): Promise<void> {
+    const requestId = preflight.begin();
+    let keepPreviewOpen = false;
+    let wasCancelled = false;
+    cancelledRequestIdRef.current = null;
     setIsWorking(true);
     setError(null);
     setStatus(null);
     try {
-      const result = await window.budgetApi.mortgageImport.previewFiles({ target });
+      const result = await window.budgetApi.mortgageImport.previewFiles({ target, requestId });
+      if (!preflight.isCurrent(requestId)) {
+        if (result !== null) {
+          await window.budgetApi.mortgageImport.cancelPreview(result.previewId);
+        }
+        return;
+      }
       if (result === null) {
         setPreview(null);
         setStatus("Import canceled. No loan data was changed.");
+        wasCancelled = true;
         return;
       }
       setPreview(result);
       setAcceptPartial(false);
       setAcknowledgeTermDifferences(false);
+      keepPreviewOpen = true;
     } catch (failure: unknown) {
-      setError(errorMessage(failure, "Unable to preview mortgage evidence."));
+      if (!preflight.isCurrent(requestId)) return;
+      if (cancelledRequestIdRef.current === requestId) {
+        setStatus("Import canceled. No loan data was changed.");
+        wasCancelled = true;
+      } else {
+        setError(errorMessage(failure, "Unable to preview mortgage evidence."));
+      }
     } finally {
-      setIsWorking(false);
+      if (preflight.isCurrent(requestId)) {
+        if (!keepPreviewOpen) preflight.finish(requestId, wasCancelled);
+        setIsWorking(false);
+      }
+      if (cancelledRequestIdRef.current === requestId) {
+        cancelledRequestIdRef.current = null;
+      }
     }
   }
 
@@ -320,6 +401,9 @@ export function LoanMortgageImportPanel({
         acknowledgeTermDifferences
       );
       onAccepted(accepted, isNewSourceOnlyTarget);
+      if (preflight.isCurrent(preview.previewId)) {
+        preflight.finish(preview.previewId, false);
+      }
       if (isNewSourceOnlyTarget) {
         setIsOpen(false);
         setSourceOnlyLabel("");
@@ -338,13 +422,24 @@ export function LoanMortgageImportPanel({
     }
   }
 
+  async function cancelCurrentPreview(): Promise<void> {
+    const requestId = preflight.requestId;
+    if (requestId !== undefined) {
+      cancelledRequestIdRef.current = requestId;
+      await window.budgetApi.mortgageImport.cancelPreview(requestId);
+      if (preflight.isCurrent(requestId)) preflight.finish(requestId, true);
+      return;
+    }
+    if (preview !== null) {
+      await window.budgetApi.mortgageImport.cancelPreview(preview.previewId);
+    }
+  }
+
   async function cancelImport(): Promise<void> {
     setIsWorking(true);
     setError(null);
     try {
-      if (preview !== null) {
-        await window.budgetApi.mortgageImport.cancelPreview(preview.previewId);
-      }
+      await cancelCurrentPreview();
       setPreview(null);
       setAcceptPartial(false);
       setAcknowledgeTermDifferences(false);
@@ -360,9 +455,7 @@ export function LoanMortgageImportPanel({
     setIsWorking(true);
     setError(null);
     try {
-      if (preview !== null) {
-        await window.budgetApi.mortgageImport.cancelPreview(preview.previewId);
-      }
+      await cancelCurrentPreview();
       setPreview(null);
       setAcceptPartial(false);
       setAcknowledgeTermDifferences(false);
@@ -441,9 +534,20 @@ export function LoanMortgageImportPanel({
             </fieldset>
           )}
           {preview === null ? (
-            <button disabled={isWorking} onClick={() => void chooseFiles()} type="button">
-              {isWorking ? "Reading mortgage evidence..." : "Choose mortgage HTML files"}
-            </button>
+            <>
+              <button disabled={isWorking} onClick={() => void chooseFiles()} type="button">
+                {isWorking ? "Reading mortgage evidence..." : "Choose mortgage HTML files"}
+              </button>
+              {isWorking && preflight.requestId !== undefined && (
+                <button
+                  className="action-secondary"
+                  onClick={() => void cancelImport()}
+                  type="button"
+                >
+                  Cancel reading mortgage evidence
+                </button>
+              )}
+            </>
           ) : (
             <div
               role="region"
@@ -461,8 +565,14 @@ export function LoanMortgageImportPanel({
                 {reviewStateMessage(preview.reviewState)}
               </p>
               <p className="loan-mortgage-import-note">
-                {sourceDateMessage(preview)} Imported figures remain evidence; they do not replace
-                manually recorded terms or actual balances.
+                {sourceDateMessage(preview)}
+              </p>
+              <p className="loan-mortgage-import-note">
+                Import time: {preview.importedAtIso}.
+              </p>
+              <p className="loan-mortgage-import-note">
+                Imported figures remain evidence; they do not replace manually recorded terms or
+                actual balances.
               </p>
               {attachmentMessage(preview.attachment, preview.target) !== null && (
                 <p className="loan-mortgage-import-note" role="status">
@@ -549,6 +659,9 @@ export function LoanMortgageImportPanel({
             </div>
           )}
           {error !== null && <p className="loan-form-errors" role="alert">{error}</p>}
+          {preflight.cancellationError !== null && (
+            <p className="loan-form-errors" role="alert">{preflight.cancellationError}</p>
+          )}
           {status !== null && <p className="property-registry-message" role="status">{status}</p>}
           <button
             className="action-secondary"
