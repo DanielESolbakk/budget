@@ -177,4 +177,4 @@ The user needs a modern local desktop tool to understand income and expenses wit
 | AC8 forecasting | Recurring pattern and projection logic | Forecast pipeline with stored transactions | View forecast in dashboard |
 | AC9 backup and export | Export serializer and backup manifest logic | Backup restore integrity | Export and restore user workflow |
 | AC10 no-network behavior | Verification helpers and allowlist checks | App-process verification in packaged and dev modes | Confirm critical flows operate without outbound transaction traffic |
-| AC12 mortgage evidence import (#539 AC-1–AC-4) | Semantic HTML roles, exact schedule validation, and source evidence | Atomic loan import, immutable versions, backup/restore, and export | Existing/source-only loan import, review, and non-destructive recovery |
+| AC12 mortgage evidence import (#539 AC-1–AC-4) | Semantic HTML roles, exact schedule validation, and source evidence | Atomic loan import, immutable versions, household snapshot backup/restore, and transaction-CSV compatibility | Existing/source-only loan import, review, and non-destructive recovery |

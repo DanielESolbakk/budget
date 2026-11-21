@@ -54,7 +54,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - `src/app/mortgageBankImportService.ts` composes bounded local file reads, loan identity, preview, revision checks, and transactional acceptance through the existing loan and backup services.
 - Imported monthly and annual schedule periods remain projected bank evidence. They never become ledger transactions or actual-balance checkpoints.
 - An explicitly incomplete/source-only loan may retain valid bank evidence while actual balance and unavailable terms remain unknown. Existing manual fields, shares, actual checkpoints, and associations remain authoritative.
-- Persistence adds immutable bank-plan versions, provenance, source references, and stable obligation identity through additive migrations. Backup, restore, and related export preserve those relationships.
+- Persistence adds immutable bank-plan versions, provenance, source references, and stable obligation identity through additive migrations. The versioned household backup snapshot is the related local export and preserves those relationships through backup/restore; ledger CSV remains transaction-only, with no separate per-loan export in this slice.
 - The renderer reuses the loan workspace and shared import-preflight lifecycle. File access and persistence remain in the main process behind grouped, validated IPC.
 
 ### Categorization Pipeline
@@ -143,7 +143,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Keep valid transaction persistence separate from unresolved-row and dismissal state.
 - Maintain clear correction history or auditable rule provenance.
 - Keep imported projected debt, booked payments, manual corrections, and actual balance checkpoints as distinct records with source and date provenance.
-- Preserve accepted mortgage evidence and stable obligations through additive migrations, backup/restore, and related export without changing ledger CSV semantics.
+- Preserve accepted mortgage evidence and stable obligations through additive migrations and the versioned household backup snapshot export/restore. Keep ledger CSV transaction-only; no separate per-loan export is in scope.
 
 ## Multi-Format Import Strategy
 
@@ -155,7 +155,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Unknown layouts produce explicit diagnostics and reviewable unresolved rows instead of silently producing incomplete transactions.
 - Saved mortgage HTML follows its own evidence adapter and is never routed through transaction import or treated as a booked statement.
 - Pair details and schedules only with sufficient identity evidence; preserve source-as-of, rate-effective, planned-payment, booking, and import times separately.
-- After the first tested import/preview path exists, run the three-year, thirty-year, and near-limit mortgage import benchmark cases on the owner-approved Windows 11 Home/Pro 25H2-or-newer VM proxy configured for 2 vCPUs and 4 GiB RAM. Supply the hypervisor and physical-host CLI options, and record the VM and physical host profiles, elapsed time, and peak process RSS. Treat results as VM-proxy evidence, not physical minimum-hardware validation. Use actual measurements to propose measurable resource caps and performance targets for owner approval before finalizing hard caps or making performance claims.
+- After the first tested import/preview path exists, run the three-year, thirty-year, and near-limit mortgage import benchmark cases on the owner-approved Windows 11 Home/Pro 25H2-or-newer VM proxy configured for 2 vCPUs and 4 GiB RAM. Record the VM profile, runner or hypervisor label, elapsed time, and peak process RSS. Record physical host details when available; otherwise mark them unavailable. Treat results as VM-proxy evidence, not physical minimum-hardware validation. Use actual measurements to propose measurable resource caps and performance targets for owner approval before finalizing hard caps or making performance claims.
 
 ## SQLite Binding Note
 

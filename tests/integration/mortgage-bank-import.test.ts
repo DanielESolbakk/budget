@@ -7,6 +7,7 @@ import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { createLoanRegistry } from "../../src/app/loanRegistry.js";
+import { exportLedgerCsvToFile } from "../../src/app/exportCsv.js";
 import {
   createMortgageBankImportService,
   previewMortgageDocumentPair,
@@ -87,7 +88,16 @@ describe("bounded mortgage HTML file reads", () => {
           name: "Current",
           currencyCode: "NOK",
         }],
-        transactions: [],
+        transactions: [{
+          id: "transaction-before-mortgage-import",
+          householdId: "household-mortgage-import",
+          accountId: "account-mortgage-import",
+          bookedAtIso: "2026-10-15T12:00:00.000Z",
+          amountMinor: -12_500,
+          merchantRaw: "Synthetic grocery",
+          currencyCode: "NOK",
+          sourceType: "manual",
+        }],
         importJobs: [],
         monthlyCategoryTargets: [],
       },
@@ -111,6 +121,10 @@ describe("bounded mortgage HTML file reads", () => {
         loanId: loan.id,
         effectiveDateIso: "2026-10-01",
         amountMinor: 9_900_000,
+      });
+      const ledgerCsvBefore = exportLedgerCsvToFile({
+        ledger: database,
+        outputPath: join(directory, "ledger.csv"),
       });
       const service = createMortgageBankImportService(database, {
         maxBytesPerFile: 10_000,
@@ -151,6 +165,12 @@ describe("bounded mortgage HTML file reads", () => {
         loan.id
       )).toEqual([evidence]);
       expect(loans.list()).toEqual([{ ...loan, balances: [balance] }]);
+      const ledgerCsvAfter = exportLedgerCsvToFile({
+        ledger: database,
+        outputPath: join(directory, "ledger.csv"),
+      });
+      expect(ledgerCsvAfter.rowCount).toBe(1);
+      expect(ledgerCsvAfter.csvText).toBe(ledgerCsvBefore.csvText);
 
       createBackupSnapshot({
         ...database.loadLedgerSnapshotData(),

@@ -57,5 +57,5 @@ console.log(JSON.stringify(result, null, 2));
 if (result.evidenceStatus === "preliminary") {
   console.error("Preliminary only: observed VM does not match the approved Windows VM proxy profile.");
 } else if (!result.physicalHost.metadataComplete) {
-  console.error("VM profile matches; add physical host metadata before recording the benchmark report.");
+  console.error("VM profile matches; physical host metadata is missing or unavailable from the provider.");
 }

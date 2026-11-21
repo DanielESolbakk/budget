@@ -83,8 +83,8 @@ Use the following locked stack unless superseded by a later ADR:
 - Bank schedules are projected evidence. They never overwrite actual balance checkpoints, create ledger transactions, or substitute for missing actual balances.
 - A source-only loan is an explicitly incomplete local loan state. Unknown balances and terms remain unknown, and accepted bank-plan versions retain immutable provenance.
 - Existing manual corrections and household choices are preserved. Disputed fields are shown with both values and provenance and are not overwritten without explicit resolution.
-- Additive persistence, backup, restore, and related export preserve evidence and stable obligations without changing ledger CSV semantics.
-- Mortgage import caps and performance targets are proposed from the tested import/preview path using synthetic three- and thirty-year inputs on an owner-approved Windows 11 Home/Pro 25H2-or-newer VM proxy configured for 2 vCPUs and 4 GiB RAM. Record the VM OS/build, assigned resources, hypervisor, and physical host CPU/memory. Treat results as VM-proxy evidence, not physical minimum-hardware validation. Owner approval is still required before finalizing hard caps or performance claims.
+- The versioned household backup snapshot is the related local export for this slice and preserves evidence and stable obligations through backup/restore. Ledger CSV remains transaction-only; no separate per-loan export is in scope.
+- Mortgage import caps and performance targets are proposed from the tested import/preview path using synthetic three- and thirty-year inputs on an owner-approved Windows 11 Home/Pro 25H2-or-newer VM proxy configured for 2 vCPUs and 4 GiB RAM. Record the VM OS/build, assigned resources, and runner or hypervisor label. Record physical host details when the provider exposes them; otherwise mark them unavailable. Treat results as VM-proxy evidence, not physical minimum-hardware validation. Owner approval is still required before finalizing hard caps or performance claims.
 
 ## Testing Implications
 
