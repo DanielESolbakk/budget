@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assessMortgageDocumentPairing,
@@ -326,6 +328,60 @@ describe("Rogaland mortgage document pairing", () => {
 });
 
 describe("Rogaland mortgage HTML parsing", () => {
+  it("parses the saved Rogaland details title and annual/monthly schedule layout", () => {
+    const detailsHtml = readFileSync(join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-details-bank-layout.html"
+    ), "utf8");
+    const scheduleHtml = readFileSync(join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-schedule-bank-layout.html"
+    ), "utf8");
+    const details = parseRogalandMortgageHtml(detailsHtml, {
+      maxSourceCharacters: 10_000,
+      maxElements: 100,
+      maxDepth: 20,
+    });
+    const schedule = parseRogalandMortgageHtml(scheduleHtml, {
+      maxSourceCharacters: 10_000,
+      maxElements: 100,
+      maxDepth: 20,
+    });
+
+    expect(details.role).toBe("details");
+    expect(details.detailsFields).toContainEqual({
+      field: "originalPrincipalMinor",
+      amountMinor: 10_000_000,
+      sourceLabel: "Opprinnelig lånebeløp",
+      sourceValue: "100 000,00",
+    });
+    expect(details.identityEvidence.loanReference).toBeNull();
+    expect(details.identityEvidence.currencyCode).toBeNull();
+    expect(details.sourceDateEvidence.dateIso).toBeNull();
+    expect(details.detailsFields).not.toContainEqual(expect.objectContaining({
+      sourceLabel: "Kontonummer",
+    }));
+
+    expect(schedule.role).toBe("schedule");
+    expect(schedule.scheduleRows.map((row) => row.period)).toEqual([
+      { granularity: "annual", year: 2026 },
+      { granularity: "monthly", year: 2026, month: 11 },
+      { granularity: "monthly", year: 2026, month: 12 },
+    ]);
+    expect(schedule.scheduleRows.map((row) => row.paymentMinor)).toEqual([
+      219_900,
+      110_000,
+      109_900,
+    ]);
+    expect(schedule.identityEvidence.currencyCode).toBeNull();
+  });
+
   it("uses verified year groups for long monthly schedules and leaves missing periods absent", () => {
     const threeYear = parseRogalandMortgageHtml(
       buildGroupedMonthlySchedule([2026, 2027, 2028]),

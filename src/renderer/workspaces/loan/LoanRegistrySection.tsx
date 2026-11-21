@@ -610,6 +610,7 @@ export function LoanRegistrySection({
                   <LoanMortgageImportPanel
                     loanId={loan.id}
                     loanLabel={loan.label}
+                    loanCurrencyCode={loan.currencyCode}
                     properties={properties}
                     onAccepted={onMortgageEvidenceAccepted}
                   />
@@ -848,6 +849,7 @@ export function LoanRegistrySection({
                   <LoanMortgageImportPanel
                     loanId={loan.id}
                     loanLabel={loan.label}
+                    loanCurrencyCode={loan.currencyCode}
                     properties={properties}
                     onAccepted={onMortgageEvidenceAccepted}
                   />

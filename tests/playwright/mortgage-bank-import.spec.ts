@@ -233,6 +233,81 @@ test("loan workflow previews and accepts paired mortgage evidence without changi
   ))).toBe(false);
 });
 
+test("uses saved currency only after confirming the sanitized Rogaland bank layout", async ({
+  appShell,
+  electronApp,
+  window,
+}) => {
+  await window.clock.install({ time: new Date("2026-11-21T12:00:00.000Z") });
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  await loans.addLoan({
+    label: "Rogaland mortgage",
+    principal: "100000",
+    annualInterestRate: "5",
+    termYears: "25",
+    paymentAmount: "1000",
+    paymentFrequency: "monthly",
+    currencyCode: "NOK",
+  });
+  const filePaths = [
+    join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-11-mortgage-details-bank-layout.html"),
+    join(process.cwd(), "tests", "fixtures", "synthetic", "rogaland-2026-11-mortgage-schedule-bank-layout.html"),
+  ];
+  await electronApp.evaluate((_, paths: string[]) => {
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = "selected";
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = JSON.stringify(paths);
+  }, filePaths);
+
+  const loan = loans.loan("Rogaland mortgage");
+  await loan.getByRole("button", { name: "Import mortgage evidence", exact: true }).click();
+  const importPanel = window.getByRole("region", {
+    name: "Mortgage evidence import for Rogaland mortgage",
+    exact: true,
+  });
+  await importPanel.getByRole("button", {
+    name: "Choose mortgage HTML files",
+    exact: true,
+  }).click();
+  const preview = window.getByRole("region", {
+    name: "Mortgage evidence preview for Rogaland mortgage",
+    exact: true,
+  });
+  const details = preview.getByRole("group", { name: "Loan details evidence", exact: true });
+
+  await expect(preview).toContainText("Attachment confirmation required.");
+  await expect(details).toContainText("Not identified");
+  await expect(preview).not.toContainText("Matches saved value.");
+  await preview.getByRole("button", {
+    name: "Confirm attachment to Rogaland mortgage using NOK",
+    exact: true,
+  }).click();
+
+  await expect(details).toContainText("NOK (saved loan currency)");
+  await expect(preview).toContainText("Matches saved value.");
+  const schedule = preview.getByRole("group", {
+    name: "Repayment schedule evidence",
+    exact: true,
+  });
+  await expect(schedule).toContainText(/Schedule rows\s*3/);
+  await expect(preview.getByRole("group", {
+    name: "Current month source checkpoint",
+    exact: true,
+  })).toContainText("November 2026");
+  await expect(preview).toContainText("Source date not identified.");
+
+  const partialAcceptance = preview.getByRole("checkbox", {
+    name: "Accept this partial evidence version; unsupported values remain unknown.",
+    exact: true,
+  });
+  await partialAcceptance.check();
+  await preview.getByRole("button", {
+    name: "Accept mortgage evidence",
+    exact: true,
+  }).click();
+  await expect(importPanel.getByRole("status")).toContainText("Evidence version 1 saved.");
+});
+
 test("shows and requires review of an unsupported source loan type", async ({
   appShell,
   electronApp,
@@ -325,7 +400,14 @@ test("an incomplete loan is created only when mortgage evidence is accepted", as
     "Select the saved loan-details page, repayment-plan page, or both. A single supported page can be reviewed as partial evidence.",
     { exact: true }
   )).toBeVisible();
-  await importPanel.getByRole("button", { name: "Choose mortgage HTML files", exact: true }).click();
+  const chooseFilesButton = importPanel.getByRole("button", {
+    name: "Choose mortgage HTML files",
+    exact: true,
+  });
+  await expect(chooseFilesButton).toBeDisabled();
+  await importPanel.getByLabel("Currency code", { exact: true }).fill("NOK");
+  await expect(chooseFilesButton).toBeEnabled();
+  await chooseFilesButton.click();
 
   const preview = window.getByRole("region", {
     name: "Mortgage evidence preview for Rogaland mortgage",
@@ -547,6 +629,7 @@ test("changing incomplete-loan context during a read allows a fresh preview", as
     exact: true,
   });
   await importPanel.getByLabel("Loan label", { exact: true }).fill("Initial sample");
+  await importPanel.getByLabel("Currency code", { exact: true }).fill("NOK");
   await importPanel.getByRole("button", {
     name: "Choose mortgage HTML files",
     exact: true,
@@ -604,6 +687,7 @@ test("unsupported HTML cannot create an incomplete loan", async ({
     exact: true,
   });
   await importPanel.getByLabel("Loan label", { exact: true }).fill("Unsupported sample");
+  await importPanel.getByLabel("Currency code", { exact: true }).fill("NOK");
   await importPanel.getByRole("button", {
     name: "Choose mortgage HTML files",
     exact: true,

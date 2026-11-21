@@ -16,6 +16,7 @@ import { formatAmount } from "./loanFormState.js";
 interface LoanMortgageImportPanelProps {
   readonly loanId?: string;
   readonly loanLabel?: string;
+  readonly loanCurrencyCode?: string;
   readonly properties: readonly PropertyRecord[];
   readonly onAccepted: (
     summary: MortgageEvidenceAcceptanceSummary,
@@ -87,6 +88,31 @@ function formatEvidenceAmount(amountMinor: number | null, currencyCode: string |
   return formatAmount(amountMinor, currencyCode);
 }
 
+function currencyForDocumentPreview(
+  document: MortgageSchedulePreviewDocument,
+  target: MortgageImportTarget,
+  attachment: MortgageDocumentPairingResult | null,
+  savedLoanCurrencyCode: string | undefined
+): { readonly currencyCode: string | null; readonly label: string } {
+  const sourceCurrencyCode = document.identityDisplay.currencyCode;
+  if (sourceCurrencyCode !== null) {
+    return { currencyCode: sourceCurrencyCode, label: sourceCurrencyCode };
+  }
+  if (target.kind === "new-source-only") {
+    return {
+      currencyCode: target.currencyCode,
+      label: `${target.currencyCode} (selected for this incomplete loan)`,
+    };
+  }
+  if (attachment?.status === "confirmed" && savedLoanCurrencyCode !== undefined) {
+    return {
+      currencyCode: savedLoanCurrencyCode,
+      label: `${savedLoanCurrencyCode} (saved loan currency)`,
+    };
+  }
+  return { currencyCode: null, label: "Not identified" };
+}
+
 function formatTermComparison(comparison: MortgageTermComparison): string {
   if ("sourceValueMinor" in comparison) {
     const savedDate = "savedEffectiveDateIso" in comparison
@@ -111,6 +137,16 @@ function formatTermComparison(comparison: MortgageTermComparison): string {
  }%. ${
     comparison.status === "differs" ? "Different from saved value." : "Matches saved value."
   }`;
+}
+
+function displaySchedulePeriod(
+  row: MortgageSchedulePreviewDocument["scheduleRows"][number] | undefined
+): string {
+  if (row === undefined) return "Not identified";
+  if (row.period.granularity !== "monthly" || /\b\d{4}\b/.test(row.periodLabel)) {
+    return row.periodLabel;
+  }
+  return `${row.periodLabel} ${row.period.year}`;
 }
 
 function checkpointForMonth(
@@ -156,7 +192,7 @@ function MortgageScheduleCheckpoint({
         <p>{missingMessage}</p>
       ) : (
         <>
-          <p>Source period: {row.periodLabel}. Covered by this source.</p>
+          <p>Source period: {displaySchedulePeriod(row)}. Covered by this source.</p>
           <dl className="loan-terms">
             <div>
               <dt>Payment</dt>
@@ -187,8 +223,10 @@ function MortgageScheduleCheckpoint({
 
 function MortgageDocumentPreview({
   document,
+  currency,
 }: {
   readonly document: MortgageSchedulePreviewDocument;
+  readonly currency: { readonly currencyCode: string | null; readonly label: string };
 }): React.JSX.Element {
   const isDetails = document.role === "details";
   const sourceRows = document.scheduleRows;
@@ -200,8 +238,6 @@ function MortgageDocumentPreview({
   const nextMonthRow = checkpointForMonth(document, nextMonthYear, nextMonth);
   const yearEndRow = firstYearEndCheckpoint(document, now.getFullYear());
   const finalRow = sourceRows.at(-1);
-  const currencyCode = document.identityDisplay.currencyCode;
-
   return (
     <div
       role="group"
@@ -216,7 +252,7 @@ function MortgageDocumentPreview({
         </div>
         <div>
           <dt>Currency</dt>
-          <dd>{currencyCode ?? "Not identified"}</dd>
+          <dd>{currency.label}</dd>
         </div>
         {isDetails ? document.detailsFields.map((field, index) => (
           <div key={`${field.field}-${index}`}>
@@ -228,9 +264,9 @@ function MortgageDocumentPreview({
             <div>
               <dt>Schedule coverage</dt>
               <dd>
-                {sourceRows[0]?.periodLabel ?? "Not identified"}
+                {displaySchedulePeriod(sourceRows[0])}
                 {" - "}
-                {finalRow?.periodLabel ?? "Not identified"}
+                {displaySchedulePeriod(finalRow)}
               </dd>
             </div>
             <div>
@@ -245,25 +281,25 @@ function MortgageDocumentPreview({
           <MortgageScheduleCheckpoint
             name="Current month"
             row={currentMonthRow}
-            currencyCode={currencyCode}
+            currencyCode={currency.currencyCode}
             missingMessage="Not covered by this source."
           />
           <MortgageScheduleCheckpoint
             name="Next month"
             row={nextMonthRow}
-            currencyCode={currencyCode}
+            currencyCode={currency.currencyCode}
             missingMessage="Not covered by this source."
           />
           <MortgageScheduleCheckpoint
             name="First year-end"
             row={yearEndRow}
-            currencyCode={currencyCode}
+            currencyCode={currency.currencyCode}
             missingMessage="Not supplied by this source."
           />
           <MortgageScheduleCheckpoint
             name="Final available"
             row={finalRow}
-            currencyCode={currencyCode}
+            currencyCode={currency.currencyCode}
             missingMessage="Not supplied by this source."
           />
         </div>
@@ -280,12 +316,14 @@ function MortgageDocumentPreview({
 export function LoanMortgageImportPanel({
   loanId,
   loanLabel,
+  loanCurrencyCode,
   properties,
   onAccepted,
 }: LoanMortgageImportPanelProps): React.JSX.Element {
   const isNewSourceOnlyTarget = loanId === undefined;
   const [isOpen, setIsOpen] = React.useState(false);
   const [sourceOnlyLabel, setSourceOnlyLabel] = React.useState("");
+  const [sourceOnlyCurrencyCode, setSourceOnlyCurrencyCode] = React.useState("");
   const [propertyId, setPropertyId] = React.useState("");
   const [preview, setPreview] = React.useState<MortgageBankImportPreview | null>(null);
   const [acceptPartial, setAcceptPartial] = React.useState(false);
@@ -297,6 +335,7 @@ export function LoanMortgageImportPanel({
     loanId ?? null,
     loanLabel ?? null,
     sourceOnlyLabel,
+    sourceOnlyCurrencyCode,
     propertyId,
     properties.map((property) => property.id),
   ]);
@@ -330,10 +369,12 @@ export function LoanMortgageImportPanel({
   function currentTarget(): MortgageImportTarget | null {
     if (loanId !== undefined) return { kind: "existing", loanId };
     const label = sourceOnlyLabel.trim();
-    if (label.length === 0 || label.length > 100) return null;
+    const currencyCode = sourceOnlyCurrencyCode.trim().toUpperCase();
+    if (label.length === 0 || label.length > 100 || !isCurrencyCode(currencyCode)) return null;
     return {
       kind: "new-source-only",
       label,
+      currencyCode,
       ...(propertyId.length === 0 ? {} : { propertyId }),
     };
   }
@@ -386,7 +427,9 @@ export function LoanMortgageImportPanel({
   async function chooseFiles(): Promise<void> {
     const target = currentTarget();
     if (target === null) {
-      setError("Enter a loan label before importing evidence for an incomplete loan.");
+      setError(
+        "Enter a loan label and a valid three-letter currency code before importing evidence for an incomplete loan."
+      );
       return;
     }
     await loadPreview(target);
@@ -427,6 +470,7 @@ export function LoanMortgageImportPanel({
       if (isNewSourceOnlyTarget) {
         setIsOpen(false);
         setSourceOnlyLabel("");
+        setSourceOnlyCurrencyCode("");
         setPropertyId("");
         setStatus(null);
       } else {
@@ -499,6 +543,27 @@ export function LoanMortgageImportPanel({
     (preview.reviewState === "review-required" && acceptPartial)
   ) && (!hasTermDifferences || acknowledgeTermDifferences);
   const targetName = isNewSourceOnlyTarget ? "an incomplete loan" : loanLabel ?? "this loan";
+  const hasUnidentifiedSourceCurrency = preview?.documents.some((document) =>
+    document.parsedDocument.identityDisplay.currencyCode === null
+  ) ?? false;
+  let currencyBasisMessage: string | null = null;
+  if (preview !== null && hasUnidentifiedSourceCurrency) {
+    if (preview.target.kind === "new-source-only") {
+      currencyBasisMessage = `Source currency is not identified in one or more pages; figures are displayed using ${
+        preview.target.currencyCode
+      }, selected for this incomplete loan. Source evidence remains currency-unknown where omitted.`;
+    } else if (preview.attachment?.status === "confirmed" && loanCurrencyCode !== undefined) {
+      currencyBasisMessage = `Source currency is not identified in one or more pages; figures are displayed using ${
+        loanCurrencyCode
+      }, the saved loan currency you confirmed. Source evidence remains currency-unknown where omitted.`;
+    }
+  }
+  const confirmAttachmentLabel = preview?.target.kind === "existing" &&
+    preview.attachment?.status === "confirmation-required" &&
+    hasUnidentifiedSourceCurrency &&
+    loanCurrencyCode !== undefined
+    ? `Confirm attachment to ${targetName} using ${loanCurrencyCode}`
+    : `Confirm attachment to ${targetName}`;
 
   return (
     <div className="loan-mortgage-import">
@@ -531,6 +596,18 @@ export function LoanMortgageImportPanel({
                   />
                 </div>
                 <div className="loan-field">
+                  <label htmlFor="mortgage-import-source-only-currency">Currency code</label>
+                  <input
+                    id="mortgage-import-source-only-currency"
+                    maxLength={3}
+                    onChange={(event) => setSourceOnlyCurrencyCode(
+                      event.currentTarget.value.toUpperCase()
+                    )}
+                    required
+                    value={sourceOnlyCurrencyCode}
+                  />
+                </div>
+                <div className="loan-field">
                   <label htmlFor="mortgage-import-source-only-property">Property (optional)</label>
                   <select
                     id="mortgage-import-source-only-property"
@@ -548,6 +625,10 @@ export function LoanMortgageImportPanel({
                 The imported evidence creates this record; no principal, rate, term, payment, or
                 actual balance is entered.
               </p>
+              <p className="loan-required-note">
+                Enter the three-letter currency code for this incomplete loan. The source may omit
+                currency; this selection does not change the source evidence.
+              </p>
             </fieldset>
           )}
           {preview === null ? (
@@ -556,7 +637,11 @@ export function LoanMortgageImportPanel({
                 Select the saved loan-details page, repayment-plan page, or both. A single
                 supported page can be reviewed as partial evidence.
               </p>
-              <button disabled={isWorking} onClick={() => void chooseFiles()} type="button">
+              <button
+                disabled={isWorking || currentTarget() === null}
+                onClick={() => void chooseFiles()}
+                type="button"
+              >
                 {isWorking ? "Reading mortgage evidence..." : "Choose mortgage HTML files"}
               </button>
               {isWorking && preflight.requestId !== undefined && (
@@ -595,6 +680,11 @@ export function LoanMortgageImportPanel({
                 Imported figures remain evidence; they do not replace manually recorded terms or
                 actual balances.
               </p>
+              {currencyBasisMessage !== null && (
+                <p className="loan-mortgage-import-note" role="status">
+                  {currencyBasisMessage}
+                </p>
+              )}
               <a
                 className="loan-mortgage-import-review-link"
                 href={`#mortgage-import-actions-${preview.previewId}`}
@@ -613,6 +703,12 @@ export function LoanMortgageImportPanel({
               )}
               {preview.documents.map((document, index) => (
                 <MortgageDocumentPreview
+                  currency={currencyForDocumentPreview(
+                    document.parsedDocument,
+                    preview.target,
+                    preview.attachment,
+                    loanCurrencyCode
+                  )}
                   document={document.parsedDocument}
                   key={`${document.role}-${index}`}
                 />
@@ -645,7 +741,7 @@ export function LoanMortgageImportPanel({
                   onClick={() => void confirmAttachment()}
                   type="button"
                 >
-                  Confirm attachment to {targetName}
+                  {confirmAttachmentLabel}
                 </button>
               )}
               {preview.reviewState === "review-required" && (

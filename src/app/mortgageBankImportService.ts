@@ -520,7 +520,8 @@ function compareMortgageTerms(
   householdId: string,
   target: MortgageImportTarget,
   sourceDocuments: StoredMortgageImportPreview["sourceDocuments"],
-  sourceAsOfDateIso: string | null
+  sourceAsOfDateIso: string | null,
+  useSavedCurrencyForUnidentifiedSource: boolean
 ): MortgageTermComparison[] {
   if (target.kind !== "existing") return [];
   const loan = database.listLoanRecords(householdId)
@@ -530,9 +531,11 @@ function compareMortgageTerms(
   const comparisons: MortgageTermComparison[] = [];
   for (const document of sourceDocuments) {
     const sourceCurrency = document.parsedDocument.identityEvidence.currencyCode;
+    const canCompareAmounts = sourceCurrency === loan.currencyCode ||
+      (sourceCurrency === null && useSavedCurrencyForUnidentifiedSource);
     for (const field of document.parsedDocument.detailsFields) {
       if (
-        sourceCurrency === loan.currencyCode &&
+        canCompareAmounts &&
         field.field === "originalPrincipalMinor" &&
         field.amountMinor !== null
       ) {
@@ -558,7 +561,7 @@ function compareMortgageTerms(
             : "differs",
         });
       } else if (
-        sourceCurrency === loan.currencyCode &&
+        canCompareAmounts &&
         field.field === "remainingPrincipalMinor" &&
         field.amountMinor !== null &&
         sourceAsOfDateIso !== null
@@ -762,7 +765,8 @@ export function createMortgageBankImportService(
       metadata.household.id,
       input.target,
       sourceDocuments,
-      sourceAsOfDateIso
+      sourceAsOfDateIso,
+      input.attachmentConfirmed && input.target.kind === "existing"
     );
     const preview: MortgageBankImportPreview = {
       previewId,
@@ -800,13 +804,19 @@ export function createMortgageBankImportService(
       const sourceConflicts = sourceDocuments.some((document) =>
         document.parsedDocument.identityEvidence.conflicts.includes("currency-mismatch")
       );
-      const currencyCode = [...currencies][0];
-      if (sourceConflicts || currencies.size !== 1 || currencyCode === undefined) {
-        throw new Error("Source-only loans require one consistent currency in the imported evidence.");
+      const sourceCurrencyCode = [...currencies][0];
+      if (
+        sourceConflicts ||
+        currencies.size > 1 ||
+        (sourceCurrencyCode !== undefined && sourceCurrencyCode !== input.target.currencyCode)
+      ) {
+        throw new Error(
+          "Source currency conflicts with the selected currency for this incomplete loan."
+        );
       }
       sourceOnlyLoanInput = validateSourceOnlyLoanRecordInput({
         label: input.target.label,
-        currencyCode,
+        currencyCode: input.target.currencyCode,
         ...(input.target.propertyId === undefined ? {} : { propertyId: input.target.propertyId }),
       }, database.listPropertyRecords(metadata.household.id).map((property) => property.id));
       if (
@@ -930,6 +940,14 @@ export function createMortgageBankImportService(
       validation = pairPreview.validation;
     }
 
+    const termComparisons = compareMortgageTerms(
+      database,
+      stored.householdId,
+      stored.preview.target,
+      stored.sourceDocuments,
+      stored.preview.sourceAsOfDateIso,
+      true
+    );
     const preview: MortgageBankImportPreview = {
       ...stored.preview,
       reviewState,
@@ -937,6 +955,7 @@ export function createMortgageBankImportService(
       pairing,
       attachment,
       validation,
+      termComparisons,
     };
     previews.set(previewId, { ...stored, preview });
     return preview;

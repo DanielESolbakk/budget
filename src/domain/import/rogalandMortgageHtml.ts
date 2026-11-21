@@ -29,8 +29,13 @@ const HEADER_ALIASES = {
   principal: new Set(["avdrag"]),
   interest: new Set(["renter"]),
   fee: new Set(["gebyr", "termingebyr"]),
-  payment: new Set(["terminbelop", "sum terminbelop", "betalingsbelop"]),
-  closingBalance: new Set(["restgjeld", "gjenstaende restgjeld", "saldo etter termin"]),
+  payment: new Set(["terminbelop", "sum terminbelop", "betalingsbelop", "du betaler"]),
+  closingBalance: new Set([
+    "restgjeld",
+    "gjenstaende restgjeld",
+    "saldo etter termin",
+    "resterende lan",
+  ]),
 };
 const ORIGINAL_PRINCIPAL_LABELS = new Set([
   "opprinnelig lanebelop",
@@ -242,8 +247,27 @@ function verifiedYearGroup(
   return isVerifiedGroup ? Number(yearMatch[1]) : undefined;
 }
 
+function annualSummaryYear(
+  row: HtmlElement,
+  cells: readonly HtmlElement[],
+  expectedColumnCount: number
+): number | undefined {
+  const classNames = row.attrs
+    .find((attribute) => attribute.name === "class")
+    ?.value.split(/\s+/u) ?? [];
+  if (!classNames.includes("table-header-row") || cells.length !== expectedColumnCount) {
+    return undefined;
+  }
+  const periodCell = cells[0];
+  if (periodCell === undefined || periodCell.tagName !== "td") return undefined;
+  const yearMatch = /^(\d{4})$/.exec(normalizeLabel(textContent(periodCell)));
+  return yearMatch === null ? undefined : Number(yearMatch[1]);
+}
+
 function classifyRole(document: HtmlNode): MortgageSourceRole {
-  const headings = collectElements(document, (element) => /^h[1-6]$/.test(element.tagName))
+  const headings = collectElements(document, (element) =>
+    /^h[1-6]$/.test(element.tagName) || element.tagName === "title"
+  )
     .map((heading) => normalizeLabel(textContent(heading)));
   const hasScheduleHeading = headings.some((heading) =>
     /\b(nedbetalingsplan|betalingsplan|terminliste)\b/u.test(heading)
@@ -309,6 +333,8 @@ function parseScheduleTable(table: HtmlElement): MortgageScheduleRowEvidence[] |
       groupedYear = yearGroup;
       continue;
     }
+    const summaryYear = annualSummaryYear(row, cells, headers.length);
+    if (summaryYear !== undefined) groupedYear = summaryYear;
     const getValue = (column: number | null): string =>
       column === null ? "" : sourceValues[column] ?? "";
     const periodLabel = getValue(columns.period);

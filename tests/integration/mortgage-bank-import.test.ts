@@ -67,6 +67,163 @@ function getRecord(value: unknown, name: string): Record<string, unknown> {
 }
 
 describe("bounded mortgage HTML file reads", () => {
+  it("uses a saved loan currency for amount comparisons only after attachment confirmation", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-selected-currency-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-details-bank-layout.html"
+    );
+    const scheduleFilePath = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-schedule-bank-layout.html"
+    );
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-selected-currency",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-selected-currency",
+          householdId: "household-mortgage-selected-currency",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const loans = createLoanRegistry(database, {
+        createId: () => "loan-selected-currency",
+        now: () => new Date("2026-11-21T12:00:00.000Z"),
+      });
+      const loan = loans.create({
+        label: "Synthetic mortgage",
+        principalMinor: 10_000_000,
+        annualInterestRateBasisPoints: 500,
+        termMonths: 120,
+        paymentAmountMinor: 100_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => "mortgage-selected-currency-evidence",
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+      const preview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: false,
+      });
+
+      expect(preview.reviewState).toBe("attachment-confirmation-required");
+      expect(preview.termComparisons).toEqual([]);
+      expect(preview.documents.map((document) =>
+        document.parsedDocument.identityDisplay.currencyCode
+      )).toEqual([null, null]);
+
+      const confirmedPreview = service.confirmAttachmentPreview(preview.previewId);
+      expect(confirmedPreview.termComparisons).toContainEqual({
+        field: "originalPrincipalMinor",
+        sourceLabel: "Opprinnelig lånebeløp",
+        sourceValueMinor: 10_000_000,
+        savedValueMinor: 10_000_000,
+        currencyCode: "NOK",
+        status: "matches",
+      });
+      const evidence = service.acceptPreview(confirmedPreview.previewId, true);
+
+      expect(evidence.documents.map((document) =>
+        document.parsedDocument.identityEvidence.currencyCode
+      )).toEqual([null, null]);
+      expect(evidence.termComparisons).toEqual(confirmedPreview.termComparisons);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("uses a user-selected currency for source-only evidence when the HTML omits currency", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-source-currency-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-details-bank-layout.html"
+    );
+    const scheduleFilePath = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-schedule-bank-layout.html"
+    );
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: "household-mortgage-source-currency",
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "account-mortgage-source-currency",
+          householdId: "household-mortgage-source-currency",
+          name: "Current",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+
+    try {
+      const service = createMortgageBankImportService(database, {
+        maxBytesPerFile: 10_000,
+        parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
+        createId: () => "mortgage-source-currency-evidence",
+        now: () => new Date("2026-11-21T12:30:00.000Z"),
+      });
+      const preview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: {
+          kind: "new-source-only",
+          label: "Synthetic mortgage",
+          currencyCode: "NOK",
+        },
+        attachmentConfirmed: false,
+      });
+      const confirmedPreview = service.confirmAttachmentPreview(preview.previewId);
+      const evidence = service.acceptPreview(confirmedPreview.previewId, true);
+
+      expect(database.listSourceOnlyLoanRecords("household-mortgage-source-currency"))
+        .toMatchObject([{ label: "Synthetic mortgage", currencyCode: "NOK" }]);
+      expect(evidence.documents.map((document) =>
+        document.parsedDocument.identityEvidence.currencyCode
+      )).toEqual([null, null]);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("accepts paired evidence as an immutable version without changing the existing loan", async () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-acceptance-"));
     const databasePath = join(directory, "ledger.sqlite");
@@ -719,7 +876,7 @@ describe("bounded mortgage HTML file reads", () => {
       });
       const preview = await Reflect.apply(service.previewFiles, service, [{
         filePaths: [detailsFilePath, scheduleFilePath],
-        target: { kind: "new-source-only", label: "Rogaland mortgage" },
+        target: { kind: "new-source-only", label: "Rogaland mortgage", currencyCode: "NOK" },
         attachmentConfirmed: true,
       }]) as { previewId: string; reviewState: string };
       expect(preview.reviewState).toBe("paired-schedule-checks-passed");
@@ -796,7 +953,7 @@ describe("bounded mortgage HTML file reads", () => {
       });
       const preview = await service.previewFiles({
         filePaths: [detailsFilePath, scheduleFilePath],
-        target: { kind: "new-source-only", label: "Rogaland mortgage" },
+        target: { kind: "new-source-only", label: "Rogaland mortgage", currencyCode: "NOK" },
         attachmentConfirmed: true,
       });
       const evidence = service.acceptPreview(preview.previewId);

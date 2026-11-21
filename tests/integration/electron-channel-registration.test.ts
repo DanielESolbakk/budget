@@ -176,7 +176,7 @@ describe("Electron channel registration and live ledger wiring", () => {
       "synthetic",
       "rogaland-2026-11-mortgage-details.html"
     );
-    const target = { kind: "new-source-only", label: "Synthetic mortgage" };
+    const target = { kind: "new-source-only", label: "Synthetic mortgage", currencyCode: "NOK" };
     process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = "selected";
     process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = JSON.stringify([selectedPath]);
     try {
@@ -220,6 +220,36 @@ describe("Electron channel registration and live ledger wiring", () => {
     }
   });
 
+  it("rejects an invalid selected currency for source-only mortgage imports at IPC", async () => {
+    createHousehold();
+    const dialogSetting = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
+    const pathsSetting = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"];
+    const selectedPath = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "synthetic",
+      "rogaland-2026-11-mortgage-details.html"
+    );
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = "selected";
+    process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = JSON.stringify([selectedPath]);
+    try {
+      await expect(Promise.resolve().then(() => invoke("mortgageImport:previewFiles", {
+        target: {
+          kind: "new-source-only",
+          label: "Synthetic mortgage",
+          currencyCode: "not-a-currency",
+        },
+        requestId: "mortgage-invalid-currency-request",
+      }))).rejects.toThrow("currencyCode must be a three-letter currency code.");
+    } finally {
+      if (dialogSetting === undefined) delete process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
+      else process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"] = dialogSetting;
+      if (pathsSetting === undefined) delete process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"];
+      else process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_PATHS"] = pathsSetting;
+    }
+  });
+
   it("cancels a mortgage file read through its preview request ID", async () => {
     createHousehold();
     const dialogSetting = process.env["BUDGET_TEST_MORTGAGE_HTML_IMPORT_DIALOG"];
@@ -247,7 +277,7 @@ describe("Electron channel registration and live ledger wiring", () => {
 
     try {
       const previewPromise = Promise.resolve(invoke("mortgageImport:previewFiles", {
-        target: { kind: "new-source-only", label: "Synthetic mortgage" },
+        target: { kind: "new-source-only", label: "Synthetic mortgage", currencyCode: "NOK" },
         requestId,
       }));
       await readEntered;

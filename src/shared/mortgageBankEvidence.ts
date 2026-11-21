@@ -181,6 +181,7 @@ export type MortgageImportTarget =
   | {
       readonly kind: "new-source-only";
       readonly label: string;
+      readonly currencyCode: string;
       readonly propertyId?: string;
     };
 

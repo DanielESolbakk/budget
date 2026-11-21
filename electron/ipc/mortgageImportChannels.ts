@@ -1,4 +1,5 @@
 import type { MortgageEvidenceAcceptanceSummary, MortgageImportTarget } from "../../src/shared/mortgageBankEvidence.js";
+import { isCurrencyCode } from "../../src/domain/types.js";
 import type { LedgerChannelContext } from "./context.js";
 import { parseNonEmptyString } from "./validation.js";
 
@@ -15,6 +16,10 @@ function parseTarget(value: unknown): MortgageImportTarget {
     };
   }
   if (value["kind"] === "new-source-only") {
+    const currencyCode = parseNonEmptyString(value["currencyCode"], "currencyCode");
+    if (!isCurrencyCode(currencyCode)) {
+      throw new Error("currencyCode must be a three-letter currency code.");
+    }
     const propertyId = value["propertyId"];
     if (propertyId !== undefined && (typeof propertyId !== "string" || propertyId.trim() === "")) {
       throw new Error("propertyId must be a non-empty string when provided.");
@@ -22,6 +27,7 @@ function parseTarget(value: unknown): MortgageImportTarget {
     return {
       kind: "new-source-only",
       label: parseNonEmptyString(value["label"], "label"),
+      currencyCode,
       ...(propertyId === undefined ? {} : { propertyId }),
     };
   }

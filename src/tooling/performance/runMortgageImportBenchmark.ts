@@ -255,7 +255,11 @@ async function runIteration(
     const previewStartedAt = performance.now();
     const preview = await service.previewFiles({
       filePaths: [detailsPath, schedulePath],
-      target: { kind: "new-source-only", label: "Synthetic mortgage benchmark" },
+      target: {
+        kind: "new-source-only",
+        label: "Synthetic mortgage benchmark",
+        currencyCode: "NOK",
+      },
       attachmentConfirmed: false,
     });
     const previewMs = performance.now() - previewStartedAt;
@@ -325,7 +329,11 @@ async function verifyNearLimitCancellation(
     const pendingPreview = service.previewFiles({
       requestId,
       filePaths: [detailsPath, schedulePath],
-      target: { kind: "new-source-only", label: "Synthetic mortgage benchmark" },
+      target: {
+        kind: "new-source-only",
+        label: "Synthetic mortgage benchmark",
+        currencyCode: "NOK",
+      },
       attachmentConfirmed: false,
     });
     if (!service.cancelPreview(requestId)) {
