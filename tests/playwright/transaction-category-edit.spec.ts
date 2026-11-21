@@ -593,7 +593,10 @@ test.describe("transaction category editing", () => {
       await appShell.openWorkspace("Transactions");
       const ledgerPage = new LedgerPage(window);
       await ledgerPage.openMoreFilters();
+      await expect(ledgerPage.resultStatus).toBeVisible();
       await ledgerPage.categoryInput.selectOption("groceries");
+      await expect(ledgerPage.updatingStatus).toBeVisible();
+      await expect(ledgerPage.updatingStatus).toBeHidden();
       const row = window.getByRole("row", { name: /Ledger transaction Kiwi/ });
       await expect(row).toBeVisible();
       await row.getByRole("button", { name: "Edit category for Kiwi" }).click();
