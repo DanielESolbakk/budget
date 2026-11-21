@@ -388,7 +388,9 @@ function collectDetailsPairs(document: HtmlNode): { sourceLabel: string; sourceV
   }
 
   for (const list of collectElements(document, (element) => element.tagName === "dl")) {
-    const children = childNodes(list);
+    const children = childNodes(list).flatMap((child) =>
+      isElement(child) && child.tagName === "div" ? childNodes(child) : [child]
+    );
     for (let index = 0; index < children.length; index += 1) {
       const term = children[index];
       if (term === undefined || !isElement(term) || term.tagName !== "dt") continue;
@@ -680,7 +682,9 @@ export function parseRogalandMortgageMinorUnits(_source: string): number | null 
   const normalized = _source
     .replace(/\u200d/g, "")
     .replace(/[\u00a0\u202f]/g, " ")
-    .trim();
+    .trim()
+    .replace(/\u2212/g, "-")
+    .replace(/\s+kr$/iu, "");
   const match = NORWEGIAN_AMOUNT_PATTERN.exec(normalized);
   if (match === null) return null;
 

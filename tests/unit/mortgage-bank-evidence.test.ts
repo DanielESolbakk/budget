@@ -115,6 +115,7 @@ describe("Rogaland mortgage amount parsing", () => {
   it.each([
     { source: "1\u00a0234,56", expected: 123456 },
     { source: "1\u200d234,56", expected: 123456 },
+    { source: "\u22121\u00a0234,56\u00a0k\u200dr", expected: -123456 },
     { source: "-2.345,60", expected: -234560 },
     { source: "12,5", expected: 1250 },
   ])("parses Norwegian amount $source into exact minor units", ({ source, expected }) => {
@@ -328,6 +329,56 @@ describe("Rogaland mortgage document pairing", () => {
 });
 
 describe("Rogaland mortgage HTML parsing", () => {
+  it("parses schedule amounts with the bank's currency suffix", () => {
+    const schedule = parseSchedule(`
+      <h1>Nedbetalingsplan</h1>
+      <table>
+        <thead>
+          <tr>
+            <th>Periode</th><th>Du betaler</th><th>Avdrag</th>
+            <th>Renter</th><th>Gebyr</th><th>Resterende lån</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Januar 2026</td><td>1 100,00&nbsp;k&zwj;r</td><td>1 000,00&nbsp;k&zwj;r</td>
+            <td>90,00&nbsp;k&zwj;r</td><td>10,00&nbsp;k&zwj;r</td><td>99 000,00&nbsp;k&zwj;r</td>
+          </tr>
+        </tbody>
+      </table>
+    `);
+
+    expect(schedule.scheduleRows[0]).toMatchObject({
+      period: { granularity: "monthly", year: 2026, month: 1 },
+      principalMinor: 100_000,
+      interestMinor: 9_000,
+      feeMinor: 1_000,
+      paymentMinor: 110_000,
+      projectedClosingBalanceMinor: 9_900_000,
+    });
+  });
+
+  it("collects detail pairs wrapped in div elements", () => {
+    const details = parseRogalandMortgageHtml(`
+      <h1>Lånedetaljer</h1>
+      <dl>
+        <div>
+          <dt>Opprinnelig lånebeløp</dt>
+          <dd>\u2212100 000,00&nbsp;k&zwj;r</dd>
+        </div>
+      </dl>
+    `, { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 });
+
+    expect(details.role).toBe("details");
+    expect(details.parseStatus).toBe("parsed");
+    expect(details.detailsFields).toContainEqual({
+      field: "originalPrincipalMinor",
+      amountMinor: -10_000_000,
+      sourceLabel: "Opprinnelig lånebeløp",
+      sourceValue: "\u2212100 000,00\u00a0k\u200dr",
+    });
+  });
+
   it("parses the saved Rogaland details title and annual/monthly schedule layout", () => {
     const detailsHtml = readFileSync(join(
       process.cwd(),
