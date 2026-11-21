@@ -55,8 +55,7 @@ const result = await runMortgageImportBenchmark({
 });
 console.log(JSON.stringify(result, null, 2));
 if (result.evidenceStatus === "preliminary") {
-  const reason = result.observedVm.matchesProxyProfile
-    ? "physical host metadata is incomplete"
-    : "observed VM does not match the approved Windows VM proxy profile";
-  console.error(`Preliminary only: ${reason}.`);
+  console.error("Preliminary only: observed VM does not match the approved Windows VM proxy profile.");
+} else if (!result.physicalHost.metadataComplete) {
+  console.error("VM profile matches; add physical host metadata before recording the benchmark report.");
 }

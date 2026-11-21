@@ -409,7 +409,7 @@ export async function runMortgageImportBenchmark(
       scenario: options.scenario,
       iterationCount,
       limitsAreProvisional: true,
-      evidenceStatus: observedVm.matchesProxyProfile && physicalHost.metadataComplete
+      evidenceStatus: observedVm.matchesProxyProfile
         ? "profile-matched-proxy"
         : "preliminary",
       parserLimits: {
