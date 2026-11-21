@@ -306,12 +306,26 @@ export function LoanMortgageImportPanel({
   );
   const preflight = useImportPreflight("mortgage", contextKey, cancelMortgagePreview);
   const cancelledRequestIdRef = React.useRef<string | null>(null);
+  const attachmentStatusRef = React.useRef<HTMLParagraphElement>(null);
+  const previousAttachmentStatusRef =
+    React.useRef<MortgageDocumentPairingResult["status"] | null>(null);
 
   React.useEffect(() => {
     if (preflight.requestId === undefined && preview === null && isWorking) {
       setIsWorking(false);
     }
   }, [isWorking, preflight.requestId, preview]);
+
+  React.useEffect(() => {
+    const attachmentStatus = preview?.attachment?.status ?? null;
+    if (
+      previousAttachmentStatusRef.current === "confirmation-required" &&
+      attachmentStatus === "confirmed"
+    ) {
+      attachmentStatusRef.current?.focus();
+    }
+    previousAttachmentStatusRef.current = attachmentStatus;
+  }, [preview?.attachment?.status]);
 
   function currentTarget(): MortgageImportTarget | null {
     if (loanId !== undefined) return { kind: "existing", loanId };
@@ -492,10 +506,7 @@ export function LoanMortgageImportPanel({
         <button
           type="button"
           disabled={isWorking}
-          onClick={() => {
-            setIsOpen(true);
-            if (!isNewSourceOnlyTarget) void chooseFiles();
-          }}
+          onClick={() => setIsOpen(true)}
         >
           {isNewSourceOnlyTarget ? "Import as incomplete loan" : "Import mortgage evidence"}
         </button>
@@ -541,6 +552,10 @@ export function LoanMortgageImportPanel({
           )}
           {preview === null ? (
             <>
+              <p className="loan-required-note">
+                Select the saved loan-details page, repayment-plan page, or both. A single
+                supported page can be reviewed as partial evidence.
+              </p>
               <button disabled={isWorking} onClick={() => void chooseFiles()} type="button">
                 {isWorking ? "Reading mortgage evidence..." : "Choose mortgage HTML files"}
               </button>
@@ -580,8 +595,19 @@ export function LoanMortgageImportPanel({
                 Imported figures remain evidence; they do not replace manually recorded terms or
                 actual balances.
               </p>
+              <a
+                className="loan-mortgage-import-review-link"
+                href={`#mortgage-import-actions-${preview.previewId}`}
+              >
+                Jump to review actions
+              </a>
               {attachmentMessage(preview.attachment, preview.target) !== null && (
-                <p className="loan-mortgage-import-note" role="status">
+                <p
+                  ref={attachmentStatusRef}
+                  className="loan-mortgage-import-note"
+                  role="status"
+                  tabIndex={-1}
+                >
                   {attachmentMessage(preview.attachment, preview.target)}
                 </p>
               )}
@@ -645,7 +671,13 @@ export function LoanMortgageImportPanel({
                   unchanged.
                 </label>
               )}
-              <div className="loan-mortgage-import-actions">
+              <div
+                id={`mortgage-import-actions-${preview.previewId}`}
+                className="loan-mortgage-import-actions"
+                role="group"
+                aria-label="Mortgage evidence review actions"
+                tabIndex={-1}
+              >
                 <button
                   disabled={isWorking || !canAccept}
                   onClick={() => void acceptEvidence()}

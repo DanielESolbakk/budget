@@ -49,6 +49,16 @@ test("loan workflow previews and accepts paired mortgage evidence without changi
     name: "Mortgage evidence preview for Rogaland mortgage",
     exact: true,
   });
+  await expect(importPanel.getByText(
+    "Select the saved loan-details page, repayment-plan page, or both. A single supported page can be reviewed as partial evidence.",
+    { exact: true }
+  )).toBeVisible();
+  const chooseFilesButton = importPanel.getByRole("button", {
+    name: "Choose mortgage HTML files",
+    exact: true,
+  });
+  await expect(chooseFilesButton).toBeEnabled();
+  await chooseFilesButton.click();
   await expect(preview).toBeVisible();
   const currentCheckpoint = preview.getByRole("group", {
     name: "Current month source checkpoint",
@@ -92,9 +102,22 @@ test("loan workflow previews and accepts paired mortgage evidence without changi
   });
   await confirmAttachmentButton.focus();
   await window.keyboard.press("Enter");
-  await expect(preview).toContainText("You confirmed this evidence belongs to the selected loan.");
+  const attachmentConfirmationStatus = preview.getByText(
+    "You confirmed this evidence belongs to the selected loan.",
+    { exact: true }
+  );
+  await expect(attachmentConfirmationStatus).toBeFocused();
   await expect(preview).toContainText("Source comparison with saved loan terms");
   await expect(preview).toContainText("Opprinnelig lånebeløp");
+  const reviewActions = preview.getByRole("group", {
+    name: "Mortgage evidence review actions",
+    exact: true,
+  });
+  await preview.getByRole("link", {
+    name: "Jump to review actions",
+    exact: true,
+  }).click();
+  await expect(reviewActions).toBeFocused();
   await window.setViewportSize({ width: 1280, height: 800 });
   await electronApp.evaluate(({ BrowserWindow }) => {
     const mainWindow = BrowserWindow.getAllWindows()[0];
@@ -145,6 +168,13 @@ test("loan workflow previews and accepts paired mortgage evidence without changi
   }, [...filePaths].reverse());
   await reloadedLoan.getByRole("button", {
     name: "Import mortgage evidence",
+    exact: true,
+  }).click();
+  await window.getByRole("region", {
+    name: "Mortgage evidence import for Rogaland mortgage",
+    exact: true,
+  }).getByRole("button", {
+    name: "Choose mortgage HTML files",
     exact: true,
   }).click();
   const replayPreview = window.getByRole("region", {
@@ -228,6 +258,10 @@ test("an incomplete loan is created only when mortgage evidence is accepted", as
     exact: true,
   }).click();
   await importPanel.getByLabel("Loan label", { exact: true }).fill("Rogaland mortgage");
+  await expect(importPanel.getByText(
+    "Select the saved loan-details page, repayment-plan page, or both. A single supported page can be reviewed as partial evidence.",
+    { exact: true }
+  )).toBeVisible();
   await importPanel.getByRole("button", { name: "Choose mortgage HTML files", exact: true }).click();
 
   const preview = window.getByRole("region", {
@@ -335,6 +369,10 @@ test("canceling a mortgage preview does not persist evidence or change the loan"
     name: "Mortgage evidence import for Rogaland mortgage",
     exact: true,
   });
+  await importPanel.getByRole("button", {
+    name: "Choose mortgage HTML files",
+    exact: true,
+  }).click();
   const preview = window.getByRole("region", {
     name: "Mortgage evidence preview for Rogaland mortgage",
     exact: true,
@@ -394,6 +432,10 @@ test("canceling while mortgage evidence is being read stops the pending preview"
     name: "Mortgage evidence import for Rogaland mortgage",
     exact: true,
   });
+  await importPanel.getByRole("button", {
+    name: "Choose mortgage HTML files",
+    exact: true,
+  }).click();
   const cancelReadButton = importPanel.getByRole("button", {
     name: "Cancel reading mortgage evidence",
     exact: true,
