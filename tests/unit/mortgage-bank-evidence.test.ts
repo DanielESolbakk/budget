@@ -5,8 +5,12 @@ import {
   assessMortgageDocumentPairing,
   parseRogalandMortgageHtml,
   parseRogalandMortgageMinorUnits,
+  sanitizeMortgageEvidenceDocuments,
   validateRogalandMortgageSchedule,
 } from "../../src/domain/import/rogalandMortgageHtml.js";
+import {
+  summarizeFirstCoveredMortgageScheduleYear,
+} from "../../src/domain/import/mortgageScheduleCoverage.js";
 
 const REORDERED_SCHEDULE_HTML = `
   <nav>
@@ -430,7 +434,112 @@ describe("Rogaland mortgage HTML parsing", () => {
       110_000,
       109_900,
     ]);
+    expect(summarizeFirstCoveredMortgageScheduleYear(schedule.scheduleRows)).toMatchObject({
+      year: 2026,
+      annualSummaryRowIndex: 0,
+      coveredMonths: [11, 12],
+      hasFullMonthlyCoverage: false,
+      yearEndRowIndex: 0,
+      monthlyTotals: null,
+    });
     expect(schedule.identityEvidence.currencyCode).toBeNull();
+  });
+
+  it("calculates exact monthly sums only for a complete Jan-Dec year", () => {
+    const schedule = parseSchedule(buildGroupedMonthlySchedule([2026]));
+
+    expect(summarizeFirstCoveredMortgageScheduleYear(schedule.scheduleRows)).toMatchObject({
+      year: 2026,
+      annualSummaryRowIndex: null,
+      monthlyRowIndexes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      coveredMonths: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      hasDuplicateMonths: false,
+      hasFullMonthlyCoverage: true,
+      yearEndRowIndex: 11,
+      monthlyTotals: {
+        principalMinor: 120_000,
+        interestMinor: 108_000,
+        feeMinor: 12_000,
+        paymentMinor: 240_000,
+        yearEndBalanceMinor: 99_880_000,
+      },
+    });
+  });
+
+  it("does not sum a first year with a missing month", () => {
+    const schedule = parseSchedule(buildGroupedMonthlySchedule(
+      [2026],
+      { omittedPeriod: "2026-02" }
+    ));
+
+    expect(summarizeFirstCoveredMortgageScheduleYear(schedule.scheduleRows)).toMatchObject({
+      year: 2026,
+      coveredMonths: [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      hasDuplicateMonths: false,
+      hasFullMonthlyCoverage: false,
+      yearEndRowIndex: 10,
+      monthlyTotals: null,
+    });
+  });
+
+  it("does not treat a repeated month as complete annual coverage", () => {
+    const duplicateMonthSchedule = buildGroupedMonthlySchedule([2026])
+      .replace("<td>Februar</td>", "<td>Januar</td>");
+    const schedule = parseSchedule(duplicateMonthSchedule);
+
+    expect(summarizeFirstCoveredMortgageScheduleYear(schedule.scheduleRows)).toMatchObject({
+      year: 2026,
+      coveredMonths: [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      hasDuplicateMonths: true,
+      hasFullMonthlyCoverage: false,
+      yearEndRowIndex: 11,
+      monthlyTotals: null,
+    });
+  });
+
+  it("selects the annual row as checkpoint when a full-year monthly sum is available", () => {
+    const annualSummaryRow = [
+      '<tr class="table-header-row"><td>2026</td><td>1 200,00</td>',
+      "<td>1 080,00</td><td>120,00</td><td>2 400,00</td><td>998 800,00</td></tr>",
+    ].join("");
+    const scheduleHtml = buildGroupedMonthlySchedule([2026])
+      .replace("</tbody>", `${annualSummaryRow}</tbody>`);
+    const schedule = parseSchedule(scheduleHtml);
+
+    expect(summarizeFirstCoveredMortgageScheduleYear(schedule.scheduleRows)).toMatchObject({
+      year: 2026,
+      annualSummaryRowIndex: 12,
+      monthlyRowIndexes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      hasFullMonthlyCoverage: true,
+      yearEndRowIndex: 12,
+      monthlyTotals: {
+        principalMinor: 120_000,
+        interestMinor: 108_000,
+        feeMinor: 12_000,
+        paymentMinor: 240_000,
+        yearEndBalanceMinor: 99_880_000,
+      },
+    });
+  });
+
+  it("keeps an annual-only first year without a monthly sum", () => {
+    const schedule = parseSchedule(`
+      <h1>Nedbetalingsplan</h1>
+      <table>
+        <tr><th>Termin</th><th>Avdrag</th><th>Renter</th><th>Gebyr</th><th>Terminbeløp</th><th>Restgjeld</th></tr>
+        <tr><td>2026</td><td>12 000,00</td><td>1 000,00</td><td>120,00</td><td>13 120,00</td><td>88 000,00</td></tr>
+      </table>
+    `);
+
+    expect(summarizeFirstCoveredMortgageScheduleYear(schedule.scheduleRows)).toMatchObject({
+      year: 2026,
+      annualSummaryRowIndex: 0,
+      monthlyRowIndexes: [],
+      coveredMonths: [],
+      hasFullMonthlyCoverage: false,
+      yearEndRowIndex: 0,
+      monthlyTotals: null,
+    });
   });
 
   it("uses verified year groups for long monthly schedules and leaves missing periods absent", () => {
@@ -450,6 +559,8 @@ describe("Rogaland mortgage HTML parsing", () => {
     expect(threeYear.scheduleRows).toHaveLength(36);
     expect(threeYear.scheduleRows[0]?.period)
       .toEqual({ granularity: "monthly", year: 2026, month: 1 });
+    expect(threeYear.scheduleRows[0]?.sourceYearGroupLabel).toBe("2026");
+    expect(threeYear.scheduleRows[12]?.sourceYearGroupLabel).toBe("2027");
     expect(threeYear.scheduleRows.at(-1)?.period)
       .toEqual({ granularity: "monthly", year: 2028, month: 12 });
 
@@ -512,8 +623,75 @@ describe("Rogaland mortgage HTML parsing", () => {
         projectedClosingBalanceMinor: 9_900_000,
         sourceHeaders: ["Termin", "Restgjeld", "Gebyr", "Terminbeløp", "Renter", "Avdrag"],
         sourceValues: ["Januar 2026", "99\u00a0000,00", "10,00", "1 100,00", "90,00", "1 000,00"],
+        sourceYearGroupLabel: null,
       }],
     });
+  });
+
+  it("replaces stored loan references with a keyed fingerprint", () => {
+    const parserLimits = {
+      maxSourceCharacters: 10_000,
+      maxElements: 1_000,
+      maxDepth: 100,
+    };
+    const parsedDocument = parseRogalandMortgageHtml(`
+      <h1>Lånedetaljer</h1>
+      <dl>
+        <dt>Lånenummer</dt><dd>loan-123</dd>
+        <dt>Lånevaluta</dt><dd>NOK</dd>
+      </dl>
+    `, parserLimits);
+    const document = {
+      role: "details" as const,
+      sourceHashSha256: "a".repeat(64),
+      parserVersion: "2",
+      parserLimits,
+      parsedDocument,
+    };
+    const fingerprinter = {
+      keyId: "0123456789abcdef",
+      fingerprint: (reference: string) => (
+        reference.toUpperCase() === "LOAN-123" ? "b".repeat(64) : "c".repeat(64)
+      ),
+    };
+    const sanitized = Reflect.apply(
+      sanitizeMortgageEvidenceDocuments,
+      undefined,
+      [[document], fingerprinter]
+    ) as Array<Record<string, unknown>>;
+
+    expect(sanitized[0]).toMatchObject({
+      identityFingerprint: {
+        keyId: "0123456789abcdef",
+        references: ["b".repeat(64)],
+      },
+      parsedDocument: {
+        identityEvidence: {
+          loanReference: null,
+          loanReferenceValues: [],
+        },
+      },
+    });
+    expect(JSON.stringify(sanitized)).not.toContain("loan-123");
+  });
+
+  it("normalizes loan references while keeping fingerprints key-specific", async () => {
+    const identityModule = await import("../../src/domain/import/rogalandMortgageHtml.js");
+    const createFingerprinter = Reflect.get(
+      identityModule,
+      "createMortgageIdentityFingerprinter"
+    );
+
+    expect(typeof createFingerprinter).toBe("function");
+    const first = Reflect.apply(createFingerprinter, undefined, [
+      new Uint8Array(32).fill(1),
+    ]);
+    const second = Reflect.apply(createFingerprinter, undefined, [
+      new Uint8Array(32).fill(2),
+    ]);
+    expect(first.fingerprint(" loan-123 ")).toBe(first.fingerprint("LOAN-123"));
+    expect(first.fingerprint("loan-123")).not.toBe(second.fingerprint("loan-123"));
+    expect(first.keyId).not.toBe(second.keyId);
   });
 
   it("rejects duplicated semantic schedule headers instead of selecting one", () => {

@@ -276,6 +276,7 @@ export function resolveRendererBudgetApi(
     },
     mortgageImport: {
       previewFiles: desktopOnlyAction,
+      revealAttachmentIdentity: desktopOnlyAction,
       confirmAttachment: desktopOnlyAction,
       acceptPreview: desktopOnlyAction,
       cancelPreview: desktopOnlyAction,

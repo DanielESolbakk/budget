@@ -47,6 +47,7 @@ import type {
   MortgageEvidenceVersion,
   MortgageEvidenceVersionInput,
 } from "../../shared/mortgageBankEvidence.js";
+import type { MortgageIdentityFingerprinter } from "../../domain/import/mortgageIdentityFingerprint.js";
 import type {
   AccountHistorySummary,
   AccountUpdateInput,
@@ -60,6 +61,7 @@ export interface LocalLedgerRuntimeMetadata {
 }
 
 export interface LocalLedgerDatabase {
+  readonly mortgageIdentityFingerprinter: MortgageIdentityFingerprinter;
   listCategories: (householdId: string) => Category[];
   createCategoryRecord: (category: Category) => void;
   updateCategoryRecordLabel: (householdId: string, categoryId: string, label: string, updatedAtIso: string) => void;

@@ -88,6 +88,26 @@ function isMortgageHtmlParseLimits(value: unknown): value is MortgageHtmlParseLi
     value.maxDepth <= PROVISIONAL_MORTGAGE_HTML_PARSE_LIMITS.maxDepth;
 }
 
+function isMortgageEvidenceIdentityFingerprint(
+  value: unknown,
+  maxReferences: number
+): boolean {
+  if (value === undefined) return true;
+  if (
+    !isRecord(value) ||
+    typeof value.keyId !== "string" ||
+    !/^[0-9a-f]{16}$/.test(value.keyId) ||
+    !Array.isArray(value.references) ||
+    value.references.length === 0 ||
+    value.references.length > maxReferences
+  ) {
+    return false;
+  }
+  return value.references.every((reference) =>
+    typeof reference === "string" && /^[0-9a-f]{64}$/.test(reference)
+  ) && new Set(value.references).size === value.references.length;
+}
+
 function isMortgagePeriod(value: unknown): value is MortgageSchedulePeriod {
   if (!isRecord(value)) return false;
   if (value.granularity === "monthly") {
@@ -916,9 +936,18 @@ export function validateMortgageEvidenceVersions(
         typeof document.sourceHashSha256 !== "string" ||
         !/^[0-9a-f]{64}$/.test(document.sourceHashSha256) ||
         !isNonEmptyString(document.parserVersion) ||
-        document.parserVersion.length > 64 ||
-        !isMortgageHtmlParseLimits(document.parserLimits) ||
-        !isMortgageHtmlParseResult(document.parsedDocument, document.role, document.parserLimits)
+        document.parserVersion.length > 64
+      ) {
+        invalidSnapshot(snapshotPath, "mortgage evidence documents");
+      }
+      const parserLimits = document.parserLimits;
+      if (
+        !isMortgageHtmlParseLimits(parserLimits) ||
+        !isMortgageEvidenceIdentityFingerprint(
+          document.identityFingerprint,
+          parserLimits.maxElements + 1
+        ) ||
+        !isMortgageHtmlParseResult(document.parsedDocument, document.role, parserLimits)
       ) {
         invalidSnapshot(snapshotPath, "mortgage evidence documents");
       }

@@ -356,6 +356,39 @@
   color: var(--household-error);
 }
 
+.loan-mortgage-identity-check {
+  min-width: 0;
+  margin-top: 0.8rem;
+  border-top: 1px solid var(--household-border);
+  padding-top: 0.7rem;
+}
+
+.household-workspace .loan-mortgage-identity-check h6,
+.household-workspace .loan-mortgage-identity-references h6 {
+  margin: 0 0 0.6rem;
+  color: var(--household-ink);
+  font-size: 0.9rem;
+}
+
+.loan-mortgage-identity-check > p {
+  overflow-wrap: anywhere;
+}
+
+.loan-mortgage-identity-references {
+  min-width: 0;
+  margin-top: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.loan-mortgage-identity-references ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.loan-mortgage-identity-references li + li {
+  margin-top: 0.4rem;
+}
+
 .loan-mortgage-import-partial,
 .loan-mortgage-import-acknowledgement {
   display: flex;

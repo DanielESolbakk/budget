@@ -1,7 +1,9 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
+  safeStorage,
   session,
 } from "electron";
 import { pathToFileURL } from "node:url";
@@ -25,6 +27,7 @@ import { createMortgageBankImportService } from "../src/app/mortgageBankImportSe
 import { createPropertyRegistry } from "../src/app/propertyRegistry.js";
 import { createRecurringCommitmentService } from "../src/app/recurringCommitmentService.js";
 import { createSpendableCashService } from "../src/app/spendableCashService.js";
+import { loadOrCreateMortgageIdentityFingerprinter } from "./mortgageIdentityKey.js";
 import type {
   Account,
   Household,
@@ -121,37 +124,74 @@ const shouldSeedTestLedger =
 const runtimeAccounts: Account[] = [];
 const sampleTargetStore = createMonthlyCategoryTargetStore(shouldSeedTestLedger ? sampleTargets : []);
 
-const localLedgerDatabase = createLocalLedgerDatabase({
-  ...(shouldSeedTestLedger
-    ? {
-        seedData: {
-          household: sampleHousehold,
-          accounts: sampleAccounts,
-          transactions: sampleTransactions,
-          importJobs: [],
-          monthlyCategoryTargets: sampleTargets,
-        },
-      }
-    : {}),
-});
-const accountLifecycleService = createAccountLifecycleService(localLedgerDatabase);
-const categoryManagementService = createCategoryManagementService(localLedgerDatabase);
-const propertyRegistry = createPropertyRegistry(localLedgerDatabase);
-const holdingRegistry = createHoldingRegistry(localLedgerDatabase);
-const loanRegistry = createLoanRegistry(localLedgerDatabase);
-const recurringCommitmentService = createRecurringCommitmentService(localLedgerDatabase);
-const spendableCashService = createSpendableCashService(localLedgerDatabase);
-const cashflowScenarioService = createCashflowScenarioService(localLedgerDatabase);
-const learnedCategoryRules = new Map(
-  localLedgerDatabase.listMerchantCategoryRules().map((rule) => [rule.merchantAlias, rule.categoryId])
-);
+interface MainRuntime {
+  readonly localLedgerDatabase: ReturnType<typeof createLocalLedgerDatabase>;
+  readonly accountLifecycleService: ReturnType<typeof createAccountLifecycleService>;
+  readonly categoryManagementService: ReturnType<typeof createCategoryManagementService>;
+  readonly propertyRegistry: ReturnType<typeof createPropertyRegistry>;
+  readonly holdingRegistry: ReturnType<typeof createHoldingRegistry>;
+  readonly loanRegistry: ReturnType<typeof createLoanRegistry>;
+  readonly recurringCommitmentService: ReturnType<typeof createRecurringCommitmentService>;
+  readonly spendableCashService: ReturnType<typeof createSpendableCashService>;
+  readonly cashflowScenarioService: ReturnType<typeof createCashflowScenarioService>;
+  readonly learnedCategoryRules: Map<string, string>;
+  readonly mortgageBankImportService: ReturnType<typeof createMortgageBankImportService>;
+}
+
+let mainRuntime: MainRuntime | undefined;
+
+function getMainRuntime(): MainRuntime {
+  if (mainRuntime === undefined) {
+    throw new Error("The application runtime has not been initialized.");
+  }
+  return mainRuntime;
+}
+
+function createMainRuntime(): MainRuntime {
+  const mortgageIdentityFingerprinter = loadOrCreateMortgageIdentityFingerprinter(
+    join(app.getPath("userData"), "mortgage-identity-key.bin"),
+    safeStorage
+  );
+  const localLedgerDatabase = createLocalLedgerDatabase({
+    ...(shouldSeedTestLedger
+      ? {
+          seedData: {
+            household: sampleHousehold,
+            accounts: sampleAccounts,
+            transactions: sampleTransactions,
+            importJobs: [],
+            monthlyCategoryTargets: sampleTargets,
+          },
+        }
+      : {}),
+    mortgageIdentityFingerprinter,
+  });
+  return {
+    localLedgerDatabase,
+    accountLifecycleService: createAccountLifecycleService(localLedgerDatabase),
+    categoryManagementService: createCategoryManagementService(localLedgerDatabase),
+    propertyRegistry: createPropertyRegistry(localLedgerDatabase),
+    holdingRegistry: createHoldingRegistry(localLedgerDatabase),
+    loanRegistry: createLoanRegistry(localLedgerDatabase),
+    recurringCommitmentService: createRecurringCommitmentService(localLedgerDatabase),
+    spendableCashService: createSpendableCashService(localLedgerDatabase),
+    cashflowScenarioService: createCashflowScenarioService(localLedgerDatabase),
+    learnedCategoryRules: new Map(
+      localLedgerDatabase.listMerchantCategoryRules().map((rule) => [
+        rule.merchantAlias,
+        rule.categoryId,
+      ])
+    ),
+    mortgageBankImportService: createMortgageBankImportService(localLedgerDatabase, {
+      getDatabaseGeneration: () => runtimeState.databaseGeneration,
+    }),
+  };
+}
+
 const importPreviewRegistry = new ImportPreviewRegistry();
 const ledgerOperationCoordinator = new LedgerOperationCoordinator();
 let mainWindow: BrowserWindow | undefined;
 const runtimeState = { ledgerGeneration: 0, databaseGeneration: 0 };
-const mortgageBankImportService = createMortgageBankImportService(localLedgerDatabase, {
-  getDatabaseGeneration: () => runtimeState.databaseGeneration,
-});
 const activeImportPreflights = new Map<string, { cancelled: boolean }>();
 
 // Refresh shared objects in place so registered channels observe setup and restore.
@@ -174,20 +214,21 @@ function applyRuntimeLedgerSnapshot(snapshot: {
       targetMinor: target.targetMinor,
     });
   }
+  const { learnedCategoryRules } = getMainRuntime();
   learnedCategoryRules.clear();
   for (const rule of snapshot.merchantCategoryRules ?? []) {
     learnedCategoryRules.set(rule.merchantAlias, rule.categoryId);
   }
 }
 
-(function hydrateFromLedger(): void {
+function hydrateFromLedger(): void {
   try {
-    const runtimeMetadata = localLedgerDatabase.loadRuntimeMetadata();
+    const runtimeMetadata = getMainRuntime().localLedgerDatabase.loadRuntimeMetadata();
     if (runtimeMetadata !== null) applyRuntimeLedgerSnapshot(runtimeMetadata);
   } catch (error) {
     console.error("Failed to hydrate runtime state from local ledger:", error);
   }
-})();
+}
 
 function resolveDefaultAccountId(householdId: string): string {
   const account = selectActiveAccounts(runtimeAccounts)
@@ -200,7 +241,9 @@ function resolveDefaultAccountId(householdId: string): string {
 }
 
 function accountBelongsToHousehold(accountId: string, householdId: string): boolean {
-  return selectActiveAccounts(localLedgerDatabase.getAccountsForHousehold(householdId))
+  return selectActiveAccounts(
+    getMainRuntime().localLedgerDatabase.getAccountsForHousehold(householdId)
+  )
     .some((account) => account.id === accountId);
 }
 
@@ -226,7 +269,10 @@ function assertTrustedRenderer(event: Electron.IpcMainInvokeEvent): void {
 }
 
 function getDashboardData(): DashboardData {
-  return queryHouseholdDashboardData(localLedgerDatabase, sampleHousehold.id);
+  return queryHouseholdDashboardData(
+    getMainRuntime().localLedgerDatabase,
+    sampleHousehold.id
+  );
 }
 
 function getViewData(
@@ -235,7 +281,7 @@ function getViewData(
   selectedPeriodStartDateIso?: string
 ): DashboardViewContract {
   return queryHouseholdDashboardView(
-    localLedgerDatabase,
+    getMainRuntime().localLedgerDatabase,
     sampleHousehold.id,
     yearMonth,
     reportingPeriodRule,
@@ -293,6 +339,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  mainRuntime = createMainRuntime();
+  hydrateFromLedger();
+  const runtime = getMainRuntime();
   installNetworkGuard(session.defaultSession);
 
   const dashboardTestOverrides =
@@ -312,8 +361,14 @@ app.whenReady().then(async () => {
   const restoreSnapshotDialog = createRestoreSnapshotDialog();
 
   registerReportsChannels({
-    ipcMain, assertTrustedRenderer, localLedgerDatabase, sampleHousehold, sampleTargetStore,
-    spendableCashService, cashflowScenarioService, ledgerOperationCoordinator,
+    ipcMain,
+    assertTrustedRenderer,
+    localLedgerDatabase: runtime.localLedgerDatabase,
+    sampleHousehold,
+    sampleTargetStore,
+    spendableCashService: runtime.spendableCashService,
+    cashflowScenarioService: runtime.cashflowScenarioService,
+    ledgerOperationCoordinator,
     getDashboardData, dashboardProvider, exchangeRateImportDialog,
   });
   registerDialogsChannels({
@@ -321,33 +376,63 @@ app.whenReady().then(async () => {
     importStatementDialog, restoreSnapshotDialog,
   });
   registerSetupChannels({
-    ipcMain, assertTrustedRenderer, localLedgerDatabase, accountLifecycleService,
+    ipcMain,
+    assertTrustedRenderer,
+    localLedgerDatabase: runtime.localLedgerDatabase,
+    accountLifecycleService: runtime.accountLifecycleService,
     sampleHousehold, runtimeState, ledgerOperationCoordinator, applyRuntimeLedgerSnapshot,
   });
   registerRecurringChannels({
-    ipcMain, assertTrustedRenderer, recurringCommitmentService, ledgerOperationCoordinator,
+    ipcMain,
+    assertTrustedRenderer,
+    recurringCommitmentService: runtime.recurringCommitmentService,
+    ledgerOperationCoordinator,
   });
   registerRegistriesChannels({
-    ipcMain, assertTrustedRenderer, propertyRegistry, holdingRegistry,
-    loanRegistry, ledgerOperationCoordinator,
+    ipcMain,
+    assertTrustedRenderer,
+    propertyRegistry: runtime.propertyRegistry,
+    holdingRegistry: runtime.holdingRegistry,
+    loanRegistry: runtime.loanRegistry,
+    ledgerOperationCoordinator,
   });
   registerMortgageImportChannels({
-    ipcMain, assertTrustedRenderer, mortgageBankImportService, mortgageHtmlImportDialog,
+    ipcMain,
+    assertTrustedRenderer,
+    mortgageBankImportService: runtime.mortgageBankImportService,
+    mortgageHtmlImportDialog,
     ledgerOperationCoordinator, runtimeState,
   });
   registerImportsChannels({
-    ipcMain, assertTrustedRenderer, localLedgerDatabase, sampleHousehold, runtimeState,
-    learnedCategoryRules, importPreviewRegistry, ledgerOperationCoordinator,
+    ipcMain,
+    assertTrustedRenderer,
+    localLedgerDatabase: runtime.localLedgerDatabase,
+    sampleHousehold,
+    runtimeState,
+    learnedCategoryRules: runtime.learnedCategoryRules,
+    importPreviewRegistry,
+    ledgerOperationCoordinator,
     activeImportPreflights, resolveDefaultAccountId, accountBelongsToHousehold,
     applyRuntimeLedgerSnapshot,
   });
   registerRecoveryChannels({
-    ipcMain, assertTrustedRenderer, localLedgerDatabase, runtimeState, importPreviewRegistry,
+    ipcMain,
+    assertTrustedRenderer,
+    localLedgerDatabase: runtime.localLedgerDatabase,
+    runtimeState,
+    importPreviewRegistry,
     ledgerOperationCoordinator, applyRuntimeLedgerSnapshot, applyRecoveryOperationTestDelay,
   });
   registerReviewLedgerChannels({
-    ipcMain, assertTrustedRenderer, localLedgerDatabase, categoryManagementService, sampleHousehold, runtimeState,
-    learnedCategoryRules, ledgerOperationCoordinator, applyTransactionListTestControl,
+    ipcMain,
+    assertTrustedRenderer,
+    localLedgerDatabase: runtime.localLedgerDatabase,
+    categoryManagementService: runtime.categoryManagementService,
+    sampleHousehold,
+    runtimeState,
+    learnedCategoryRules: runtime.learnedCategoryRules,
+    ledgerOperationCoordinator,
+    applyTransactionListTestControl,
   });
 
   createWindow();
@@ -357,11 +442,16 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+}).catch((error: unknown) => {
+  console.error("Failed to initialize the budget application.", error);
+  const message = error instanceof Error ? error.message : String(error);
+  dialog.showErrorBox("Budget could not start", message);
+  app.quit();
 });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    localLedgerDatabase.close();
+    mainRuntime?.localLedgerDatabase.close();
     app.quit();
   }
 });

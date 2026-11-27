@@ -12,13 +12,18 @@ import type {
   MortgageDocumentPairingResult,
   MortgageSchedulePeriod,
   MortgageScheduleRowEvidence,
+  MortgageScheduleSourceExcerpt,
   MortgageScheduleValidationIssue,
   MortgageScheduleOpeningBalanceEvidence,
   MortgageScheduleValidationResult,
   MortgageSourceRole,
+  MortgageEvidenceDocumentVersion,
 } from "../../shared/mortgageBankEvidence.js";
 import { parseDecimalMinorUnits } from "../money/minorUnits.js";
 import { isIsoCalendarDate } from "../date/calendarDate.js";
+import type { MortgageIdentityFingerprinter } from "./mortgageIdentityFingerprint.js";
+
+export { createMortgageIdentityFingerprinter } from "./mortgageIdentityFingerprint.js";
 
 export const ROGALAND_MORTGAGE_PARSER_VERSION = "2" as const;
 
@@ -233,10 +238,11 @@ function parsePeriod(value: string, groupedYear?: number): MortgageSchedulePerio
 function verifiedYearGroup(
   cells: readonly HtmlElement[],
   expectedColumnCount: number
-): number | undefined {
+): { readonly year: number; readonly sourceLabel: string } | undefined {
   if (cells.length !== 1 || cells[0]?.tagName !== "th") return undefined;
   const cell = cells[0];
-  const yearMatch = /^(\d{4})$/.exec(normalizeLabel(textContent(cell)));
+  const sourceLabel = textContent(cell).trim();
+  const yearMatch = /^(\d{4})$/.exec(normalizeLabel(sourceLabel));
   if (yearMatch === null) return undefined;
 
   const scope = cell.attrs.find((attribute) => attribute.name === "scope")?.value.toLowerCase();
@@ -244,7 +250,9 @@ function verifiedYearGroup(
   const colspan = colspanValue === undefined ? 1 : Number(colspanValue);
   const isVerifiedGroup = scope === "rowgroup" ||
     (Number.isSafeInteger(colspan) && colspan >= expectedColumnCount);
-  return isVerifiedGroup ? Number(yearMatch[1]) : undefined;
+  return isVerifiedGroup
+    ? { year: Number(yearMatch[1]), sourceLabel }
+    : undefined;
 }
 
 function annualSummaryYear(
@@ -302,6 +310,131 @@ function mapScheduleColumns(headers: readonly string[]): ScheduleColumns | null 
   return { period, principal, interest, fee: fee ?? null, payment, closingBalance };
 }
 
+export function buildMortgageScheduleSourceExcerpt(
+  row: Pick<
+    MortgageScheduleRowEvidence,
+    "sourceHeaders" | "sourceValues" | "sourceYearGroupLabel"
+  >
+): MortgageScheduleSourceExcerpt {
+  const columns = mapScheduleColumns(row.sourceHeaders);
+  if (columns === null) {
+    return { yearGroupLabel: row.sourceYearGroupLabel, cells: [] };
+  }
+
+  const indexes = [
+    columns.period,
+    columns.principal,
+    columns.interest,
+    columns.fee,
+    columns.payment,
+    columns.closingBalance,
+  ]
+    .filter((index): index is number => index !== null)
+    .sort((left, right) => left - right);
+
+  return {
+    yearGroupLabel: row.sourceYearGroupLabel,
+    cells: indexes.map((index) => ({
+      sourceLabel: row.sourceHeaders[index] ?? "",
+      sourceValue: row.sourceValues[index] ?? "",
+    })),
+  };
+}
+
+export function maskMortgageIdentifier(value: string): string {
+  const compact = value.replace(/\s+/g, "");
+  return compact.length <= 4 ? "****" : `****${compact.slice(-4)}`;
+}
+
+export function redactMortgageEvidenceText(
+  value: string,
+  references: readonly string[]
+): string {
+  let redacted = value;
+  for (const reference of references) {
+    const compact = reference.replace(/\s+/g, "");
+    if (compact === "") continue;
+    const pattern = compact
+      .split("")
+      .map((character) => character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s*");
+    redacted = redacted.replace(new RegExp(pattern, "gi"), maskMortgageIdentifier(reference));
+  }
+  return redacted;
+}
+
+export function sanitizeMortgageEvidenceDocuments(
+  documents: readonly MortgageEvidenceDocumentVersion[],
+  fingerprinter: MortgageIdentityFingerprinter
+): MortgageEvidenceDocumentVersion[] {
+  return documents.map((document) => {
+    const parsedDocument = document.parsedDocument;
+    const references = [
+      ...parsedDocument.identityEvidence.loanReferenceValues,
+      ...(parsedDocument.identityEvidence.loanReference === null
+        ? []
+        : [parsedDocument.identityEvidence.loanReference]),
+    ];
+    const redact = (value: string): string => redactMortgageEvidenceText(value, references);
+    const identityFingerprints = document.identityFingerprint?.keyId === fingerprinter.keyId
+      ? [
+          ...document.identityFingerprint.references,
+          ...references.map(fingerprinter.fingerprint),
+        ]
+      : document.identityFingerprint?.references ??
+        references.map(fingerprinter.fingerprint);
+    const identityFingerprint = identityFingerprints.length === 0
+      ? undefined
+      : {
+          keyId: document.identityFingerprint?.keyId ?? fingerprinter.keyId,
+          references: [...new Set(identityFingerprints)].sort(),
+        };
+
+    return {
+      ...document,
+      ...(identityFingerprint === undefined ? {} : { identityFingerprint }),
+      parsedDocument: {
+        ...parsedDocument,
+        sourceDateEvidence: {
+          ...parsedDocument.sourceDateEvidence,
+          sourceLabels: parsedDocument.sourceDateEvidence.sourceLabels.map(redact),
+          sourceValues: parsedDocument.sourceDateEvidence.sourceValues.map(redact),
+        },
+        detailsFields: parsedDocument.detailsFields.map((field) => ({
+          ...field,
+          sourceLabel: redact(field.sourceLabel),
+          sourceValue: redact(field.sourceValue),
+        })),
+        identityEvidence: {
+          ...parsedDocument.identityEvidence,
+          loanReference: null,
+          loanReferenceValues: [],
+          currencyValues: parsedDocument.identityEvidence.currencyValues.map(redact),
+        },
+        openingBalanceEvidence: parsedDocument.openingBalanceEvidence === null
+          ? null
+          : {
+              ...parsedDocument.openingBalanceEvidence,
+              sourceLabel: redact(parsedDocument.openingBalanceEvidence.sourceLabel),
+              sourceValue: redact(parsedDocument.openingBalanceEvidence.sourceValue),
+            },
+        scheduleRows: parsedDocument.scheduleRows.map((row) => {
+          const sourceExcerpt = buildMortgageScheduleSourceExcerpt(row);
+          return {
+            ...row,
+            periodLabel: redact(row.periodLabel),
+            sourceHeaders: sourceExcerpt.cells.map((cell) => cell.sourceLabel),
+            sourceValues: sourceExcerpt.cells.map((cell) => redact(cell.sourceValue)),
+            sourceYearGroupLabel: sourceExcerpt.yearGroupLabel === null
+              ? null
+              : redact(sourceExcerpt.yearGroupLabel),
+          };
+        }),
+      },
+    };
+  });
+}
+
 function parseAmountCell(value: string): number | null {
   if (value.trim() === "") return null;
   const amount = parseRogalandMortgageMinorUnits(value);
@@ -324,17 +457,22 @@ function parseScheduleTable(table: HtmlElement): MortgageScheduleRowEvidence[] |
 
   const scheduleRows: MortgageScheduleRowEvidence[] = [];
   let groupedYear: number | undefined;
+  let groupedYearLabel: string | null = null;
   for (const row of rows.slice(headerRowIndex + 1)) {
     const cells = childNodes(row).filter(isCell);
     const sourceValues = cells.map((cell) => textContent(cell).trim());
     if (sourceValues.every((value) => value === "")) continue;
     const yearGroup = verifiedYearGroup(cells, headers.length);
     if (yearGroup !== undefined) {
-      groupedYear = yearGroup;
+      groupedYear = yearGroup.year;
+      groupedYearLabel = yearGroup.sourceLabel;
       continue;
     }
     const summaryYear = annualSummaryYear(row, cells, headers.length);
-    if (summaryYear !== undefined) groupedYear = summaryYear;
+    if (summaryYear !== undefined) {
+      groupedYear = summaryYear;
+      groupedYearLabel = sourceValues[columns.period] ?? String(summaryYear);
+    }
     const getValue = (column: number | null): string =>
       column === null ? "" : sourceValues[column] ?? "";
     const periodLabel = getValue(columns.period);
@@ -348,6 +486,7 @@ function parseScheduleTable(table: HtmlElement): MortgageScheduleRowEvidence[] |
       projectedClosingBalanceMinor: parseAmountCell(getValue(columns.closingBalance)),
       sourceHeaders: headers,
       sourceValues,
+      sourceYearGroupLabel: groupedYearLabel,
     });
   }
   return scheduleRows;

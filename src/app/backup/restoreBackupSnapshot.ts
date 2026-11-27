@@ -65,12 +65,14 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     ...(snapshot.metadata.version === "13" || snapshot.metadata.version === "14" ||
     snapshot.metadata.version === "15" ||
     snapshot.metadata.version === "16" ||
+    snapshot.metadata.version === "17" ||
     snapshot.metadata.version === SNAPSHOT_VERSION
       ? { categories: snapshot.categories }
       : {}),
     ...(snapshot.metadata.version === "13" || snapshot.metadata.version === "14" ||
     snapshot.metadata.version === "15" ||
     snapshot.metadata.version === "16" ||
+    snapshot.metadata.version === "17" ||
     snapshot.metadata.version === SNAPSHOT_VERSION
       ? { recoveryHistory: snapshot.recoveryHistory }
       : {}),

@@ -34,6 +34,8 @@ const versions = [
     ...recurring, ...sourceOnlyLoans, ...mortgageEvidence, "categories", "recoveryHistory"] },
   { version: "17", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings,
     ...recurring, ...sourceOnlyLoans, ...mortgageEvidence, "categories", "recoveryHistory"] },
+  { version: "18", required: ["merchantCategoryRules", ...coverage, ...properties, ...loans, ...holdings,
+    ...recurring, ...sourceOnlyLoans, ...mortgageEvidence, "categories", "recoveryHistory"] },
 ];
 
 function snapshot(version: string, required: string[]): Record<string, unknown> {
@@ -43,15 +45,15 @@ function snapshot(version: string, required: string[]): Record<string, unknown> 
     accounts: [{ id: "acc", householdId: "hh", name: "Current", currencyCode: "NOK" }],
     transactions: [], importJobs: [], monthlyCategoryTargets: [],
     ...(version === "11" || version === "12" || version === "13" || version === "14" ||
-      version === "16" || version === "17"
+      version === "16" || version === "17" || version === "18"
       ? { reportingPeriodRule: { type: "calendar-month" } }
       : {}),
     ...Object.fromEntries(required.map(name => [name, []])),
     ...(version === "13" || version === "14" || version === "15" || version === "16" ||
-      version === "17" ? { recoveryHistory: {
+      version === "17" || version === "18" ? { recoveryHistory: {
       merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
       ...(version === "14" || version === "15" || version === "16" ||
-        version === "17" ? { transactionCategoryEdits: [] } : {}),
+        version === "17" || version === "18" ? { transactionCategoryEdits: [] } : {}),
     } } : {}),
   };
 }
@@ -73,7 +75,7 @@ describe("backup historical version capabilities", () => {
       expect(restoreBackupSnapshot({ snapshotPath })).toEqual({
         household: { id: "hh", name: "Synthetic", createdAtIso: "2026-01-01T00:00:00Z" },
         ...(version === "13" || version === "14" || version === "15" || version === "16" ||
-          version === "17"
+          version === "17" || version === "18"
           ? { categories: [], recoveryHistory: {
           merchantCorrections: [], sameMerchantPropagations: [], importOperations: [],
           transactionCategoryEdits: [],
@@ -158,7 +160,7 @@ describe("backup historical version capabilities", () => {
     });
   });
 
-  it.each(["0", "18", "01", 10, null])("rejects unsupported version %j", version => {
+  it.each(["0", "19", "01", 10, null])("rejects unsupported version %j", version => {
     const value = snapshot("10", versions[9]!.required);
     value.metadata = { version, createdAtIso: "2026-05-01T00:00:00Z", accountCount: 1, transactionCount: 0 };
     withSnapshot(value, snapshotPath => {

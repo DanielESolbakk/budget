@@ -31,6 +31,8 @@ import type {
   PropertyValuationSnapshot,
 } from "../../domain/types.js";
 import { isCurrencyCode } from "../../domain/types.js";
+import { sanitizeMortgageEvidenceDocuments } from "../../domain/import/rogalandMortgageHtml.js";
+import type { MortgageIdentityFingerprinter } from "../../domain/import/mortgageIdentityFingerprint.js";
 import type {
   MortgageEvidenceVersion,
   MortgageEvidenceVersionInput,
@@ -61,7 +63,10 @@ type RegistryRepository = Pick<LocalLedgerDatabase,
   | "listMortgageEvidenceVersions"
 >;
 
-export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
+export function createRegistryRepository(
+  db: DatabaseSync,
+  fingerprinter: MortgageIdentityFingerprinter
+): RegistryRepository {
   function getMortgageEvidenceRevision(loanId: string, householdId: string): string | null {
     const loan = listLoanRecords(householdId).find((candidate) => candidate.id === loanId);
     if (loan !== undefined) {
@@ -142,25 +147,32 @@ export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
     expectedVersionNumber: number,
     sourceOnlyLoan?: SourceOnlyLoanRecord
   ): MortgageEvidenceVersion {
+    const persistedInput = {
+      ...input,
+      documents: sanitizeMortgageEvidenceDocuments(input.documents, fingerprinter),
+    };
     db.exec("BEGIN IMMEDIATE");
     try {
-      if (db.prepare("SELECT 1 FROM households WHERE id = ?").get(input.householdId) === undefined) {
-        throw new Error(`Household not found for mortgage evidence: ${input.householdId}`);
+      if (db.prepare("SELECT 1 FROM households WHERE id = ?").get(persistedInput.householdId) === undefined) {
+        throw new Error(`Household not found for mortgage evidence: ${persistedInput.householdId}`);
       }
       if (sourceOnlyLoan !== undefined) {
         if (
           expectedLoanRevision !== null ||
           expectedVersionNumber !== 0 ||
-          sourceOnlyLoan.id !== input.loanId ||
-          sourceOnlyLoan.householdId !== input.householdId
+          sourceOnlyLoan.id !== persistedInput.loanId ||
+          sourceOnlyLoan.householdId !== persistedInput.householdId
         ) {
           throw new Error("New source-only loan and mortgage evidence do not match.");
         }
         createSourceOnlyLoanRecord(sourceOnlyLoan);
       } else {
-        const currentLoanRevision = getMortgageEvidenceRevision(input.loanId, input.householdId);
+        const currentLoanRevision = getMortgageEvidenceRevision(
+          persistedInput.loanId,
+          persistedInput.householdId
+        );
         if (currentLoanRevision === null) {
-          throw new Error(`Loan not found for mortgage evidence: ${input.loanId}`);
+          throw new Error(`Loan not found for mortgage evidence: ${persistedInput.loanId}`);
         }
         if (expectedLoanRevision === null || currentLoanRevision !== expectedLoanRevision) {
           throw new Error("Loan changed after mortgage evidence preview.");
@@ -169,16 +181,16 @@ export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
       if (
         !Number.isSafeInteger(expectedVersionNumber) ||
         expectedVersionNumber < 0 ||
-        !isIsoCalendarDate(input.sourceAsOfDateIso ?? "2000-01-01") ||
-        !input.importedAtIso.includes("T") ||
-        Number.isNaN(Date.parse(input.importedAtIso)) ||
-        input.documents.length === 0 ||
-        input.documents.length > 2 ||
-        typeof input.termDifferencesAcknowledged !== "boolean" ||
-        !Array.isArray(input.termComparisons) ||
-        (input.termComparisons.some((comparison) => comparison.status === "differs") &&
-          !input.termDifferencesAcknowledged) ||
-        input.documents.some((document) => (
+        !isIsoCalendarDate(persistedInput.sourceAsOfDateIso ?? "2000-01-01") ||
+        !persistedInput.importedAtIso.includes("T") ||
+        Number.isNaN(Date.parse(persistedInput.importedAtIso)) ||
+        persistedInput.documents.length === 0 ||
+        persistedInput.documents.length > 2 ||
+        typeof persistedInput.termDifferencesAcknowledged !== "boolean" ||
+        !Array.isArray(persistedInput.termComparisons) ||
+        (persistedInput.termComparisons.some((comparison) => comparison.status === "differs") &&
+          !persistedInput.termDifferencesAcknowledged) ||
+        persistedInput.documents.some((document) => (
           !/^[0-9a-f]{64}$/i.test(document.sourceHashSha256) ||
             document.parserVersion.trim() === "" ||
             !Number.isSafeInteger(document.parserLimits.maxSourceCharacters) ||
@@ -190,8 +202,9 @@ export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
             document.parsedDocument.role !== document.role ||
             !["parsed", "partial"].includes(document.parsedDocument.parseStatus)
           )) ||
-          !["verified", "confirmed"].includes(input.attachment.status) ||
-          (input.pairing !== null && !["verified", "confirmed"].includes(input.pairing.status))
+          !["verified", "confirmed"].includes(persistedInput.attachment.status) ||
+          (persistedInput.pairing !== null &&
+            !["verified", "confirmed"].includes(persistedInput.pairing.status))
       ) {
         throw new Error("Mortgage evidence version is invalid.");
       }
@@ -200,13 +213,13 @@ export function createRegistryRepository(db: DatabaseSync): RegistryRepository {
         SELECT COALESCE(MAX(version_number), 0) AS version_number
         FROM mortgage_evidence_versions
         WHERE loan_id = ?
-      `).get(input.loanId) as { version_number: number }).version_number;
+      `).get(persistedInput.loanId) as { version_number: number }).version_number;
       if (currentVersionNumber !== expectedVersionNumber) {
         throw new Error("Mortgage evidence changed after preview.");
       }
 
       const version: MortgageEvidenceVersion = {
-        ...input,
+        ...persistedInput,
         versionNumber: currentVersionNumber + 1,
       };
       db.prepare(`
