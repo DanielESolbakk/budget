@@ -95,6 +95,15 @@ test("loan workflow previews and accepts paired mortgage evidence without changi
     name: "Current month source checkpoint",
     exact: true,
   });
+  const currentCheckpointSummary = currentCheckpoint.getByRole("button", {
+    name: /Current month source checkpoint/,
+  });
+  await expect(currentCheckpointSummary).toContainText("November 2026");
+  await expect(currentCheckpointSummary).toContainText("1 100,00");
+  await expect(currentCheckpointSummary).toContainText("99 000,00");
+  await expect(currentCheckpoint.getByText("Principal", { exact: true })).toBeHidden();
+  await currentCheckpointSummary.click();
+  await expect(currentCheckpoint.getByText("Principal", { exact: true })).toBeVisible();
   await expect(currentCheckpoint).toContainText("November 2026");
   await expect(currentCheckpoint).toContainText("1 100,00");
   await expect(currentCheckpoint).toContainText("1 000,00");
@@ -128,9 +137,12 @@ test("loan workflow previews and accepts paired mortgage evidence without changi
     name: "First year-end source checkpoint",
     exact: true,
   });
-  await expect(yearEndCheckpoint).toContainText("Desember 2026");
-  await expect(yearEndCheckpoint).toContainText("98 000,00");
-  await expect(yearEndCheckpoint).toContainText(
+  const yearEndSummary = yearEndCheckpoint.getByRole("button", {
+    name: /First year-end source checkpoint/,
+  });
+  await expect(yearEndSummary).toContainText("Desember 2026");
+  await expect(yearEndSummary).toContainText("98 000,00");
+  await expect(yearEndSummary).toContainText(
     "Monthly detail covers 2 of 12 months; no full-year monthly sum is available for comparison."
   );
   const finalCheckpoint = preview.getByRole("group", {
@@ -506,12 +518,19 @@ test("shows full-year monthly sums beside the annual mortgage summary", async ({
     name: "First year-end source checkpoint",
     exact: true,
   });
-  await expect(yearEndCheckpoint).toContainText("Source period: 2026 (annual)");
-  await expect(yearEndCheckpoint).toContainText("2 400,00");
+  const yearEndSummary = yearEndCheckpoint.getByRole("button", {
+    name: /First year-end source checkpoint/,
+  });
+  await expect(yearEndSummary).toContainText("Source period: 2026");
+  await expect(yearEndSummary).toContainText("annual");
+  await expect(yearEndSummary).toContainText("2 400,00");
   const monthlySums = yearEndCheckpoint.getByRole("group", {
     name: "Full-year monthly sums",
     exact: true,
   });
+  await expect(monthlySums).toBeHidden();
+  await yearEndSummary.click();
+  await expect(monthlySums).toBeVisible();
   await expect(monthlySums).toContainText("Payment sum");
   await expect(monthlySums).toContainText("Principal sum");
   await expect(monthlySums).toContainText("2 400,00");

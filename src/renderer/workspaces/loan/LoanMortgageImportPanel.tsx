@@ -234,104 +234,137 @@ function MortgageScheduleCheckpoint({
 }): React.JSX.Element {
   const sourceRows = sourceRowsAroundCheckpoint(scheduleRows, row);
   return (
-    <div role="group" aria-label={`${name} source checkpoint`}>
-      <h6>{name} source checkpoint</h6>
-      {row === undefined ? (
-        <p>{missingMessage}</p>
-      ) : (
-        <>
-          <p>
-            Source period: {displaySchedulePeriod(row)} (
-            {row.period.granularity === "annual"
-              ? "annual"
-              : row.period.granularity === "monthly"
-                ? "monthly"
-                : "not identified"}
-            ). Covered by this source.
-          </p>
-          <dl className="loan-terms">
-            <div>
-              <dt>Payment</dt>
-              <dd>{formatEvidenceAmount(row.paymentMinor, currencyCode)}</dd>
-            </div>
-            <div>
-              <dt>Principal</dt>
-              <dd>{formatEvidenceAmount(row.principalMinor, currencyCode)}</dd>
-            </div>
-            <div>
-              <dt>Interest</dt>
-              <dd>{formatEvidenceAmount(row.interestMinor, currencyCode)}</dd>
-            </div>
-            <div>
-              <dt>Fee</dt>
-              <dd>{formatEvidenceAmount(row.feeMinor, currencyCode)}</dd>
-            </div>
-            <div>
-              <dt>Projected closing balance</dt>
-              <dd>{formatEvidenceAmount(row.projectedClosingBalanceMinor, currencyCode)}</dd>
-            </div>
-          </dl>
-          {sourceRows.length > 0 && (
-            <details className="loan-mortgage-source-excerpt">
-              <summary>Show in source</summary>
-              <div
-                role="group"
-                aria-label={`Original source excerpt around ${displaySchedulePeriod(row)}`}
-              >
-                {sourceRows.map((sourceRow, index) => (
-                  <div key={`${sourceRow.periodLabel}-${index}`}>
-                    <p><strong>Source row {index + 1}</strong></p>
-                    {sourceRow.sourceExcerpt.yearGroupLabel !== null && (
-                      <p>Source year grouping: {sourceRow.sourceExcerpt.yearGroupLabel}</p>
-                    )}
-                    <dl className="loan-terms">
-                      {sourceRow.sourceExcerpt.cells.map((cell, cellIndex) => (
-                        <div key={`${cell.sourceLabel}-${cellIndex}`}>
-                          <dt>{cell.sourceLabel}</dt>
-                          <dd>{cell.sourceValue}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                ))}
-              </div>
-            </details>
+    <details
+      className="loan-mortgage-checkpoint"
+      aria-label={`${name} source checkpoint`}
+    >
+      <summary
+        className="loan-mortgage-checkpoint-summary"
+        role="button"
+      >
+        <span className="loan-mortgage-checkpoint-summary-grid">
+          <strong>{name} source checkpoint</strong>
+          {row === undefined ? (
+            <span>{missingMessage}</span>
+          ) : (
+            <>
+              <span>
+                Source period: {displaySchedulePeriod(row)} · {
+                  row.period.granularity === "annual"
+                    ? "annual"
+                    : row.period.granularity === "monthly"
+                      ? "monthly"
+                      : "period not identified"
+                }
+              </span>
+              <span>Payment: {formatEvidenceAmount(row.paymentMinor, currencyCode)}</span>
+              <span>
+                Projected closing balance: {
+                  formatEvidenceAmount(row.projectedClosingBalanceMinor, currencyCode)
+                }
+              </span>
+            </>
           )}
-        </>
-      )}
-      {firstYearSummary !== undefined && firstYearSummary !== null && (
-        <div>
-          <p>{firstYearMonthlyComparisonMessage(firstYearSummary)}</p>
-          {firstYearSummary.monthlyTotals !== null && (
-            <div role="group" aria-label="Full-year monthly sums">
-              <h6>Full-year monthly sums</h6>
+          {firstYearSummary !== undefined && firstYearSummary !== null && (
+            <span className="loan-mortgage-checkpoint-coverage">
+              {firstYearMonthlyComparisonMessage(firstYearSummary)}
+            </span>
+          )}
+        </span>
+      </summary>
+      {(row !== undefined || (firstYearSummary !== undefined && firstYearSummary !== null)) && (
+        <div className="loan-mortgage-checkpoint-details">
+          {row !== undefined && (
+            <>
               <dl className="loan-terms">
                 <div>
-                  <dt>Payment sum</dt>
-                  <dd>{formatEvidenceAmount(firstYearSummary.monthlyTotals.paymentMinor, currencyCode)}</dd>
+                  <dt>Principal</dt>
+                  <dd>{formatEvidenceAmount(row.principalMinor, currencyCode)}</dd>
                 </div>
                 <div>
-                  <dt>Principal sum</dt>
-                  <dd>{formatEvidenceAmount(firstYearSummary.monthlyTotals.principalMinor, currencyCode)}</dd>
+                  <dt>Interest</dt>
+                  <dd>{formatEvidenceAmount(row.interestMinor, currencyCode)}</dd>
                 </div>
                 <div>
-                  <dt>Interest sum</dt>
-                  <dd>{formatEvidenceAmount(firstYearSummary.monthlyTotals.interestMinor, currencyCode)}</dd>
-                </div>
-                <div>
-                  <dt>Fee sum</dt>
-                  <dd>{formatEvidenceAmount(firstYearSummary.monthlyTotals.feeMinor, currencyCode)}</dd>
-                </div>
-                <div>
-                  <dt>December projected closing balance</dt>
-                  <dd>{formatEvidenceAmount(firstYearSummary.monthlyTotals.yearEndBalanceMinor, currencyCode)}</dd>
+                  <dt>Fee</dt>
+                  <dd>{formatEvidenceAmount(row.feeMinor, currencyCode)}</dd>
                 </div>
               </dl>
-            </div>
+              {sourceRows.length > 0 && (
+                <details className="loan-mortgage-source-excerpt">
+                  <summary>Show in source</summary>
+                  <div
+                    role="group"
+                    aria-label={`Original source excerpt around ${displaySchedulePeriod(row)}`}
+                  >
+                    {sourceRows.map((sourceRow, index) => (
+                      <div key={`${sourceRow.periodLabel}-${index}`}>
+                        <p><strong>Source row {index + 1}</strong></p>
+                        {sourceRow.sourceExcerpt.yearGroupLabel !== null && (
+                          <p>Source year grouping: {sourceRow.sourceExcerpt.yearGroupLabel}</p>
+                        )}
+                        <dl className="loan-terms">
+                          {sourceRow.sourceExcerpt.cells.map((cell, cellIndex) => (
+                            <div key={`${cell.sourceLabel}-${cellIndex}`}>
+                              <dt>{cell.sourceLabel}</dt>
+                              <dd>{cell.sourceValue}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </>
           )}
+          {firstYearSummary !== undefined &&
+            firstYearSummary !== null &&
+            firstYearSummary.monthlyTotals !== null && (
+              <div role="group" aria-label="Full-year monthly sums">
+                <h6>Full-year monthly sums</h6>
+                <dl className="loan-terms">
+                  <div>
+                    <dt>Payment sum</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.paymentMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                  <div>
+                    <dt>Principal sum</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.principalMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                  <div>
+                    <dt>Interest sum</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.interestMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                  <div>
+                    <dt>Fee sum</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.feeMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                  <div>
+                    <dt>December projected closing balance</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.yearEndBalanceMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
         </div>
       )}
-    </div>
+    </details>
   );
 }
 
