@@ -43,7 +43,7 @@ export interface MortgageHtmlParseLimits {
   readonly maxDepth: number;
 }
 
-/** Revalidate these provisional limits on minimum Windows hardware before finalizing them. */
+/** These deterministic input-safety bounds are not device-performance claims. */
 export const PROVISIONAL_MORTGAGE_HTML_MAX_BYTES = 256 * 1024;
 export const PROVISIONAL_MORTGAGE_HTML_PARSE_LIMITS: MortgageHtmlParseLimits = Object.freeze({
   maxSourceCharacters: 256 * 1024,

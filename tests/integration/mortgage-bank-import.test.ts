@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
@@ -645,8 +645,7 @@ describe("bounded mortgage HTML file reads", () => {
           throw new Error("Expected foreign mortgage evidence documents.");
         }
         const malformedFingerprint = getRecord(
-          getRecord(malformedDocuments[0], "foreign mortgage evidence document")
-            ["identityFingerprint"],
+          getRecord(malformedDocuments[0], "foreign mortgage evidence document")["identityFingerprint"],
           "foreign mortgage identity fingerprint"
         );
         const fingerprintReferences = malformedFingerprint["references"];
@@ -1481,9 +1480,20 @@ describe("bounded mortgage HTML file reads", () => {
   it("previews original semantic source cells without unrelated identifier columns", async () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-source-context-"));
     const filePath = join(directory, "schedule.html");
-    writeFileSync(filePath, SOURCE_CONTEXT_SCHEDULE_HTML, "utf8");
+    const networkFetch = vi.fn(() => {
+      throw new Error("Network access is not allowed in mortgage import integration tests.");
+    });
+    const consoleSpies = [
+      vi.spyOn(console, "debug").mockImplementation(() => {}),
+      vi.spyOn(console, "info").mockImplementation(() => {}),
+      vi.spyOn(console, "log").mockImplementation(() => {}),
+      vi.spyOn(console, "warn").mockImplementation(() => {}),
+      vi.spyOn(console, "error").mockImplementation(() => {}),
+    ];
+    vi.stubGlobal("fetch", networkFetch);
 
     try {
+      writeFileSync(filePath, SOURCE_CONTEXT_SCHEDULE_HTML, "utf8");
       const preview = await previewMortgageScheduleFile({
         filePath,
         maxBytes: Buffer.byteLength(SOURCE_CONTEXT_SCHEDULE_HTML),
@@ -1514,7 +1524,66 @@ describe("bounded mortgage HTML file reads", () => {
       expect(JSON.stringify(preview)).not.toContain("example.invalid");
       expect(JSON.stringify(preview)).not.toContain("<script>");
       expect(preview.parsedDocument.identityDisplay.maskedLoanReference).toBe("****-123");
+      expect(networkFetch).not.toHaveBeenCalled();
+
+      const loggedContent = consoleSpies
+        .flatMap((spy) => spy.mock.calls)
+        .flatMap((call) => call)
+        .map((argument) =>
+          argument instanceof Error
+            ? argument.message
+            : typeof argument === "string"
+              ? argument
+              : JSON.stringify(argument) ?? String(argument)
+        )
+        .join("\n");
+      expect(loggedContent).not.toContain(SOURCE_CONTEXT_SCHEDULE_HTML);
+      expect(loggedContent).not.toContain("loan-123");
     } finally {
+      vi.unstubAllGlobals();
+      consoleSpies.forEach((spy) => spy.mockRestore());
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not log financial source content when bounded preview rejects a file", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-source-error-"));
+    const filePath = join(directory, "schedule.html");
+    const sensitiveSource =
+      '<h1>PRIVATE-LOAN-REFERENCE-7421</h1><p>Restgjeld: 987 654,32</p>';
+    const consoleSpies = [
+      vi.spyOn(console, "debug").mockImplementation(() => {}),
+      vi.spyOn(console, "info").mockImplementation(() => {}),
+      vi.spyOn(console, "log").mockImplementation(() => {}),
+      vi.spyOn(console, "warn").mockImplementation(() => {}),
+      vi.spyOn(console, "error").mockImplementation(() => {}),
+    ];
+
+    try {
+      writeFileSync(filePath, sensitiveSource, "utf8");
+      await expect(previewMortgageScheduleFile({
+        filePath,
+        maxBytes: 8,
+        parserLimits: { maxSourceCharacters: 100, maxElements: 100, maxDepth: 20 },
+        loanIdentity: SELECTED_LOAN_IDENTITY,
+        attachmentConfirmed: true,
+      })).rejects.toThrow(RangeError);
+
+      const loggedContent = consoleSpies
+        .flatMap((spy) => spy.mock.calls)
+        .flatMap((call) => call)
+        .map((argument) =>
+          argument instanceof Error
+            ? argument.message
+            : typeof argument === "string"
+              ? argument
+              : JSON.stringify(argument) ?? String(argument)
+        )
+        .join("\n");
+      expect(loggedContent).not.toContain(sensitiveSource);
+      expect(loggedContent).not.toContain("PRIVATE-LOAN-REFERENCE-7421");
+    } finally {
+      consoleSpies.forEach((spy) => spy.mockRestore());
       rmSync(directory, { recursive: true, force: true });
     }
   });
