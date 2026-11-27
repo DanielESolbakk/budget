@@ -59,7 +59,7 @@ Rogaland Sparebank remains the initial regression adapter. DNB, Bank2, and futur
 
 Saved Rogaland mortgage details and repayment-plan HTML use a separate evidence adapter, not the transaction statement adapter contract described above. The main process reads selected local files as inert data and returns structured source evidence, schedule periods, explicit unknowns, and validation results; schedule rows never become transactions.
 
-Details and schedules are paired only when loan identity evidence is sufficient. Uncertain identity requires explicit attachment confirmation, while contradictory identity is rejected. Existing manual corrections and actual checkpoints remain authoritative; disputed fields are presented with source provenance rather than silently replaced. The source-as-of date remains distinct from import time.
+Details and schedules are paired only when loan identity evidence is sufficient. Contradictory identity is rejected. Accepted evidence does not retain raw loan references or unrecognized source columns: loan references are replaced with keyed fingerprints using an operating-system-protected local key that is not included in backups. If restored evidence carries a fingerprint from another installation, the preview marks the saved-loan identity check unavailable, reveals source references only on request, and requires explicit acknowledgment before attachment. Existing manual corrections and actual checkpoints remain authoritative; disputed fields are presented with source provenance rather than silently replaced. The source-as-of date remains distinct from import time.
 
 This boundary reuses the loan registry, grouped IPC, backup, and household snapshot export without adding remote access or changing CSV/PDF transaction semantics. Deterministic parser file and structure limits are input-safety guardrails. Timed mortgage benchmarks, runner-profile gates, and platform-specific performance claims are outside the current Story scope.
 
@@ -77,7 +77,7 @@ Import history displays the stable adapter identifier for each completed stateme
 
 ### Privacy Boundary
 
-PDF extraction, text parsing, CSV mapping, review, correction, and persistence run locally. No transaction content is sent to cloud services, bank APIs, telemetry, analytics, or background network calls.
+PDF extraction, text parsing, CSV mapping, review, correction, and persistence run locally. Mortgage source HTML remains transient to the preview; accepted evidence and portable snapshots contain sanitized source context and keyed identity fingerprints, never raw loan references. The protected fingerprint key stays on the installation and is not exported. No transaction content is sent to cloud services, bank APIs, telemetry, analytics, or background network calls.
 
 ## Consequences
 

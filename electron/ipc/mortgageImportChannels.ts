@@ -70,6 +70,21 @@ function parseAcceptInput(value: unknown): {
   };
 }
 
+function parseAttachmentConfirmationInput(value: unknown): {
+  previewId: string;
+  acknowledgeUnavailableIdentity: boolean;
+} {
+  if (!isRecord(value)) throw new Error("Mortgage attachment confirmation must be an object.");
+  const acknowledgeUnavailableIdentity = value["acknowledgeUnavailableIdentity"] ?? false;
+  if (typeof acknowledgeUnavailableIdentity !== "boolean") {
+    throw new Error("acknowledgeUnavailableIdentity must be a boolean.");
+  }
+  return {
+    previewId: parseNonEmptyString(value["previewId"], "previewId"),
+    acknowledgeUnavailableIdentity,
+  };
+}
+
 function acceptanceSummary(
   evidence: ReturnType<LedgerChannelContext["mortgageBankImportService"]["acceptPreview"]>
 ): MortgageEvidenceAcceptanceSummary {
@@ -125,10 +140,19 @@ export function registerMortgageImportChannels({
     }
   });
 
-  ipcMain.handle("mortgageImport:confirmAttachment", (event, previewId: unknown) => {
+  ipcMain.handle("mortgageImport:revealAttachmentIdentity", (event, previewId: unknown) => {
     assertTrustedRenderer(event);
-    return mortgageBankImportService.confirmAttachmentPreview(
+    return mortgageBankImportService.revealAttachmentIdentity(
       parseNonEmptyString(previewId, "previewId")
+    );
+  });
+
+  ipcMain.handle("mortgageImport:confirmAttachment", (event, input: unknown) => {
+    assertTrustedRenderer(event);
+    const request = parseAttachmentConfirmationInput(input);
+    return mortgageBankImportService.confirmAttachmentPreview(
+      request.previewId,
+      request.acknowledgeUnavailableIdentity
     );
   });
 

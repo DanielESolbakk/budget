@@ -17,7 +17,25 @@ export interface MortgageScheduleRowEvidence {
   readonly projectedClosingBalanceMinor: number | null;
   readonly sourceHeaders: readonly string[];
   readonly sourceValues: readonly string[];
+  readonly sourceYearGroupLabel: string | null;
 }
+
+export interface MortgageScheduleSourceExcerptCell {
+  readonly sourceLabel: string;
+  readonly sourceValue: string;
+}
+
+export interface MortgageScheduleSourceExcerpt {
+  readonly yearGroupLabel: string | null;
+  readonly cells: readonly MortgageScheduleSourceExcerptCell[];
+}
+
+export type MortgageSchedulePreviewRow = Omit<
+  MortgageScheduleRowEvidence,
+  "sourceHeaders" | "sourceValues" | "sourceYearGroupLabel"
+> & {
+  readonly sourceExcerpt: MortgageScheduleSourceExcerpt;
+};
 
 export interface MortgageHtmlParseLimits {
   readonly maxSourceCharacters: number;
@@ -25,7 +43,7 @@ export interface MortgageHtmlParseLimits {
   readonly maxDepth: number;
 }
 
-/** Revalidate these provisional limits on minimum Windows hardware before finalizing them. */
+/** These deterministic input-safety bounds are not device-performance claims. */
 export const PROVISIONAL_MORTGAGE_HTML_MAX_BYTES = 256 * 1024;
 export const PROVISIONAL_MORTGAGE_HTML_PARSE_LIMITS: MortgageHtmlParseLimits = Object.freeze({
   maxSourceCharacters: 256 * 1024,
@@ -108,12 +126,25 @@ export interface MortgageDocumentIdentityEvidence {
   readonly conflicts: readonly ("loan-reference-mismatch" | "currency-mismatch")[];
 }
 
+export interface MortgageEvidenceIdentityFingerprint {
+  readonly keyId: string;
+  readonly references: readonly string[];
+}
+
+export interface MortgageIdentityReferenceDisclosure {
+  readonly documents: readonly {
+    readonly role: Exclude<MortgageSourceRole, "unknown">;
+    readonly references: readonly string[];
+  }[];
+}
+
 export interface MortgageEvidenceDocumentVersion {
   readonly role: Exclude<MortgageSourceRole, "unknown">;
   readonly sourceHashSha256: string;
   readonly parserVersion: string;
   readonly parserLimits: MortgageHtmlParseLimits;
   readonly parsedDocument: MortgageHtmlParseResult;
+  readonly identityFingerprint?: MortgageEvidenceIdentityFingerprint;
 }
 
 export interface MortgageEvidenceVersion {
@@ -162,7 +193,7 @@ export interface MortgageSchedulePreviewIdentityDisplay {
 export interface MortgageSchedulePreviewDocument
   extends Omit<MortgageHtmlParseResult, "identityEvidence" | "scheduleRows"> {
   readonly identityDisplay: MortgageSchedulePreviewIdentityDisplay;
-  readonly scheduleRows: readonly Omit<MortgageScheduleRowEvidence, "sourceValues">[];
+  readonly scheduleRows: readonly MortgageSchedulePreviewRow[];
 }
 
 export type MortgageBankImportReviewState =
@@ -174,6 +205,7 @@ export type MortgageBankImportReviewState =
   | "invalid"
   | "unsupported"
   | "attachment-confirmation-required"
+  | "identity-check-unavailable"
   | "identity-conflict";
 
 export type MortgageImportTarget =
@@ -201,6 +233,7 @@ export interface MortgageBankImportPreview {
   readonly validation: MortgageScheduleValidationResult | null;
   readonly pairing: MortgageDocumentPairingResult | null;
   readonly attachment: MortgageDocumentPairingResult | null;
+  readonly identityReferenceDisclosure?: MortgageIdentityReferenceDisclosure;
   readonly termComparisons: readonly MortgageTermComparison[];
 }
 
@@ -219,8 +252,13 @@ export interface MortgageEvidenceAcceptanceSummary {
 
 export type MortgageDocumentPairingResult =
   | { readonly status: "verified"; readonly verification: "matching-identifiers" }
-  | { readonly status: "confirmed"; readonly verification: "explicit-user-attachment" }
+  | {
+      readonly status: "confirmed";
+      readonly verification: "explicit-user-attachment";
+      readonly identityCheck?: "unavailable";
+    }
   | { readonly status: "confirmation-required" }
+  | { readonly status: "identity-check-unavailable" }
   | {
       readonly status: "conflict";
       readonly reason: "loan-reference-mismatch" | "currency-mismatch" | "invalid-currency";

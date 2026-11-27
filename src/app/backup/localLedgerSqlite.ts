@@ -11,7 +11,7 @@ import { createReportingPreferencesRepository } from "./reportingPreferencesRepo
 import { createCategoryRepository } from "./categoryRepository.js";
 import { ensureSchema } from "./ledgerSchema.js";
 import { insertLedgerSnapshot, loadLedgerSnapshotData as readLedgerSnapshot } from "./ledgerSnapshot.js";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -26,6 +26,10 @@ import {
 import type { BackupSnapshotCatalogEntry, LedgerSnapshotData } from "../../domain/backup/snapshotContract.js";
 import type { CsvImportProfile } from "../../domain/import/csvImportProfile.js";
 import { type SavedLedgerView } from "../../domain/ledger/filterTransactions.js";
+import {
+  createMortgageIdentityFingerprinter,
+  type MortgageIdentityFingerprinter,
+} from "../../domain/import/mortgageIdentityFingerprint.js";
 import type {
   Account,
   Household,
@@ -39,13 +43,28 @@ type LocalLedgerSeedData = Omit<LedgerSnapshotData, "createdAtIso">;
 interface CreateLocalLedgerDatabaseOptions {
   dbPath?: string;
   seedData?: LocalLedgerSeedData;
+  mortgageIdentityFingerprinter?: MortgageIdentityFingerprinter;
+}
+
+let testMortgageIdentityFingerprinter: MortgageIdentityFingerprinter | undefined;
+
+function getTestMortgageIdentityFingerprinter(): MortgageIdentityFingerprinter {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("A protected mortgage identity fingerprint key is required.");
+  }
+  testMortgageIdentityFingerprinter ??= createMortgageIdentityFingerprinter(randomBytes(32));
+  return testMortgageIdentityFingerprinter;
 }
 
 function defaultLocalDatabasePath(): string {
   return process.env.BUDGET_DB_PATH ?? join(process.cwd(), "data", "local", "budget.sqlite");
 }
 
-function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
+function seedIfEmpty(
+  db: DatabaseSync,
+  seedData: LocalLedgerSeedData,
+  fingerprinter: MortgageIdentityFingerprinter
+): void {
   const existingCount = db
     .prepare("SELECT COUNT(*) AS count FROM households")
     .get() as { count: number };
@@ -57,7 +76,7 @@ function seedIfEmpty(db: DatabaseSync, seedData: LocalLedgerSeedData): void {
   db.exec("BEGIN");
 
   try {
-    insertLedgerSnapshot(db, seedData);
+    insertLedgerSnapshot(db, seedData, fingerprinter);
 
     db.exec("COMMIT");
   } catch (error) {
@@ -302,14 +321,18 @@ function restoreAccount(db: DatabaseSync, accountId: string): Account {
 export function createLocalLedgerDatabase(
   options: CreateLocalLedgerDatabaseOptions
 ): LocalLedgerDatabase {
+  const mortgageIdentityFingerprinter = options.mortgageIdentityFingerprinter ??
+    getTestMortgageIdentityFingerprinter();
   const dbPath = options.dbPath ?? defaultLocalDatabasePath();
   mkdirSync(dirname(dbPath), { recursive: true });
 
   const db = new DatabaseSync(dbPath);
   const { listCategories, seedCategories, createCategoryRecord, updateCategoryRecordLabel } = createCategoryRepository(db);
   try {
-    ensureSchema(db);
-    if (options.seedData !== undefined) seedIfEmpty(db, options.seedData);
+    ensureSchema(db, mortgageIdentityFingerprinter);
+    if (options.seedData !== undefined) {
+      seedIfEmpty(db, options.seedData, mortgageIdentityFingerprinter);
+    }
     db.exec("BEGIN IMMEDIATE");
     try {
       const households = db.prepare("SELECT id, name, created_at_iso FROM households").all() as Array<{
@@ -399,7 +422,7 @@ export function createLocalLedgerDatabase(
     getMortgageEvidenceRevision,
     appendMortgageEvidenceVersion,
     listMortgageEvidenceVersions,
-  } = createRegistryRepository(db);
+  } = createRegistryRepository(db, mortgageIdentityFingerprinter);
   const {
     saveAccountStatementCoveragePeriod,
     appendAccountBalanceCheckpoint,
@@ -500,7 +523,7 @@ export function createLocalLedgerDatabase(
         DELETE FROM accounts;
         DELETE FROM households;
       `);
-      insertLedgerSnapshot(db, snapshot);
+      insertLedgerSnapshot(db, snapshot, mortgageIdentityFingerprinter);
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
@@ -673,6 +696,7 @@ export function createLocalLedgerDatabase(
   }
 
   return {
+    mortgageIdentityFingerprinter,
     listCategories,
     createCategoryRecord,
     updateCategoryRecordLabel,

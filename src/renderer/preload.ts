@@ -171,7 +171,11 @@ export interface MortgageImportApi {
     target: MortgageImportTarget;
     requestId: string;
   }) => Promise<MortgageBankImportPreview | null>;
-  confirmAttachment: (previewId: string) => Promise<MortgageBankImportPreview>;
+  revealAttachmentIdentity: (previewId: string) => Promise<MortgageBankImportPreview>;
+  confirmAttachment: (
+    previewId: string,
+    acknowledgeUnavailableIdentity?: boolean
+  ) => Promise<MortgageBankImportPreview>;
   acceptPreview: (
     previewId: string,
     acceptPartial?: boolean,
@@ -483,8 +487,13 @@ const budgetApi: BudgetApi = {
   mortgageImport: {
     previewFiles: (input) =>
       ipcRenderer.invoke("mortgageImport:previewFiles", input),
-    confirmAttachment: (previewId) =>
-      ipcRenderer.invoke("mortgageImport:confirmAttachment", previewId),
+    revealAttachmentIdentity: (previewId) =>
+      ipcRenderer.invoke("mortgageImport:revealAttachmentIdentity", previewId),
+    confirmAttachment: (previewId, acknowledgeUnavailableIdentity = false) =>
+      ipcRenderer.invoke("mortgageImport:confirmAttachment", {
+        previewId,
+        acknowledgeUnavailableIdentity,
+      }),
     acceptPreview: (previewId, acceptPartial = false, acknowledgeTermDifferences = false) =>
       ipcRenderer.invoke("mortgageImport:acceptPreview", {
         previewId,

@@ -2,18 +2,20 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createBackupSnapshot } from "../../src/app/backup/createBackupSnapshot.js";
 import { createLocalLedgerDatabase } from "../../src/app/backup/localLedgerSqlite.js";
 import { restoreBackupSnapshot } from "../../src/app/backup/restoreBackupSnapshot.js";
 import { createLoanRegistry } from "../../src/app/loanRegistry.js";
 import { exportLedgerCsvToFile } from "../../src/app/exportCsv.js";
+import { SNAPSHOT_VERSION } from "../../src/domain/backup/snapshotContract.js";
 import {
   createMortgageBankImportService,
   previewMortgageDocumentPair,
   previewMortgageScheduleFile,
   readBoundedMortgageHtmlFile,
 } from "../../src/app/mortgageBankImportService.js";
+import { parseRogalandMortgageHtml } from "../../src/domain/import/rogalandMortgageHtml.js";
 
 const VALID_DETAILS_HTML = `
   <h1>Lånedetaljer</h1>
@@ -35,6 +37,23 @@ const VALID_SCHEDULE_HTML = `
     <tr><th>Termin</th><th>Avdrag</th><th>Renter</th><th>Gebyr</th><th>Terminbeløp</th><th>Restgjeld</th><th>Source account</th></tr>
     <tr><td>Januar 2026</td><td>1 000,00</td><td>90,00</td><td>10,00</td><td>1 100,00</td><td>99 000,00</td><td>loan-123</td></tr>
     <tr><td>Februar 2026</td><td>1 000,00</td><td>89,00</td><td>10,00</td><td>1 099,00</td><td>98 000,00</td><td>loan-123</td></tr>
+  </table>
+`;
+const SOURCE_CONTEXT_SCHEDULE_HTML = `
+  <h1>Nedbetalingsplan</h1>
+  <dl>
+    <dt>Inngående saldo</dt><dd>100 000,00</dd>
+    <dt>Lånenummer</dt><dd>loan-123</dd>
+    <dt>Lånevaluta</dt><dd>NOK</dd>
+  </dl>
+  <table>
+    <tr>
+      <th>Termin</th><th>Avdrag</th><th>Renter</th><th>Gebyr</th>
+      <th>Terminbeløp</th><th>Restgjeld</th><th>Source account</th>
+    </tr>
+    <tr><th scope="rowgroup" colspan="7">2026</th></tr>
+    <tr><td>Januar</td><td>1 000,00</td><td>90,00</td><td>10,00</td><td>1 100,00</td><td>99 000,00</td><td><a href="https://example.invalid/account">loan-123</a><script>window.sourceScriptRan = true;</script></td></tr>
+    <tr><td>Februar</td><td>1 000,00</td><td>89,00</td><td>10,00</td><td>1 099,00</td><td>98 000,00</td><td><a href="https://example.invalid/account">loan-123</a><script>window.sourceScriptRan = true;</script></td></tr>
   </table>
 `;
 const ZERO_PRINCIPAL_SCHEDULE_HTML = `
@@ -309,12 +328,29 @@ describe("bounded mortgage HTML file reads", () => {
         scheduleValidation: { status: "valid" },
       });
       expect(evidence.documents.map((document) => document.role)).toEqual(["details", "schedule"]);
+      expect(getRecord(evidence.documents[0], "details evidence document").identityFingerprint)
+        .toMatchObject({
+          keyId: expect.stringMatching(/^[0-9a-f]{16}$/),
+          references: [expect.stringMatching(/^[0-9a-f]{64}$/)],
+        });
       expect(evidence.documents[0]).not.toHaveProperty("sourceHtml");
       expect(evidence.documents[1]).not.toHaveProperty("sourceHtml");
       expect(evidence.documents[0]?.sourceHashSha256).toMatch(/^[0-9a-f]{64}$/);
       expect(evidence.documents[0]?.parsedDocument.detailsFields[0]?.sourceValue)
         .toBe("100 000,00");
       expect(evidence.documents[1]?.parsedDocument.scheduleRows[0]?.paymentMinor).toBe(110_000);
+      expect(evidence.documents[1]?.parsedDocument.identityEvidence.loanReference).toBeNull();
+      expect(evidence.documents[1]?.parsedDocument.identityEvidence.loanReferenceValues).toEqual([]);
+      expect(evidence.documents[1]?.parsedDocument.scheduleRows[0]?.sourceHeaders).toEqual([
+        "Termin",
+        "Avdrag",
+        "Renter",
+        "Gebyr",
+        "Terminbeløp",
+        "Restgjeld",
+      ]);
+      expect(JSON.stringify(evidence)).not.toContain("Source account");
+      expect(JSON.stringify(evidence)).not.toContain("loan-123");
       expect(JSON.stringify(evidence)).not.toContain("<h1>");
       expect(database.listMortgageEvidenceVersions(
         "household-mortgage-import",
@@ -386,6 +422,245 @@ describe("bounded mortgage HTML file reads", () => {
       expect(database.loadLedgerSnapshotData()).toEqual(liveStateBeforeInterruptedRestore);
     } finally {
       database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("sanitizes existing database evidence and legacy evidence restored from a snapshot", () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-storage-sanitization-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const backupPath = join(directory, "legacy-backup.json");
+    const legacySnapshotPath = join(directory, "version-17-backup.json");
+    const foreignSnapshotPath = join(directory, "foreign-identity-backup.json");
+    const malformedSnapshotPath = join(directory, "malformed-identity-backup.json");
+    const householdId = "household-mortgage-sanitization";
+    const parserLimits = { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 };
+    const legacyParsedDocument = parseRogalandMortgageHtml(
+      SOURCE_CONTEXT_SCHEDULE_HTML,
+      parserLimits
+    );
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: householdId,
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
+      },
+    });
+    let databaseOpen = true;
+
+    try {
+      const loan = createLoanRegistry(database, {
+        createId: () => "loan-mortgage-sanitization",
+        now: () => new Date("2026-11-21T12:00:00.000Z"),
+      }).create({
+        label: "Sanitization test mortgage",
+        principalMinor: 10_000_000,
+        annualInterestRateBasisPoints: 500,
+        termMonths: 120,
+        paymentAmountMinor: 100_000,
+        paymentFrequency: "monthly",
+        currencyCode: "NOK",
+      });
+      const legacyVersion = {
+        id: "legacy-mortgage-evidence",
+        loanId: loan.id,
+        householdId,
+        versionNumber: 1,
+        sourceAsOfDateIso: null,
+        importedAtIso: "2026-11-21T12:30:00.000Z",
+        documents: [{
+          role: "schedule" as const,
+          sourceHashSha256: "a".repeat(64),
+          parserVersion: "2",
+          parserLimits,
+          parsedDocument: legacyParsedDocument,
+        }],
+        pairing: null,
+        attachment: {
+          status: "confirmed" as const,
+          verification: "explicit-user-attachment" as const,
+        },
+        termComparisons: [],
+        termDifferencesAcknowledged: false,
+        scheduleValidation: null,
+      };
+
+      database.close();
+      databaseOpen = false;
+      const legacyDatabase = new DatabaseSync(databasePath);
+      try {
+        legacyDatabase.prepare(`
+          INSERT INTO mortgage_evidence_versions (
+            id, loan_id, household_id, version_number, source_as_of_date_iso,
+            imported_at_iso, documents_json, pairing_json, attachment_json,
+            term_comparisons_json, term_differences_acknowledged, schedule_validation_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          legacyVersion.id,
+          legacyVersion.loanId,
+          legacyVersion.householdId,
+          legacyVersion.versionNumber,
+          legacyVersion.sourceAsOfDateIso,
+          legacyVersion.importedAtIso,
+          JSON.stringify(legacyVersion.documents),
+          null,
+          JSON.stringify(legacyVersion.attachment),
+          JSON.stringify(legacyVersion.termComparisons),
+          0,
+          null
+        );
+      } finally {
+        legacyDatabase.close();
+      }
+
+      const migratedDatabase = createLocalLedgerDatabase({ dbPath: databasePath });
+      try {
+        const migratedVersion = migratedDatabase.listMortgageEvidenceVersions(
+          householdId,
+          loan.id
+        )[0];
+        expect(migratedVersion).toBeDefined();
+        expect(JSON.stringify(migratedVersion)).not.toContain("loan-123");
+        expect(JSON.stringify(migratedVersion)).not.toContain("Source account");
+        expect(migratedVersion?.documents[0]?.parsedDocument.identityEvidence.loanReference)
+          .toBeNull();
+        expect(migratedVersion?.documents[0]?.parsedDocument.scheduleRows[0]?.sourceHeaders)
+          .toEqual(["Termin", "Avdrag", "Renter", "Gebyr", "Terminbeløp", "Restgjeld"]);
+        const storedRow = new DatabaseSync(databasePath);
+        try {
+          const storedDocuments = storedRow.prepare(
+            "SELECT documents_json FROM mortgage_evidence_versions WHERE id = ?"
+          ).get(legacyVersion.id) as { documents_json: string };
+          expect(storedDocuments.documents_json).not.toContain("loan-123");
+          expect(storedDocuments.documents_json).not.toContain("Source account");
+        } finally {
+          storedRow.close();
+        }
+
+        const snapshot = migratedDatabase.loadLedgerSnapshotData();
+        const mortgageEvidenceVersions = snapshot.mortgageEvidenceVersions;
+        if (mortgageEvidenceVersions === undefined) {
+          throw new Error("Expected migrated mortgage evidence in the ledger snapshot.");
+        }
+        createBackupSnapshot({
+          ...snapshot,
+          outputPath: backupPath,
+          mortgageEvidenceVersions: mortgageEvidenceVersions.map((version) => ({
+            ...version,
+            documents: version.documents.map((document) => ({
+              ...document,
+              parsedDocument: legacyParsedDocument,
+            })),
+          })),
+        });
+        const legacySnapshot = getRecord(
+          JSON.parse(readFileSync(backupPath, "utf8")) as unknown,
+          "legacy snapshot"
+        );
+        getRecord(legacySnapshot["metadata"], "legacy snapshot metadata")["version"] = "17";
+        const legacyVersions = legacySnapshot["mortgageEvidenceVersions"];
+        if (!Array.isArray(legacyVersions)) {
+          throw new Error("Expected legacy mortgage evidence versions.");
+        }
+        for (const version of legacyVersions) {
+          const documents = getRecord(version, "legacy mortgage evidence version")["documents"];
+          if (!Array.isArray(documents)) {
+            throw new Error("Expected legacy mortgage evidence documents.");
+          }
+          for (const document of documents) {
+            delete getRecord(document, "legacy mortgage evidence document")["identityFingerprint"];
+          }
+        }
+        writeFileSync(legacySnapshotPath, JSON.stringify(legacySnapshot), "utf8");
+        migratedDatabase.replaceLedgerSnapshotData(
+          restoreBackupSnapshot({ snapshotPath: legacySnapshotPath })
+        );
+        const restoredVersion = migratedDatabase.listMortgageEvidenceVersions(
+          householdId,
+          loan.id
+        )[0];
+        expect(JSON.stringify(restoredVersion)).not.toContain("loan-123");
+        expect(JSON.stringify(restoredVersion)).not.toContain("Source account");
+        const localKeyId = migratedDatabase.mortgageIdentityFingerprinter.keyId;
+        expect(restoredVersion?.documents[0]?.identityFingerprint?.keyId).toBe(localKeyId);
+
+        const foreignKeyId = localKeyId === "0000000000000000"
+          ? "1111111111111111"
+          : "0000000000000000";
+        const currentSnapshotData = migratedDatabase.loadLedgerSnapshotData();
+        const foreignVersions = currentSnapshotData.mortgageEvidenceVersions?.map((version) => ({
+          ...version,
+          documents: version.documents.map((document) => {
+            if (document.identityFingerprint === undefined) {
+              throw new Error("Expected a fingerprint on restored mortgage evidence.");
+            }
+            return {
+              ...document,
+              identityFingerprint: {
+                ...document.identityFingerprint,
+                keyId: foreignKeyId,
+              },
+            };
+          }),
+        }));
+        if (foreignVersions === undefined) {
+          throw new Error("Expected restored mortgage evidence versions.");
+        }
+        createBackupSnapshot({
+          ...currentSnapshotData,
+          outputPath: foreignSnapshotPath,
+          createdAtIso: "2026-11-21T12:31:00.000Z",
+          mortgageEvidenceVersions: foreignVersions,
+        });
+        migratedDatabase.replaceLedgerSnapshotData(
+          restoreBackupSnapshot({ snapshotPath: foreignSnapshotPath })
+        );
+        const restoredForeignVersion = migratedDatabase.listMortgageEvidenceVersions(
+          householdId,
+          loan.id
+        )[0];
+        expect(restoredForeignVersion?.documents[0]?.identityFingerprint?.keyId)
+          .toBe(foreignKeyId);
+
+        const malformedSnapshot = getRecord(
+          JSON.parse(readFileSync(foreignSnapshotPath, "utf8")) as unknown,
+          "foreign identity snapshot"
+        );
+        const malformedVersions = malformedSnapshot["mortgageEvidenceVersions"];
+        if (!Array.isArray(malformedVersions)) {
+          throw new Error("Expected foreign mortgage evidence versions.");
+        }
+        const malformedDocuments = getRecord(
+          malformedVersions[0],
+          "foreign mortgage evidence version"
+        )["documents"];
+        if (!Array.isArray(malformedDocuments)) {
+          throw new Error("Expected foreign mortgage evidence documents.");
+        }
+        const malformedFingerprint = getRecord(
+          getRecord(malformedDocuments[0], "foreign mortgage evidence document")["identityFingerprint"],
+          "foreign mortgage identity fingerprint"
+        );
+        const fingerprintReferences = malformedFingerprint["references"];
+        if (!Array.isArray(fingerprintReferences) || fingerprintReferences.length === 0) {
+          throw new Error("Expected foreign mortgage identity references.");
+        }
+        fingerprintReferences[0] = "not-a-fingerprint";
+        writeFileSync(malformedSnapshotPath, JSON.stringify(malformedSnapshot), "utf8");
+        expect(() => restoreBackupSnapshot({ snapshotPath: malformedSnapshotPath }))
+          .toThrow(/Invalid snapshot mortgage evidence documents/);
+      } finally {
+        migratedDatabase.close();
+      }
+    } finally {
+      if (databaseOpen) database.close();
       rmSync(directory, { recursive: true, force: true });
     }
   });
@@ -470,7 +745,7 @@ describe("bounded mortgage HTML file reads", () => {
         "snapshot"
       );
       const metadata = getRecord(snapshot["metadata"], "snapshot metadata");
-      expect(metadata["version"]).toBe("17");
+      expect(metadata["version"]).toBe(SNAPSHOT_VERSION);
       const restored = restoreBackupSnapshot({ snapshotPath });
       const restoredDetails = restored.mortgageEvidenceVersions[0]?.documents.find(
         (document) => document.role === "details"
@@ -749,6 +1024,82 @@ describe("bounded mortgage HTML file reads", () => {
           loan.id
         )).toHaveLength(1);
       }
+
+      writeFileSync(detailsFilePath, VALID_DETAILS_HTML, "utf8");
+      writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+      const evidenceDatabase = new DatabaseSync(databasePath);
+      try {
+        const row = evidenceDatabase.prepare(`
+          SELECT documents_json FROM mortgage_evidence_versions
+          WHERE loan_id = ? ORDER BY version_number DESC LIMIT 1
+        `).get(loan.id) as { documents_json: string };
+        const documents: unknown = JSON.parse(row.documents_json);
+        if (!Array.isArray(documents) || documents.length === 0) {
+          throw new Error("Expected persisted mortgage evidence documents.");
+        }
+        for (const document of documents) {
+          const fingerprint = getRecord(
+            getRecord(document, "persisted mortgage evidence document").identityFingerprint,
+            "persisted mortgage identity fingerprint"
+          );
+          if (typeof fingerprint.keyId !== "string") {
+            throw new Error("Expected a persisted mortgage identity fingerprint key id.");
+          }
+          fingerprint.keyId = fingerprint.keyId === "0000000000000000"
+            ? "1111111111111111"
+            : "0000000000000000";
+        }
+        evidenceDatabase.prepare(
+          "UPDATE mortgage_evidence_versions SET documents_json = ? WHERE loan_id = ?"
+        ).run(JSON.stringify(documents), loan.id);
+      } finally {
+        evidenceDatabase.close();
+      }
+
+      const unavailableIdentityPreview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: loan.id },
+        attachmentConfirmed: false,
+      });
+      expect(unavailableIdentityPreview.reviewState).toBe("identity-check-unavailable");
+      expect(() => service.acceptPreview(unavailableIdentityPreview.previewId))
+        .toThrow("Mortgage import preview is not ready for acceptance.");
+
+      const revealIdentity = Reflect.get(service, "revealAttachmentIdentity");
+      expect(typeof revealIdentity).toBe("function");
+      const revealedPreview = Reflect.apply(
+        revealIdentity,
+        service,
+        [unavailableIdentityPreview.previewId]
+      );
+      expect(getRecord(revealedPreview, "revealed mortgage preview"))
+        .toMatchObject({
+          identityReferenceDisclosure: {
+            documents: [
+              { role: "details", references: ["loan-123"] },
+              { role: "schedule", references: ["loan-123"] },
+            ],
+          },
+        });
+      expect(() => service.confirmAttachmentPreview(unavailableIdentityPreview.previewId))
+        .toThrow("Review and acknowledge the unavailable identity check before confirmation.");
+      const confirmUnavailableIdentity = Reflect.get(service, "confirmAttachmentPreview");
+      const confirmedPreview = Reflect.apply(
+        confirmUnavailableIdentity,
+        service,
+        [unavailableIdentityPreview.previewId, true]
+      );
+      expect(getRecord(confirmedPreview, "confirmed mortgage preview").attachment)
+        .toMatchObject({
+          status: "confirmed",
+          identityCheck: "unavailable",
+        });
+      const acceptedEvidence = service.acceptPreview(unavailableIdentityPreview.previewId);
+      expect(acceptedEvidence.attachment).toMatchObject({
+        status: "confirmed",
+        identityCheck: "unavailable",
+      });
+      expect(JSON.stringify(acceptedEvidence)).not.toContain("loan-123");
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
@@ -915,7 +1266,7 @@ describe("bounded mortgage HTML file reads", () => {
     }
   });
 
-  it("persists a supported zero-principal source period without creating an actual balance", async () => {
+  it("preserves supported zero-principal evidence when a later debt increase needs review", async () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-zero-principal-"));
     const databasePath = join(directory, "ledger.sqlite");
     const detailsFilePath = join(directory, "details.html");
@@ -943,10 +1294,11 @@ describe("bounded mortgage HTML file reads", () => {
     });
 
     try {
+      let generatedId = 0;
       const service = createMortgageBankImportService(database, {
         maxBytesPerFile: 10_000,
         parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
-        createId: () => "mortgage-zero-principal-evidence",
+        createId: () => `mortgage-zero-principal-${++generatedId}`,
         now: () => new Date("2026-11-21T12:30:00.000Z"),
       });
       const preview = await service.previewFiles({
@@ -966,11 +1318,76 @@ describe("bounded mortgage HTML file reads", () => {
         projectedClosingBalanceMinor: 10_000_000,
       });
       expect(database.listSourceOnlyLoanRecords("household-mortgage-zero-principal"))
-        .toHaveLength(1);
+        .toEqual([{
+          id: evidence.loanId,
+          householdId: "household-mortgage-zero-principal",
+          label: "Rogaland mortgage",
+          currencyCode: "NOK",
+          createdAtIso: "2026-11-21T12:30:00.000Z",
+          responsibilityShareBasisPoints: 10_000,
+          recordStatus: "source-only",
+        }]);
       expect(database.listLoanRecords("household-mortgage-zero-principal")).toEqual([]);
       const snapshot = database.loadLedgerSnapshotData();
       expect(snapshot.loanBalanceSnapshots).toEqual([]);
       expect(snapshot.transactions).toEqual([]);
+
+      writeFileSync(scheduleFilePath, ZERO_PRINCIPAL_SCHEDULE_HTML.replace(
+        "</table>",
+        `<tr><td>Februar 2026</td><td>0,00</td><td>90,00</td><td>10,00</td><td>100,00</td><td>100 100,00</td></tr></table>`
+      ), "utf8");
+      const refreshPreview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: evidence.loanId },
+        attachmentConfirmed: false,
+      });
+      expect(refreshPreview.reviewState).toBe("review-required");
+      expect(refreshPreview.validation).toEqual({
+        status: "partial",
+        issues: [{ code: "unreconciled-balance-increase", rowIndex: 1 }],
+      });
+      expect(database.loadLedgerSnapshotData()).toEqual(snapshot);
+
+      expect(() => service.acceptPreview(refreshPreview.previewId))
+        .toThrow(/not ready for acceptance/);
+      expect(database.loadLedgerSnapshotData()).toEqual(snapshot);
+
+      const refreshedEvidence = service.acceptPreview(refreshPreview.previewId, true);
+      expect(refreshedEvidence.loanId).toBe(evidence.loanId);
+      expect(refreshedEvidence.versionNumber).toBe(2);
+      expect(refreshedEvidence.scheduleValidation).toEqual({
+        status: "partial",
+        issues: [{ code: "unreconciled-balance-increase", rowIndex: 1 }],
+      });
+      const refreshedSchedule = refreshedEvidence.documents.find(
+        (document) => document.role === "schedule"
+      );
+      expect(refreshedSchedule?.parsedDocument.scheduleRows).toMatchObject([
+        {
+          period: { granularity: "monthly", year: 2026, month: 1 },
+          principalMinor: 0,
+          interestMinor: 9_000,
+          feeMinor: 1_000,
+          paymentMinor: 10_000,
+          projectedClosingBalanceMinor: 10_000_000,
+        },
+        {
+          period: { granularity: "monthly", year: 2026, month: 2 },
+          principalMinor: 0,
+          interestMinor: 9_000,
+          feeMinor: 1_000,
+          paymentMinor: 10_000,
+          projectedClosingBalanceMinor: 10_010_000,
+        },
+      ]);
+      expect(database.listMortgageEvidenceVersions(
+        "household-mortgage-zero-principal",
+        evidence.loanId
+      )).toEqual([evidence, refreshedEvidence]);
+      expect(database.loadLedgerSnapshotData()).toEqual({
+        ...snapshot,
+        mortgageEvidenceVersions: [evidence, refreshedEvidence],
+      });
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
@@ -1122,6 +1539,117 @@ describe("bounded mortgage HTML file reads", () => {
       expect(preview.parsedDocument.scheduleRows[0]).not.toHaveProperty("sourceValues");
       expect(JSON.stringify(preview)).not.toContain("loan-123");
     } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("previews original semantic source cells without unrelated identifier columns", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-source-context-"));
+    const filePath = join(directory, "schedule.html");
+    const networkFetch = vi.fn(() => {
+      throw new Error("Network access is not allowed in mortgage import integration tests.");
+    });
+    const consoleSpies = [
+      vi.spyOn(console, "debug").mockImplementation(() => {}),
+      vi.spyOn(console, "info").mockImplementation(() => {}),
+      vi.spyOn(console, "log").mockImplementation(() => {}),
+      vi.spyOn(console, "warn").mockImplementation(() => {}),
+      vi.spyOn(console, "error").mockImplementation(() => {}),
+    ];
+    vi.stubGlobal("fetch", networkFetch);
+
+    try {
+      writeFileSync(filePath, SOURCE_CONTEXT_SCHEDULE_HTML, "utf8");
+      const preview = await previewMortgageScheduleFile({
+        filePath,
+        maxBytes: Buffer.byteLength(SOURCE_CONTEXT_SCHEDULE_HTML),
+        parserLimits: {
+          maxSourceCharacters: SOURCE_CONTEXT_SCHEDULE_HTML.length,
+          maxElements: 100,
+          maxDepth: 20,
+        },
+        loanIdentity: SELECTED_LOAN_IDENTITY,
+        attachmentConfirmed: true,
+      });
+
+      expect(preview.parsedDocument.scheduleRows[0]?.sourceExcerpt).toEqual({
+        yearGroupLabel: "2026",
+        cells: [
+          { sourceLabel: "Termin", sourceValue: "Januar" },
+          { sourceLabel: "Avdrag", sourceValue: "1 000,00" },
+          { sourceLabel: "Renter", sourceValue: "90,00" },
+          { sourceLabel: "Gebyr", sourceValue: "10,00" },
+          { sourceLabel: "Terminbeløp", sourceValue: "1 100,00" },
+          { sourceLabel: "Restgjeld", sourceValue: "99 000,00" },
+        ],
+      });
+      expect(preview.parsedDocument.scheduleRows[0]).not.toHaveProperty("sourceHeaders");
+      expect(preview.parsedDocument.scheduleRows[0]).not.toHaveProperty("sourceValues");
+      expect(JSON.stringify(preview)).not.toContain("Source account");
+      expect(JSON.stringify(preview)).not.toContain("loan-123");
+      expect(JSON.stringify(preview)).not.toContain("example.invalid");
+      expect(JSON.stringify(preview)).not.toContain("<script>");
+      expect(preview.parsedDocument.identityDisplay.maskedLoanReference).toBe("****-123");
+      expect(networkFetch).not.toHaveBeenCalled();
+
+      const loggedContent = consoleSpies
+        .flatMap((spy) => spy.mock.calls)
+        .flatMap((call) => call)
+        .map((argument) =>
+          argument instanceof Error
+            ? argument.message
+            : typeof argument === "string"
+              ? argument
+              : JSON.stringify(argument) ?? String(argument)
+        )
+        .join("\n");
+      expect(loggedContent).not.toContain(SOURCE_CONTEXT_SCHEDULE_HTML);
+      expect(loggedContent).not.toContain("loan-123");
+    } finally {
+      vi.unstubAllGlobals();
+      consoleSpies.forEach((spy) => spy.mockRestore());
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not log financial source content when bounded preview rejects a file", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-source-error-"));
+    const filePath = join(directory, "schedule.html");
+    const sensitiveSource =
+      '<h1>PRIVATE-LOAN-REFERENCE-7421</h1><p>Restgjeld: 987 654,32</p>';
+    const consoleSpies = [
+      vi.spyOn(console, "debug").mockImplementation(() => {}),
+      vi.spyOn(console, "info").mockImplementation(() => {}),
+      vi.spyOn(console, "log").mockImplementation(() => {}),
+      vi.spyOn(console, "warn").mockImplementation(() => {}),
+      vi.spyOn(console, "error").mockImplementation(() => {}),
+    ];
+
+    try {
+      writeFileSync(filePath, sensitiveSource, "utf8");
+      await expect(previewMortgageScheduleFile({
+        filePath,
+        maxBytes: 8,
+        parserLimits: { maxSourceCharacters: 100, maxElements: 100, maxDepth: 20 },
+        loanIdentity: SELECTED_LOAN_IDENTITY,
+        attachmentConfirmed: true,
+      })).rejects.toThrow(RangeError);
+
+      const loggedContent = consoleSpies
+        .flatMap((spy) => spy.mock.calls)
+        .flatMap((call) => call)
+        .map((argument) =>
+          argument instanceof Error
+            ? argument.message
+            : typeof argument === "string"
+              ? argument
+              : JSON.stringify(argument) ?? String(argument)
+        )
+        .join("\n");
+      expect(loggedContent).not.toContain(sensitiveSource);
+      expect(loggedContent).not.toContain("PRIVATE-LOAN-REFERENCE-7421");
+    } finally {
+      consoleSpies.forEach((spy) => spy.mockRestore());
       rmSync(directory, { recursive: true, force: true });
     }
   });

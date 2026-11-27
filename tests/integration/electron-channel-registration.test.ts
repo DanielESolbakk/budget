@@ -20,8 +20,9 @@ const harness = vi.hoisted(() => {
   const ready: Array<() => Promise<void>> = [];
   const appEvents = new Map<string, () => void>();
   const windows: Array<{ webContents: { mainFrame: { url: string }; send: ReturnType<typeof vi.fn> } }> = [];
+  const userDataPath: { value: string } = { value: "" };
   const readGate: { filePath: string; wait?: Promise<void>; onEnter?: () => void } = { filePath: "" };
-  return { handlers, ready, appEvents, windows, readGate, dialogs: vi.fn() };
+  return { handlers, ready, appEvents, windows, userDataPath, readGate, dialogs: vi.fn() };
 });
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -48,10 +49,19 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 vi.mock("electron", () => ({
   app: {
     whenReady: () => ({
-      then: (callback: () => Promise<void>) => harness.ready.push(callback),
+      then: (callback: () => Promise<void>) => {
+        harness.ready.push(callback);
+        return Promise.resolve();
+      },
     }),
+    getPath: () => harness.userDataPath.value,
     on: (name: string, callback: () => void) => harness.appEvents.set(name, callback),
     quit: vi.fn(),
+  },
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (value: string) => Buffer.from(value),
+    decryptString: (value: Buffer) => value.toString(),
   },
   BrowserWindow: class {
     webContents = { mainFrame: { url: "" }, send: vi.fn() };
@@ -122,6 +132,7 @@ describe("Electron channel registration and live ledger wiring", () => {
     delete harness.readGate.wait;
     delete harness.readGate.onEnter;
     directory = mkdtempSync(join(tmpdir(), "budget-channel-boundary-"));
+    harness.userDataPath.value = directory;
     dbPath = join(directory, "ledger.sqlite");
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("BUDGET_TEST_LEDGER_SEED", "empty");
@@ -204,7 +215,10 @@ describe("Electron channel registration and live ledger wiring", () => {
       ) {
         throw new Error("Expected mortgage preview to have an id.");
       }
-      const confirmedPreview = await invoke("mortgageImport:confirmAttachment", preview.previewId);
+      const confirmedPreview = await invoke("mortgageImport:confirmAttachment", {
+        previewId: preview.previewId,
+        acknowledgeUnavailableIdentity: false,
+      });
       expect(confirmedPreview).toMatchObject({
         previewId: preview.previewId,
         attachment: { status: "confirmed", verification: "explicit-user-attachment" },

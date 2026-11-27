@@ -9,6 +9,10 @@ import type {
   MortgageSchedulePreviewDocument,
   MortgageTermComparison,
 } from "../../../shared/mortgageBankEvidence.js";
+import {
+  summarizeFirstCoveredMortgageScheduleYear,
+  type MortgageScheduleYearSummary,
+} from "../../../domain/import/mortgageScheduleCoverage.js";
 import { useImportPreflight } from "../../import/useImportPreflight.js";
 import { errorMessage } from "../registryErrorMessage.js";
 import { formatAmount } from "./loanFormState.js";
@@ -38,6 +42,8 @@ function reviewStateMessage(reviewState: MortgageBankImportPreview["reviewState"
       return "Source dates conflict. Review the conflicting dates before accepting evidence.";
     case "attachment-confirmation-required":
       return "Attachment confirmation required.";
+    case "identity-check-unavailable":
+      return "The saved loan identity could not be checked automatically.";
     case "identity-conflict":
       return "The document identity or currency conflicts with the selected loan.";
     case "invalid":
@@ -70,6 +76,9 @@ function attachmentMessage(
     return "Loan attachment verified using matching identifiers.";
   }
   if (attachment.status === "confirmed") {
+    if (attachment.identityCheck === "unavailable") {
+      return "You confirmed this evidence belongs to the selected loan; its saved identity could not be checked.";
+    }
     return target.kind === "new-source-only"
       ? "You confirmed these documents belong to one new incomplete loan."
       : "You confirmed this evidence belongs to the selected loan.";
@@ -77,7 +86,22 @@ function attachmentMessage(
   if (attachment.status === "confirmation-required") {
     return "Loan attachment has not been confirmed.";
   }
+  if (attachment.status === "identity-check-unavailable") return null;
   return "Loan attachment cannot be verified because the identifiers conflict.";
+}
+
+function sourcePageIdentityMessage(
+  pairing: MortgageDocumentPairingResult | null
+): string {
+  if (pairing?.status === "verified") return "references and currency match.";
+  if (pairing?.status === "conflict") return "references or currency conflict.";
+  if (pairing?.status === "confirmed") {
+    return "a manual attachment was used because source identifiers were incomplete.";
+  }
+  if (pairing?.status === "identity-check-unavailable") {
+    return "the source pages could not be compared.";
+  }
+  return "there was not enough information to verify a match.";
 }
 
 function formatEvidenceAmount(amountMinor: number | null, currencyCode: string | null): string {
@@ -161,63 +185,186 @@ function checkpointForMonth(
   ));
 }
 
-function firstYearEndCheckpoint(
-  document: MortgageSchedulePreviewDocument,
-  currentYear: number
-): MortgageSchedulePreviewDocument["scheduleRows"][number] | undefined {
-  return document.scheduleRows.find((row) => (
-    row.period.granularity === "annual"
-      ? row.period.year >= currentYear
-      : row.period.granularity === "monthly" &&
-        row.period.year >= currentYear &&
-        row.period.month === 12
-  ));
+function firstYearMonthlyComparisonMessage(summary: MortgageScheduleYearSummary): string {
+  if (summary.monthlyRowIndexes.length === 0) {
+    return `No monthly detail is supplied for ${summary.year}; no monthly sum is available for comparison.`;
+  }
+  if (summary.hasDuplicateMonths) {
+    return "Monthly detail contains repeated periods; no comparable full-year monthly sum is available.";
+  }
+  if (!summary.hasFullMonthlyCoverage) {
+    return summary.annualSummaryRowIndex === null
+      ? `Monthly detail covers ${summary.coveredMonths.length} of 12 months; no full-year monthly sum is available for comparison.`
+      : `Monthly detail covers ${summary.coveredMonths.length} of 12 months; partial coverage is not comparable to the annual summary.`;
+  }
+  if (summary.monthlyTotals === null) {
+    return "Monthly coverage spans all 12 months, but some values are missing or exceed safe calculation limits; no full-year monthly sum is available.";
+  }
+  return summary.annualSummaryRowIndex === null
+    ? "Monthly detail covers all 12 months; full-year monthly sums are available, but this source has no annual summary for comparison."
+    : "Monthly detail covers all 12 months; full-year monthly sums are available for comparison with the annual summary.";
+}
+
+function sourceRowsAroundCheckpoint(
+  scheduleRows: MortgageSchedulePreviewDocument["scheduleRows"],
+  checkpoint: MortgageSchedulePreviewDocument["scheduleRows"][number] | undefined
+): MortgageSchedulePreviewDocument["scheduleRows"] {
+  if (checkpoint === undefined) return [];
+  const index = scheduleRows.indexOf(checkpoint);
+  if (index < 0) return [];
+  return scheduleRows
+    .slice(Math.max(0, index - 1), index + 2)
+    .filter((row) => row.period.granularity !== "unknown" && row.sourceExcerpt.cells.length > 0);
 }
 
 function MortgageScheduleCheckpoint({
   name,
   row,
+  scheduleRows,
   currencyCode,
   missingMessage,
+  firstYearSummary,
 }: {
   readonly name: string;
   readonly row: MortgageSchedulePreviewDocument["scheduleRows"][number] | undefined;
+  readonly scheduleRows: MortgageSchedulePreviewDocument["scheduleRows"];
   readonly currencyCode: string | null;
   readonly missingMessage: string;
+  readonly firstYearSummary?: MortgageScheduleYearSummary | null;
 }): React.JSX.Element {
+  const sourceRows = sourceRowsAroundCheckpoint(scheduleRows, row);
   return (
-    <div role="group" aria-label={`${name} source checkpoint`}>
-      <h6>{name} source checkpoint</h6>
-      {row === undefined ? (
-        <p>{missingMessage}</p>
-      ) : (
-        <>
-          <p>Source period: {displaySchedulePeriod(row)}. Covered by this source.</p>
-          <dl className="loan-terms">
-            <div>
-              <dt>Payment</dt>
-              <dd>{formatEvidenceAmount(row.paymentMinor, currencyCode)}</dd>
-            </div>
-            <div>
-              <dt>Principal</dt>
-              <dd>{formatEvidenceAmount(row.principalMinor, currencyCode)}</dd>
-            </div>
-            <div>
-              <dt>Interest</dt>
-              <dd>{formatEvidenceAmount(row.interestMinor, currencyCode)}</dd>
-            </div>
-            <div>
-              <dt>Fee</dt>
-              <dd>{formatEvidenceAmount(row.feeMinor, currencyCode)}</dd>
-            </div>
-            <div>
-              <dt>Projected closing balance</dt>
-              <dd>{formatEvidenceAmount(row.projectedClosingBalanceMinor, currencyCode)}</dd>
-            </div>
-          </dl>
-        </>
+    <details
+      className="loan-mortgage-checkpoint"
+      aria-label={`${name} source checkpoint`}
+    >
+      <summary
+        className="loan-mortgage-checkpoint-summary"
+        role="button"
+      >
+        <span className="loan-mortgage-checkpoint-summary-grid">
+          <strong>{name} source checkpoint</strong>
+          {row === undefined ? (
+            <span>{missingMessage}</span>
+          ) : (
+            <>
+              <span>
+                Source period: {displaySchedulePeriod(row)} · {
+                  row.period.granularity === "annual"
+                    ? "annual"
+                    : row.period.granularity === "monthly"
+                      ? "monthly"
+                      : "period not identified"
+                }
+              </span>
+              <span>Payment: {formatEvidenceAmount(row.paymentMinor, currencyCode)}</span>
+              <span>
+                Projected closing balance: {
+                  formatEvidenceAmount(row.projectedClosingBalanceMinor, currencyCode)
+                }
+              </span>
+            </>
+          )}
+          {firstYearSummary !== undefined && firstYearSummary !== null && (
+            <span className="loan-mortgage-checkpoint-coverage">
+              {firstYearMonthlyComparisonMessage(firstYearSummary)}
+            </span>
+          )}
+        </span>
+      </summary>
+      {(row !== undefined || (firstYearSummary !== undefined && firstYearSummary !== null)) && (
+        <div className="loan-mortgage-checkpoint-details">
+          {row !== undefined && (
+            <>
+              <dl className="loan-terms">
+                <div>
+                  <dt>Principal</dt>
+                  <dd>{formatEvidenceAmount(row.principalMinor, currencyCode)}</dd>
+                </div>
+                <div>
+                  <dt>Interest</dt>
+                  <dd>{formatEvidenceAmount(row.interestMinor, currencyCode)}</dd>
+                </div>
+                <div>
+                  <dt>Fee</dt>
+                  <dd>{formatEvidenceAmount(row.feeMinor, currencyCode)}</dd>
+                </div>
+              </dl>
+              {sourceRows.length > 0 && (
+                <details className="loan-mortgage-source-excerpt">
+                  <summary>Show in source</summary>
+                  <div
+                    role="group"
+                    aria-label={`Original source excerpt around ${displaySchedulePeriod(row)}`}
+                  >
+                    {sourceRows.map((sourceRow, index) => (
+                      <div key={`${sourceRow.periodLabel}-${index}`}>
+                        <p><strong>Source row {index + 1}</strong></p>
+                        {sourceRow.sourceExcerpt.yearGroupLabel !== null && (
+                          <p>Source year grouping: {sourceRow.sourceExcerpt.yearGroupLabel}</p>
+                        )}
+                        <dl className="loan-terms">
+                          {sourceRow.sourceExcerpt.cells.map((cell, cellIndex) => (
+                            <div key={`${cell.sourceLabel}-${cellIndex}`}>
+                              <dt>{cell.sourceLabel}</dt>
+                              <dd>{cell.sourceValue}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </>
+          )}
+          {firstYearSummary !== undefined &&
+            firstYearSummary !== null &&
+            firstYearSummary.monthlyTotals !== null && (
+              <div role="group" aria-label="Full-year monthly sums">
+                <h6>Full-year monthly sums</h6>
+                <dl className="loan-terms">
+                  <div>
+                    <dt>Payment sum</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.paymentMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                  <div>
+                    <dt>Principal sum</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.principalMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                  <div>
+                    <dt>Interest sum</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.interestMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                  <div>
+                    <dt>Fee sum</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.feeMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                  <div>
+                    <dt>December projected closing balance</dt>
+                    <dd>{formatEvidenceAmount(
+                      firstYearSummary.monthlyTotals.yearEndBalanceMinor,
+                      currencyCode
+                    )}</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
+        </div>
       )}
-    </div>
+    </details>
   );
 }
 
@@ -236,7 +383,11 @@ function MortgageDocumentPreview({
   const nextMonthYear = currentMonth === 12 ? now.getFullYear() + 1 : now.getFullYear();
   const currentMonthRow = checkpointForMonth(document, now.getFullYear(), currentMonth);
   const nextMonthRow = checkpointForMonth(document, nextMonthYear, nextMonth);
-  const yearEndRow = firstYearEndCheckpoint(document, now.getFullYear());
+  const firstYearSummary = summarizeFirstCoveredMortgageScheduleYear(sourceRows);
+  const yearEndRowIndex = firstYearSummary?.yearEndRowIndex;
+  const yearEndRow = yearEndRowIndex === null || yearEndRowIndex === undefined
+    ? undefined
+    : sourceRows[yearEndRowIndex];
   const finalRow = sourceRows.at(-1);
   return (
     <div
@@ -281,24 +432,29 @@ function MortgageDocumentPreview({
           <MortgageScheduleCheckpoint
             name="Current month"
             row={currentMonthRow}
+            scheduleRows={sourceRows}
             currencyCode={currency.currencyCode}
             missingMessage="Not covered by this source."
           />
           <MortgageScheduleCheckpoint
             name="Next month"
             row={nextMonthRow}
+            scheduleRows={sourceRows}
             currencyCode={currency.currencyCode}
             missingMessage="Not covered by this source."
           />
           <MortgageScheduleCheckpoint
             name="First year-end"
             row={yearEndRow}
+            scheduleRows={sourceRows}
             currencyCode={currency.currencyCode}
-            missingMessage="Not supplied by this source."
+            missingMessage="No annual summary or December installment is supplied for the first covered year."
+            firstYearSummary={firstYearSummary}
           />
           <MortgageScheduleCheckpoint
             name="Final available"
             row={finalRow}
+            scheduleRows={sourceRows}
             currencyCode={currency.currencyCode}
             missingMessage="Not supplied by this source."
           />
@@ -328,6 +484,8 @@ export function LoanMortgageImportPanel({
   const [preview, setPreview] = React.useState<MortgageBankImportPreview | null>(null);
   const [acceptPartial, setAcceptPartial] = React.useState(false);
   const [acknowledgeTermDifferences, setAcknowledgeTermDifferences] = React.useState(false);
+  const [acknowledgeUnavailableIdentity, setAcknowledgeUnavailableIdentity] =
+    React.useState(false);
   const [isWorking, setIsWorking] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
@@ -346,6 +504,8 @@ export function LoanMortgageImportPanel({
   const preflight = useImportPreflight("mortgage", contextKey, cancelMortgagePreview);
   const cancelledRequestIdRef = React.useRef<string | null>(null);
   const attachmentStatusRef = React.useRef<HTMLParagraphElement>(null);
+  const identityReferencesRef = React.useRef<HTMLElement>(null);
+  const previousIdentityDisclosureRef = React.useRef(false);
   const previousAttachmentStatusRef =
     React.useRef<MortgageDocumentPairingResult["status"] | null>(null);
 
@@ -358,13 +518,22 @@ export function LoanMortgageImportPanel({
   React.useEffect(() => {
     const attachmentStatus = preview?.attachment?.status ?? null;
     if (
-      previousAttachmentStatusRef.current === "confirmation-required" &&
+      (previousAttachmentStatusRef.current === "confirmation-required" ||
+        previousAttachmentStatusRef.current === "identity-check-unavailable") &&
       attachmentStatus === "confirmed"
     ) {
       attachmentStatusRef.current?.focus();
     }
     previousAttachmentStatusRef.current = attachmentStatus;
   }, [preview?.attachment?.status]);
+
+  React.useEffect(() => {
+    const hasDisclosure = preview?.identityReferenceDisclosure !== undefined;
+    if (!previousIdentityDisclosureRef.current && hasDisclosure) {
+      identityReferencesRef.current?.focus();
+    }
+    previousIdentityDisclosureRef.current = hasDisclosure;
+  }, [preview?.identityReferenceDisclosure]);
 
   function currentTarget(): MortgageImportTarget | null {
     if (loanId !== undefined) return { kind: "existing", loanId };
@@ -404,6 +573,7 @@ export function LoanMortgageImportPanel({
       setPreview(result);
       setAcceptPartial(false);
       setAcknowledgeTermDifferences(false);
+      setAcknowledgeUnavailableIdentity(false);
       keepPreviewOpen = true;
     } catch (failure: unknown) {
       if (!preflight.isCurrent(requestId)) return;
@@ -441,13 +611,30 @@ export function LoanMortgageImportPanel({
     setError(null);
     try {
       const confirmed = await window.budgetApi.mortgageImport.confirmAttachment(
-        preview.previewId
+        preview.previewId,
+        acknowledgeUnavailableIdentity
       );
       setPreview(confirmed);
       setAcceptPartial(false);
       setAcknowledgeTermDifferences(false);
     } catch (failure: unknown) {
       setError(errorMessage(failure, "Unable to confirm the mortgage evidence attachment."));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function revealAttachmentIdentity(): Promise<void> {
+    if (preview === null) return;
+    setIsWorking(true);
+    setError(null);
+    try {
+      const disclosed = await window.budgetApi.mortgageImport.revealAttachmentIdentity(
+        preview.previewId
+      );
+      setPreview(disclosed);
+    } catch (failure: unknown) {
+      setError(errorMessage(failure, "Unable to reveal source loan references."));
     } finally {
       setIsWorking(false);
     }
@@ -479,6 +666,7 @@ export function LoanMortgageImportPanel({
       setPreview(null);
       setAcceptPartial(false);
       setAcknowledgeTermDifferences(false);
+      setAcknowledgeUnavailableIdentity(false);
     } catch (failure: unknown) {
       setError(errorMessage(failure, "Unable to accept mortgage evidence."));
     } finally {
@@ -507,6 +695,7 @@ export function LoanMortgageImportPanel({
       setPreview(null);
       setAcceptPartial(false);
       setAcknowledgeTermDifferences(false);
+      setAcknowledgeUnavailableIdentity(false);
       setStatus("Import canceled. No loan data was changed.");
     } catch (failure: unknown) {
       setError(errorMessage(failure, "Unable to cancel the mortgage import."));
@@ -523,6 +712,7 @@ export function LoanMortgageImportPanel({
       setPreview(null);
       setAcceptPartial(false);
       setAcknowledgeTermDifferences(false);
+      setAcknowledgeUnavailableIdentity(false);
       setIsOpen(false);
     } catch (failure: unknown) {
       setError(errorMessage(failure, "Unable to close the mortgage import."));
@@ -564,6 +754,12 @@ export function LoanMortgageImportPanel({
     loanCurrencyCode !== undefined
     ? `Confirm attachment to ${targetName} using ${loanCurrencyCode}`
     : `Confirm attachment to ${targetName}`;
+  const unavailableIdentityNeedsConfirmation =
+    preview?.reviewState === "identity-check-unavailable" &&
+    preview.attachment?.status === "identity-check-unavailable";
+  const showUnavailableIdentityReview =
+    unavailableIdentityNeedsConfirmation ||
+    preview?.identityReferenceDisclosure !== undefined;
 
   return (
     <div className="loan-mortgage-import">
@@ -700,6 +896,77 @@ export function LoanMortgageImportPanel({
                 >
                   {attachmentMessage(preview.attachment, preview.target)}
                 </p>
+              )}
+              {showUnavailableIdentityReview && (
+                <section
+                  className="loan-mortgage-identity-check"
+                  aria-label="Mortgage identity check results"
+                >
+                  <h6>Saved loan identity could not be checked</h6>
+                  <p>
+                    Source pages: {sourcePageIdentityMessage(preview.pairing)}
+                  </p>
+                  <p>
+                    Saved loan reference: not checked; this evidence uses another installation&apos;s
+                    identity key.
+                  </p>
+                  {preview.identityReferenceDisclosure === undefined ? (
+                    <button
+                      disabled={isWorking}
+                      onClick={() => void revealAttachmentIdentity()}
+                      type="button"
+                    >
+                      Reveal source loan references
+                    </button>
+                  ) : (
+                    <section
+                      ref={identityReferencesRef}
+                      className="loan-mortgage-identity-references"
+                      aria-label="Revealed source loan references"
+                      tabIndex={-1}
+                    >
+                      <h6>Revealed source loan references</h6>
+                      <ul>
+                        {preview.identityReferenceDisclosure.documents.map((document, index) => (
+                          <li key={`${document.role}-${index}`}>
+                            {document.role === "details" ? "Loan details" : "Repayment plan"}:{" "}
+                            {document.references.length === 0
+                              ? "No loan reference was supplied."
+                              : document.references.join(", ")}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                  {unavailableIdentityNeedsConfirmation && (
+                    <>
+                      {preview.identityReferenceDisclosure !== undefined && (
+                        <label className="loan-mortgage-import-acknowledgement">
+                          <input
+                            checked={acknowledgeUnavailableIdentity}
+                            onChange={(event) => setAcknowledgeUnavailableIdentity(
+                              event.currentTarget.checked
+                            )}
+                            type="checkbox"
+                          />
+                          I reviewed these references and understand that the saved loan identity
+                          could not be verified.
+                        </label>
+                      )}
+                      <button
+                        disabled={
+                          isWorking ||
+                          preview.identityReferenceDisclosure === undefined ||
+                          !acknowledgeUnavailableIdentity
+                        }
+                        onClick={() => void confirmAttachment()}
+                        type="button"
+                      >
+                        I understand; confirm attachment to {targetName}
+                      </button>
+                    </>
+                  )}
+                </section>
               )}
               {preview.documents.map((document, index) => (
                 <MortgageDocumentPreview

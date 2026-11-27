@@ -34,6 +34,8 @@ import {
 import type { LocalLedgerDatabase } from "./localLedgerContracts.js";
 import { createCategoryRepository } from "./categoryRepository.js";
 import { insertLedgerRecoveryHistory, readLedgerRecoveryHistory } from "./ledgerRecoveryHistory.js";
+import { sanitizeMortgageEvidenceDocuments } from "../../domain/import/rogalandMortgageHtml.js";
+import type { MortgageIdentityFingerprinter } from "../../domain/import/mortgageIdentityFingerprint.js";
 
 type LedgerSnapshotReaders = Pick<LocalLedgerDatabase,
   | "listExchangeRates"
@@ -45,7 +47,11 @@ type LedgerSnapshotReaders = Pick<LocalLedgerDatabase,
   | "listCategories"
 >;
 
-export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotData): void {
+export function insertLedgerSnapshot(
+  db: DatabaseSync,
+  snapshot: LedgerSnapshotData,
+  fingerprinter: MortgageIdentityFingerprinter
+): void {
   db.prepare(
     "INSERT INTO households (id, name, created_at_iso) VALUES (?, ?, ?)"
   ).run(snapshot.household.id, snapshot.household.name, snapshot.household.createdAtIso);
@@ -151,7 +157,7 @@ export function insertLedgerSnapshot(db: DatabaseSync, snapshot: LedgerSnapshotD
       version.versionNumber,
       version.sourceAsOfDateIso,
       version.importedAtIso,
-      JSON.stringify(version.documents),
+      JSON.stringify(sanitizeMortgageEvidenceDocuments(version.documents, fingerprinter)),
       version.pairing === null ? null : JSON.stringify(version.pairing),
       JSON.stringify(version.attachment),
       JSON.stringify(version.termComparisons),

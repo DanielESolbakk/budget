@@ -251,6 +251,8 @@ describe("renderer budget API resolution", () => {
       target: { kind: "existing", loanId: "preview-loan" },
       requestId: "preview-request",
     })],
+    ["mortgage identity disclosure", (api: BudgetApi) =>
+      api.mortgageImport.revealAttachmentIdentity("preview-id")],
     ["mortgage attachment confirmation", (api: BudgetApi) =>
       api.mortgageImport.confirmAttachment("preview-id")],
     ["mortgage evidence acceptance", (api: BudgetApi) => api.mortgageImport.acceptPreview("preview-id")],

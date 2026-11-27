@@ -6,7 +6,10 @@ import { DEFAULT_HOUSEHOLD_SHARE_BASIS_POINTS } from "../domain/householdShareVa
 import { validateSourceOnlyLoanRecordInput } from "../domain/loanRecordValidation.js";
 import {
   assessMortgageDocumentPairing,
+  buildMortgageScheduleSourceExcerpt,
+  maskMortgageIdentifier,
   parseRogalandMortgageHtml,
+  redactMortgageEvidenceText,
   ROGALAND_MORTGAGE_PARSER_VERSION,
   validateRogalandMortgageSchedule,
 } from "../domain/import/rogalandMortgageHtml.js";
@@ -23,6 +26,7 @@ import type {
   MortgageHtmlParseLimits,
   MortgageHtmlParseResult,
   MortgageImportTarget,
+  MortgageIdentityReferenceDisclosure,
   MortgageSourceRole,
   MortgageSchedulePreviewDocument,
   MortgageScheduleValidationResult,
@@ -90,7 +94,11 @@ export interface MortgageBankImportService {
     readonly target: MortgageImportTarget;
     readonly attachmentConfirmed: boolean;
   }) => Promise<MortgageBankImportPreview>;
-  confirmAttachmentPreview: (previewId: string) => MortgageBankImportPreview;
+  revealAttachmentIdentity: (previewId: string) => MortgageBankImportPreview;
+  confirmAttachmentPreview: (
+    previewId: string,
+    acknowledgeUnavailableIdentity?: boolean
+  ) => MortgageBankImportPreview;
   acceptPreview: (
     previewId: string,
     acceptPartial?: boolean,
@@ -108,30 +116,11 @@ export interface MortgageBankImportServiceOptions {
   readonly getDatabaseGeneration?: () => number;
 }
 
-function maskIdentifier(value: string): string {
-  const compact = value.replace(/\s+/g, "");
-  return compact.length <= 4 ? "****" : `****${compact.slice(-4)}`;
-}
-
-function redactIdentityValues(value: string, references: readonly string[]): string {
-  let redacted = value;
-  for (const reference of references) {
-    const compact = reference.replace(/\s+/g, "");
-    if (compact === "") continue;
-    const pattern = compact
-      .split("")
-      .map((character) => character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join("\\s*");
-    redacted = redacted.replace(new RegExp(pattern, "gi"), maskIdentifier(reference));
-  }
-  return redacted;
-}
-
 function toMortgageSchedulePreviewDocument(
   document: MortgageHtmlParseResult
 ): MortgageSchedulePreviewDocument {
   const references = document.identityEvidence.loanReferenceValues;
-  const redact = (value: string): string => redactIdentityValues(value, references);
+  const redact = (value: string): string => redactMortgageEvidenceText(value, references);
   const { identityEvidence, ...documentWithoutIdentity } = document;
   return {
     ...documentWithoutIdentity,
@@ -143,8 +132,8 @@ function toMortgageSchedulePreviewDocument(
     identityDisplay: {
       maskedLoanReference: identityEvidence.loanReference === null
         ? null
-        : maskIdentifier(identityEvidence.loanReference),
-      maskedLoanReferenceValues: references.map(maskIdentifier),
+        : maskMortgageIdentifier(identityEvidence.loanReference),
+      maskedLoanReferenceValues: references.map(maskMortgageIdentifier),
       currencyCode: identityEvidence.currencyCode,
       currencyValues: identityEvidence.currencyValues,
       conflicts: identityEvidence.conflicts,
@@ -156,16 +145,28 @@ function toMortgageSchedulePreviewDocument(
           sourceLabel: redact(documentWithoutIdentity.openingBalanceEvidence.sourceLabel),
           sourceValue: redact(documentWithoutIdentity.openingBalanceEvidence.sourceValue),
         },
-    scheduleRows: documentWithoutIdentity.scheduleRows.map((row) => ({
-      periodLabel: redact(row.periodLabel),
-      period: row.period,
-      principalMinor: row.principalMinor,
-      interestMinor: row.interestMinor,
-      feeMinor: row.feeMinor,
-      paymentMinor: row.paymentMinor,
-      projectedClosingBalanceMinor: row.projectedClosingBalanceMinor,
-      sourceHeaders: row.sourceHeaders.map(redact),
-    })),
+    scheduleRows: documentWithoutIdentity.scheduleRows.map((row) => {
+      const sourceExcerpt = buildMortgageScheduleSourceExcerpt(row);
+      const {
+        sourceHeaders: _sourceHeaders,
+        sourceValues: _sourceValues,
+        sourceYearGroupLabel: _sourceYearGroupLabel,
+        ...previewRow
+      } = row;
+      return {
+        ...previewRow,
+        periodLabel: redact(row.periodLabel),
+        sourceExcerpt: {
+          yearGroupLabel: sourceExcerpt.yearGroupLabel === null
+            ? null
+            : redact(sourceExcerpt.yearGroupLabel),
+          cells: sourceExcerpt.cells.map((cell) => ({
+            sourceLabel: redact(cell.sourceLabel),
+            sourceValue: redact(cell.sourceValue),
+          })),
+        },
+      };
+    }),
   };
 }
 
@@ -435,7 +436,7 @@ function currentLoanIdentity(
   database: LocalLedgerDatabase,
   householdId: string,
   loanId: string
-): MortgageDocumentIdentityEvidence {
+): MortgageTargetIdentity {
   const completeLoan = database.listLoanRecords(householdId)
     .find((loan) => loan.id === loanId);
   const sourceOnlyLoan = database.listSourceOnlyLoanRecords(householdId)
@@ -443,8 +444,9 @@ function currentLoanIdentity(
   const loan = completeLoan ?? sourceOnlyLoan;
   if (loan === undefined) throw new Error(`Loan not found: ${loanId}`);
   const historicalVersions = database.listMortgageEvidenceVersions(householdId, loanId);
-  const historicalReferences = new Map<string, string>();
+  const historicalFingerprints = new Set<string>();
   const conflicts = new Set<MortgageDocumentIdentityEvidence["conflicts"][number]>();
+  let hasForeignFingerprint = false;
   for (const version of historicalVersions) {
     for (const document of version.documents) {
       const identity = document.parsedDocument.identityEvidence;
@@ -454,31 +456,42 @@ function currentLoanIdentity(
       if (identity.conflicts.includes("currency-mismatch")) {
         conflicts.add("currency-mismatch");
       }
-      for (const reference of identity.loanReferenceValues) {
-        historicalReferences.set(
-          reference.trim().toUpperCase().replace(/\s+/g, ""),
-          reference
-        );
-      }
       if (
         identity.currencyCode !== null &&
         identity.currencyCode.toUpperCase() !== loan.currencyCode
       ) {
         conflicts.add("currency-mismatch");
       }
+      const fingerprint = document.identityFingerprint;
+      if (fingerprint !== undefined) {
+        if (fingerprint.keyId === database.mortgageIdentityFingerprinter.keyId) {
+          for (const reference of fingerprint.references) {
+            historicalFingerprints.add(reference);
+          }
+        } else {
+          hasForeignFingerprint = true;
+        }
+      }
     }
   }
-  if (historicalReferences.size > 1) conflicts.add("loan-reference-mismatch");
-  const loanReference = historicalReferences.size === 1
-    ? [...historicalReferences.values()][0] ?? null
-    : null;
+  if (historicalFingerprints.size > 1) conflicts.add("loan-reference-mismatch");
   return {
-    loanReference,
-    currencyCode: loan.currencyCode,
-    loanReferenceValues: loanReference === null ? [] : [loanReference],
-    currencyValues: [loan.currencyCode],
-    conflicts: [...conflicts],
+    evidence: {
+      loanReference: null,
+      currencyCode: loan.currencyCode,
+      loanReferenceValues: [],
+      currencyValues: [loan.currencyCode],
+      conflicts: [...conflicts],
+    },
+    historicalFingerprints,
+    identityCheckUnavailable: hasForeignFingerprint && historicalFingerprints.size === 0,
   };
+}
+
+interface MortgageTargetIdentity {
+  readonly evidence: MortgageDocumentIdentityEvidence;
+  readonly historicalFingerprints: ReadonlySet<string>;
+  readonly identityCheckUnavailable: boolean;
 }
 
 function evidenceReviewState(
@@ -491,6 +504,9 @@ function evidenceReviewState(
     return previewState;
   }
   if (targetPairing.status === "conflict") return "identity-conflict";
+  if (targetPairing.status === "identity-check-unavailable") {
+    return "identity-check-unavailable";
+  }
   if (targetPairing.status === "confirmation-required") {
     return "attachment-confirmation-required";
   }
@@ -498,18 +514,60 @@ function evidenceReviewState(
 }
 
 function assessMortgageTargetAttachment(
-  targetIdentity: MortgageDocumentIdentityEvidence,
+  targetIdentity: MortgageTargetIdentity,
   documentIdentities: readonly MortgageDocumentIdentityEvidence[],
-  explicitlyConfirmed: boolean
+  fingerprinter: LocalLedgerDatabase["mortgageIdentityFingerprinter"],
+  explicitlyConfirmed: boolean,
+  acknowledgeUnavailableIdentity = false
 ): MortgageDocumentPairingResult {
   const documentPairings = documentIdentities.map((identity) =>
-    assessMortgageDocumentPairing(targetIdentity, identity, explicitlyConfirmed)
+    assessMortgageDocumentPairing(targetIdentity.evidence, identity, false)
   );
   const conflict = documentPairings.find((pairing) => pairing.status === "conflict");
   if (conflict !== undefined) return conflict;
-  if (documentPairings.every((pairing) => pairing.status === "verified")) {
-    return { status: "verified", verification: "matching-identifiers" };
+  if (targetIdentity.historicalFingerprints.size > 1) {
+    return { status: "conflict", reason: "loan-reference-mismatch" };
   }
+  if (targetIdentity.identityCheckUnavailable) {
+    return explicitlyConfirmed && acknowledgeUnavailableIdentity
+      ? {
+          status: "confirmed",
+          verification: "explicit-user-attachment",
+          identityCheck: "unavailable",
+        }
+      : { status: "identity-check-unavailable" };
+  }
+
+  const sourceFingerprints = new Set(documentIdentities.flatMap((identity) => [
+    ...identity.loanReferenceValues,
+    ...(identity.loanReference === null ? [] : [identity.loanReference]),
+  ].filter((reference) => reference.trim() !== "").map(fingerprinter.fingerprint)));
+  if (sourceFingerprints.size > 1) {
+    return { status: "conflict", reason: "loan-reference-mismatch" };
+  }
+
+  const historicalFingerprint = [...targetIdentity.historicalFingerprints][0];
+  if (historicalFingerprint !== undefined && sourceFingerprints.size === 1) {
+    if (!sourceFingerprints.has(historicalFingerprint)) {
+      return { status: "conflict", reason: "loan-reference-mismatch" };
+    }
+    const allDocumentsIdentified = documentIdentities.every((identity) =>
+      identity.loanReferenceValues.length > 0 || identity.loanReference !== null
+    );
+    const allCurrenciesVerified = documentIdentities.every((identity) => {
+      const values = [
+        ...identity.currencyValues,
+        ...(identity.currencyCode === null ? [] : [identity.currencyCode]),
+      ];
+      return values.length > 0 && values.every((value) =>
+        value.trim().toUpperCase() === targetIdentity.evidence.currencyCode
+      );
+    });
+    if (allDocumentsIdentified && allCurrenciesVerified) {
+      return { status: "verified", verification: "matching-identifiers" };
+    }
+  }
+
   return explicitlyConfirmed
     ? { status: "confirmed", verification: "explicit-user-attachment" }
     : { status: "confirmation-required" };
@@ -674,22 +732,32 @@ export function createMortgageBankImportService(
       const singlePreview = parsedDocument.role === "schedule"
         ? createMortgageSchedulePreview(
             parsedDocument,
-            targetIdentity ?? parsedDocument.identityEvidence,
+            targetIdentity?.evidence ?? parsedDocument.identityEvidence,
             input.attachmentConfirmed || input.target.kind === "new-source-only"
           )
         : createMortgageDetailsPreview(
             parsedDocument,
-            targetIdentity ?? parsedDocument.identityEvidence,
+            targetIdentity?.evidence ?? parsedDocument.identityEvidence,
             input.attachmentConfirmed || input.target.kind === "new-source-only"
           );
-      reviewState = singlePreview.reviewState;
+      const targetPairing = targetIdentity === null
+        ? null
+        : assessMortgageTargetAttachment(
+            targetIdentity,
+            [parsedDocument.identityEvidence],
+            database.mortgageIdentityFingerprinter,
+            input.attachmentConfirmed
+          );
+      reviewState = targetPairing === null
+        ? singlePreview.reviewState
+        : evidenceReviewState(singlePreview.reviewState, targetPairing);
       documents = [{
         role: parsedDocument.role,
         parsedDocument: singlePreview.parsedDocument,
       }];
       pairing = null;
       attachment = input.target.kind === "existing"
-        ? singlePreview.pairing
+        ? targetPairing
         : input.attachmentConfirmed
           ? { status: "confirmed", verification: "explicit-user-attachment" }
           : { status: "confirmation-required" };
@@ -725,6 +793,7 @@ export function createMortgageBankImportService(
         : assessMortgageTargetAttachment(
             targetIdentity,
             [detailsDocument.identityEvidence, scheduleDocument.identityEvidence],
+            database.mortgageIdentityFingerprinter,
             input.attachmentConfirmed,
           );
       reviewState = targetPairing === null
@@ -850,7 +919,7 @@ export function createMortgageBankImportService(
     return acceptedPreview;
   }
 
-  function confirmAttachmentPreview(previewId: string): MortgageBankImportPreview {
+  function revealAttachmentIdentity(previewId: string): MortgageBankImportPreview {
     const currentTime = now().getTime();
     removeExpiredPreviews(currentTime);
     const stored = previews.get(previewId);
@@ -859,9 +928,55 @@ export function createMortgageBankImportService(
       previews.delete(previewId);
       throw new Error("Mortgage import context changed after preview.");
     }
-    if (stored.preview.reviewState !== "attachment-confirmation-required" ||
-        stored.preview.attachment?.status !== "confirmation-required") {
+    if (stored.preview.attachment?.status !== "identity-check-unavailable") {
+      throw new Error("Mortgage import preview has no unavailable identity check to reveal.");
+    }
+
+    const identityReferenceDisclosure: MortgageIdentityReferenceDisclosure = {
+      documents: stored.sourceDocuments.map((document) => ({
+        role: document.role,
+        references: [
+          ...document.parsedDocument.identityEvidence.loanReferenceValues,
+          ...(document.parsedDocument.identityEvidence.loanReference === null
+            ? []
+            : [document.parsedDocument.identityEvidence.loanReference]),
+        ].filter((reference, index, references) => references.indexOf(reference) === index),
+      })),
+    };
+    const preview = { ...stored.preview, identityReferenceDisclosure };
+    previews.set(previewId, { ...stored, preview });
+    return preview;
+  }
+
+  function confirmAttachmentPreview(
+    previewId: string,
+    acknowledgeUnavailableIdentity = false
+  ): MortgageBankImportPreview {
+    const currentTime = now().getTime();
+    removeExpiredPreviews(currentTime);
+    const stored = previews.get(previewId);
+    if (stored === undefined) throw new Error("Mortgage import preview was not found or has expired.");
+    if (stored.databaseGeneration !== (options.getDatabaseGeneration?.() ?? 0)) {
+      previews.delete(previewId);
+      throw new Error("Mortgage import context changed after preview.");
+    }
+    const identityCheckUnavailable =
+      stored.preview.reviewState === "identity-check-unavailable" &&
+      stored.preview.attachment?.status === "identity-check-unavailable";
+    const ordinaryConfirmationRequired =
+      stored.preview.reviewState === "attachment-confirmation-required" &&
+      stored.preview.attachment?.status === "confirmation-required";
+    if (!identityCheckUnavailable && !ordinaryConfirmationRequired) {
       throw new Error("Mortgage import preview does not require attachment confirmation.");
+    }
+    if (
+      identityCheckUnavailable &&
+      (stored.preview.identityReferenceDisclosure === undefined ||
+        !acknowledgeUnavailableIdentity)
+    ) {
+      throw new Error(
+        "Review and acknowledge the unavailable identity check before confirmation."
+      );
     }
     if (
       stored.preview.target.kind === "existing" &&
@@ -889,20 +1004,31 @@ export function createMortgageBankImportService(
       const singlePreview = source.role === "schedule"
         ? createMortgageSchedulePreview(
             source.parsedDocument,
-            targetIdentity ?? source.parsedDocument.identityEvidence,
+            targetIdentity?.evidence ?? source.parsedDocument.identityEvidence,
             true
           )
         : createMortgageDetailsPreview(
             source.parsedDocument,
-            targetIdentity ?? source.parsedDocument.identityEvidence,
+            targetIdentity?.evidence ?? source.parsedDocument.identityEvidence,
             true
           );
-      reviewState = singlePreview.reviewState;
+      const targetPairing = targetIdentity === null
+        ? null
+        : assessMortgageTargetAttachment(
+            targetIdentity,
+            [source.parsedDocument.identityEvidence],
+            database.mortgageIdentityFingerprinter,
+            true,
+            acknowledgeUnavailableIdentity
+          );
+      reviewState = targetPairing === null
+        ? singlePreview.reviewState
+        : evidenceReviewState(singlePreview.reviewState, targetPairing);
       documents = [{ role: source.role, parsedDocument: singlePreview.parsedDocument }];
       pairing = null;
       attachment = targetIdentity === null
         ? { status: "confirmed", verification: "explicit-user-attachment" }
-        : singlePreview.pairing;
+        : targetPairing;
       validation = "validation" in singlePreview ? singlePreview.validation : null;
     } else {
       const details = stored.sourceDocuments.find((document) => document.role === "details");
@@ -923,7 +1049,9 @@ export function createMortgageBankImportService(
               details.parsedDocument.identityEvidence,
               schedule.parsedDocument.identityEvidence,
             ],
-            true
+            database.mortgageIdentityFingerprinter,
+            true,
+            acknowledgeUnavailableIdentity
           );
       reviewState = targetPairing === null
         ? pairPreview.reviewState
@@ -1074,6 +1202,7 @@ export function createMortgageBankImportService(
     beginPreviewRequest,
     finishPreviewRequest,
     previewFiles,
+    revealAttachmentIdentity,
     confirmAttachmentPreview,
     acceptPreview,
     cancelPreview,

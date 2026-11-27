@@ -52,11 +52,11 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - A source-aware Rogaland HTML adapter reads saved details and repayment-plan pages as inert data. It does not extend the transaction statement parser contract.
 - `src/shared/mortgageBankEvidence.ts` owns shared typed evidence and validation contracts; `src/domain/import/rogalandMortgageHtml.ts` owns semantic extraction, normalization, exact validation, and source-context retention.
 - Preserve explicitly recognized unsupported product-type labels and values as partial source evidence; do not infer a repayment model from them.
-- `src/app/mortgageBankImportService.ts` composes bounded local file reads, loan identity, preview, revision checks, and transactional acceptance through the existing loan and backup services.
+- `src/app/mortgageBankImportService.ts` composes bounded local file reads, keyed loan identity, preview, revision checks, and transactional acceptance through the existing loan and backup services. The OS-protected fingerprint key remains local and is excluded from portable snapshots.
 - Imported monthly and annual schedule periods remain projected bank evidence. They never become ledger transactions or actual-balance checkpoints.
 - An explicitly incomplete/source-only loan may retain valid bank evidence while actual balance and unavailable terms remain unknown. Existing manual fields, shares, actual checkpoints, and associations remain authoritative.
-- Persistence adds immutable bank-plan versions, provenance, source references, and stable obligation identity through additive migrations. Snapshot v17 includes the source-labeled unsupported product-type evidence shape and continues to restore v16 snapshots. The versioned household backup snapshot is the related local export and preserves those relationships through backup/restore; ledger CSV remains transaction-only, with no separate per-loan export in this slice.
-- The renderer reuses the loan workspace and shared import-preflight lifecycle. File access and persistence remain in the main process behind grouped, validated IPC.
+- Persistence adds immutable bank-plan versions, provenance, keyed identity fingerprints, and stable obligation identity through additive migrations. Snapshot v18 carries fingerprints; v17 snapshots without them remain restorable and are sanitized with the local key. A fingerprint from another installation is preserved through restore and requires source-reference disclosure plus explicit acknowledgment before attachment. Fingerprint key IDs and digests are validated at the snapshot boundary. The versioned household backup snapshot preserves those relationships; ledger CSV remains transaction-only, with no separate per-loan export in this slice.
+- The renderer reuses the loan workspace and shared import-preflight lifecycle. It presents unavailable identity checks with an on-demand reference reveal and gated, keyboard-accessible confirmation. File access and persistence remain in the main process behind grouped, validated IPC.
 
 ### Categorization Pipeline
 
@@ -172,6 +172,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Text, CSV, and PDF adapter selection and row classification
 - Import review state transitions and correction validation
 - Mortgage HTML semantic parsing, source roles, exact minor-unit reconciliation, capability limits, and source-context evidence
+- Mortgage identity normalization, keyed fingerprints, and source-reference sanitization
 - Duplicate detection
 - Merchant normalization
 - Categorization rules and confidence logic
@@ -187,6 +188,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Backup restore integrity
 - No-network verification harness for protected workflows
 - Mortgage import, source-only loan persistence, atomic cancellation/revision behavior, compatible recovery/export, and bounded inert parsing
+- Snapshot v17 compatibility, v18 fingerprint validation, and foreign-fingerprint preservation during restore
 
 ### End-to-End
 
@@ -199,6 +201,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Export data
 - Restore backup
 - Import and review mortgage bank evidence in the existing loan workflow
+- Disclose source references and explicitly confirm mortgage attachment when a restored identity fingerprint cannot be checked on this installation
 
 ## Open Technical Risks
 

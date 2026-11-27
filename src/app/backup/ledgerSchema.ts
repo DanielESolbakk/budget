@@ -1,7 +1,13 @@
 import { DatabaseSync } from "node:sqlite";
 import { transactionBookingTimeMillis } from "../../domain/ledger/filterTransactions.js";
+import { sanitizeMortgageEvidenceDocuments } from "../../domain/import/rogalandMortgageHtml.js";
+import type { MortgageIdentityFingerprinter } from "../../domain/import/mortgageIdentityFingerprint.js";
+import type { MortgageEvidenceDocumentVersion } from "../../shared/mortgageBankEvidence.js";
 
-export function ensureSchema(db: DatabaseSync): void {
+export function ensureSchema(
+  db: DatabaseSync,
+  fingerprinter: MortgageIdentityFingerprinter
+): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS households (
       id TEXT PRIMARY KEY,
@@ -613,5 +619,34 @@ export function ensureSchema(db: DatabaseSync): void {
     .all() as Array<{ name: string }>;
   if (!importReviewItemColumns.some((column) => column.name === "source_evidence_json")) {
     db.exec("ALTER TABLE import_review_items ADD COLUMN source_evidence_json TEXT");
+  }
+  sanitizeExistingMortgageEvidenceDocuments(db, fingerprinter);
+}
+
+function sanitizeExistingMortgageEvidenceDocuments(
+  db: DatabaseSync,
+  fingerprinter: MortgageIdentityFingerprinter
+): void {
+  const rows = db.prepare(
+    "SELECT id, documents_json FROM mortgage_evidence_versions"
+  ).all() as Array<{ id: string; documents_json: string }>;
+  const updateDocuments = db.prepare(
+    "UPDATE mortgage_evidence_versions SET documents_json = ? WHERE id = ?"
+  );
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const row of rows) {
+      const documents = JSON.parse(row.documents_json) as MortgageEvidenceDocumentVersion[];
+      const sanitizedDocuments = sanitizeMortgageEvidenceDocuments(documents, fingerprinter);
+      const sanitizedJson = JSON.stringify(sanitizedDocuments);
+      if (sanitizedJson !== JSON.stringify(documents)) {
+        updateDocuments.run(sanitizedJson, row.id);
+      }
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
 }
