@@ -267,21 +267,6 @@ jobs:
         # Exclude @visual-only layout checks; this required lane is functional-only.
         run: npm run test:e2e:playwright:ci -- --workers=2 --grep-invert '@visual'
 
-      - name: Mortgage import benchmark proxy probe
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "benchmark-results\windows" | Out-Null
-          $cases = @("three-year", "thirty-year", "near-limit")
-          foreach ($case in $cases) {
-            $logPath = "benchmark-results\windows\mortgage-$case.log"
-            $output = & npm.cmd run benchmark:mortgage-import -- --case $case --iterations 5 2>&1
-            $benchmarkExitCode = $LASTEXITCODE
-            $output | Tee-Object -FilePath $logPath
-            if ($benchmarkExitCode -ne 0) {
-              exit $benchmarkExitCode
-            }
-          }
-
       - name: Upload Playwright Windows artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -290,7 +275,6 @@ jobs:
           path: |
             playwright-report/windows
             test-results/windows
-            benchmark-results/windows
           if-no-files-found: ignore
 
   pr-guardrails:

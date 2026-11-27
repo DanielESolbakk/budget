@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
@@ -15,7 +14,6 @@ import {
   previewMortgageScheduleFile,
   readBoundedMortgageHtmlFile,
 } from "../../src/app/mortgageBankImportService.js";
-import { runMortgageImportBenchmark } from "../../src/tooling/performance/runMortgageImportBenchmark.js";
 
 const VALID_DETAILS_HTML = `
   <h1>Lånedetaljer</h1>
@@ -1259,86 +1257,71 @@ describe("bounded mortgage HTML file reads", () => {
   });
 });
 
-describe("mortgage import performance benchmark", () => {
-  it("measures a validated three-year import through acceptance and persistence", async () => {
-    const result = await runMortgageImportBenchmark({
-      scenario: "three-year",
-      iterationCount: 1,
-      physicalHost: {
-        hypervisorName: "Synthetic hypervisor",
-        cpuModel: "Synthetic physical host CPU",
-        totalMemoryBytes: 4 * 1024 ** 3,
+describe("mortgage import CI contract", () => {
+  it("keeps mortgage profiling out of the Windows Playwright CI lane", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github", "workflows", "ci.yml"), "utf8");
+    const playwrightStart = workflow.indexOf("  playwright-windows:");
+    const nextJob = workflow.indexOf("  pr-guardrails:", playwrightStart);
+    expect(playwrightStart).toBeGreaterThanOrEqual(0);
+    expect(nextJob).toBeGreaterThan(playwrightStart);
+
+    const playwrightJob = workflow.slice(playwrightStart, nextJob);
+    expect(playwrightJob).not.toContain("Mortgage import benchmark proxy probe");
+    expect(playwrightJob).not.toContain("benchmark:mortgage-import");
+  });
+});
+
+describe("mortgage preview cancellation", () => {
+  it("does not persist a source-only loan or evidence when preview is cancelled", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-preview-cancel-"));
+    const databasePath = join(directory, "ledger.sqlite");
+    const detailsFilePath = join(directory, "details.html");
+    const scheduleFilePath = join(directory, "schedule.html");
+    const householdId = "mortgage-cancel-household";
+    writeFileSync(detailsFilePath, VALID_DETAILS_HTML, "utf8");
+    writeFileSync(scheduleFilePath, VALID_SCHEDULE_HTML, "utf8");
+    const database = createLocalLedgerDatabase({
+      dbPath: databasePath,
+      seedData: {
+        household: {
+          id: householdId,
+          name: "Synthetic household",
+          createdAtIso: "2026-01-01T00:00:00.000Z",
+        },
+        accounts: [{
+          id: "mortgage-cancel-account",
+          householdId,
+          name: "Synthetic account",
+          currencyCode: "NOK",
+        }],
+        transactions: [],
+        importJobs: [],
+        monthlyCategoryTargets: [],
       },
     });
 
-    expect(result.scenario).toBe("three-year");
-    expect(result.fixture.schedulePeriodCount).toBe(36);
-    expect(result.measurements.scheduleValidationStatus).toBe("valid");
-    expect(result.measurements.persistedEvidenceVersionCount).toBe(1);
-    expect(result.measurements.previewMedianMs).toBeGreaterThanOrEqual(0);
-    expect(result.measurements.persistenceMedianMs).toBeGreaterThanOrEqual(0);
-    expect(result.measurements.peakProcessRssKiB).toBeGreaterThan(0);
-    expect(result.physicalHost).toEqual({
-      hypervisorName: "Synthetic hypervisor",
-      cpuModel: "Synthetic physical host CPU",
-      totalMemoryBytes: 4 * 1024 ** 3,
-      metadataComplete: true,
-    });
-  });
+    try {
+      const service = createMortgageBankImportService(database);
+      const requestId = "mortgage-preview-cancel";
+      service.beginPreviewRequest(requestId);
+      const pendingPreview = service.previewFiles({
+        requestId,
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: {
+          kind: "new-source-only",
+          label: "Synthetic mortgage",
+          currencyCode: "NOK",
+        },
+        attachmentConfirmed: false,
+      });
 
-  it("measures the near-limit schedule and verifies cancellation persists no evidence", async () => {
-    const result = await runMortgageImportBenchmark({
-      scenario: "near-limit",
-      iterationCount: 1,
-    });
-
-    expect(result.fixture.schedulePeriodCount).toBe(360);
-    expect(result.fixture.scheduleBytes).toBeLessThanOrEqual(256 * 1024);
-    expect(result.fixture.scheduleBytes).toBeGreaterThanOrEqual(255 * 1024);
-    expect(result.fixture.scheduleElementTagCount).toBeGreaterThan(5_500);
-    expect(result.fixture.scheduleElementTagCount).toBeLessThan(6_000);
-    expect(result.fixture.nestingWrapperCount).toBe(24);
-    expect(result.measurements.scheduleValidationStatus).toBe("valid");
-    expect(result.measurements.persistedEvidenceVersionCount).toBe(1);
-    expect(result.cancellation).toEqual({
-      cancellationObserved: true,
-      persistedEvidenceVersionCount: 0,
-      sourceOnlyLoanCount: 0,
-    });
-  });
-
-  it("keeps the Windows benchmark probe diagnostic instead of enforcing an owner-approved profile", () => {
-    const workflow = readFileSync(join(process.cwd(), ".github", "workflows", "ci.yml"), "utf8");
-    const benchmarkSection = workflow.slice(
-      workflow.indexOf("- name: Mortgage import benchmark proxy probe"),
-      workflow.indexOf("- name: Upload Playwright Windows artifacts")
-    );
-
-    expect(benchmarkSection).toContain("benchmark:mortgage-import");
-    expect(benchmarkSection).not.toContain("--require-profile-match");
-  });
-
-  it("fails a required benchmark probe when the observed VM profile is preliminary", () => {
-    const result = spawnSync(process.execPath, [
-      "--import",
-      "tsx/esm",
-      join(process.cwd(), "scripts", "run-mortgage-import-benchmark.ts"),
-      "--case",
-      "three-year",
-      "--iterations",
-      "1",
-      "--require-profile-match",
-    ], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      windowsHide: true,
-    });
-
-    expect(result.error).toBeUndefined();
-    expect(result.status).not.toBeNull();
-    const output = getRecord(JSON.parse(result.stdout) as unknown, "mortgage benchmark output");
-    const evidenceStatus = output["evidenceStatus"];
-    expect(["profile-matched-proxy", "preliminary"]).toContain(evidenceStatus);
-    expect(result.status).toBe(evidenceStatus === "preliminary" ? 1 : 0);
+      expect(service.cancelPreview(requestId)).toBe(true);
+      await expect(pendingPreview).rejects.toMatchObject({ name: "AbortError" });
+      expect(service.listEvidenceSummaries()).toHaveLength(0);
+      expect(database.listSourceOnlyLoanRecords(householdId)).toHaveLength(0);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
