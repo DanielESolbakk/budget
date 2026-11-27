@@ -1266,7 +1266,7 @@ describe("bounded mortgage HTML file reads", () => {
     }
   });
 
-  it("persists a supported zero-principal source period without creating an actual balance", async () => {
+  it("preserves supported zero-principal evidence when a later debt increase needs review", async () => {
     const directory = mkdtempSync(join(tmpdir(), "budget-mortgage-zero-principal-"));
     const databasePath = join(directory, "ledger.sqlite");
     const detailsFilePath = join(directory, "details.html");
@@ -1294,10 +1294,11 @@ describe("bounded mortgage HTML file reads", () => {
     });
 
     try {
+      let generatedId = 0;
       const service = createMortgageBankImportService(database, {
         maxBytesPerFile: 10_000,
         parserLimits: { maxSourceCharacters: 10_000, maxElements: 100, maxDepth: 20 },
-        createId: () => "mortgage-zero-principal-evidence",
+        createId: () => `mortgage-zero-principal-${++generatedId}`,
         now: () => new Date("2026-11-21T12:30:00.000Z"),
       });
       const preview = await service.previewFiles({
@@ -1317,11 +1318,76 @@ describe("bounded mortgage HTML file reads", () => {
         projectedClosingBalanceMinor: 10_000_000,
       });
       expect(database.listSourceOnlyLoanRecords("household-mortgage-zero-principal"))
-        .toHaveLength(1);
+        .toEqual([{
+          id: evidence.loanId,
+          householdId: "household-mortgage-zero-principal",
+          label: "Rogaland mortgage",
+          currencyCode: "NOK",
+          createdAtIso: "2026-11-21T12:30:00.000Z",
+          responsibilityShareBasisPoints: 10_000,
+          recordStatus: "source-only",
+        }]);
       expect(database.listLoanRecords("household-mortgage-zero-principal")).toEqual([]);
       const snapshot = database.loadLedgerSnapshotData();
       expect(snapshot.loanBalanceSnapshots).toEqual([]);
       expect(snapshot.transactions).toEqual([]);
+
+      writeFileSync(scheduleFilePath, ZERO_PRINCIPAL_SCHEDULE_HTML.replace(
+        "</table>",
+        `<tr><td>Februar 2026</td><td>0,00</td><td>90,00</td><td>10,00</td><td>100,00</td><td>100 100,00</td></tr></table>`
+      ), "utf8");
+      const refreshPreview = await service.previewFiles({
+        filePaths: [detailsFilePath, scheduleFilePath],
+        target: { kind: "existing", loanId: evidence.loanId },
+        attachmentConfirmed: false,
+      });
+      expect(refreshPreview.reviewState).toBe("review-required");
+      expect(refreshPreview.validation).toEqual({
+        status: "partial",
+        issues: [{ code: "unreconciled-balance-increase", rowIndex: 1 }],
+      });
+      expect(database.loadLedgerSnapshotData()).toEqual(snapshot);
+
+      expect(() => service.acceptPreview(refreshPreview.previewId))
+        .toThrow(/not ready for acceptance/);
+      expect(database.loadLedgerSnapshotData()).toEqual(snapshot);
+
+      const refreshedEvidence = service.acceptPreview(refreshPreview.previewId, true);
+      expect(refreshedEvidence.loanId).toBe(evidence.loanId);
+      expect(refreshedEvidence.versionNumber).toBe(2);
+      expect(refreshedEvidence.scheduleValidation).toEqual({
+        status: "partial",
+        issues: [{ code: "unreconciled-balance-increase", rowIndex: 1 }],
+      });
+      const refreshedSchedule = refreshedEvidence.documents.find(
+        (document) => document.role === "schedule"
+      );
+      expect(refreshedSchedule?.parsedDocument.scheduleRows).toMatchObject([
+        {
+          period: { granularity: "monthly", year: 2026, month: 1 },
+          principalMinor: 0,
+          interestMinor: 9_000,
+          feeMinor: 1_000,
+          paymentMinor: 10_000,
+          projectedClosingBalanceMinor: 10_000_000,
+        },
+        {
+          period: { granularity: "monthly", year: 2026, month: 2 },
+          principalMinor: 0,
+          interestMinor: 9_000,
+          feeMinor: 1_000,
+          paymentMinor: 10_000,
+          projectedClosingBalanceMinor: 10_010_000,
+        },
+      ]);
+      expect(database.listMortgageEvidenceVersions(
+        "household-mortgage-zero-principal",
+        evidence.loanId
+      )).toEqual([evidence, refreshedEvidence]);
+      expect(database.loadLedgerSnapshotData()).toEqual({
+        ...snapshot,
+        mortgageEvidenceVersions: [evidence, refreshedEvidence],
+      });
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
