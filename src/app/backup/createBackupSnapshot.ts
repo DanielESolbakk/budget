@@ -121,11 +121,20 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
   })).sort((left, right) =>
     left.id.localeCompare(right.id)
   );
+  const sourceOnlyLoanRecords = [...(input.sourceOnlyLoanRecords ?? [])].sort((left, right) =>
+    left.id.localeCompare(right.id)
+  );
   const loanBalanceSnapshots = [...(input.loanBalanceSnapshots ?? [])].sort(
     (left, right) =>
       left.loanId.localeCompare(right.loanId) ||
       left.effectiveDateIso.localeCompare(right.effectiveDateIso) ||
       left.recordedAtIso.localeCompare(right.recordedAtIso) ||
+      left.id.localeCompare(right.id)
+  );
+  const mortgageEvidenceVersions = [...(input.mortgageEvidenceVersions ?? [])].sort(
+    (left, right) =>
+      left.loanId.localeCompare(right.loanId) ||
+      left.versionNumber - right.versionNumber ||
       left.id.localeCompare(right.id)
   );
   const recurringCommitments = [...(input.recurringCommitments ?? [])].sort(
@@ -169,7 +178,9 @@ export function buildBackupSnapshot(input: LedgerSnapshotData): BackupSnapshot {
     holdings,
     holdingValuations,
     loanRecords,
+    sourceOnlyLoanRecords,
     loanBalanceSnapshots,
+    mortgageEvidenceVersions,
     recurringCommitments,
     recurringCommitmentPaymentLinks,
     recurringCommitmentDecisions,

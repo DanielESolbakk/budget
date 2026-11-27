@@ -12,21 +12,41 @@ import type {
   LoanBalanceInput,
   LoanRecordInput,
   LoanWithBalances,
-  PropertyRecord
+  PropertyRecord,
+  SourceOnlyLoanRecord
 } from "../../../domain/types.js";
+import type { MortgageEvidenceAcceptanceSummary } from "../../../shared/mortgageBankEvidence.js";
 import { isCurrencyCode } from "../../../domain/types.js";
 import { HouseholdShareForm, useHouseholdShareFormStates } from "../HouseholdShareForm.js";
 import { parseCurrencyAmountMinor } from "../parseCurrencyAmountMinor.js";
 import { errorMessage } from "../registryErrorMessage.js";
 import { LoanCreateForm } from "./LoanCreateForm.js";
+import { LoanMortgageImportPanel } from "./LoanMortgageImportPanel.js";
 import { type BalanceDraft, type BalanceFieldErrors, type FocusableFieldRefs, type LoanDraft, type LoanFieldErrors, type LoanRegistrySectionProps, BALANCE_FIELD_ORDER, EMPTY_BALANCE_DRAFT, EMPTY_LOAN_DRAFT, LOAN_DRAFT_VALIDATION_FIELDS, LOAN_FIELD_ORDER, PAYMENT_FREQUENCY_LABELS, amountFormatter, describedBy, formatAmount, formatTerm, parseTermMonths, validationError } from "./loanFormState.js";
 import { LoanHistory } from "./LoanHistory.js";
+
+function mortgageTermDifferenceSummary(
+  version: MortgageEvidenceAcceptanceSummary
+): string | null {
+  if (version.termDifferenceCount === 0) return null;
+  const differenceName = version.termDifferenceCount === 1
+    ? "source difference"
+    : "source differences";
+  return `${version.termDifferenceCount} ${differenceName} ${
+    version.termDifferencesAcknowledged ? "acknowledged" : "not acknowledged"
+  }`;
+}
+
 export function LoanRegistrySection({
   isActive,
   refreshRevision,
   onViewProperty,
 }: LoanRegistrySectionProps): React.JSX.Element {
   const [loans, setLoans] = React.useState<LoanWithBalances[]>([]);
+  const [sourceOnlyLoans, setSourceOnlyLoans] = React.useState<SourceOnlyLoanRecord[]>([]);
+  const [mortgageEvidenceSummaries, setMortgageEvidenceSummaries] = React.useState<
+    MortgageEvidenceAcceptanceSummary[]
+  >([]);
   const [properties, setProperties] = React.useState<PropertyRecord[]>([]);
   const [selectedLoanId, setSelectedLoanId] = React.useState<string | null>(null);
   const [isCompactLoanDetailOpen, setIsCompactLoanDetailOpen] = React.useState(false);
@@ -87,12 +107,16 @@ export function LoanRegistrySection({
     setLoadError(null);
     Promise.all([
       window.budgetApi.loanRegistry.list(),
+      window.budgetApi.loanRegistry.listSourceOnly(),
       window.budgetApi.propertyRegistry.list(),
+      window.budgetApi.mortgageImport.listEvidenceSummaries(),
     ])
-      .then(([loadedLoans, loadedProperties]) => {
+      .then(([loadedLoans, loadedSourceOnlyLoans, loadedProperties, loadedEvidence]) => {
         if (!active) return;
         setLoans(loadedLoans);
+        setSourceOnlyLoans(loadedSourceOnlyLoans);
         setProperties(loadedProperties);
+        setMortgageEvidenceSummaries(loadedEvidence);
         setSelectedLoanId((selectedId) => (
           selectedId !== null && loadedLoans.some((loan) => loan.id === selectedId)
             ? selectedId
@@ -172,6 +196,20 @@ export function LoanRegistrySection({
   function showLoanList(loanId: string): void {
     restoreLoanNavigationFocusIdRef.current = loanId;
     setIsCompactLoanDetailOpen(false);
+  }
+
+  function onMortgageEvidenceAccepted(
+    summary: MortgageEvidenceAcceptanceSummary,
+    createdSourceOnly: boolean
+  ): void {
+    setMortgageEvidenceSummaries((current) => [...current, summary]);
+    if (!createdSourceOnly) return;
+    setLoanStatus(`Mortgage evidence version ${summary.versionNumber} saved.`);
+    void window.budgetApi.loanRegistry.listSourceOnly()
+      .then(setSourceOnlyLoans)
+      .catch((refreshFailure: unknown) => {
+        setLoadError(errorMessage(refreshFailure, "Unable to refresh source-only loan records."));
+      });
   }
 
   function cancelLoanForm(): void {
@@ -411,7 +449,8 @@ export function LoanRegistrySection({
     } before adding the loan.`;
   const activeLoanId = selectedLoanId ?? loans[0]?.id ?? null;
 
-  const isRegistryEmpty = !isLoading && loadError === null && loans.length === 0 && !isLoanFormOpen;
+  const isRegistryEmpty = !isLoading && loadError === null &&
+    loans.length === 0 && sourceOnlyLoans.length === 0 && !isLoanFormOpen;
 
   return (
     <section className={`property-registry-section loan-registry-section${isRegistryEmpty ? " registry-empty-state" : ""}`} aria-label="Loan registry">
@@ -425,6 +464,12 @@ export function LoanRegistrySection({
         >
           Add loan
         </button>
+      )}
+      {!isLoanFormOpen && !isLoading && loadError === null && (
+        <LoanMortgageImportPanel
+          properties={properties}
+          onAccepted={onMortgageEvidenceAccepted}
+        />
       )}
       {isLoanFormOpen && (
         <LoanCreateForm
@@ -533,6 +578,42 @@ export function LoanRegistrySection({
                         } · effective ${latestRecordedBalance.effectiveDateIso}`}
                     </span>
                   </div>
+                  {mortgageEvidenceSummaries.some((version) => version.loanId === loan.id) && (
+                    <details className="loan-record-details">
+                      <summary>Imported mortgage evidence</summary>
+                      <ul className="loan-mortgage-evidence-history">
+                        {mortgageEvidenceSummaries
+                          .filter((version) => version.loanId === loan.id)
+                          .map((version) => {
+                            const differenceSummary = mortgageTermDifferenceSummary(version);
+                            return (
+                              <li key={version.id}>
+                                Version {version.versionNumber} · {version.documentRoles.join(" + ")}
+                                {" · "}
+                                {version.sourceAsOfDateIso ?? "Source date not identified"}
+                                {" · imported "}
+                                {version.importedAtIso}
+                                {" · "}
+                                {version.attachment.status === "confirmed"
+                                  ? "Attachment confirmed by user"
+                                  : "Attachment verified by identifiers"}
+                                {version.scheduleValidationStatus === null
+                                  ? ""
+                                  : ` · schedule checks ${version.scheduleValidationStatus}`}
+                                {differenceSummary === null ? "" : ` · ${differenceSummary}`}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </details>
+                  )}
+                  <LoanMortgageImportPanel
+                    loanId={loan.id}
+                    loanLabel={loan.label}
+                    loanCurrencyCode={loan.currencyCode}
+                    properties={properties}
+                    onAccepted={onMortgageEvidenceAccepted}
+                  />
                   <HouseholdShareForm
                     recordId={loan.id}
                     formStates={shareFormStates}
@@ -714,6 +795,68 @@ export function LoanRegistrySection({
               );
             })}
           </div>
+        </div>
+      )}
+      {sourceOnlyLoans.length > 0 && (
+        <div
+          role="region"
+          className="loan-source-only-records"
+          aria-label="Source-only loan records"
+        >
+          <h3>Source-only loans</h3>
+          <ul className="loan-source-only-list">
+            {sourceOnlyLoans.map((loan) => {
+              const linkedProperty = loan.propertyId === undefined
+                ? undefined
+                : properties.find((property) => property.id === loan.propertyId);
+              return (
+                <li className="loan-source-only-record" key={loan.id}>
+                  <div className="loan-source-only-heading">
+                    <h4>{loan.label}</h4>
+                    <span>Source-only</span>
+                  </div>
+                  <dl className="loan-terms">
+                    <div>
+                      <dt>Currency</dt>
+                      <dd>{loan.currencyCode}</dd>
+                    </div>
+                    <div>
+                      <dt>Property</dt>
+                      <dd>{linkedProperty?.label ?? "No property linked"}</dd>
+                    </div>
+                  </dl>
+                  <p>No actual balance or complete loan terms are recorded.</p>
+                  {mortgageEvidenceSummaries.some((version) => version.loanId === loan.id) && (
+                    <ul className="loan-mortgage-evidence-history">
+                      {mortgageEvidenceSummaries
+                        .filter((version) => version.loanId === loan.id)
+                        .map((version) => {
+                          const differenceSummary = mortgageTermDifferenceSummary(version);
+                          return (
+                            <li key={version.id}>
+                              Evidence version {version.versionNumber} ·{" "}
+                              {version.sourceAsOfDateIso ?? "Source date not identified"} · imported{" "}
+                              {version.importedAtIso} ·{" "}
+                              {version.attachment.status === "confirmed"
+                                ? "Attachment confirmed by user"
+                                : "Attachment verified by identifiers"}
+                              {differenceSummary === null ? "" : ` · ${differenceSummary}`}
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  )}
+                  <LoanMortgageImportPanel
+                    loanId={loan.id}
+                    loanLabel={loan.label}
+                    loanCurrencyCode={loan.currencyCode}
+                    properties={properties}
+                    onAccepted={onMortgageEvidenceAccepted}
+                  />
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
     </section>

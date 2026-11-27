@@ -69,6 +69,7 @@ import type {
   SameMerchantPropagationPreview,
   SameMerchantPropagationPreviewRequest,
   SameMerchantPropagationOperation,
+  SourceOnlyLoanRecord,
   Transaction,
   TransactionCategoryAllocation,
 } from "../domain/types.js";
@@ -85,6 +86,11 @@ import type {
   TransactionQuery,
 } from "../domain/ledger/filterTransactions.js";
 import type { TransactionCategoryAllocationUpdateResult } from "../domain/ledger/transactionAllocations.js";
+import type {
+  MortgageBankImportPreview,
+  MortgageEvidenceAcceptanceSummary,
+  MortgageImportTarget,
+} from "../shared/mortgageBankEvidence.js";
 import type {
   TransactionCategoryEditContext,
   TransactionCategoryEditInput,
@@ -158,6 +164,21 @@ export interface FileDialogApi {
   chooseCsvExportPath: () => Promise<string | null>;
   chooseBackupOutputPath: () => Promise<string | null>;
   chooseRestoreSnapshotPath: () => Promise<string | null>;
+}
+
+export interface MortgageImportApi {
+  previewFiles: (input: {
+    target: MortgageImportTarget;
+    requestId: string;
+  }) => Promise<MortgageBankImportPreview | null>;
+  confirmAttachment: (previewId: string) => Promise<MortgageBankImportPreview>;
+  acceptPreview: (
+    previewId: string,
+    acceptPartial?: boolean,
+    acknowledgeTermDifferences?: boolean
+  ) => Promise<MortgageEvidenceAcceptanceSummary>;
+  cancelPreview: (previewId: string) => Promise<boolean>;
+  listEvidenceSummaries: () => Promise<MortgageEvidenceAcceptanceSummary[]>;
 }
 
 export interface ImportApi {
@@ -282,6 +303,7 @@ export interface HoldingRegistryApi {
 
 export interface LoanRegistryApi {
   list: () => Promise<LoanWithBalances[]>;
+  listSourceOnly: () => Promise<SourceOnlyLoanRecord[]>;
   create: (input: LoanRecordInput) => Promise<LoanRecord>;
   updateResponsibilityShare: (input: LoanResponsibilityShareUpdateInput) => Promise<LoanRecord>;
   appendBalance: (input: LoanBalanceInput) => Promise<LoanBalanceSnapshot>;
@@ -305,6 +327,7 @@ export interface BudgetApi {
   categoryTargets: CategoryTargetsApi;
   export: ExportApi;
   import: ImportApi;
+  mortgageImport: MortgageImportApi;
   pending: PendingApi;
   recurringCommitments: RecurringCommitmentsApi;
   review: ReviewApi;
@@ -457,6 +480,22 @@ const budgetApi: BudgetApi = {
       delete: (viewId: string): Promise<boolean> => ipcRenderer.invoke("ledgerView:delete", viewId),
     },
   },
+  mortgageImport: {
+    previewFiles: (input) =>
+      ipcRenderer.invoke("mortgageImport:previewFiles", input),
+    confirmAttachment: (previewId) =>
+      ipcRenderer.invoke("mortgageImport:confirmAttachment", previewId),
+    acceptPreview: (previewId, acceptPartial = false, acknowledgeTermDifferences = false) =>
+      ipcRenderer.invoke("mortgageImport:acceptPreview", {
+        previewId,
+        acceptPartial,
+        acknowledgeTermDifferences,
+      }),
+    cancelPreview: (previewId) =>
+      ipcRenderer.invoke("mortgageImport:cancelPreview", previewId),
+    listEvidenceSummaries: () =>
+      ipcRenderer.invoke("mortgageImport:listEvidenceSummaries"),
+  },
   pending: {
     list: (): Promise<PendingTransactionObservation[]> =>
       ipcRenderer.invoke("pending:list"),
@@ -534,6 +573,8 @@ const budgetApi: BudgetApi = {
   loanRegistry: {
     list: (): Promise<LoanWithBalances[]> =>
       ipcRenderer.invoke("loanRegistry:list"),
+    listSourceOnly: (): Promise<SourceOnlyLoanRecord[]> =>
+      ipcRenderer.invoke("loanRegistry:listSourceOnly"),
     create: (input: LoanRecordInput): Promise<LoanRecord> =>
       ipcRenderer.invoke("loanRegistry:create", input),
     updateResponsibilityShare: (input: LoanResponsibilityShareUpdateInput): Promise<LoanRecord> =>

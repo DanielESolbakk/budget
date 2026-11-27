@@ -62,10 +62,16 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
 
   return {
     household: snapshot.household,
-    ...(snapshot.metadata.version === "13" || snapshot.metadata.version === SNAPSHOT_VERSION
+    ...(snapshot.metadata.version === "13" || snapshot.metadata.version === "14" ||
+    snapshot.metadata.version === "15" ||
+    snapshot.metadata.version === "16" ||
+    snapshot.metadata.version === SNAPSHOT_VERSION
       ? { categories: snapshot.categories }
       : {}),
-    ...(snapshot.metadata.version === "13" || snapshot.metadata.version === SNAPSHOT_VERSION
+    ...(snapshot.metadata.version === "13" || snapshot.metadata.version === "14" ||
+    snapshot.metadata.version === "15" ||
+    snapshot.metadata.version === "16" ||
+    snapshot.metadata.version === SNAPSHOT_VERSION
       ? { recoveryHistory: snapshot.recoveryHistory }
       : {}),
     accounts: snapshot.accounts,
@@ -85,7 +91,9 @@ export function restoreBackupSnapshot(input: RestoreSnapshotInput): RestoreSnaps
     holdings: snapshot.holdings,
     holdingValuations: snapshot.holdingValuations,
     loanRecords: snapshot.loanRecords,
+    sourceOnlyLoanRecords: snapshot.sourceOnlyLoanRecords,
     loanBalanceSnapshots: snapshot.loanBalanceSnapshots,
+    mortgageEvidenceVersions: snapshot.mortgageEvidenceVersions,
     recurringCommitments: snapshot.recurringCommitments,
     recurringCommitmentPaymentLinks: snapshot.recurringCommitmentPaymentLinks,
     recurringCommitmentDecisions: snapshot.recurringCommitmentDecisions,

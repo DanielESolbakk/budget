@@ -32,6 +32,8 @@ Path-specific rules live in `.github/instructions/**/*.instructions.md`.
 - Unit coverage report: `npm run test:coverage:unit`
 - Integration coverage report: `npm run test:coverage:integration`
 - Integration tests: `npm run test:integration`
+- Mortgage import benchmark (run each separately): `npm run benchmark:mortgage-import -- --case three-year`, `npm run benchmark:mortgage-import -- --case thirty-year`, and `npm run benchmark:mortgage-import -- --case near-limit`; pass physical-host options when available, otherwise mark them unavailable
+- Mortgage benchmark results are VM-proxy evidence only when the observed host matches the approved Windows 11 25H2+, 2-vCPU, 4-GiB profile; otherwise they are preliminary
 - Unit mutation signal: `npm run test:mutation:signal`
 - Shared financial/import recovery mutation signal (advisory): `npm run test:mutation:quality:signal`
 - Unit and integration mutation signal (advisory): `npm run test:mutation:unit-integration:signal`

@@ -26,6 +26,8 @@ import {
   validateHoldings,
   validateHoldingValuations,
   validateLoanRecords,
+  validateSourceOnlyLoanRecords,
+  validateMortgageEvidenceVersions,
   validateLoanBalanceSnapshots,
   validateRecurringCommitments,
   validateRecurringCommitmentPaymentLinks,
@@ -36,6 +38,8 @@ import {
 const coverageCollections = ["accountStatementCoveragePeriods", "accountBalanceCheckpoints", "exchangeRates"];
 const propertyCollections = ["properties", "propertyValuations"];
 const loanCollections = ["loanRecords", "loanBalanceSnapshots"];
+const sourceOnlyLoanCollection = ["sourceOnlyLoanRecords"];
+const mortgageEvidenceCollection = ["mortgageEvidenceVersions"];
 const holdingCollections = ["holdings", "holdingValuations"];
 const recurringCollections = ["recurringCommitments", "recurringCommitmentPaymentLinks", "recurringCommitmentDecisions"];
 
@@ -57,8 +61,17 @@ const snapshotCapabilities = {
     ...holdingCollections, ...recurringCollections], requiresHouseholdShares: true },
   "13": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections, "categories"], requiresHouseholdShares: true },
-  [SNAPSHOT_VERSION]: { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+  "14": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
     ...holdingCollections, ...recurringCollections, "categories"], requiresHouseholdShares: true },
+  "15": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+    ...holdingCollections, ...recurringCollections, ...sourceOnlyLoanCollection, "categories"],
+    requiresHouseholdShares: true },
+  "16": { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+    ...holdingCollections, ...recurringCollections, ...sourceOnlyLoanCollection,
+    ...mortgageEvidenceCollection, "categories"], requiresHouseholdShares: true },
+  [SNAPSHOT_VERSION]: { requiredCollections: [...coverageCollections, ...propertyCollections, ...loanCollections,
+    ...holdingCollections, ...recurringCollections, ...sourceOnlyLoanCollection,
+    ...mortgageEvidenceCollection, "categories"], requiresHouseholdShares: true },
 };
 
 function isSupportedSnapshotVersion(value: unknown): value is keyof typeof snapshotCapabilities {
@@ -82,12 +95,14 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     throw new Error(`Invalid snapshot categories: ${snapshotPath}`);
   }
   if (
-    metadata.version === SNAPSHOT_VERSION &&
+    (metadata.version === "16" || metadata.version === SNAPSHOT_VERSION) &&
     (!isRecord(value.recoveryHistory) || !Array.isArray(value.recoveryHistory.transactionCategoryEdits))
   ) {
     throw new Error(`Invalid snapshot transaction category edit history: ${snapshotPath}`);
   }
-  if ((metadata.version === "11" || metadata.version === "12" || metadata.version === SNAPSHOT_VERSION) &&
+  if ((metadata.version === "11" || metadata.version === "12" || metadata.version === "14" ||
+      metadata.version === "16" ||
+      metadata.version === SNAPSHOT_VERSION) &&
     value.reportingPeriodRule === undefined) {
     throw new Error(`Invalid snapshot reportingPeriodRule: ${snapshotPath}`);
   }
@@ -140,6 +155,10 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     ? []
     : value.holdingValuations;
   const loanRecords = value.loanRecords === undefined ? [] : value.loanRecords;
+  const sourceOnlyLoanRecords = value.sourceOnlyLoanRecords === undefined ? [] : value.sourceOnlyLoanRecords;
+  const mortgageEvidenceVersions = value.mortgageEvidenceVersions === undefined
+    ? []
+    : value.mortgageEvidenceVersions;
   const loanBalanceSnapshots = value.loanBalanceSnapshots === undefined
     ? []
     : value.loanBalanceSnapshots;
@@ -161,6 +180,8 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     !Array.isArray(holdings) ||
     !Array.isArray(holdingValuations) ||
     !Array.isArray(loanRecords) ||
+    !Array.isArray(sourceOnlyLoanRecords) ||
+    !Array.isArray(mortgageEvidenceVersions) ||
     !Array.isArray(loanBalanceSnapshots) ||
     !Array.isArray(recurringCommitments) ||
     !Array.isArray(recurringCommitmentPaymentLinks) ||
@@ -222,6 +243,20 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
     new Set(properties.map((property) => property.id)),
     snapshotPath,
     requiresHouseholdShares
+  );
+  validateSourceOnlyLoanRecords(
+    sourceOnlyLoanRecords,
+    value.household.id,
+    new Set(properties.map((property) => property.id)),
+    snapshotPath,
+    requiresHouseholdShares,
+    new Set(loanRecords.map((loan) => loan.id))
+  );
+  validateMortgageEvidenceVersions(
+    mortgageEvidenceVersions,
+    value.household.id,
+    new Set([...loanRecords, ...sourceOnlyLoanRecords].map((loan) => loan.id)),
+    snapshotPath
   );
   validateLoanBalanceSnapshots(loanBalanceSnapshots, loanRecords, snapshotPath);
   validateTargets(monthlyCategoryTargets, snapshotPath);
@@ -301,7 +336,9 @@ export function validateBackupSnapshot(value: unknown, snapshotPath: string): Ba
       ...loan,
       responsibilityShareBasisPoints: defaultHouseholdShare(loan.responsibilityShareBasisPoints, "Loan responsibility share"),
     })),
+    sourceOnlyLoanRecords,
     loanBalanceSnapshots,
+    mortgageEvidenceVersions,
     recurringCommitments,
     recurringCommitmentPaymentLinks,
     recurringCommitmentDecisions,

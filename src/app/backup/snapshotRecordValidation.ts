@@ -14,6 +14,7 @@ import {
   type LoanBalanceSnapshot,
   type LoanPaymentFrequency,
   type LoanRecord,
+  type SourceOnlyLoanRecord,
   type MerchantCategoryRule,
   type MonthlyCategoryTarget,
   type PendingTransactionObservation,
@@ -34,9 +35,33 @@ import { validateExchangeRate } from "../../domain/money/exchangeRates.js";
 import { isPropertyValuationCorrectionMetadata } from "../../domain/propertyRecordValidation.js";
 import { isIsoCalendarDate } from "../../domain/date/calendarDate.js";
 import { validateCategoryRecord } from "../../domain/categorization/categoryCatalog.js";
+import {
+  PROVISIONAL_MORTGAGE_HTML_PARSE_LIMITS,
+  type MortgageHtmlParseResult,
+  type MortgageHtmlParseLimits,
+  type MortgageEvidenceVersion,
+  type MortgageSchedulePeriod,
+} from "../../shared/mortgageBankEvidence.js";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function containsMortgageSourceHtml(value: unknown): boolean {
+  const pending: unknown[] = [value];
+  const visited = new WeakSet<object>();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (typeof current !== "object" || current === null || visited.has(current)) continue;
+    visited.add(current);
+    if (Array.isArray(current)) {
+      pending.push(...current);
+      continue;
+    }
+    if (Object.hasOwn(current, "sourceHtml")) return true;
+    pending.push(...Object.values(current));
+  }
+  return false;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -45,6 +70,180 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function isMortgageHtmlParseLimits(value: unknown): value is MortgageHtmlParseLimits {
+  return isRecord(value) &&
+    typeof value.maxSourceCharacters === "number" &&
+    Number.isSafeInteger(value.maxSourceCharacters) &&
+    value.maxSourceCharacters > 0 &&
+    value.maxSourceCharacters <= PROVISIONAL_MORTGAGE_HTML_PARSE_LIMITS.maxSourceCharacters &&
+    typeof value.maxElements === "number" &&
+    Number.isSafeInteger(value.maxElements) &&
+    value.maxElements > 0 &&
+    value.maxElements <= PROVISIONAL_MORTGAGE_HTML_PARSE_LIMITS.maxElements &&
+    typeof value.maxDepth === "number" &&
+    Number.isSafeInteger(value.maxDepth) &&
+    value.maxDepth > 0 &&
+    value.maxDepth <= PROVISIONAL_MORTGAGE_HTML_PARSE_LIMITS.maxDepth;
+}
+
+function isMortgagePeriod(value: unknown): value is MortgageSchedulePeriod {
+  if (!isRecord(value)) return false;
+  if (value.granularity === "monthly") {
+    return Number.isSafeInteger(value.year) &&
+      typeof value.year === "number" &&
+      value.year >= 1 &&
+      Number.isSafeInteger(value.month) &&
+      typeof value.month === "number" &&
+      value.month >= 1 &&
+      value.month <= 12;
+  }
+  if (value.granularity === "annual") {
+    return Number.isSafeInteger(value.year) &&
+      typeof value.year === "number" &&
+      value.year >= 1;
+  }
+  return value.granularity === "unknown";
+}
+
+function isBoundedStringArray(value: unknown, maxLength: number): value is string[] {
+  return Array.isArray(value) &&
+    value.length <= maxLength &&
+    value.every((item) => typeof item === "string" && item.length <= maxLength);
+}
+
+function isNullableSafeInteger(value: unknown): boolean {
+  return value === null ||
+    (typeof value === "number" && Number.isSafeInteger(value));
+}
+
+function isMortgageTermComparison(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.sourceLabel) ||
+    (value.status !== "matches" && value.status !== "differs")
+  ) return false;
+  if (
+    value.field === "originalPrincipalMinor" ||
+    value.field === "remainingPrincipalMinor"
+  ) {
+    return Number.isSafeInteger(value.sourceValueMinor) &&
+      typeof value.sourceValueMinor === "number" &&
+      Number.isSafeInteger(value.savedValueMinor) &&
+      typeof value.savedValueMinor === "number" &&
+      isCurrencyCode(value.currencyCode) &&
+      (value.field === "remainingPrincipalMinor"
+        ? isIsoCalendarDate(value.savedEffectiveDateIso)
+        : value.savedEffectiveDateIso === undefined) &&
+      (value.savedEffectiveDateIso === undefined || isIsoCalendarDate(value.savedEffectiveDateIso)) &&
+      ((value.status === "matches") === (value.sourceValueMinor === value.savedValueMinor));
+  }
+  if (value.field === "nominalAnnualRateBasisPoints") {
+    return Number.isSafeInteger(value.sourceValueBasisPoints) &&
+      typeof value.sourceValueBasisPoints === "number" &&
+      Number.isSafeInteger(value.savedValueBasisPoints) &&
+      typeof value.savedValueBasisPoints === "number" &&
+      ((value.status === "matches") === (value.sourceValueBasisPoints === value.savedValueBasisPoints));
+  }
+  return false;
+}
+
+function isMortgageHtmlParseResult(
+  value: unknown,
+  role: unknown,
+  limits: MortgageHtmlParseLimits
+): value is MortgageHtmlParseResult {
+  if (
+    (role !== "details" && role !== "schedule") ||
+    !isRecord(value) ||
+    value.role !== role ||
+    !["parsed", "partial"].includes(String(value.parseStatus)) ||
+    !isRecord(value.identityEvidence) ||
+    !(
+      value.identityEvidence.loanReference === null ||
+      typeof value.identityEvidence.loanReference === "string"
+    ) ||
+    !(
+      value.identityEvidence.currencyCode === null ||
+      typeof value.identityEvidence.currencyCode === "string"
+    ) ||
+    !isBoundedStringArray(value.identityEvidence.loanReferenceValues, limits.maxElements) ||
+    !isBoundedStringArray(value.identityEvidence.currencyValues, limits.maxElements) ||
+    !Array.isArray(value.identityEvidence.conflicts) ||
+    !value.identityEvidence.conflicts.every((conflict) =>
+      conflict === "loan-reference-mismatch" || conflict === "currency-mismatch"
+    ) ||
+    !isRecord(value.sourceDateEvidence) ||
+    !(
+      value.sourceDateEvidence.dateIso === null ||
+      isIsoCalendarDate(value.sourceDateEvidence.dateIso)
+    ) ||
+    !isBoundedStringArray(value.sourceDateEvidence.sourceLabels, limits.maxElements) ||
+    !isBoundedStringArray(value.sourceDateEvidence.sourceValues, limits.maxElements) ||
+    typeof value.sourceDateEvidence.conflict !== "boolean" ||
+    (value.sourceDateEvidence.conflict && value.sourceDateEvidence.dateIso !== null) ||
+    !Array.isArray(value.detailsFields) ||
+    value.detailsFields.length > limits.maxElements ||
+    !Array.isArray(value.scheduleRows) ||
+    value.scheduleRows.length > limits.maxElements
+  ) {
+    return false;
+  }
+
+  const validDetailFields = value.detailsFields.every((field) => {
+    if (
+      !isRecord(field) ||
+      typeof field.sourceLabel !== "string" ||
+      field.sourceLabel.length > limits.maxSourceCharacters ||
+      typeof field.sourceValue !== "string" ||
+      field.sourceValue.length > limits.maxSourceCharacters
+    ) {
+      return false;
+    }
+    if (field.field === "originalPrincipalMinor" || field.field === "remainingPrincipalMinor") {
+      return isNullableSafeInteger(field.amountMinor);
+    }
+    if (
+      field.field === "nominalAnnualRateBasisPoints" ||
+      field.field === "effectiveAnnualRateBasisPoints"
+    ) {
+      return isNullableSafeInteger(field.valueBasisPoints);
+    }
+    if (field.field === "unsupportedProductType") return true;
+    return false;
+  });
+  const validScheduleRows = value.scheduleRows.every((row) =>
+    isRecord(row) &&
+    typeof row.periodLabel === "string" &&
+    row.periodLabel.length <= limits.maxSourceCharacters &&
+    isMortgagePeriod(row.period) &&
+    isNullableSafeInteger(row.principalMinor) &&
+    isNullableSafeInteger(row.interestMinor) &&
+    isNullableSafeInteger(row.feeMinor) &&
+    isNullableSafeInteger(row.paymentMinor) &&
+    isNullableSafeInteger(row.projectedClosingBalanceMinor) &&
+    isBoundedStringArray(row.sourceHeaders, limits.maxElements) &&
+    isBoundedStringArray(row.sourceValues, limits.maxElements)
+  );
+  const openingBalance = value.openingBalanceEvidence;
+  const validOpeningBalance = openingBalance === null || (
+    isRecord(openingBalance) &&
+    Number.isSafeInteger(openingBalance.amountMinor) &&
+    typeof openingBalance.amountMinor === "number" &&
+    openingBalance.amountMinor >= 0 &&
+    isMortgagePeriod(openingBalance.beforePeriod) &&
+    openingBalance.beforePeriod.granularity !== "unknown" &&
+    openingBalance.sourceKind === "lender-opening-balance" &&
+    typeof openingBalance.sourceLabel === "string" &&
+    openingBalance.sourceLabel.length <= limits.maxSourceCharacters &&
+    typeof openingBalance.sourceValue === "string" &&
+    openingBalance.sourceValue.length <= limits.maxSourceCharacters
+  );
+  if (!validDetailFields || !validScheduleRows || !validOpeningBalance) return false;
+  return role === "details"
+    ? value.scheduleRows.length === 0
+    : value.detailsFields.length === 0;
 }
 
 function invalidSnapshot(snapshotPath: string, reason: string): never {
@@ -607,6 +806,131 @@ export function validateLoanRecords(
       invalidSnapshot(snapshotPath, "loan records");
     }
     loanIds.add(loan.id);
+  }
+}
+
+export function validateSourceOnlyLoanRecords(
+  value: unknown[],
+  householdId: string,
+  propertyIds: Set<string>,
+  snapshotPath: string,
+  requiresHouseholdShares: boolean,
+  existingLoanIds: Set<string>
+): asserts value is SourceOnlyLoanRecord[] {
+  const sourceOnlyIds = new Set<string>();
+  const forbiddenTermFields = [
+    "principalMinor",
+    "annualInterestRateBasisPoints",
+    "termMonths",
+    "paymentAmountMinor",
+    "paymentFrequency",
+  ];
+
+  for (const loan of value) {
+    if (
+      !isRecord(loan) ||
+      !isNonEmptyString(loan.id) ||
+      existingLoanIds.has(loan.id) ||
+      sourceOnlyIds.has(loan.id) ||
+      loan.householdId !== householdId ||
+      !isNonEmptyString(loan.label) ||
+      loan.label.trim().length > 100 ||
+      !isCurrencyCode(loan.currencyCode) ||
+      !isNonEmptyString(loan.createdAtIso) ||
+      !loan.createdAtIso.includes("T") ||
+      Number.isNaN(Date.parse(loan.createdAtIso)) ||
+      loan.recordStatus !== "source-only" ||
+      forbiddenTermFields.some((field) => Object.prototype.hasOwnProperty.call(loan, field)) ||
+      (loan.responsibilityShareBasisPoints === undefined
+        ? requiresHouseholdShares
+        : !isHouseholdShare(loan.responsibilityShareBasisPoints)) ||
+      (loan.propertyId !== undefined &&
+        (typeof loan.propertyId !== "string" || !propertyIds.has(loan.propertyId)))
+    ) {
+      invalidSnapshot(snapshotPath, "source-only loan records");
+    }
+    sourceOnlyIds.add(loan.id);
+  }
+}
+
+export function validateMortgageEvidenceVersions(
+  value: unknown[],
+  householdId: string,
+  loanIds: Set<string>,
+  snapshotPath: string
+): asserts value is MortgageEvidenceVersion[] {
+  const versionIds = new Set<string>();
+  const lastVersionByLoan = new Map<string, number>();
+  for (const version of value) {
+    if (containsMortgageSourceHtml(version)) {
+      invalidSnapshot(snapshotPath, "mortgage evidence documents");
+    }
+    if (
+      !isRecord(version) ||
+      !isNonEmptyString(version.id) ||
+      versionIds.has(version.id) ||
+      !isNonEmptyString(version.loanId) ||
+      !loanIds.has(version.loanId) ||
+      version.householdId !== householdId ||
+      !Number.isSafeInteger(version.versionNumber) ||
+      typeof version.versionNumber !== "number" ||
+      version.versionNumber < 1 ||
+      version.versionNumber !== (lastVersionByLoan.get(version.loanId) ?? 0) + 1 ||
+      !(version.sourceAsOfDateIso === null || isIsoCalendarDate(version.sourceAsOfDateIso)) ||
+      !isNonEmptyString(version.importedAtIso) ||
+      !version.importedAtIso.includes("T") ||
+      Number.isNaN(Date.parse(version.importedAtIso)) ||
+      !Array.isArray(version.documents) ||
+      version.documents.length === 0 ||
+      version.documents.length > 2 ||
+      !(
+        version.pairing === null ||
+        (isRecord(version.pairing) &&
+          ["verified", "confirmed"].includes(String(version.pairing.status)))
+      ) ||
+      !isRecord(version.attachment) ||
+      !["verified", "confirmed"].includes(String(version.attachment.status)) ||
+      !(
+        version.scheduleValidation === null ||
+        (isRecord(version.scheduleValidation) &&
+          ["valid", "partial"].includes(String(version.scheduleValidation.status)) &&
+          Array.isArray(version.scheduleValidation.issues))
+      ) ||
+      !Array.isArray(version.termComparisons) ||
+      typeof version.termDifferencesAcknowledged !== "boolean" ||
+      (version.termComparisons.some((comparison) => (
+        isRecord(comparison) && comparison.status === "differs"
+      )) && !version.termDifferencesAcknowledged) ||
+      !version.termComparisons.every(isMortgageTermComparison)
+    ) {
+      invalidSnapshot(snapshotPath, "mortgage evidence versions");
+    }
+
+    const roles = new Set<string>();
+    for (const document of version.documents) {
+      if (
+        !isRecord(document) ||
+        !["details", "schedule"].includes(String(document.role)) ||
+        roles.has(String(document.role)) ||
+        Object.hasOwn(document, "sourceHtml") ||
+        typeof document.sourceHashSha256 !== "string" ||
+        !/^[0-9a-f]{64}$/.test(document.sourceHashSha256) ||
+        !isNonEmptyString(document.parserVersion) ||
+        document.parserVersion.length > 64 ||
+        !isMortgageHtmlParseLimits(document.parserLimits) ||
+        !isMortgageHtmlParseResult(document.parsedDocument, document.role, document.parserLimits)
+      ) {
+        invalidSnapshot(snapshotPath, "mortgage evidence documents");
+      }
+      roles.add(String(document.role));
+    }
+    if ((version.documents.length === 1 && version.pairing !== null) ||
+        (version.documents.length === 2 && version.pairing === null)) {
+      invalidSnapshot(snapshotPath, "mortgage evidence pairing");
+    }
+
+    versionIds.add(version.id);
+    lastVersionByLoan.set(version.loanId, version.versionNumber);
   }
 }
 

@@ -24,6 +24,7 @@ import type {
   PropertyRecord,
   PropertyValuationSnapshot,
   PropertyWithValuations,
+  SourceOnlyLoanRecord,
 } from "../../src/domain/types.js";
 import type { LedgerChannelContext } from "./context.js";
 
@@ -56,6 +57,11 @@ export function registerRegistriesChannels({
   ipcMain.handle("loanRegistry:list", (event): LoanWithBalances[] => {
     assertTrustedRenderer(event);
     return loanRegistry.list();
+  });
+
+  ipcMain.handle("loanRegistry:listSourceOnly", (event): SourceOnlyLoanRecord[] => {
+    assertTrustedRenderer(event);
+    return loanRegistry.listSourceOnly();
   });
 
   ipcMain.handle("loanRegistry:create", (event, input: unknown): Promise<LoanRecord> => {

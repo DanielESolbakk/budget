@@ -55,6 +55,13 @@ export class LoanRegistryPage {
     return this.section.getByRole("navigation", { name: "Loan records", exact: true });
   }
 
+  get sourceOnlyLoans() {
+    return this.section.getByRole("region", {
+      name: "Source-only loan records",
+      exact: true,
+    });
+  }
+
   get backToLoanListButton() {
     return this.section.getByRole("button", { name: "Back to loans", exact: true });
   }

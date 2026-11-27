@@ -83,6 +83,34 @@ test("loan creation opens only after the user requests it", async ({ appShell, w
   await expect(loans.createForm).toBeVisible();
 });
 
+test("loan workspace keeps source-only records separate from complete loan records", async ({
+  appShell,
+  window,
+}) => {
+  await window.setViewportSize({ width: 390, height: 844 });
+  await appShell.openWorkspace("Loans");
+  const loans = new LoanRegistryPage(window);
+  const sourceOnlyRecords = await window.evaluate(() => (
+    globalThis as typeof globalThis & {
+      budgetApi: {
+        loanRegistry: {
+          listSourceOnly: () => Promise<unknown[]>;
+        };
+      };
+    }
+  ).budgetApi.loanRegistry.listSourceOnly());
+
+  expect(sourceOnlyRecords).toEqual([]);
+  await expect(loans.sourceOnlyLoans).toHaveCount(0);
+  await expect(
+    loans.section.getByText("No loans have been recorded.", { exact: true })
+  ).toBeVisible();
+  await expect(loans.loanNavigation).toHaveCount(0);
+  expect(await window.evaluate(() => (
+    document.documentElement.scrollWidth > document.documentElement.clientWidth
+  ))).toBe(false);
+});
+
 test("saving a loan focuses and reveals its selected detail on compact screens", async ({
   appShell,
   window,

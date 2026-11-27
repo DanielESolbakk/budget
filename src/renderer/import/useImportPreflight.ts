@@ -1,7 +1,17 @@
 import React from "react";
 import type { ImportPreflightProgress } from "../../app/import/importPreflight.js";
 
-export function useImportPreflight(format: "csv" | "pdf", contextKey: string) {
+type PreviewLifecycleFormat = "csv" | "pdf" | "mortgage";
+type CancelPreview = (requestId: string) => Promise<boolean>;
+
+const cancelImportPreview: CancelPreview = (requestId) =>
+  window.budgetApi.import.cancelPreview(requestId);
+
+export function useImportPreflight(
+  format: PreviewLifecycleFormat,
+  contextKey: string,
+  cancelPreview: CancelPreview = cancelImportPreview
+) {
   const activeRequest = React.useRef<string | undefined>();
   const mounted = React.useRef(false);
   const [requestId, setRequestId] = React.useState<string | undefined>();
@@ -11,7 +21,9 @@ export function useImportPreflight(format: "csv" | "pdf", contextKey: string) {
   React.useLayoutEffect(() => {
     mounted.current = true;
     const unsubscribe = window.budgetApi.import.onPreflightProgress((next) => {
-      if (next.format !== format || next.requestId !== activeRequest.current) return;
+      if (format === "mortgage" ||
+          next.format !== format ||
+          next.requestId !== activeRequest.current) return;
       setProgress(next);
     });
     return () => {
@@ -28,19 +40,21 @@ export function useImportPreflight(format: "csv" | "pdf", contextKey: string) {
       const previous = activeRequest.current;
       activeRequest.current = undefined;
       if (previous !== undefined) {
-        void window.budgetApi.import.cancelPreview(previous).catch((error: unknown) => {
+        void cancelPreview(previous).catch((error: unknown) => {
           console.error("Unable to cancel an obsolete import preview.", error);
         });
       }
     };
-  }, [contextKey, format]);
+  }, [cancelPreview, contextKey, format]);
 
   function begin(): string {
     const next = crypto.randomUUID();
     activeRequest.current = next;
     setRequestId(next);
     setCancellationError(null);
-    setProgress({ requestId: next, format, phase: "Reading statement", completedRows: 0, totalRows: 0 });
+    setProgress(format === "mortgage"
+      ? null
+      : { requestId: next, format, phase: "Reading statement", completedRows: 0, totalRows: 0 });
     return next;
   }
 
@@ -53,7 +67,7 @@ export function useImportPreflight(format: "csv" | "pdf", contextKey: string) {
     activeRequest.current = undefined;
     setRequestId(undefined);
     setCancellationError(null);
-    setProgress(wasCancelled
+    setProgress(wasCancelled && format !== "mortgage"
       ? { requestId: id, format, phase: "Preview cancelled", completedRows: 0, totalRows: 0 }
       : null);
   }
@@ -62,7 +76,7 @@ export function useImportPreflight(format: "csv" | "pdf", contextKey: string) {
     const current = activeRequest.current;
     if (current === undefined) return;
     try {
-      await window.budgetApi.import.cancelPreview(current);
+      await cancelPreview(current);
     } catch (error: unknown) {
       if (isCurrent(current)) {
         setCancellationError(error instanceof Error ? error.message : "Unable to cancel the preview.");

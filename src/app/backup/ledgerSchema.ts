@@ -226,6 +226,20 @@ export function ensureSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS loans_by_household_label
       ON loan_records (household_id, label COLLATE NOCASE, id);
 
+    CREATE TABLE IF NOT EXISTS source_only_loan_records (
+      id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      currency_code TEXT NOT NULL,
+      property_id TEXT,
+      created_at_iso TEXT NOT NULL,
+      responsibility_share_basis_points INTEGER NOT NULL DEFAULT 10000
+        CHECK (typeof(responsibility_share_basis_points) = 'integer' AND responsibility_share_basis_points BETWEEN 0 AND 10000)
+    );
+
+    CREATE INDEX IF NOT EXISTS source_only_loans_by_household_label
+      ON source_only_loan_records (household_id, label COLLATE NOCASE, id);
+
     CREATE TABLE IF NOT EXISTS loan_balance_snapshots (
       id TEXT PRIMARY KEY,
       loan_id TEXT NOT NULL,
@@ -237,6 +251,26 @@ export function ensureSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS loan_balances_by_loan_date
       ON loan_balance_snapshots (loan_id, effective_date_iso, recorded_at_iso, id);
+
+    CREATE TABLE IF NOT EXISTS mortgage_evidence_versions (
+      id TEXT PRIMARY KEY,
+      loan_id TEXT NOT NULL,
+      household_id TEXT NOT NULL,
+      version_number INTEGER NOT NULL CHECK (version_number > 0),
+      source_as_of_date_iso TEXT,
+      imported_at_iso TEXT NOT NULL,
+      documents_json TEXT NOT NULL,
+      pairing_json TEXT,
+      attachment_json TEXT NOT NULL,
+      term_comparisons_json TEXT NOT NULL,
+      term_differences_acknowledged INTEGER NOT NULL
+        CHECK (term_differences_acknowledged IN (0, 1)),
+      schedule_validation_json TEXT,
+      UNIQUE (loan_id, version_number)
+    );
+
+    CREATE INDEX IF NOT EXISTS mortgage_evidence_by_loan_version
+      ON mortgage_evidence_versions (loan_id, version_number);
 
     CREATE TABLE IF NOT EXISTS recurring_commitments (
       id TEXT PRIMARY KEY,

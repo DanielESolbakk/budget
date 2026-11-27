@@ -76,12 +76,23 @@ Use the following locked stack unless superseded by a later ADR:
 - Local persistence and backup snapshots preserve correction links. Existing snapshots without correction metadata remain readable.
 - Correction workflows remain local-only and do not fetch valuation data, quotes, or exchange rates.
 
+### Mortgage Evidence Import
+
+- Saved mortgage HTML is user-selected local data. Parsing never executes scripts, loads styles or frames, follows links, or requests remote resources.
+- Source roles, source identity, source-as-of dates, and import time remain explicit. Uncertain identity requires confirmation before pairing; contradictory identity cannot be repaired by confirmation.
+- Bank schedules are projected evidence. They never overwrite actual balance checkpoints, create ledger transactions, or substitute for missing actual balances.
+- A source-only loan is an explicitly incomplete local loan state. Unknown balances and terms remain unknown, and accepted bank-plan versions retain immutable provenance.
+- Existing manual corrections and household choices are preserved. Disputed fields are shown with both values and provenance and are not overwritten without explicit resolution.
+- The versioned household backup snapshot is the related local export for this slice and preserves evidence and stable obligations through backup/restore. Ledger CSV remains transaction-only; no separate per-loan export is in scope.
+- Mortgage import caps and performance targets are proposed from the tested import/preview path using synthetic three- and thirty-year inputs on an owner-approved Windows 11 Home/Pro 25H2-or-newer VM proxy configured for 2 vCPUs and 4 GiB RAM. Record the VM OS/build, assigned resources, and runner or hypervisor label. Record physical host details when the provider exposes them; otherwise mark them unavailable. Treat results as VM-proxy evidence, not physical minimum-hardware validation. Owner approval is still required before finalizing hard caps or performance claims.
+
 ## Testing Implications
 
 - Unit tests for parser adapters, merchant normalization, rule evaluation, and forecasting logic
 - Integration tests for import-to-ledger behavior, correction persistence, and backup/restore workflows
 - End-to-end desktop tests for critical user journeys
 - A no-network verification check is required for development and packaged builds
+- Mortgage HTML unit, integration, and Playwright tests cover semantic parsing, exact validation, source-only loans, inert handling, revision-checked acceptance, and recovery
 
 ## Consequences
 
