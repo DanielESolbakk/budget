@@ -156,7 +156,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Unknown layouts produce explicit diagnostics and reviewable unresolved rows instead of silently producing incomplete transactions.
 - Saved mortgage HTML follows its own evidence adapter and is never routed through transaction import or treated as a booked statement.
 - Pair details and schedules only with sufficient identity evidence; preserve source-as-of, rate-effective, planned-payment, booking, and import times separately.
-- After the first tested import/preview path exists, run the three-year, thirty-year, and near-limit mortgage import benchmark cases on the owner-approved Windows 11 Home/Pro 25H2-or-newer VM proxy configured for 2 vCPUs and 4 GiB RAM. Record the VM profile, runner or hypervisor label, elapsed time, and peak process RSS. Record physical host details when available; otherwise mark them unavailable. Treat results as VM-proxy evidence, not physical minimum-hardware validation. Use actual measurements to propose measurable resource caps and performance targets for owner approval before finalizing hard caps or making performance claims.
+- Keep mortgage import within deterministic parser file, character, element, and depth limits. Treat these as input-safety guardrails, not device-performance claims; timed benchmarks and runner-profile checks are not part of this Story.
 
 ## SQLite Binding Note
 
@@ -207,7 +207,7 @@ The application uses Electron for the desktop shell, React for the renderer, Typ
 - Native SQLite packaging on Windows with Electron
 - Review-state complexity across three input formats
 - Semantic and identity variation in saved mortgage HTML, including the risk of treating projected schedules as actuals
-- Final parser resource caps and measurable performance claims remain gated on benchmarking the actual import/preview path on Windows and owner approval
+- Mortgage import performance profiling and platform-specific performance claims are out of scope; any future profiling requires a separate approved task.
 - Drift between seeded categories and user-corrected rules
 - Ensuring no-network verification remains meaningful in development and packaged builds
 
