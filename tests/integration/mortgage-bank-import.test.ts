@@ -1307,6 +1307,17 @@ describe("mortgage import performance benchmark", () => {
     });
   });
 
+  it("keeps the Windows benchmark probe diagnostic instead of enforcing an owner-approved profile", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github", "workflows", "ci.yml"), "utf8");
+    const benchmarkSection = workflow.slice(
+      workflow.indexOf("- name: Mortgage import benchmark proxy probe"),
+      workflow.indexOf("- name: Upload Playwright Windows artifacts")
+    );
+
+    expect(benchmarkSection).toContain("benchmark:mortgage-import");
+    expect(benchmarkSection).not.toContain("--require-profile-match");
+  });
+
   it("fails a required benchmark probe when the observed VM profile is preliminary", () => {
     const result = spawnSync(process.execPath, [
       "--import",
